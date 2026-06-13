@@ -128,7 +128,7 @@ jobs:
           username: ${{ secrets.GMAIL_USER }}
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
           subject: "🌅 Morgen-Briefing – ${{ steps.datum.outputs.date }}"
-          to: lexprieb@gmail.com
+          to: lex@glappa.de
           from: "Morgen-Briefing <${{ secrets.GMAIL_USER }}>"
           html_body: |
             <html>
