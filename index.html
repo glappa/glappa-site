@@ -8,8 +8,70 @@
   <meta name="description" content="Kleine 90's Webseite mit Retro Terminal Simulator">
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css?v=9">
+  <style>
+    /* ── Bingus Popup ── */
+    #bingus-popup {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0,0,0,0.82);
+      cursor: pointer;
+      animation: bingusIn 0.18s ease;
+    }
+    @keyframes bingusIn {
+      from { opacity: 0; transform: scale(0.88); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    #bingus-popup.show { display: flex; }
+    .bingus-card {
+      background: #000;
+      border: 3px solid var(--neon-cyan);
+      border-radius: 4px;
+      box-shadow: 0 0 28px var(--neon-cyan), 0 0 70px rgba(0,255,255,0.18);
+      padding: 12px;
+      text-align: center;
+      max-width: 92vw;
+    }
+    .bingus-card .blabel {
+      font-family: 'Courier New', monospace;
+      color: var(--neon-cyan);
+      font-size: 0.75em;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      margin-bottom: 9px;
+      text-shadow: 0 0 8px var(--neon-cyan);
+    }
+    .bingus-card img {
+      display: block;
+      max-width: 370px;
+      max-height: 370px;
+      width: auto;
+      height: auto;
+      border-radius: 2px;
+    }
+    .bingus-card .bclose {
+      font-family: 'Courier New', monospace;
+      color: #444;
+      font-size: 0.68em;
+      margin-top: 8px;
+      letter-spacing: 0.1em;
+    }
+    .mario-combo { cursor: zoom-in; }
+  </style>
 </head>
 <body>
+
+  <!-- Bingus Easter-Egg Popup -->
+  <div id="bingus-popup" onclick="hideBingus()">
+    <div class="bingus-card">
+      <div class="blabel">&#9888; BINGUS DETECTED &#9888;</div>
+      <img id="bingus-gif" src="" alt="Bingus">
+      <div class="bclose">[ klicken zum schlie&szlig;en ]</div>
+    </div>
+  </div>
 
   <!-- Laufschrift oben -->
   <div class="marquee marquee--top">
@@ -47,17 +109,19 @@
   </div>
 
   <main>
-    <!-- Featured: Mario+Bingus (Spiney ist im GIF eingebacken), Tux links daneben, garantierte Luecke -->
     <section class="featured-stage">
       <img class="tux-offset" src="tux_computer_dig_md_clr.gif" alt="Tux am Computer">
-      <img class="mario-combo" src="img/mario-bingus.gif?v=9" alt="Bingus im Mario-Rahmen mit Spiney">
+      <img class="mario-combo" id="bingusTrigger"
+           src="img/mario-bingus.gif?v=9"
+           alt="Bingus im Mario-Rahmen mit Spiney"
+           title="psst...">
     </section>
 
     <!-- Isaac-Zeile: 4D-Struktur | Isaac | 4D-Struktur -->
     <div class="isaac-row">
-      <img src="img/3dspace.gif?v=9" alt="4D Struktur">
-      <img src="tboi-isaac.gif?v=9" alt="Isaac">
-      <img src="img/3dspace.gif?v=9" alt="4D Struktur">
+      <img id="gif3d1" src="img/3dspace.gif" alt="4D Struktur">
+      <img id="gifIsaac" src="tboi-isaac.gif" alt="Isaac">
+      <img id="gif3d2" src="img/3dspace.gif" alt="4D Struktur">
     </div>
   </main>
 
@@ -109,5 +173,54 @@
   </footer>
 
   <script src="script.js?v=9"></script>
+  <script>
+    // ── 3D/4D GIF Fix: erzwingt Neustart der Animation ──────────
+    // Entfernt ?v=9 und hängt einen Timestamp an um Browser-Cache
+    // zu umgehen der manchmal nur ein einziges Frame cached.
+    (function restartGifs() {
+      ['gif3d1','gif3d2','gifIsaac'].forEach(id => {
+        const img = document.getElementById(id);
+        if (!img) return;
+        const base = img.src.split('?')[0];
+        img.src = base + '?t=' + Date.now();
+      });
+    })();
+
+    // ── Bingus Hover Easter Egg ─────────────────────────────────
+    // GIFs lokal in img/ ablegen mit diesen Namen:
+    //   img/bingus-dance.gif   → tanzende Nacktkatze
+    //   img/bingus-calling.gif → Bingus is calling
+    //   img/bingus-bath1.gif   → nasse Katze #1
+    //   img/bingus-bath2.gif   → nasse Katze #2
+    //   img/bingus-bath3.gif   → nasse Katze #3
+    const BINGUS_GIFS = [
+      'img/bingus-dance.gif',
+      'img/bingus-calling.gif',
+      'img/bingus-bath1.gif',
+      'img/bingus-bath2.gif',
+      'img/bingus-bath3.gif',
+    ];
+
+    let hoverTimer = null;
+    const trigger = document.getElementById('bingusTrigger');
+    const popup   = document.getElementById('bingus-popup');
+    const gifEl   = document.getElementById('bingus-gif');
+
+    if (trigger) {
+      trigger.addEventListener('mouseenter', () => {
+        hoverTimer = setTimeout(() => {
+          gifEl.src = BINGUS_GIFS[Math.floor(Math.random() * BINGUS_GIFS.length)];
+          popup.classList.add('show');
+        }, 1500);
+      });
+      trigger.addEventListener('mouseleave', () => clearTimeout(hoverTimer));
+    }
+
+    function hideBingus() {
+      popup.classList.remove('show');
+      gifEl.src = '';
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') hideBingus(); });
+  </script>
 </body>
 </html>
