@@ -122,14 +122,14 @@ jobs:
       - name: E-Mail senden
         uses: dawidd6/action-send-mail@v3
         with:
-          server_address: smtp.gmail.com
-          server_port: 465
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
           secure: true
-          username: ${{ secrets.GMAIL_USER }}
-          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASSWORD }}
           subject: "🌅 Morgen-Briefing – ${{ steps.datum.outputs.date }}"
           to: lex@glappa.de
-          from: "Morgen-Briefing <${{ secrets.GMAIL_USER }}>"
+          from: "Morgen-Briefing <${{ secrets.SMTP_USER }}>"
           html_body: |
             <html>
             <body style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; background: #f9f9f9;">
