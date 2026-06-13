@@ -1,0 +1,177 @@
+name: Morgen-Briefing
+
+on:
+  schedule:
+    # 04:30 UTC = 06:30 CEST (Sommerzeit, Apr–Okt)
+    # Im Winter (CET, Nov–Mär) läuft es um 05:30 Uhr – ggf. auf "30 5" ändern
+    - cron: '30 4 * * 1-5'
+  workflow_dispatch: # Manuell auslösen zum Testen
+
+jobs:
+  briefing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Datum & Uhrzeit
+        id: datum
+        run: |
+          echo "date=$(TZ=Europe/Berlin date '+%A, %d.%m.%Y')" >> "$GITHUB_OUTPUT"
+          echo "time=$(TZ=Europe/Berlin date '+%H:%M')" >> "$GITHUB_OUTPUT"
+
+      - name: Wetter in Steinhagen
+        id: wetter
+        run: |
+          curl -s "wttr.in/Steinhagen+NRW?lang=de&format=j1" > /tmp/wetter.json
+
+          python3 - << 'PYEOF'
+          import json, os, sys
+
+          try:
+              with open('/tmp/wetter.json') as f:
+                  d = json.load(f)
+
+              c = d['current_condition'][0]
+              desc     = c['lang_de'][0]['value']
+              temp     = c['temp_C']
+              feels    = c['FeelsLikeC']
+              wind_kmh = c['windspeedKmph']
+              regen_mm = c['precipMM']
+              humidity = c['humidity']
+
+              today    = d['weather'][0]
+              max_t    = today['maxtempC']
+              min_t    = today['mintempC']
+              sunrise  = today['astronomy'][0]['sunrise']
+              sunset   = today['astronomy'][0]['sunset']
+
+              # Regenwarnung für Stunden von 6–10
+              rain_warning = ""
+              for hour in today['hourly']:
+                  h = int(hour['time']) // 100
+                  if 6 <= h <= 10:
+                      mm = float(hour['precipMM'])
+                      if mm > 0.3:
+                          rain_warning = f"🌧️ Regen erwartet zwischen {h}:00–{h+1}:00 Uhr ({mm} mm)"
+                          break
+
+              out = os.environ['GITHUB_OUTPUT']
+              with open(out, 'a') as f:
+                  f.write(f"aktuell={desc}, {temp}°C (gefühlt {feels}°C), Wind {wind_kmh} km/h, Luftfeuchtigkeit {humidity}%\n")
+                  f.write(f"tag=Tageshöchstwert {max_t}°C / Tiefstwert {min_t}°C\n")
+                  f.write(f"sonne=Sonnenaufgang {sunrise} · Sonnenuntergang {sunset}\n")
+                  f.write(f"regen={rain_warning}\n")
+                  f.write(f"niederschlag={regen_mm}\n")
+          except Exception as e:
+              out = os.environ['GITHUB_OUTPUT']
+              with open(out, 'a') as f:
+                  f.write("aktuell=Wetterdaten nicht verfügbar\n")
+                  f.write("tag=\n")
+                  f.write("sonne=\n")
+                  f.write("regen=\n")
+                  f.write("niederschlag=0\n")
+          PYEOF
+
+      - name: Verkehr Steinhagen → Stuckenbrock
+        id: verkehr
+        run: |
+          DEPART=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          # Koordinaten: Steinhagen NRW → Fossenredde, Stuckenbrock
+          curl -s "https://router.hereapi.com/v8/routes?transportMode=car&origin=52.0016,8.3967&destination=51.8770,8.6330&departureTime=${DEPART}&return=summary&apikey=${{ secrets.HERE_API_KEY }}" > /tmp/traffic.json
+
+          python3 - << 'PYEOF'
+          import json, os
+
+          try:
+              with open('/tmp/traffic.json') as f:
+                  d = json.load(f)
+
+              s        = d['routes'][0]['sections'][0]['summary']
+              dur_sec  = s['duration']
+              base_sec = s['baseDuration']
+              laenge_m = s['length']
+
+              dur_min  = dur_sec  // 60
+              base_min = base_sec // 60
+              delay    = dur_min - base_min
+              km       = laenge_m / 1000
+
+              if delay >= 10:
+                  status = f"🔴 Stau! +{delay} Min Verzögerung – früher losfahren"
+              elif delay >= 3:
+                  status = f"🟡 Leichte Verzögerung (+{delay} Min)"
+              else:
+                  status = "🟢 Freie Fahrt"
+
+              out = os.environ['GITHUB_OUTPUT']
+              with open(out, 'a') as f:
+                  f.write(f"status={status}\n")
+                  f.write(f"fahrzeit={dur_min}\n")
+                  f.write(f"normal={base_min}\n")
+                  f.write(f"delay={delay}\n")
+                  f.write(f"km={km:.1f}\n")
+          except Exception as e:
+              out = os.environ['GITHUB_OUTPUT']
+              with open(out, 'a') as f:
+                  f.write("status=⚠️ Verkehrsdaten nicht verfügbar\n")
+                  f.write("fahrzeit=?\n")
+                  f.write("normal=?\n")
+                  f.write("delay=0\n")
+                  f.write("km=?\n")
+          PYEOF
+
+      - name: E-Mail senden
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "🌅 Morgen-Briefing – ${{ steps.datum.outputs.date }}"
+          to: lexprieb@gmail.com
+          from: "Morgen-Briefing <${{ secrets.GMAIL_USER }}>"
+          html_body: |
+            <html>
+            <body style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px; background: #f9f9f9;">
+
+              <div style="background: linear-gradient(135deg, #f39c12, #e67e22); border-radius: 12px; padding: 20px; color: white; margin-bottom: 20px;">
+                <h1 style="margin: 0; font-size: 1.6em;">🌅 Guten Morgen!</h1>
+                <p style="margin: 6px 0 0; opacity: 0.9;">${{ steps.datum.outputs.date }} &nbsp;·&nbsp; ${{ steps.datum.outputs.time }} Uhr</p>
+              </div>
+
+              <!-- WETTER -->
+              <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+                <h2 style="margin: 0 0 12px; color: #3498db;">🌤️ Wetter in Steinhagen</h2>
+                <p style="margin: 0 0 8px; font-size: 1.1em; font-weight: bold;">${{ steps.wetter.outputs.aktuell }}</p>
+                <p style="margin: 0 0 4px; color: #555;">${{ steps.wetter.outputs.tag }}</p>
+                <p style="margin: 0 0 4px; color: #555;">🌞 ${{ steps.wetter.outputs.sonne }}</p>
+                ${{ steps.wetter.outputs.regen != '' && format('<p style="margin: 8px 0 0; padding: 8px 12px; background: #eaf4ff; border-left: 4px solid #3498db; border-radius: 4px;">{0}</p>', steps.wetter.outputs.regen) || '' }}
+              </div>
+
+              <!-- VERKEHR -->
+              <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
+                <h2 style="margin: 0 0 12px; color: #e74c3c;">🚗 Arbeitsweg</h2>
+                <p style="margin: 0 0 4px; color: #666; font-size: 0.9em;">Steinhagen → Fossenredde, Stuckenbrock</p>
+                <p style="margin: 8px 0; font-size: 1.2em; font-weight: bold;">${{ steps.verkehr.outputs.status }}</p>
+                <table style="border-collapse: collapse; width: 100%; margin-top: 10px;">
+                  <tr style="background: #f5f5f5;">
+                    <td style="padding: 8px 12px; border: 1px solid #eee;">⏱️ Fahrzeit (mit Verkehr)</td>
+                    <td style="padding: 8px 12px; border: 1px solid #eee; font-weight: bold;">${{ steps.verkehr.outputs.fahrzeit }} Min</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 12px; border: 1px solid #eee;">⏱️ Normalfahrzeit</td>
+                    <td style="padding: 8px 12px; border: 1px solid #eee;">${{ steps.verkehr.outputs.normal }} Min</td>
+                  </tr>
+                  <tr style="background: #f5f5f5;">
+                    <td style="padding: 8px 12px; border: 1px solid #eee;">📍 Streckenlänge</td>
+                    <td style="padding: 8px 12px; border: 1px solid #eee;">${{ steps.verkehr.outputs.km }} km</td>
+                  </tr>
+                </table>
+              </div>
+
+              <p style="color: #bbb; font-size: 0.75em; text-align: center; margin-top: 20px;">
+                Automatisch generiert · GitHub Actions · Guten Start in den Tag! 🚀
+              </p>
+
+            </body>
+            </html>
