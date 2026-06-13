@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>glappa.de</title>
+  <style>
+    :root {
+      --bg:     #0d1117;
+      --card:   #161b22;
+      --border: #30363d;
+      --text:   #e6edf3;
+      --muted:  #8b949e;
+      --accent: #f39c12;
+      --blue:   #3498db;
+      --red:    #e74c3c;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── Pilz-Trigger (oben rechts, nur bei Hover sichtbar) ── */
+    #trigger-zone {
+      position: fixed;
+      top: 0; right: 0;
+      width: 72px; height: 72px;
+      z-index: 100;
+    }
+    #mushroom-btn {
+      position: absolute;
+      top: 14px; right: 14px;
+      font-size: 30px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.5s ease, transform 0.3s ease;
+      filter: drop-shadow(0 0 10px rgba(255, 80, 80, 0.55));
+      user-select: none;
+    }
+    #trigger-zone:hover #mushroom-btn { opacity: 1; }
+    #mushroom-btn:hover { transform: scale(1.2) rotate(-10deg); }
+
+    /* ── PIN-Overlay ── */
+    #pin-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.96);
+      backdrop-filter: blur(12px);
+      z-index: 9998;
+      justify-content: center;
+      align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    .pin-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 42px 36px;
+      width: 320px;
+      text-align: center;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    }
+    .pin-box .icon { font-size: 52px; display: block; margin-bottom: 14px; }
+    .pin-box h2 {
+      font-size: 1em;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 24px;
+    }
+    #pin-input {
+      width: 100%;
+      background: var(--bg);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 2em;
+      text-align: center;
+      padding: 12px;
+      letter-spacing: 0.35em;
+      outline: none;
+      transition: border-color 0.25s;
+      margin-bottom: 14px;
+    }
+    #pin-input:focus { border-color: var(--accent); }
+    #pin-btn {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 13px;
+      font-size: 0.95em;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.03em;
+      transition: background 0.2s, transform 0.1s;
+    }
+    #pin-btn:hover  { background: #e67e22; }
+    #pin-btn:active { transform: scale(0.97); }
+    #pin-error {
+      color: var(--red);
+      font-size: 0.82em;
+      margin-top: 12px;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    #pin-error.show { opacity: 1; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%,60%  { transform: translateX(-8px); }
+      40%,80%  { transform: translateX(8px); }
+    }
+    .shake { animation: shake 0.38s ease; }
+
+    /* ── Dashboard ── */
+    #dashboard {
+      display: none;
+      width: 100%;
+      max-width: 680px;
+      padding: 24px;
+    }
+
+    .dash-header {
+      background: linear-gradient(135deg, #f39c12, #e67e22);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 14px;
+      color: #fff;
+    }
+    .dash-header h1 { font-size: 1.75em; margin-bottom: 4px; }
+    .dash-header .sub { opacity: 0.85; font-size: 0.88em; }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 0.9em;
+      color: var(--muted);
+      font-weight: 500;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title .label { display: flex; align-items: center; gap: 7px; }
+
+    .refresh-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.78em;
+      cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .refresh-btn:hover { color: var(--text); border-color: var(--text); }
+
+    .weather-main { font-size: 1.25em; font-weight: 600; margin-bottom: 12px; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 11px 14px;
+    }
+    .stat-label { color: var(--muted); font-size: 0.72em; margin-bottom: 3px; }
+    .stat-value { font-size: 1.15em; font-weight: 600; }
+
+    .detail-row {
+      color: var(--muted);
+      font-size: 0.88em;
+      margin-top: 12px;
+      line-height: 1.7;
+    }
+
+    .rain-warn {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: rgba(52,152,219,0.12);
+      border-left: 3px solid var(--blue);
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+
+    .map-btn {
+      display: block;
+      margin-top: 14px;
+      padding: 12px;
+      background: var(--red);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 9px;
+      text-align: center;
+      font-weight: 700;
+      font-size: 0.92em;
+      transition: background 0.2s;
+    }
+    .map-btn:hover { background: #c0392b; }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.88em;
+    }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .timestamp {
+      color: var(--muted);
+      font-size: 0.73em;
+      text-align: center;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 🍄 Easter-Egg Trigger (oben rechts, nur bei Hover) -->
+<div id="trigger-zone">
+  <span id="mushroom-btn" onclick="showPIN()">🍄</span>
+</div>
+
+<!-- PIN-Overlay -->
+<div id="pin-overlay">
+  <div class="pin-box">
+    <span class="icon">🔐</span>
+    <h2>Zugangscode erforderlich</h2>
+    <input type="password" id="pin-input" maxlength="5"
+           inputmode="numeric" pattern="[0-9]*"
+           placeholder="• • • • •" autocomplete="off">
+    <button id="pin-btn" onclick="checkPIN()">Einloggen</button>
+    <p id="pin-error">Falscher Code — versuch's nochmal</p>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard">
+
+  <div class="dash-header">
+    <h1>🌅 Guten Morgen!</h1>
+    <div class="sub" id="datetime">…</div>
+  </div>
+
+  <!-- Wetter -->
+  <div class="card">
+    <div class="card-title">
+      <span class="label">🌤️ Wetter in Steinhagen</span>
+      <button class="refresh-btn" onclick="loadWeather()">↻ Aktualisieren</button>
+    </div>
+    <div id="weather-content">
+      <div class="loading"><div class="spinner"></div> Wetterdaten werden geladen…</div>
+    </div>
+  </div>
+
+  <!-- Arbeitsweg -->
+  <div class="card">
+    <div class="card-title">
+      <span class="label">🚗 Arbeitsweg</span>
+      <button class="refresh-btn" onclick="loadTraffic()">↻ Aktualisieren</button>
+    </div>
+    <p style="color:var(--muted);font-size:0.82em;margin-bottom:12px;">
+      Steinhagen → Fossenredde, Stuckenbrock
+    </p>
+    <div id="traffic-content">
+      <div class="loading"><div class="spinner"></div> Fahrzeitdaten werden geladen…</div>
+    </div>
+    <a href="https://www.google.com/maps/dir/Steinhagen,+NRW,+Germany/Fossenredde,+Schl%C3%B6+Holte-Stukenbrock,+Germany"
+       target="_blank" class="map-btn">
+      🗺️ Aktuellen Stau in Google Maps prüfen
+    </a>
+  </div>
+
+  <p class="timestamp" id="last-updated"></p>
+</div>
+
+<script>
+  /* ── Konfiguration ── */
+  const CORRECT_PIN = '42069';
+  // ORS-Key für Fahrzeit-Berechnung (optional).
+  // Leer lassen → nur Google Maps Link wird angezeigt.
+  const ORS_KEY = '';
+
+  /* ── PIN-Logik ── */
+  function showPIN() {
+    document.getElementById('pin-overlay').style.display = 'flex';
+    setTimeout(() => document.getElementById('pin-input').focus(), 120);
+  }
+
+  function checkPIN() {
+    const input = document.getElementById('pin-input');
+    if (input.value === CORRECT_PIN) {
+      document.getElementById('pin-overlay').style.display = 'none';
+      document.getElementById('mushroom-btn').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      initDashboard();
+    } else {
+      const err = document.getElementById('pin-error');
+      err.classList.add('show');
+      input.classList.add('shake');
+      input.value = '';
+      setTimeout(() => {
+        err.classList.remove('show');
+        input.classList.remove('shake');
+      }, 1600);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pin-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') checkPIN();
+    });
+  });
+
+  /* ── Dashboard ── */
+  function initDashboard() {
+    updateDateTime();
+    setInterval(updateDateTime, 60_000);
+    loadWeather();
+    loadTraffic();
+  }
+
+  function updateDateTime() {
+    const now  = new Date();
+    const date = now.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('datetime').textContent = `${date} · ${time} Uhr`;
+  }
+
+  async function loadWeather() {
+    document.getElementById('weather-content').innerHTML =
+      '<div class="loading"><div class="spinner"></div> Wetterdaten werden geladen…</div>';
+    try {
+      const res  = await fetch('https://wttr.in/Steinhagen+NRW?format=j1&lang=de');
+      const data = await res.json();
+      const c    = data.current_condition[0];
+      const t    = data.weather[0];
+
+      const desc     = c.lang_de[0].value;
+      const temp     = c.temp_C;
+      const feels    = c.FeelsLikeC;
+      const wind     = c.windspeedKmph;
+      const humidity = c.humidity;
+      const maxT     = t.maxtempC;
+      const minT     = t.mintempC;
+      const sunrise  = t.astronomy[0].sunrise;
+      const sunset   = t.astronomy[0].sunset;
+
+      let rainWarn = '';
+      const nowH = new Date().getHours();
+      for (const h of t.hourly) {
+        const hh = parseInt(h.time) / 100;
+        if (hh >= nowH && hh <= nowH + 4 && parseFloat(h.precipMM) > 0.2) {
+          rainWarn = `<div class="rain-warn">🌧️ Regen erwartet in den nächsten Stunden (${h.precipMM} mm)</div>`;
+          break;
+        }
+      }
+
+      document.getElementById('weather-content').innerHTML = `
+        <div class="weather-main">${desc}</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Temperatur</div><div class="stat-value">${temp}°C</div></div>
+          <div class="stat"><div class="stat-label">Gefühlt</div><div class="stat-value">${feels}°C</div></div>
+          <div class="stat"><div class="stat-label">Höchstwert</div><div class="stat-value">${maxT}°C</div></div>
+          <div class="stat"><div class="stat-label">Tiefstwert</div><div class="stat-value">${minT}°C</div></div>
+          <div class="stat"><div class="stat-label">Wind</div><div class="stat-value">${wind} km/h</div></div>
+          <div class="stat"><div class="stat-label">Luftfeuchtigkeit</div><div class="stat-value">${humidity}%</div></div>
+        </div>
+        <div class="detail-row">🌞 Sonnenaufgang ${sunrise} &nbsp;·&nbsp; Sonnenuntergang ${sunset}</div>
+        ${rainWarn}
+      `;
+    } catch {
+      document.getElementById('weather-content').innerHTML =
+        '<p style="color:var(--muted)">⚠️ Wetterdaten konnten nicht geladen werden.</p>';
+    }
+  }
+
+  async function loadTraffic() {
+    if (!ORS_KEY) {
+      document.getElementById('traffic-content').innerHTML =
+        '<p style="color:var(--muted);font-size:0.88em;">Kein ORS-Key hinterlegt — nutze den Google Maps Link für Live-Stau.</p>';
+      return;
+    }
+    document.getElementById('traffic-content').innerHTML =
+      '<div class="loading"><div class="spinner"></div> Fahrzeitdaten werden geladen…</div>';
+    try {
+      const res  = await fetch('https://api.openrouteservice.org/v2/directions/driving-car', {
+        method: 'POST',
+        headers: { 'Authorization': ORS_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coordinates: [[8.3967, 52.0016], [8.6330, 51.8770]] })
+      });
+      const data = await res.json();
+      const dur  = Math.round(data.routes[0].summary.duration / 60);
+      const km   = (data.routes[0].summary.distance / 1000).toFixed(1);
+
+      document.getElementById('traffic-content').innerHTML = `
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Typische Fahrzeit</div><div class="stat-value">${dur} Min</div></div>
+          <div class="stat"><div class="stat-label">Streckenlänge</div><div class="stat-value">${km} km</div></div>
+        </div>
+      `;
+    } catch {
+      document.getElementById('traffic-content').innerHTML =
+        '<p style="color:var(--muted);font-size:0.88em;">Fahrzeitdaten nicht verfügbar — nutze Google Maps.</p>';
+    }
+    document.getElementById('last-updated').textContent =
+      'Zuletzt aktualisiert: ' + new Date().toLocaleTimeString('de-DE');
+  }
+</script>
+</body>
+</html>
