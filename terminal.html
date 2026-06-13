@@ -3,754 +3,653 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HACKER TERMINAL &mdash; GLAPPA</title>
+  <title>Terminal &mdash; Glappa</title>
+  <meta name="keywords" content="90's Glappa Terminal, Hacker">
+  <meta name="description" content="Retro Terminal Simulator">
   <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css?v=9">
   <style>
-    :root {
-      --neon-green: #00ff00;
-      --neon-cyan: #00ffff;
-      --neon-yellow: #ffff00;
-      --neon-pink: #ff00ff;
-      --bg-black: #0a0a0a;
-      --terminal-bg: rgba(0, 15, 0, 0.95);
+    /* ── Terminal-spezifisch ── */
+    body {
+      background-color: #000 !important;
+      background-image: url('background.gif') !important;
+      background-repeat: repeat !important;
+      background-attachment: fixed !important;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      min-height: 100vh;
-      background-color: var(--bg-black);
-      background-image: url('img/background.gif');
-      background-repeat: repeat;
-      background-attachment: fixed;
-      font-family: 'Courier New', 'Courier', monospace;
-      color: var(--neon-green);
-      cursor: url('coursor/WoW Cursor.cur'), auto;
-      overflow-x: hidden;
+    /* Dunkler Overlay damit das Terminal gut lesbar bleibt */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      z-index: 0;
+      pointer-events: none;
     }
 
-    a { color: var(--neon-cyan); text-decoration: none; }
-    a:hover { text-shadow: 0 0 8px var(--neon-cyan); }
-
-    /* ---------- Header & Marquees ---------- */
-    .marquee {
-      width: 100%;
-      overflow: hidden;
-      background: var(--neon-pink);
-      white-space: nowrap;
-      padding: 4px 0;
-      font-weight: bold;
-      color: #000;
-      letter-spacing: 2px;
+    .marquee, header.header, nav.nav, .term-wrap, .marquee--bottom {
+      position: relative;
+      z-index: 1;
     }
 
-    .marquee span {
-      display: inline-block;
-      padding-left: 100%;
-      animation: scroll-left 22s linear infinite;
-    }
-
-    @keyframes scroll-left {
-      0%   { transform: translateX(0); }
-      100% { transform: translateX(-100%); }
-    }
-
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 16px;
-      padding: 16px;
-    }
-
-    .alien { flex: 0 0 auto; }
-    .welcome-img { max-width: 60vw; height: auto; }
-
-    /* ---------- Navigation Bar (Back to Homepage) ---------- */
-    .nav-bar {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      margin: 12px auto;
-      padding: 8px 16px;
-      background: rgba(0, 30, 0, 0.7);
-      border: 2px inset var(--neon-green);
-      max-width: 900px;
-    }
-
-    .nav-bar a {
-      color: var(--neon-yellow);
-      font-weight: bold;
-      text-shadow: 0 0 6px var(--neon-yellow);
-    }
-
-    .nav-bar .sep {
-      color: var(--neon-cyan);
-    }
-
-    /* ---------- Terminal Container ---------- */
-    .terminal-container {
-      max-width: 900px;
+    .term-wrap {
+      max-width: 860px;
       margin: 0 auto;
-      padding: 8px;
+      padding: 10px 16px 40px;
     }
 
-    .terminal-window {
-      background: var(--terminal-bg);
-      border: 4px ridge var(--neon-green);
-      box-shadow: 
-        0 0 15px rgba(0, 255, 0, 0.6),
-        inset 0 0 30px rgba(0, 50, 0, 0.8);
-      padding: 6px;
-    }
-
-    .terminal-title {
-      text-align: center;
-      color: var(--neon-yellow);
-      font-weight: bold;
-      margin-bottom: 12px;
-      padding: 4px;
-      border-bottom: 2px dashed var(--neon-green);
-      text-shadow: 
-        0 0 6px var(--neon-green),
-        0 0 12px var(--neon-green);
-    }
-
-    /* ---------- Matrix Rain Mode ---------- */
-    #matrixMode .terminal-content {
-      background: rgba(0, 10, 0, 0.95);
+    /* CRT-Effekt */
+    #terminal {
+      background: #0a0a0a;
+      border: 2px solid var(--neon-green);
+      border-radius: 4px;
+      box-shadow:
+        0 0 10px var(--neon-green),
+        0 0 30px rgba(0,255,0,0.2),
+        inset 0 0 60px rgba(0,0,0,0.8);
+      padding: 18px 20px;
+      min-height: 420px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(0.82rem, 1.5vw, 1rem);
       position: relative;
       overflow: hidden;
     }
 
-    #matrixMode canvas.matrix-canvas {
-      display: block;
-      width: 100%;
-      height: 400px;
-      margin-bottom: 12px;
-      background: rgba(0, 10, 0, 0.9);
-      border: 1px solid var(--neon-green);
-    }
-
-    #matrixMode canvas#matrixCanvas {
+    /* Scanlines */
+    #terminal::before {
+      content: '';
       position: absolute;
-      top: -100vh;
-      left: 0;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,0,0,0.12) 3px,
+        rgba(0,0,0,0.12) 4px
+      );
       pointer-events: none;
+      z-index: 10;
     }
 
-    /* ---------- Console Mode ---------- */
-    .console-output {
-      min-height: 200px;
-      max-height: 400px;
-      overflow-y: auto;
-      margin-bottom: 12px;
-      padding-right: 8px;
-      font-size: 0.95rem;
-      line-height: 1.4;
+    #output {
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-bottom: 10px;
+      min-height: 360px;
+      line-height: 1.55;
     }
 
-    .console-output::-webkit-scrollbar {
-      width: 10px;
-    }
-
-    .console-output::-webkit-scrollbar-track {
-      background: #001a00;
-    }
-
-    .console-output::-webkit-scrollbar-thumb {
-      background: var(--neon-green);
-      border: 2px solid #000;
-    }
-
-    .console-output::-webkit-scrollbar-corner {
-      background: #001a00;
-    }
-
-    /* ---------- Input Area ---------- */
-    .input-area {
+    .input-row {
       display: flex;
-      gap: 8px;
       align-items: center;
+      gap: 0;
     }
-
-    .prompt {
+    .prompt-label {
       color: var(--neon-cyan);
-      font-weight: bold;
-    }
-
-    #commandInput {
-      flex: 1;
-      background: #000;
-      border: 2px inset var(--neon-green);
-      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-cyan);
       font-family: 'Courier New', monospace;
-      font-size: 1rem;
-      padding: 8px 10px;
-      outline: none;
-    }
-
-    #commandInput:focus {
-      border-color: var(--neon-pink);
-      box-shadow: 0 0 8px var(--neon-pink);
-    }
-
-    /* ---------- Controls ---------- */
-    .controls {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      padding: 12px;
-      background: rgba(0, 20, 0, 0.7);
-      border: 2px inset var(--neon-green);
-    }
-
-    .mode-btn {
-      padding: 8px 16px;
-      background: #001a00;
-      border: 2px outset var(--neon-green);
-      color: var(--neon-green);
-      font-family: 'Courier New', cursive, sans-serif;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .mode-btn:hover {
-      text-shadow: 0 0 6px var(--neon-green);
-    }
-
-    .mode-btn.active {
-      color: var(--neon-pink);
-      border-color: var(--neon-pink);
-      text-shadow: 0 0 6px var(--neon-pink);
-      background: #0a280a;
-    }
-
-    /* ---------- Output Messages ---------- */
-    .output-msg { margin: 4px 0; }
-    .output-info { color: var(--neon-cyan); }
-    .output-success { color: var(--neon-green); text-shadow: 0 0 6px var(--neon-green); }
-    .output-error { color: var(--neon-pink); text-shadow: 0 0 6px var(--neon-pink); }
-    .output-warn { color: var(--neon-yellow); text-shadow: 0 0 6px var(--neon-yellow); }
-    .output-code { color: #fff; background: rgba(0, 50, 0, 0.7); padding: 2px 4px; display: inline-block; }
-
-    /* ---------- Footer ---------- */
-    .footer {
-      margin-top: 30px;
-      padding-bottom: 30px;
-      text-align: center;
-    }
-
-    .footer-actions {
-      display: flex;
-      justify-content: center;
-      gap: 14px;
-      flex-wrap: wrap;
-      margin: 10px 0;
-    }
-
-    .copyright { color: #ff0000; font-weight: bold; }
-
-    .badges {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: center;
-      gap: 6px;
-      margin: 14px auto;
-      max-width: 900px;
-    }
-
-    .badges img { height: 31px; width: auto; }
-
-    /* ---------- Cursor Blinking ---------- */
-    .cursor::after {
-      content: '█';
-      animation: blink 1s step-end infinite;
-    }
-
-    @keyframes blink {
-      0%, 50% { opacity: 1; }
-      51%, 100% { opacity: 0; }
-    }
-
-    /* ---------- Glitter Effect ---------- */
-    .sparkle {
-      position: fixed;
-      pointer-events: none;
-      z-index: 9999;
+      font-size: inherit;
+      white-space: nowrap;
       user-select: none;
-      text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
-      animation: sparkle-fade 0.9s ease-out forwards;
+    }
+    #cmd-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: inherit;
+      caret-color: var(--neon-green);
+      padding: 0 4px;
     }
 
-    @keyframes sparkle-fade {
-      0%   { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
-      100% { transform: scale(0.2) translateY(-30px) rotate(180deg); opacity: 0; }
-    }
+    /* Zeilen-Farben */
+    .line-cmd    { color: var(--neon-cyan);   text-shadow: 0 0 4px var(--neon-cyan); }
+    .line-ok     { color: var(--neon-green);  text-shadow: 0 0 3px var(--neon-green); }
+    .line-err    { color: #ff4444;            text-shadow: 0 0 4px #ff4444; }
+    .line-info   { color: var(--neon-yellow); text-shadow: 0 0 3px var(--neon-yellow); }
+    .line-sys    { color: #888; }
+    .line-art    { color: var(--neon-green);  text-shadow: 0 0 5px var(--neon-green); }
+    .line-pink   { color: var(--neon-pink);   text-shadow: 0 0 4px var(--neon-pink); }
 
-    /* ---------- Mobile Responsive ---------- */
-    @media (max-width: 720px) {
-      .header { gap: 10px; flex-direction: column; }
-      .controls { flex-wrap: wrap; gap: 8px; }
-      .mode-btn { font-size: 0.9rem; padding: 6px 12px; }
-    }
+    /* Blink-Cursor neben Prompt */
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .cursor-blink { animation: blink 1s step-start infinite; }
 
-    @media (max-width: 600px) {
-      .badges img { height: 24px; }
-      .console-output { font-size: 0.9rem; }
+    /* Boot-Animation */
+    @keyframes fadeInLine {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
     }
   </style>
 </head>
 <body>
 
-  <div class="marquee">
-    <span>&#9733; HACK THE PLANET &#9733; ENTER THE TERMINAL &#9733;sudo rm -rf reality &#9733; </span>
+  <!-- Marquee oben -->
+  <div class="marquee marquee--top">
+    <span>&#9733; WILLKOMMEN AUF GLAPPA.DE &#9733; DIE COOLSTE SEITE IM WORLD WIDE WEB &#9733; BEST VIEWED IN 800x600 &#9733; </span>
   </div>
 
-  <!-- NAVIGATION BAR ZURICK NACH HOME -->
-  <nav class="nav-bar">
-    <a href="../index.html">&larr; Glappa Homepage</a>
-    <span class="sep">|</span>
-    <a href="terminal.html">Terminal</a>
-    <span class="sep">|</span>
-    <a href="home/index.html">Home</a>
-  </nav>
-
+  <!-- Header -->
   <header class="header">
-    <img class="alien" src="img/alien-dance.gif" alt="" width="70" height="98">
-    <div class="page-banner cyan">
-      <h2>HACKER TERMINAL &#9674;</h2>
+    <img class="alien" src="img/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <div class="page-banner green">
+      <h2>TERMINAL</h2>
       <pre>
-   _.._______.._
-  /|  H A C K E R  |\
- |   (  v1.0 )    |
- \|______________\|
-</pre>
+  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗
+ ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗
+ ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║
+ ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║
+ ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║
+  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝</pre>
     </div>
-    <img class="alien" src="img/alien-dance.gif" alt="" width="70" height="98">
+    <img class="alien" src="img/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
   </header>
 
-  <h1 style="text-align: center; color: var(--neon-green); margin: 12px 8px; text-shadow: 
-    0 0 6px var(--neon-green),
-    0 0 12px var(--neon-green),
-    0 0 24px #008800;">
-    HACKER TERMINAL &mdash; GLAPPA
-  </h1>
+  <!-- Navigation -->
+  <nav class="nav">
+    <a href="index.html">&larr; Glappa</a>
+    <span class="sep">|</span>
+    <a class="current" href="terminal.html">Terminal</a>
+    <span class="sep">|</span>
+    <a href="page1.html">Video</a>
+    <span class="sep">|</span>
+    <a href="bounce.html">Bounce</a>
+    <span class="sep">|</span>
+    <a href="home/index.html">Home</a>
+    <span class="sep">|</span>
+    <a href="secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
 
-  <div class="terminal-container">
-    <div class="terminal-window" id="terminalWindow">
-      
-      <!-- Matrix Rain Canvas -->
-      <canvas id="matrixCanvas" class="matrix-canvas hidden"></canvas>
-      
-      <div class="terminal-content">
-        <div class="console-output" id="consoleOutput"></div>
-        
-        <div class="input-area">
-          <span class="prompt">guest@glappa:~$</span>
-          <input type="text" id="commandInput" placeholder="# Enter command..." autocomplete="off" autocapitalize="off">
-        </div>
+  <!-- Terminal -->
+  <div class="term-wrap">
+    <div id="terminal">
+      <div id="output"></div>
+      <div class="input-row" id="input-row" style="display:none">
+        <span class="prompt-label">glappa@web:~$&nbsp;</span>
+        <input type="text" id="cmd-input" autocomplete="off" spellcheck="false"
+               autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
+        <span class="cursor-blink" style="color:var(--neon-green)">█</span>
       </div>
-
-      <div class="controls">
-        <button class="mode-btn active" data-mode="console">Console</button>
-        <button class="mode-btn" data-mode="matrix">Matrix Rain</button>
-        <button class="mode-btn" data-mode="hacked">HACKED MODE</button>
-      </div>
-
     </div>
   </div>
 
-  <!-- NAVIGATION BAR ZURICK NACH HOME (UNTEN) -->
-  <nav class="nav-bar">
-    <a href="../index.html">&larr; Glappa Homepage</a>
-    <span class="sep">|</span>
-    <a href="terminal.html">Terminal</a>
-    <span class="sep">|</span>
-    <a href="home/index.html">Home</a>
-  </nav>
+  <!-- Footer-Marquee -->
+  <div class="marquee marquee--bottom" style="margin-top:20px">
+    <span>&#9733; HACK THE PLANET &#9733; ROOT ACCESS GRANTED &#9733; DO NOT HACK GLAPPA.DE &#9733; </span>
+  </div>
 
-  <script src="script.js"></script>
+  <script src="script.js?v=9"></script>
   <script>
-    // Matrix Rain Mode Setup - FIXED!
-    const matrixCanvas = document.getElementById('matrixCanvas');
-    const consoleOutput = document.getElementById('consoleOutput');
-    
-    function toggleMatrixVisibility(show) {
-      matrixCanvas.classList.toggle('hidden', !show);
-    }
+  (function () {
+    const out     = document.getElementById('output');
+    const inputRow = document.getElementById('input-row');
+    const inp     = document.getElementById('cmd-input');
 
-    let isMatrixRunning = false;
-
-    // Console History for autocomplete
-    const commandHistory = [];
-    let historyIndex = -1;
-    const MAX_HISTORY = 50;
-
-    // Autocomplete suggestions (retro commands)
-    const COMMANDS = {
-      'help': 'List all available commands',
-      'clear': 'Clear console output',
-      'date': 'Show current date/time',
-      'whoami': 'Return "guest" (no login)',
-      'pwd': 'Print working directory: /home/guest/glappa',
-      'ls': 'List files: index.html, bounce.html, page1.html, style.css, script.js',
-      'cat': 'Show file contents [filename]',
-      'echo': 'Print text to console [text]',
-      'cd': 'Change directory [dir] (simulation)',
-      'mkdir': 'Create directory [name] (simulation)',
-      'rm': 'Remove file/directory [name] (simulation)',
-      'touch': 'Create empty file [name] (simulation)',
-      'hostname': 'glappa.local',
-      'uptime': 'Uptime: 47 days, 23 hours, 14 minutes',
-      'load average': 'Load Average: 0.25, 0.18, 0.12',
-      'neofetch': 'Show retro system info',
-      'git': 'git is not installed (yet)',
-      'docker': 'docker is available! try: docker ps',
-      'python': 'Python v3.10.11',
-      'node': 'Node.js v18.17.1',
-      'npm': 'npm v9.6.7',
-      'ffmpeg': 'FFmpeg v5.1.2 available',
-      'yt-dlp': 'yt-dlp v2023.11.20 available',
-      'clear': 'Clear console (simulation)',
-      'sudo': 'sudo: unauthorized'
+    /* ── Kommandos ─────────────────────────────────────────── */
+    const FS = {
+      '/':            { type: 'dir', children: ['home', 'etc', 'var', 'usr', 'secret'] },
+      '/home':        { type: 'dir', children: ['glappa'] },
+      '/home/glappa': { type: 'dir', children: ['README.txt', 'hacking_tools.zip', '.bash_history', 'todo.txt'] },
+      '/etc':         { type: 'dir', children: ['passwd', 'hosts', 'motd'] },
+      '/var':         { type: 'dir', children: ['log'] },
+      '/var/log':     { type: 'dir', children: ['access.log', 'hack.log'] },
+      '/usr':         { type: 'dir', children: ['bin', 'local'] },
+      '/usr/bin':     { type: 'dir', children: ['cat', 'ls', 'rm', 'vim', 'nano', 'python3', 'nmap', 'hydra'] },
+      '/secret':      { type: 'dir', children: ['classified.txt', '???'] },
     };
 
-    // Initialize Matrix Rain - FIXED!
-    function initMatrixRain() {
-      if (!matrixCanvas) return;
-      
-      const canvas = matrixCanvas;
-      const ctx = canvas.getContext('2d');
-      
-      // Set canvas size on init
-      function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = 400;
+    const FILES = {
+      '/home/glappa/README.txt':
+        'Willkommen auf Glappa.de!\nDieses Terminal ist rein kosmetisch.\nViel Spaß beim Hacken! 😎\n\n-- Lex',
+      '/home/glappa/todo.txt':
+        '[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen',
+      '/home/glappa/.bash_history':
+        'sudo rm -rf /\nnmap -sS 192.168.0.1\npython3 hack_nasa.py\ncurl parrot.live\nexit',
+      '/etc/motd':
+        '██████████████████████████████████████\n█  GLAPPA.DE SECURE SHELL v1.337      █\n█  Unbefugter Zugang wird verfolgt!   █\n██████████████████████████████████████',
+      '/etc/hosts':
+        '127.0.0.1   localhost\n127.0.0.1   glappa.de\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server',
+      '/etc/passwd':
+        'root:x:0:0:root:/root:/bin/bash\nglappa:x:1337:1337:Lex:/home/glappa:/bin/zsh\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat',
+      '/secret/classified.txt':
+        '██ STRENG GEHEIM ██\n\nDer Pincode für die Secret-Page ist...\n\n... nur für echte H4X0RS.',
+      '/var/log/access.log':
+        '[06:30] 192.168.1.1 - GET / 200\n[06:31] 10.0.0.2 - GET /secret 403\n[06:32] 1.3.3.7  - POST /login 401\n[06:33] 127.0.0.1 - GET /flag 404',
+      '/var/log/hack.log':
+        '[WARN] Brute-force attempt from 6.6.6.6\n[WARN] Port scan detected\n[INFO] Bingus logged in successfully\n[CRIT] Someone tried to rm -rf /',
+    };
+
+    let cwd = '/home/glappa';
+    const history = [];
+    let histIdx = -1;
+
+    /* ── ASCII-Art Boot ── */
+    const BOOT = [
+      { cls: 'line-art',  t: 0,    txt: 'GLAPPA OS v1.337 — KERNEL 9000.1-RETRO' },
+      { cls: 'line-sys',  t: 120,  txt: 'Lade Kernelmodule...          [ OK ]' },
+      { cls: 'line-sys',  t: 240,  txt: 'Initialisiere Neon-Subsystem.. [ OK ]' },
+      { cls: 'line-sys',  t: 360,  txt: 'Starte GIF-Engine v9.0......  [ OK ]' },
+      { cls: 'line-sys',  t: 480,  txt: 'Kalibriere Bingus-Detektor.... [ OK ]' },
+      { cls: 'line-sys',  t: 600,  txt: 'Verbinde mit Matrix........... [ OK ]' },
+      { cls: 'line-err',  t: 720,  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
+      { cls: 'line-sys',  t: 840,  txt: 'Starte Haupt-Shell............' },
+      { cls: 'line-ok',   t: 1000, txt: '' },
+      { cls: 'line-ok',   t: 1020, txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
+      { cls: 'line-ok',   t: 1040, txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
+      { cls: 'line-ok',   t: 1060, txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
+      { cls: 'line-ok',   t: 1080, txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
+      { cls: 'line-ok',   t: 1100, txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
+      { cls: 'line-ok',   t: 1120, txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
+      { cls: 'line-ok',   t: 1140, txt: '' },
+      { cls: 'line-pink', t: 1160, txt: '  Tippe  help  für eine Liste aller Befehle.' },
+      { cls: 'line-info', t: 1180, txt: '  Tippe  neofetch  für Systeminfo.' },
+      { cls: 'line-ok',   t: 1200, txt: '' },
+    ];
+
+    /* ── Hilfsfunktionen ── */
+    function appendLine(text, cls = 'line-ok') {
+      const div = document.createElement('div');
+      div.className = cls;
+      div.textContent = text;
+      out.appendChild(div);
+      out.scrollTop = out.scrollHeight;
+    }
+    function appendHTML(html, cls = 'line-ok') {
+      const div = document.createElement('div');
+      div.className = cls;
+      div.innerHTML = html;
+      out.appendChild(div);
+      out.scrollTop = out.scrollHeight;
+    }
+    function blank() { appendLine(''); }
+
+    function resolvePath(p) {
+      if (!p || p === '~') return '/home/glappa';
+      if (p.startsWith('~')) p = '/home/glappa' + p.slice(1);
+      if (!p.startsWith('/')) p = cwd + '/' + p;
+      // normalize
+      const parts = p.split('/').filter(Boolean);
+      const stack = [];
+      for (const part of parts) {
+        if (part === '..') stack.pop();
+        else if (part !== '.') stack.push(part);
       }
-      resizeCanvas();
+      return '/' + stack.join('/');
+    }
 
-      // Matrix characters (Katakana + Latin)
-      const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン 0123456789ZABCDEFGHIJKLMNOPQRSTUVWXYZ';
-      const chars = katakana.split('');
-      
-      // Drop positions
-      const fontSize = 14;
-      const columns = Math.floor(canvas.width / fontSize);
-      const drops = Array(columns).fill(1);
-      
-      // Colors
-      const colors = ['#0F0', '#0FF', '#00F', '#F0F'];
+    /* ── Befehle ── */
+    const COMMANDS = {
 
-      function drawMatrix() {
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      help() {
+        blank();
+        appendLine('┌──────────────────────────────────────────────┐', 'line-info');
+        appendLine('│         GLAPPA TERMINAL — BEFEHLE            │', 'line-info');
+        appendLine('├──────────────────────────────────────────────┤', 'line-info');
+        [
+          ['help',           'Diese Hilfe anzeigen'],
+          ['ls [pfad]',      'Verzeichnis anzeigen'],
+          ['cd <pfad>',      'Verzeichnis wechseln'],
+          ['cat <datei>',    'Dateiinhalt ausgeben'],
+          ['pwd',            'Aktuelles Verzeichnis'],
+          ['whoami',         'Benutzer anzeigen'],
+          ['uname -a',       'Systeminfo'],
+          ['neofetch',       'Coole Systeminfo'],
+          ['date',           'Datum und Uhrzeit'],
+          ['echo <text>',    'Text ausgeben'],
+          ['clear',          'Terminal leeren'],
+          ['history',        'Befehlshistorie'],
+          ['hack',           'Hack the planet'],
+          ['matrix',         'Matrix-Effekt'],
+          ['cowsay <text>',  'Kuh sagt etwas'],
+          ['fortune',        'Zufälliges Zitat'],
+          ['sl',             'Eine Überraschung'],
+          ['ping glappa.de', 'Ping!'],
+          ['sudo <cmd>',     'Mit Root-Rechten'],
+          ['exit',           'Terminal schließen'],
+        ].forEach(([cmd, desc]) => {
+          appendLine(`│  ${cmd.padEnd(20)} ${desc.padEnd(24)}│`, 'line-ok');
+        });
+        appendLine('└──────────────────────────────────────────────┘', 'line-info');
+        blank();
+      },
 
-        ctx.font = fontSize + 'px monospace';
-        
-        for (let i = 0; i < drops.length; i++) {
-          const text = chars[Math.floor(Math.random() * chars.length)];
-          const x = i * fontSize;
-          const y = drops[i] * fontSize;
-          
-          // Random color
-          ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-          ctx.fillText(text, x, y);
-          
-          if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-            drops[i] = 0;
-          }
-          drops[i]++;
-        }
-      }
-
-      // Run matrix rain animation - FIXED to check visibility
-      let lastDrawTime = 0;
-      function animateMatrix(timestamp) {
-        if (timestamp - lastDrawTime < 33) {
-          requestAnimationFrame(animateMatrix);
+      ls(args) {
+        const p = resolvePath(args[0]) || cwd;
+        const node = FS[p];
+        if (!node) {
+          appendLine(`ls: ${args[0] || p}: Kein solches Verzeichnis`, 'line-err');
           return;
         }
-        lastDrawTime = timestamp;
-        
-        // Only draw if canvas is visible
-        if (!matrixCanvas.classList.contains('hidden')) {
-          drawMatrix();
+        if (node.type === 'dir') {
+          blank();
+          node.children.forEach(c => {
+            const childPath = p === '/' ? '/' + c : p + '/' + c;
+            const isDir = FS[childPath] && FS[childPath].type === 'dir';
+            const cls = isDir ? 'line-info' : 'line-ok';
+            appendLine((isDir ? c + '/' : c).padEnd(18) + (isDir ? '<DIR>' : ''), cls);
+          });
+          blank();
         }
-        
-        requestAnimationFrame(animateMatrix);
-      }
-      
-      // Start animation when Matrix mode is enabled
-      animateMatrix(0);
-    }
+      },
 
-    function neofetch() {
-      const info = `
-   ____  ___       _____                 /\\
-  | __ \\| _ \\     |_   _|               /_\\
-  | |  \\| |_) |_____| |        _______      /_\\\\
-  | |   |  _ <      _| |       |_   _|     / _ \\\\
-  | |__ | |_) |___ | |           | |      /_/ \\\\ \\
-  |____||____/     |_|           |_|      \\/    \\\\)
-
-  OS: Glappa Retro-OS v1.0
-  Hostname: glappa.local
-  Kernel: Linux 5.4 (retro)
-  Uptime: 47d 23h 14m
-  Packages: web-retro, neon-theme, gif-player
-  Shell: guest@bash-custom
-  Resolution: ${window.innerWidth}x${window.innerHeight}
-  Terminal: Hacker-Terminal v1.0
-`;
-      consoleOutput.innerHTML += `<div class="output-msg output-info">${info}</div>`;
-      consoleOutput.scrollTop = consoleOutput.scrollHeight;
-    }
-
-    // Main command processor - FIXED!
-    document.addEventListener('DOMContentLoaded', () => {
-      const input = document.getElementById('commandInput');
-      const output = consoleOutput;
-      const matrixCanvas = document.getElementById('matrixCanvas');
-      
-      // Welcome message
-      output.innerHTML += `<div class="output-msg output-info">
-        <span class="prompt">guest@glappa:~$</span> Welcome to GLAPPA HACKER TERMINAL v1.0<br>
-        Type 'help' to see available commands.<br><br>
-      </div>`;
-
-      input.focus();
-
-      // Initialize Matrix Rain on DOM ready
-      initMatrixRain();
-
-      // Command execution
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          const cmdText = input.value.trim();
-          if (!cmdText) return;
-
-          // Display command
-          output.innerHTML += `<div class="output-msg">
-            <span class="prompt">guest@glappa:~$</span> ${cmdText}<br>
-          </div>`;
-
-          // Execute command
-          executeCommand(cmdText);
-
-          // Store in history
-          if (commandHistory.length < MAX_HISTORY) {
-            commandHistory.push(cmdText);
-          } else {
-            commandHistory.shift();
-          }
-          commandHistory.push(cmdText);
-          input.value = '';
-
-          output.scrollTop = output.scrollHeight;
-        }
-      });
-
-      // Up/Down arrow for history - FIXED!
-      let previousValue = '';
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          if (commandHistory.length > 0) {
-            const new_val = commandHistory[commandHistory.length - 1];
-            input.value = previousValue !== '' ? previousValue : input.value;
-            input.value = commandHistory.slice().reverse().find(cmd => cmd !== input.value);
-            previousValue = input.value;
-          }
-        }
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          input.value = '';
-          previousValue = '';
-        }
-      });
-
-      // Tab autocomplete - FIXED!
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          const text = input.value;
-          let suggestion = null;
-          
-          // Find matching commands
-          for (const [cmd, desc] of Object.entries(COMMANDS)) {
-            if (text.toLowerCase() === cmd.toLowerCase()) {
-              suggestion = cmd;
-              break;
-            } else if (text.toLowerCase().startsWith(cmd.toLowerCase())) {
-              suggestion = cmd;
-              break;
-            }
-          }
-
-          if (suggestion) {
-            input.value = suggestion;
-            output.innerHTML += `<div class="output-msg output-info">
-              <span class="prompt">guest@glappa:~$</span> ${COMMANDS[suggestion]}<br>
-            </div>`;
-            output.scrollTop = output.scrollHeight;
-          }
-        }
-      });
-
-      // Command execution logic - FIXED!
-      function executeCommand(cmdText) {
-        const parts = cmdText.split(/\s+/);
-        const cmd = parts[0]?.toLowerCase();
-        const args = parts.slice(1);
-
-        if (COMMANDS[cmd]) {
-          output.innerHTML += `<div class="output-msg output-success">${COMMANDS[cmd]}</div>`;
-        } else if (cmd.startsWith('-')) {
-          output.innerHTML += `<div class="output-msg output-error">Unknown command: ${cmd}. Type 'help' for available commands.</div>`;
-        } else if (cmd === 'clear') {
-          output.innerHTML = '';
-        } else if (cmd === 'date') {
-          output.innerHTML += `<div class="output-msg output-info">${new Date().toString()}</div>`;
-        } else if (cmd === 'hostname') {
-          output.innerHTML += `<div class="output-msg output-success">glappa.local</div>`;
-        } else if (cmd === 'uptime') {
-          output.innerHTML += `<div class="output-msg output-success">Uptime: 47 days, 23 hours, 14 minutes</div>`;
-        } else if (cmd === 'neofetch') {
-          neofetch();
-        } else if (cmd === 'ls') {
-          const files = ['index.html', 'bounce.html', 'page1.html', 'style.css', 'script.js', 'home/', 'img/', 'secret/'];
-          output.innerHTML += `<div class="output-msg output-success">${files.join('   ')}</div>`;
+      cd(args) {
+        const target = args[0];
+        if (!target || target === '~') { cwd = '/home/glappa'; return; }
+        const p = resolvePath(target);
+        if (FS[p] && FS[p].type === 'dir') {
+          cwd = p;
+        } else if (p === '/secret/???') {
+          appendLine('ZUGANG VERWEIGERT. Du weißt nicht mal wo du hinwillst.', 'line-err');
         } else {
-          // Unknown command
-          output.innerHTML += `<div class="output-msg output-warn">Command not found: '${cmd}'<br>Type 'help' for a list of available commands.</div>`;
+          appendLine(`cd: ${target}: Kein solches Verzeichnis`, 'line-err');
         }
+      },
 
-        output.scrollTop = output.scrollHeight;
-      }
+      pwd() { appendLine(cwd); },
 
-      // Mode switching - FIXED!
-      document.querySelectorAll('.mode-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
+      cat(args) {
+        if (!args[0]) { appendLine('cat: Fehlende Datei', 'line-err'); return; }
+        const p = resolvePath(args[0]);
+        if (FILES[p]) {
+          blank();
+          FILES[p].split('\n').forEach(l => appendLine(l));
+          blank();
+        } else if (FS[p]) {
+          appendLine(`cat: ${args[0]}: Ist ein Verzeichnis`, 'line-err');
+        } else {
+          appendLine(`cat: ${args[0]}: Keine solche Datei oder Verzeichnis`, 'line-err');
+        }
+      },
 
-          const mode = btn.dataset.mode;
+      whoami()  { appendLine('glappa (uid=1337 gid=1337 groups=1337(l33t),0(root))'); },
 
-          if (mode === 'matrix') {
-            toggleMatrixVisibility(true);
-            initMatrixRain(); // Re-initialize Matrix Rain!
-            output.innerHTML += `<div class="output-msg output-success">Matrix Rain Activated!</div>`;
-          } else if (mode === 'console' || mode === 'hacked') {
-            toggleMatrixVisibility(false);
+      'uname'(args) {
+        appendLine('GlappaOS 9000.1-RETRO #1 SMP NEON x86_64 GNU/L33T');
+      },
+
+      date() {
+        appendLine(new Date().toLocaleString('de-DE', {
+          weekday:'long', year:'numeric', month:'long', day:'numeric',
+          hour:'2-digit', minute:'2-digit', second:'2-digit'
+        }));
+      },
+
+      echo(args) { appendLine(args.join(' ')); },
+
+      clear() { out.innerHTML = ''; },
+
+      history() {
+        if (!history.length) { appendLine('(leer)'); return; }
+        history.forEach((h, i) => appendLine(`  ${String(i+1).padStart(3)}  ${h}`));
+      },
+
+      neofetch() {
+        blank();
+        const art = [
+          '       .,,,,,.        ',
+          '    ,;;;;;;;;;;,      ',
+          '   ;;; ;;    ;;;      ',
+          '  ;;;  ██ ██  ;;      ',
+          '  ;;   ████   ;;      ',
+          '  ;;    ██    ;;      ',
+          '   ;;;       ;;;      ',
+          '    \';;;;;;;;;;;\'     ',
+          '       \'\'\'\'\'\'         ',
+        ];
+        const info = [
+          ['OS',       'GlappaOS 9000.1-RETRO'],
+          ['Host',     'glappa.de (The Coolest Site in WWW)'],
+          ['Shell',    'glappa-sh v1.337'],
+          ['Theme',    'Neon-Dark + Comic Sans'],
+          ['Kernel',   'Retro-5.0-NEON'],
+          ['CPU',      'Intel Pentium MMX @ 200 MHz'],
+          ['RAM',      '32 MB / 64 MB (wir sparen)'],
+          ['Uptime',   'Seit 1997'],
+          ['Browser',  'Netscape Navigator 4'],
+          ['Modus',    '800x600 Beste Auflösung'],
+        ];
+        const rows = Math.max(art.length, info.length);
+        for (let i = 0; i < rows; i++) {
+          const a = (art[i] || '').padEnd(22);
+          const inf = info[i] ? `\x1b[0m${info[i][0].padEnd(10)}: ${info[i][1]}` : '';
+          const div = document.createElement('div');
+          div.style.display = 'flex';
+          div.style.gap = '8px';
+          const left  = document.createElement('span');
+          const right = document.createElement('span');
+          left.className = 'line-ok';
+          left.style.minWidth = '160px';
+          left.textContent = a;
+          right.className = 'line-info';
+          right.textContent = info[i] ? `${info[i][0].padEnd(12)}: ${info[i][1]}` : '';
+          div.appendChild(left);
+          div.appendChild(right);
+          out.appendChild(div);
+        }
+        blank();
+      },
+
+      hack() {
+        const lines = [
+          'Verbinde mit Ziel-Server....',
+          'Bypass Firewall............. [ OK ]',
+          'SQL-Injection............... [ OK ]',
+          'Buffer Overflow............. [ OK ]',
+          'Lade geheime Dateien........ [ OK ]',
+          'Lösche Spuren............... [ OK ]',
+          '',
+          'SYSTEM KOMPROMITTIERT !!',
+          '',
+          '  Nur Spaß. Hacking ist illegal. ¯\\_(ツ)_/¯',
+        ];
+        let i = 0;
+        const iv = setInterval(() => {
+          if (i >= lines.length) { clearInterval(iv); return; }
+          appendLine(lines[i], i < 6 ? 'line-sys' : (i === 7 ? 'line-err' : 'line-ok'));
+          i++;
+        }, 180);
+      },
+
+      matrix() {
+        blank();
+        appendLine('[ Matrix-Modus für 3 Sekunden ]', 'line-info');
+        blank();
+        const chars = '01アイウエオカキクケコサシスセソタチツテト';
+        let count = 0;
+        const iv = setInterval(() => {
+          if (count++ > 18) { clearInterval(iv); blank(); return; }
+          let row = '';
+          for (let i = 0; i < 60; i++)
+            row += chars[Math.floor(Math.random() * chars.length)];
+          appendLine(row, 'line-ok');
+        }, 80);
+      },
+
+      cowsay(args) {
+        const text = args.join(' ') || 'Muh! Ich bin eine Retro-Kuh!';
+        const line = '-'.repeat(text.length + 2);
+        blank();
+        appendLine(` ${line}`);
+        appendLine(`< ${text} >`);
+        appendLine(` ${line}`);
+        appendLine('        \\   ^__^');
+        appendLine('         \\  (oo)\\_______');
+        appendLine('            (__)\\       )\\/\\');
+        appendLine('                ||----w |');
+        appendLine('                ||     ||');
+        blank();
+      },
+
+      fortune() {
+        const quotes = [
+          '"Das Internet ist ein Satz von Röhren." — Senator Ted Stevens',
+          '"640 KB sollten für jeden genug sein." — Bill Gates (angeblich)',
+          '"Ich trinke mein Ovomaltine." — Mystic River',
+          '"Hack the planet! Hack the planet!" — Hackers (1995)',
+          '"All your base are belong to us." — CATS, 1992',
+          '"Ein Tag ohne GIFs ist wie ein Tag ohne Sonnenschein." — Anon',
+          '"sudo make me a sandwich." — xkcd #149',
+          '"Es gibt 10 Arten von Menschen..." — Nerd-Witz',
+          '"rm -rf / — tu das nicht." — jeder Sysadmin',
+          '"404: Weltfrieden nicht gefunden." — HTTP-Error',
+        ];
+        blank();
+        appendLine(quotes[Math.floor(Math.random() * quotes.length)], 'line-pink');
+        blank();
+      },
+
+      sl() {
+        const train = [
+          '      ====        ________                ___________  ',
+          '  _D _|  |_______/        \\__I_I_____===__|_________| ',
+          '   |(_)---  |   H\\________/ |   |        =|___ ___|  ',
+          '   /     |  |   H  |  |     |   |         ||_| |_||  ',
+          '  |      |  |   H  |__--------------------| [___] |  ',
+          '  | ________|___H__/__|_____/[][]~\\_______|       |  ',
+          '  |/ |   |-----------I_____I [][] []  D   |=====__| ',
+          "   \\_|___|_|                        \\____|_[___]__| ",
+          '     |___|_|                         |___|   [___]   ',
+          '      \\___|                           |___|         ',
+        ];
+        blank();
+        appendLine('  SL — Steam Locomotive (du meintest ls?)', 'line-info');
+        blank();
+        train.forEach(l => appendLine(l, 'line-ok'));
+        blank();
+        appendLine('  🚂 CHOO CHOO! Bitte kein sl auf Produktivservern.', 'line-info');
+        blank();
+      },
+
+      ping(args) {
+        const host = args[0] || 'glappa.de';
+        blank();
+        appendLine(`PING ${host}: 56 data bytes`, 'line-sys');
+        let i = 0;
+        const iv = setInterval(() => {
+          if (i++ >= 4) {
+            clearInterval(iv);
+            blank();
+            appendLine(`--- ${host} ping statistics ---`, 'line-sys');
+            appendLine(`4 packets transmitted, 4 received, 0% packet loss`, 'line-ok');
+            appendLine(`round-trip min/avg/max = 1.337/4.2/13.37 ms`, 'line-ok');
+            blank();
+            return;
           }
-        });
-      });
+          const ms = (Math.random() * 12 + 1).toFixed(3);
+          appendLine(`64 bytes from ${host}: icmp_seq=${i} ttl=64 time=${ms} ms`);
+        }, 500);
+      },
 
-      // Random marquees
-      const SAYINGS = [
-        '★ HACK THE PLANET ★', '★ sudo rm -rf /world ★',
-        '★ GIT PUSH --FORCE --TO-PROD ★', '★ CTRL+ALT+DELIVER ★',
-        '★ 01001000 01001001 :)', '★ ENTER THE TERMINAL ★',
-        '★ GLAPPA APPROVED ★', '★ INSERT COIN 2 CONTINUE ★',
-        '★ FIRST RULE: DONT TALK ABOUT GLAPPA ★'
-      ];
-
-      setInterval(() => {
-        const span = document.querySelector('.marquee span');
-        if (span) {
-          span.textContent = SAYINGS[Math.floor(Math.random() * SAYINGS.length)];
+      sudo(args) {
+        if (!args.length) { appendLine('sudo: Befehl fehlt', 'line-err'); return; }
+        if (args[0] === 'rm' && args.includes('-rf')) {
+          appendLine('sudo: rm -rf: NEIN. Nur nicht.', 'line-err');
+          appendLine('     (Bitte nicht die Produktion zerstören.)', 'line-sys');
+          return;
         }
-      }, 15000);
+        if (args[0] === 'make' && args[1] === 'me') {
+          appendLine('[sudo] Passwort für glappa: ');
+          setTimeout(() => appendLine('Ein Sandwich wird zubereitet... 🥪', 'line-ok'), 600);
+          return;
+        }
+        appendLine(`[sudo] Passwort für glappa: `);
+        setTimeout(() => {
+          appendLine('Sorry, try again.', 'line-err');
+          appendLine('Sorry, try again.', 'line-err');
+          appendLine('sudo: 3 incorrect password attempts', 'line-err');
+        }, 700);
+      },
 
-      // Glitter cursor effect (shared with main site) - FIXED!
-      const SP_CHARS = ['✨','⭐','✧','★','✦','✸','·','💫'];
-      const SP_COLORS = ['#ff00ff','#00ffff','#00ff00','#ffff00','#ff66cc','#66ffcc','#ff8800'];
-      let _spLast = 0;
+      exit() {
+        blank();
+        appendLine('Session beendet. Auf Wiedersehen! 👋', 'line-pink');
+        blank();
+        setTimeout(() => { window.location.href = 'index.html'; }, 1200);
+      },
 
-      window.addEventListener('mousemove', (e) => {
-        const now = Date.now();
-        if (now - _spLast < 50) return;
-        _spLast = now;
-        
-        const s = document.createElement('span');
-        s.className = 'sparkle';
-        s.textContent = SP_CHARS[Math.floor(Math.random() * SP_CHARS.length)];
-        s.style.left = e.clientX + 'px';
-        s.style.top  = e.clientY + 'px';
-        s.style.color = SP_COLORS[Math.floor(Math.random() * SP_COLORS.length)];
-        s.style.fontSize = (10 + Math.random() * 14) + 'px';
-        document.body.appendChild(s);
-        
-        setTimeout(() => s.remove(), 900);
-      }, { passive: true });
+      // Leere oder unbekannte Befehle
+      _unknown(cmd) {
+        appendLine(`${cmd}: Befehl nicht gefunden. Versuche 'help'`, 'line-err');
+      }
+    };
 
-      // Year in footer - add it manually since this is terminal.html
-      const yearSpan = document.createElement('span');
-      yearSpan.id = 'year';
-      yearSpan.textContent = new Date().getFullYear();
-      
-      // Create footer structure
-      let footerHTML = `
-      <footer class="footer">
-        <div class="construction">
-          <img class="rocket" src="img/rocket3.gif" alt="" aria-hidden="true">
-          <img src="img/Under_Construction.gif" alt="Under Construction">
-          <img class="rocket rocket--flip" src="img/Rocket.gif" alt="" aria-hidden="true">
-        </div>
+    /* ── Input verarbeiten ── */
+    function runCmd(raw) {
+      const trimmed = raw.trim();
+      if (!trimmed) return;
 
-        <div class="footer-actions">
-          <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
-            <img id="mailImg" src="animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
-          </a>
-          <a href="../index.html">
-            <img src="img/anihome1.gif" alt="Home" width="88" height="31">
-          </a>
-        </div>
+      history.unshift(trimmed);
+      histIdx = -1;
 
-        <p class="copyright">Copyright ${yearSpan.id = yearSpan}, Glappa</p>
+      const promptStr = `glappa@web:${cwd}$ ${trimmed}`;
+      appendLine(promptStr, 'line-cmd');
 
-        <div class="firefox">
-          <a href="https://www.firefox.com">
-            <img src="img/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
-          </a>
-        </div>
+      const parts = trimmed.split(/\s+/);
+      const cmd   = parts[0].toLowerCase();
+      const args  = parts.slice(1);
 
-        <div class="badges">
-          <img src="img/allbrowsers.gif" alt="">
-          <img src="img/blinktastic_spongebob.gif" alt="">
-          <img src="img/browser1.gif" alt="">
-          <img src="img/browsers.gif" alt="">
-          <img src="img/counter3.gif" alt="">
-          <img src="img/external-content.duckduckgo.com.gif" alt="">
-          <img src="img/hacker.gif" alt="">
-          <img src="img/hugsnotdrugs.gif" alt="">
-        </div>
-
-        <div class="marquee marquee--bottom">
-          <span>&#9733; TILL DEATH DO US PART &#9733; YOU CAN HACK IT &#9733; </span>
-        </div>
-      </footer>`;
-
-      // Insert footer before closing body
-      const currentBodyEnd = document.body.innerHTML.slice(-100);
-      if (!currentBodyEnd.includes('</html>')) {
-        // If there's no closing HTML tag, add it properly
-        document.body.insertAdjacentHTML('beforeend', `</body>`);
+      if (cmd in COMMANDS) {
+        COMMANDS[cmd](args);
+      } else if (cmd === 'uname') {
+        COMMANDS['uname'](args);
       } else {
-        // Replace footer section
-        const newFooter = document.createElement('div');
-        newFooter.innerHTML = footerHTML;
-        document.body.appendChild(newFooter.firstElementChild);
+        COMMANDS._unknown(cmd);
       }
 
-      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+      // Prompt-Label aktualisieren
+      document.querySelector('.prompt-label').textContent = `glappa@web:${cwd}$ `;
+    }
+
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const val = inp.value;
+        inp.value = '';
+        runCmd(val);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (histIdx < history.length - 1) histIdx++;
+        inp.value = history[histIdx] || '';
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (histIdx > 0) histIdx--;
+        else { histIdx = -1; inp.value = ''; return; }
+        inp.value = history[histIdx] || '';
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        // einfache Autovervollständigung
+        const partial = inp.value.split(/\s+/).pop();
+        const allCmds = Object.keys(COMMANDS).filter(c => !c.startsWith('_'));
+        const match = allCmds.find(c => c.startsWith(partial));
+        if (match) {
+          const parts = inp.value.split(/\s+/);
+          parts[parts.length - 1] = match;
+          inp.value = parts.join(' ');
+        }
+      }
     });
+
+    // Klick ins Terminal → fokussiert Input
+    document.getElementById('terminal').addEventListener('click', () => inp.focus());
+
+    /* ── Boot-Sequenz ── */
+    BOOT.forEach(({ cls, t, txt }) => {
+      setTimeout(() => appendLine(txt, cls), t);
+    });
+    setTimeout(() => {
+      inputRow.style.display = 'flex';
+      inp.focus();
+    }, 1300);
+
+    // Marquee-Scrolling aus script.js überschreiben (Terminal-spezifisch)
+    document.querySelectorAll('.marquee span').forEach(span => {
+      span.style.animation = 'scroll-left 28s linear infinite';
+    });
+  })();
   </script>
 </body>
 </html>
