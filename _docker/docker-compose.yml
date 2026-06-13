@@ -1,0 +1,27 @@
+services:
+  glappa:
+    build:
+      context: ..                    # Projektroot (glappa-site/), nicht _docker/
+      dockerfile: _docker/Dockerfile
+    image: glappa:latest
+    container_name: glappa
+    ports:
+      - "8099:80"        # Statische Seite (Index, page1, bounce, secret, home)
+      - "8090:8090"      # YouTube-Downloader (app.py)
+    environment:
+      # yt-dlp Cookies fuer YouTube-Bot-Bypass.
+      # Datei muss in ./cookies/youtube.txt (relativ zu _docker/) liegen.
+      - YT_COOKIE_FILE=/cookies/youtube.txt
+    volumes:
+      - glappa-downloads:/downloads   # /file/<id>-Output ueberlebt restarts
+      - ./cookies:/cookies            # _docker/cookies/youtube.txt -> /cookies/ im Container
+    restart: unless-stopped
+    healthcheck:
+      # python ist im python:3.12-slim-Image immer da, wget nicht
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1/', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  glappa-downloads:

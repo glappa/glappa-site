@@ -1,0 +1,39 @@
+# Git / Editor cruft
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+.claude
+*.swp
+.DS_Store
+
+# Python build / cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+*.egg-info
+
+# App-Runtime-Artefakte
+home/_downloads
+**/_downloads
+**/_app_original.py
+**/_combo_preview.png
+**/_spiney_*.png
+
+# Optional: Backup-GIF nicht ins Image
+img/mario-bingus.no-spiney.gif
+
+# Docker-Files & Host-Scripts brauchen nicht in /app/glappa-site/
+# (docker/ NICHT ignorieren - der Build braucht docker/nginx.conf + supervisord.conf)
+Dockerfile
+docker-compose.yml
+.dockerignore
+setup-wsl.sh
+deploy.sh
+README-DEPLOY.md
+cookies/*.txt
+cookies/README.md

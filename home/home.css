@@ -1,0 +1,291 @@
+/* home.css — eigene CSS fuer die Home-Seite (heat-death/countdown).
+   Standalone-Bundle: enthaelt alle Styles die home/index.html braucht,
+   damit der home/ Ordner einfach aufs VPS gedropt werden kann. */
+
+:root {
+  --neon-green:  #00ff00;
+  --neon-pink:   #ff00ff;
+  --neon-yellow: #ffff00;
+  --neon-cyan:   #00ffff;
+}
+
+* { box-sizing: border-box; }
+
+body, html {
+  margin: 0;
+  padding: 0;
+  background-image: url('../background.gif');
+  background-repeat: repeat;
+  background-attachment: fixed;
+  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  color: #fff;
+  cursor: url('../coursor/WoW Cursor.cur'), auto;
+  overflow-x: hidden;
+}
+
+a { color: var(--neon-cyan); }
+a:visited { color: var(--neon-yellow); }
+
+/* ---------- Marquees ---------- */
+.marquee {
+  width: 100%;
+  overflow: hidden;
+  background: var(--neon-pink);
+  white-space: nowrap;
+  padding: 4px 0;
+}
+.marquee span {
+  display: inline-block;
+  padding-left: 100%;
+  font-weight: bold;
+  color: #000;
+  letter-spacing: 2px;
+}
+@keyframes scroll-left {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ---------- Header ---------- */
+.header {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px; flex-wrap: wrap; margin-top: 16px;
+}
+.alien { flex: 0 0 auto; }
+.welcome-img { cursor: pointer; max-width: 60vw; }
+
+/* ---------- Page-Banner (HOME + Palast ASCII) ---------- */
+.page-banner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  user-select: none;
+  padding: 4px 14px;
+}
+.page-banner h2 {
+  margin: 0;
+  font-size: clamp(2rem, 8vw, 4rem);
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: var(--neon-pink);
+  text-shadow:
+    1px 1px 0 #ff66cc, 2px 2px 0 #cc00aa, 3px 3px 0 #990088,
+    4px 4px 0 #660055, 5px 5px 12px rgba(0,0,0,0.8),
+    0 0 18px var(--neon-pink);
+}
+.page-banner pre {
+  font-family: "Courier New", monospace;
+  font-size: clamp(0.65rem, 1.4vw, 0.95rem);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 5px var(--neon-cyan);
+  margin: 4px 0 0; line-height: 1.05; white-space: pre;
+}
+.page-banner.green h2 {
+  color: var(--neon-green);
+  text-shadow:
+    1px 1px 0 #66ff66, 2px 2px 0 #00cc00, 3px 3px 0 #009900,
+    4px 4px 0 #006600, 5px 5px 12px rgba(0,0,0,0.8),
+    0 0 18px var(--neon-green);
+}
+.page-banner.ghost h2 {
+  color: rgba(0, 255, 0, 0.55);
+  text-shadow:
+    1px 1px 0 rgba(180, 100, 220, 0.4),
+    2px 2px 0 rgba(140, 70, 180, 0.35),
+    3px 3px 0 rgba(100, 40, 150, 0.3),
+    4px 4px 0 rgba(70, 20, 120, 0.25),
+    0 0 20px rgba(0, 255, 0, 0.4);
+  opacity: 0.75;
+}
+
+/* ---------- Navigation ---------- */
+.nav {
+  text-align: center;
+  font-size: clamp(1rem, 3vw, 1.4rem);
+  margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
+}
+.nav a {
+  text-decoration: none;
+  padding: 2px 6px;
+  display: inline-block;
+}
+.nav a:hover { text-shadow: 0 0 8px var(--neon-cyan); }
+.nav a.current {
+  color: var(--neon-yellow);
+  text-shadow: 0 0 8px var(--neon-yellow);
+  text-decoration: underline;
+}
+.nav .sep { color: var(--neon-yellow); }
+
+/* ---------- Construction-Banner + Raketen ---------- */
+.construction {
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px; margin: 14px auto; flex-wrap: wrap; max-width: 1100px;
+}
+.construction > img { max-width: 70%; height: auto; }
+.construction .rocket { width: 50px; height: auto; max-width: 50px; }
+.rocket--flip { transform: scaleX(-1); }
+
+/* ---------- Heat-Death-Countdown ---------- */
+.countdown-section {
+  text-align: center;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+.countdown-label {
+  color: var(--neon-cyan);
+  font-size: clamp(1rem, 3vw, 1.4rem);
+  text-shadow: 0 0 6px var(--neon-cyan);
+  margin: 0 0 16px;
+}
+.countdown {
+  display: inline-block;
+  font-family: "Courier New", monospace;
+  font-weight: bold;
+  font-size: clamp(1.3rem, 5vw, 2.6rem);
+  letter-spacing: 4px;
+  padding: 12px 24px;
+  background: #000;
+  color: #ff2200;
+  border: 4px inset #888;
+  text-shadow: 0 0 10px #ff2200;
+}
+
+/* ---------- Externe Link-Leiste ---------- */
+.links-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 14px;
+  margin: 24px auto;
+  padding: 0 20px;
+  max-width: 1100px;
+  font-size: clamp(0.95rem, 2.5vw, 1.2rem);
+}
+.links-bar a {
+  color: var(--neon-green);
+  text-decoration: none;
+  padding: 4px 10px;
+  border: 2px outset #444;
+  background: rgba(0,0,0,0.4);
+}
+.links-bar a:hover {
+  color: var(--neon-yellow);
+  text-shadow: 0 0 6px var(--neon-yellow);
+}
+
+/* ---------- Bitcoin-Reihe ---------- */
+.bitcoin-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.bitcoin-row img {
+  width: clamp(80px, 16vw, 160px);
+  height: auto;
+}
+
+/* ---------- Section-Heading ---------- */
+.section-heading {
+  text-align: center;
+  color: var(--neon-pink);
+  font-size: clamp(1.2rem, 4vw, 2rem);
+  text-shadow: 0 0 8px var(--neon-pink);
+  margin: 30px 8px 16px;
+}
+
+/* ---------- Reaction-Buehne (cs.mp4 mit overlay) ---------- */
+.reaction-stage {
+  position: relative;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+.reaction-stage .video-link { display: block; }
+.reaction-stage video {
+  width: 100%;
+  display: block;
+  border: 4px ridge var(--neon-pink);
+  background: #000;
+}
+.reaction-overlay {
+  position: absolute;
+  top: 14px;
+  left: 34px;
+  display: inline-block;
+  z-index: 5;
+}
+.reaction-overlay img {
+  display: block;
+  width: clamp(120px, 22vw, 240px);
+  height: auto;
+  border: 2px solid #000;
+}
+.reaction-text {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  font-size: clamp(0.9rem, 2vw, 1.3rem);
+  z-index: 6;
+}
+
+/* ---------- Morph-Embed (unten) ---------- */
+.morph-embed {
+  display: flex;
+  justify-content: center;
+  margin: 30px auto 40px;
+  padding: 0 20px;
+  max-width: 1100px;
+}
+.morph-embed img {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  border: 4px ridge var(--neon-cyan);
+  background: #000;
+}
+
+/* ---------- Footer ---------- */
+.footer { margin-top: 30px; padding-bottom: 30px; text-align: center; }
+.footer-actions {
+  display: flex; justify-content: center;
+  gap: 14px; flex-wrap: wrap; margin: 10px 0;
+}
+.copyright { color: #ff0000; font-weight: bold; }
+.firefox img { max-width: 90%; height: auto; }
+.badges {
+  display: flex; flex-wrap: wrap;
+  justify-content: center; align-items: center;
+  gap: 6px; margin: 14px auto; max-width: 900px;
+}
+.badges img { height: 31px; width: auto; }
+
+/* ---------- Glitzer am Cursor ---------- */
+.sparkle {
+  position: fixed; pointer-events: none; z-index: 9999; user-select: none;
+  text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+  animation: sparkle-fade 0.9s ease-out forwards;
+}
+@keyframes sparkle-fade {
+  0%   { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: scale(0.2) translateY(-30px) rotate(180deg); opacity: 0; }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 600px) {
+  .construction .rocket { width: 38px; max-width: 38px; }
+  .badges img { height: 24px; }
+}

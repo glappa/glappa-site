@@ -1,0 +1,31 @@
+# VPS-spezifische Compose-Config — ersetzt den alten youtube-downloader.service
+# Unterschiede zu docker-compose.yml (Dev):
+#  - Port 8080 (wie alte app.py), nicht 8090
+#  - python app.py direkt statt supervisord+gunicorn -> nutzt app.pys built-in SSL
+#  - /etc/letsencrypt vom Host als :ro gemountet -> selbe Certs wie vorher
+#  - kein nginx (statische Seiten leben beim Webhoster auf glappa.de)
+services:
+  glappa:
+    build:
+      context: ..                    # Projektroot (glappa-site/), nicht _docker/
+      dockerfile: _docker/Dockerfile
+    image: glappa:latest
+    container_name: glappa
+    ports:
+      - "8080:8080"
+    environment:
+      - YT_COOKIE_FILE=/cookies/youtube.txt
+      - DOWNLOADER_HOST=0.0.0.0
+      - DOWNLOADER_PORT=8080
+    volumes:
+      - glappa-downloads:/downloads
+      - ./cookies:/cookies
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    restart: unless-stopped
+    # app.py mit eingebauter SSL-Logik statt der gunicorn-Plain-Variante.
+    # Findet die Letsencrypt-Certs unter /etc/letsencrypt/live/home.glappa.de/
+    # automatisch (try/except in app.py) und faehrt damit auf :8080 HTTPS hoch.
+    command: ["/usr/bin/tini", "--", "python", "/app/glappa-site/home/app.py"]
+
+volumes:
+  glappa-downloads:

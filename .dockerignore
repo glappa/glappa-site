@@ -1,0 +1,36 @@
+# _docker selbst nicht ins Image kopieren - Dockerfile holt sich nur was es braucht
+_docker/cookies/
+_docker/__pycache__/
+_docker/*.log
+
+# Git / Editor cruft
+.git
+.gitignore
+.gitattributes
+.vscode
+.idea
+.claude
+*.swp
+.DS_Store
+
+# Python build / cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+*.egg-info
+
+# App-Runtime
+home/_downloads
+**/_downloads
+**/_app_original.py
+**/_combo_preview.png
+**/_spiney_*.png
+
+# Backup
+img/mario-bingus.no-spiney.gif
+
+# webserver-deploy ist obsolet, hat sich erledigt
+webserver-deploy/

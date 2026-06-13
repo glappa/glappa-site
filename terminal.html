@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HACKER TERMINAL &mdash; GLAPPA</title>
+  <link rel="icon" href="favicon.ico">
+  <style>
+    :root {
+      --neon-green: #00ff00;
+      --neon-cyan: #00ffff;
+      --neon-yellow: #ffff00;
+      --neon-pink: #ff00ff;
+      --bg-black: #0a0a0a;
+      --terminal-bg: rgba(0, 15, 0, 0.95);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      min-height: 100vh;
+      background-color: var(--bg-black);
+      background-image: url('img/background.gif');
+      background-repeat: repeat;
+      background-attachment: fixed;
+      font-family: 'Courier New', 'Courier', monospace;
+      color: var(--neon-green);
+      cursor: url('coursor/WoW Cursor.cur'), auto;
+      overflow-x: hidden;
+    }
+
+    a { color: var(--neon-cyan); text-decoration: none; }
+    a:hover { text-shadow: 0 0 8px var(--neon-cyan); }
+
+    /* ---------- Header & Marquees ---------- */
+    .marquee {
+      width: 100%;
+      overflow: hidden;
+      background: var(--neon-pink);
+      white-space: nowrap;
+      padding: 4px 0;
+      font-weight: bold;
+      color: #000;
+      letter-spacing: 2px;
+    }
+
+    .marquee span {
+      display: inline-block;
+      padding-left: 100%;
+      animation: scroll-left 22s linear infinite;
+    }
+
+    @keyframes scroll-left {
+      0%   { transform: translateX(0); }
+      100% { transform: translateX(-100%); }
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+      padding: 16px;
+    }
+
+    .alien { flex: 0 0 auto; }
+    .welcome-img { max-width: 60vw; height: auto; }
+
+    /* ---------- Navigation Bar (Back to Homepage) ---------- */
+    .nav-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: 12px auto;
+      padding: 8px 16px;
+      background: rgba(0, 30, 0, 0.7);
+      border: 2px inset var(--neon-green);
+      max-width: 900px;
+    }
+
+    .nav-bar a {
+      color: var(--neon-yellow);
+      font-weight: bold;
+      text-shadow: 0 0 6px var(--neon-yellow);
+    }
+
+    .nav-bar .sep {
+      color: var(--neon-cyan);
+    }
+
+    /* ---------- Terminal Container ---------- */
+    .terminal-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 8px;
+    }
+
+    .terminal-window {
+      background: var(--terminal-bg);
+      border: 4px ridge var(--neon-green);
+      box-shadow: 
+        0 0 15px rgba(0, 255, 0, 0.6),
+        inset 0 0 30px rgba(0, 50, 0, 0.8);
+      padding: 6px;
+    }
+
+    .terminal-title {
+      text-align: center;
+      color: var(--neon-yellow);
+      font-weight: bold;
+      margin-bottom: 12px;
+      padding: 4px;
+      border-bottom: 2px dashed var(--neon-green);
+      text-shadow: 
+        0 0 6px var(--neon-green),
+        0 0 12px var(--neon-green);
+    }
+
+    /* ---------- Matrix Rain Mode ---------- */
+    #matrixMode .terminal-content {
+      background: rgba(0, 10, 0, 0.95);
+      position: relative;
+      overflow: hidden;
+    }
+
+    #matrixMode canvas.matrix-canvas {
+      display: block;
+      width: 100%;
+      height: 400px;
+      margin-bottom: 12px;
+      background: rgba(0, 10, 0, 0.9);
+      border: 1px solid var(--neon-green);
+    }
+
+    #matrixMode canvas#matrixCanvas {
+      position: absolute;
+      top: -100vh;
+      left: 0;
+      pointer-events: none;
+    }
+
+    /* ---------- Console Mode ---------- */
+    .console-output {
+      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+      padding-right: 8px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+
+    .console-output::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .console-output::-webkit-scrollbar-track {
+      background: #001a00;
+    }
+
+    .console-output::-webkit-scrollbar-thumb {
+      background: var(--neon-green);
+      border: 2px solid #000;
+    }
+
+    .console-output::-webkit-scrollbar-corner {
+      background: #001a00;
+    }
+
+    /* ---------- Input Area ---------- */
+    .input-area {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .prompt {
+      color: var(--neon-cyan);
+      font-weight: bold;
+    }
+
+    #commandInput {
+      flex: 1;
+      background: #000;
+      border: 2px inset var(--neon-green);
+      color: var(--neon-green);
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    #commandInput:focus {
+      border-color: var(--neon-pink);
+      box-shadow: 0 0 8px var(--neon-pink);
+    }
+
+    /* ---------- Controls ---------- */
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: rgba(0, 20, 0, 0.7);
+      border: 2px inset var(--neon-green);
+    }
+
+    .mode-btn {
+      padding: 8px 16px;
+      background: #001a00;
+      border: 2px outset var(--neon-green);
+      color: var(--neon-green);
+      font-family: 'Courier New', cursive, sans-serif;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mode-btn:hover {
+      text-shadow: 0 0 6px var(--neon-green);
+    }
+
+    .mode-btn.active {
+      color: var(--neon-pink);
+      border-color: var(--neon-pink);
+      text-shadow: 0 0 6px var(--neon-pink);
+      background: #0a280a;
+    }
+
+    /* ---------- Output Messages ---------- */
+    .output-msg { margin: 4px 0; }
+    .output-info { color: var(--neon-cyan); }
+    .output-success { color: var(--neon-green); text-shadow: 0 0 6px var(--neon-green); }
+    .output-error { color: var(--neon-pink); text-shadow: 0 0 6px var(--neon-pink); }
+    .output-warn { color: var(--neon-yellow); text-shadow: 0 0 6px var(--neon-yellow); }
+    .output-code { color: #fff; background: rgba(0, 50, 0, 0.7); padding: 2px 4px; display: inline-block; }
+
+    /* ---------- Footer ---------- */
+    .footer {
+      margin-top: 30px;
+      padding-bottom: 30px;
+      text-align: center;
+    }
+
+    .footer-actions {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+    }
+
+    .copyright { color: #ff0000; font-weight: bold; }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      margin: 14px auto;
+      max-width: 900px;
+    }
+
+    .badges img { height: 31px; width: auto; }
+
+    /* ---------- Cursor Blinking ---------- */
+    .cursor::after {
+      content: '█';
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+
+    /* ---------- Glitter Effect ---------- */
+    .sparkle {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      user-select: none;
+      text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+      animation: sparkle-fade 0.9s ease-out forwards;
+    }
+
+    @keyframes sparkle-fade {
+      0%   { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: scale(0.2) translateY(-30px) rotate(180deg); opacity: 0; }
+    }
+
+    /* ---------- Mobile Responsive ---------- */
+    @media (max-width: 720px) {
+      .header { gap: 10px; flex-direction: column; }
+      .controls { flex-wrap: wrap; gap: 8px; }
+      .mode-btn { font-size: 0.9rem; padding: 6px 12px; }
+    }
+
+    @media (max-width: 600px) {
+      .badges img { height: 24px; }
+      .console-output { font-size: 0.9rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="marquee">
+    <span>&#9733; HACK THE PLANET &#9733; ENTER THE TERMINAL &#9733;sudo rm -rf reality &#9733; </span>
+  </div>
+
+  <!-- NAVIGATION BAR ZURICK NACH HOME -->
+  <nav class="nav-bar">
+    <a href="../index.html">&larr; Glappa Homepage</a>
+    <span class="sep">|</span>
+    <a href="terminal.html">Terminal</a>
+    <span class="sep">|</span>
+    <a href="home/index.html">Home</a>
+  </nav>
+
+  <header class="header">
+    <img class="alien" src="img/alien-dance.gif" alt="" width="70" height="98">
+    <div class="page-banner cyan">
+      <h2>HACKER TERMINAL &#9674;</h2>
+      <pre>
+   _.._______.._
+  /|  H A C K E R  |\
+ |   (  v1.0 )    |
+ \|______________\|
+</pre>
+    </div>
+    <img class="alien" src="img/alien-dance.gif" alt="" width="70" height="98">
+  </header>
+
+  <h1 style="text-align: center; color: var(--neon-green); margin: 12px 8px; text-shadow: 
+    0 0 6px var(--neon-green),
+    0 0 12px var(--neon-green),
+    0 0 24px #008800;">
+    HACKER TERMINAL &mdash; GLAPPA
+  </h1>
+
+  <div class="terminal-container">
+    <div class="terminal-window" id="terminalWindow">
+      
+      <!-- Matrix Rain Canvas -->
+      <canvas id="matrixCanvas" class="matrix-canvas hidden"></canvas>
+      
+      <div class="terminal-content">
+        <div class="console-output" id="consoleOutput"></div>
+        
+        <div class="input-area">
+          <span class="prompt">guest@glappa:~$</span>
+          <input type="text" id="commandInput" placeholder="# Enter command..." autocomplete="off" autocapitalize="off">
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="mode-btn active" data-mode="console">Console</button>
+        <button class="mode-btn" data-mode="matrix">Matrix Rain</button>
+        <button class="mode-btn" data-mode="hacked">HACKED MODE</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- NAVIGATION BAR ZURICK NACH HOME (UNTEN) -->
+  <nav class="nav-bar">
+    <a href="../index.html">&larr; Glappa Homepage</a>
+    <span class="sep">|</span>
+    <a href="terminal.html">Terminal</a>
+    <span class="sep">|</span>
+    <a href="home/index.html">Home</a>
+  </nav>
+
+  <script src="script.js"></script>
+  <script>
+    // Matrix Rain Mode Setup - FIXED!
+    const matrixCanvas = document.getElementById('matrixCanvas');
+    const consoleOutput = document.getElementById('consoleOutput');
+    
+    function toggleMatrixVisibility(show) {
+      matrixCanvas.classList.toggle('hidden', !show);
+    }
+
+    let isMatrixRunning = false;
+
+    // Console History for autocomplete
+    const commandHistory = [];
+    let historyIndex = -1;
+    const MAX_HISTORY = 50;
+
+    // Autocomplete suggestions (retro commands)
+    const COMMANDS = {
+      'help': 'List all available commands',
+      'clear': 'Clear console output',
+      'date': 'Show current date/time',
+      'whoami': 'Return "guest" (no login)',
+      'pwd': 'Print working directory: /home/guest/glappa',
+      'ls': 'List files: index.html, bounce.html, page1.html, style.css, script.js',
+      'cat': 'Show file contents [filename]',
+      'echo': 'Print text to console [text]',
+      'cd': 'Change directory [dir] (simulation)',
+      'mkdir': 'Create directory [name] (simulation)',
+      'rm': 'Remove file/directory [name] (simulation)',
+      'touch': 'Create empty file [name] (simulation)',
+      'hostname': 'glappa.local',
+      'uptime': 'Uptime: 47 days, 23 hours, 14 minutes',
+      'load average': 'Load Average: 0.25, 0.18, 0.12',
+      'neofetch': 'Show retro system info',
+      'git': 'git is not installed (yet)',
+      'docker': 'docker is available! try: docker ps',
+      'python': 'Python v3.10.11',
+      'node': 'Node.js v18.17.1',
+      'npm': 'npm v9.6.7',
+      'ffmpeg': 'FFmpeg v5.1.2 available',
+      'yt-dlp': 'yt-dlp v2023.11.20 available',
+      'clear': 'Clear console (simulation)',
+      'sudo': 'sudo: unauthorized'
+    };
+
+    // Initialize Matrix Rain - FIXED!
+    function initMatrixRain() {
+      if (!matrixCanvas) return;
+      
+      const canvas = matrixCanvas;
+      const ctx = canvas.getContext('2d');
+      
+      // Set canvas size on init
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = 400;
+      }
+      resizeCanvas();
+
+      // Matrix characters (Katakana + Latin)
+      const katakana = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン 0123456789ZABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const chars = katakana.split('');
+      
+      // Drop positions
+      const fontSize = 14;
+      const columns = Math.floor(canvas.width / fontSize);
+      const drops = Array(columns).fill(1);
+      
+      // Colors
+      const colors = ['#0F0', '#0FF', '#00F', '#F0F'];
+
+      function drawMatrix() {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.font = fontSize + 'px monospace';
+        
+        for (let i = 0; i < drops.length; i++) {
+          const text = chars[Math.floor(Math.random() * chars.length)];
+          const x = i * fontSize;
+          const y = drops[i] * fontSize;
+          
+          // Random color
+          ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+          ctx.fillText(text, x, y);
+          
+          if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+            drops[i] = 0;
+          }
+          drops[i]++;
+        }
+      }
+
+      // Run matrix rain animation - FIXED to check visibility
+      let lastDrawTime = 0;
+      function animateMatrix(timestamp) {
+        if (timestamp - lastDrawTime < 33) {
+          requestAnimationFrame(animateMatrix);
+          return;
+        }
+        lastDrawTime = timestamp;
+        
+        // Only draw if canvas is visible
+        if (!matrixCanvas.classList.contains('hidden')) {
+          drawMatrix();
+        }
+        
+        requestAnimationFrame(animateMatrix);
+      }
+      
+      // Start animation when Matrix mode is enabled
+      animateMatrix(0);
+    }
+
+    function neofetch() {
+      const info = `
+   ____  ___       _____                 /\\
+  | __ \\| _ \\     |_   _|               /_\\
+  | |  \\| |_) |_____| |        _______      /_\\\\
+  | |   |  _ <      _| |       |_   _|     / _ \\\\
+  | |__ | |_) |___ | |           | |      /_/ \\\\ \\
+  |____||____/     |_|           |_|      \\/    \\\\)
+
+  OS: Glappa Retro-OS v1.0
+  Hostname: glappa.local
+  Kernel: Linux 5.4 (retro)
+  Uptime: 47d 23h 14m
+  Packages: web-retro, neon-theme, gif-player
+  Shell: guest@bash-custom
+  Resolution: ${window.innerWidth}x${window.innerHeight}
+  Terminal: Hacker-Terminal v1.0
+`;
+      consoleOutput.innerHTML += `<div class="output-msg output-info">${info}</div>`;
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    // Main command processor - FIXED!
+    document.addEventListener('DOMContentLoaded', () => {
+      const input = document.getElementById('commandInput');
+      const output = consoleOutput;
+      const matrixCanvas = document.getElementById('matrixCanvas');
+      
+      // Welcome message
+      output.innerHTML += `<div class="output-msg output-info">
+        <span class="prompt">guest@glappa:~$</span> Welcome to GLAPPA HACKER TERMINAL v1.0<br>
+        Type 'help' to see available commands.<br><br>
+      </div>`;
+
+      input.focus();
+
+      // Initialize Matrix Rain on DOM ready
+      initMatrixRain();
+
+      // Command execution
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const cmdText = input.value.trim();
+          if (!cmdText) return;
+
+          // Display command
+          output.innerHTML += `<div class="output-msg">
+            <span class="prompt">guest@glappa:~$</span> ${cmdText}<br>
+          </div>`;
+
+          // Execute command
+          executeCommand(cmdText);
+
+          // Store in history
+          if (commandHistory.length < MAX_HISTORY) {
+            commandHistory.push(cmdText);
+          } else {
+            commandHistory.shift();
+          }
+          commandHistory.push(cmdText);
+          input.value = '';
+
+          output.scrollTop = output.scrollHeight;
+        }
+      });
+
+      // Up/Down arrow for history - FIXED!
+      let previousValue = '';
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (commandHistory.length > 0) {
+            const new_val = commandHistory[commandHistory.length - 1];
+            input.value = previousValue !== '' ? previousValue : input.value;
+            input.value = commandHistory.slice().reverse().find(cmd => cmd !== input.value);
+            previousValue = input.value;
+          }
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          input.value = '';
+          previousValue = '';
+        }
+      });
+
+      // Tab autocomplete - FIXED!
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const text = input.value;
+          let suggestion = null;
+          
+          // Find matching commands
+          for (const [cmd, desc] of Object.entries(COMMANDS)) {
+            if (text.toLowerCase() === cmd.toLowerCase()) {
+              suggestion = cmd;
+              break;
+            } else if (text.toLowerCase().startsWith(cmd.toLowerCase())) {
+              suggestion = cmd;
+              break;
+            }
+          }
+
+          if (suggestion) {
+            input.value = suggestion;
+            output.innerHTML += `<div class="output-msg output-info">
+              <span class="prompt">guest@glappa:~$</span> ${COMMANDS[suggestion]}<br>
+            </div>`;
+            output.scrollTop = output.scrollHeight;
+          }
+        }
+      });
+
+      // Command execution logic - FIXED!
+      function executeCommand(cmdText) {
+        const parts = cmdText.split(/\s+/);
+        const cmd = parts[0]?.toLowerCase();
+        const args = parts.slice(1);
+
+        if (COMMANDS[cmd]) {
+          output.innerHTML += `<div class="output-msg output-success">${COMMANDS[cmd]}</div>`;
+        } else if (cmd.startsWith('-')) {
+          output.innerHTML += `<div class="output-msg output-error">Unknown command: ${cmd}. Type 'help' for available commands.</div>`;
+        } else if (cmd === 'clear') {
+          output.innerHTML = '';
+        } else if (cmd === 'date') {
+          output.innerHTML += `<div class="output-msg output-info">${new Date().toString()}</div>`;
+        } else if (cmd === 'hostname') {
+          output.innerHTML += `<div class="output-msg output-success">glappa.local</div>`;
+        } else if (cmd === 'uptime') {
+          output.innerHTML += `<div class="output-msg output-success">Uptime: 47 days, 23 hours, 14 minutes</div>`;
+        } else if (cmd === 'neofetch') {
+          neofetch();
+        } else if (cmd === 'ls') {
+          const files = ['index.html', 'bounce.html', 'page1.html', 'style.css', 'script.js', 'home/', 'img/', 'secret/'];
+          output.innerHTML += `<div class="output-msg output-success">${files.join('   ')}</div>`;
+        } else {
+          // Unknown command
+          output.innerHTML += `<div class="output-msg output-warn">Command not found: '${cmd}'<br>Type 'help' for a list of available commands.</div>`;
+        }
+
+        output.scrollTop = output.scrollHeight;
+      }
+
+      // Mode switching - FIXED!
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          const mode = btn.dataset.mode;
+
+          if (mode === 'matrix') {
+            toggleMatrixVisibility(true);
+            initMatrixRain(); // Re-initialize Matrix Rain!
+            output.innerHTML += `<div class="output-msg output-success">Matrix Rain Activated!</div>`;
+          } else if (mode === 'console' || mode === 'hacked') {
+            toggleMatrixVisibility(false);
+          }
+        });
+      });
+
+      // Random marquees
+      const SAYINGS = [
+        '★ HACK THE PLANET ★', '★ sudo rm -rf /world ★',
+        '★ GIT PUSH --FORCE --TO-PROD ★', '★ CTRL+ALT+DELIVER ★',
+        '★ 01001000 01001001 :)', '★ ENTER THE TERMINAL ★',
+        '★ GLAPPA APPROVED ★', '★ INSERT COIN 2 CONTINUE ★',
+        '★ FIRST RULE: DONT TALK ABOUT GLAPPA ★'
+      ];
+
+      setInterval(() => {
+        const span = document.querySelector('.marquee span');
+        if (span) {
+          span.textContent = SAYINGS[Math.floor(Math.random() * SAYINGS.length)];
+        }
+      }, 15000);
+
+      // Glitter cursor effect (shared with main site) - FIXED!
+      const SP_CHARS = ['✨','⭐','✧','★','✦','✸','·','💫'];
+      const SP_COLORS = ['#ff00ff','#00ffff','#00ff00','#ffff00','#ff66cc','#66ffcc','#ff8800'];
+      let _spLast = 0;
+
+      window.addEventListener('mousemove', (e) => {
+        const now = Date.now();
+        if (now - _spLast < 50) return;
+        _spLast = now;
+        
+        const s = document.createElement('span');
+        s.className = 'sparkle';
+        s.textContent = SP_CHARS[Math.floor(Math.random() * SP_CHARS.length)];
+        s.style.left = e.clientX + 'px';
+        s.style.top  = e.clientY + 'px';
+        s.style.color = SP_COLORS[Math.floor(Math.random() * SP_COLORS.length)];
+        s.style.fontSize = (10 + Math.random() * 14) + 'px';
+        document.body.appendChild(s);
+        
+        setTimeout(() => s.remove(), 900);
+      }, { passive: true });
+
+      // Year in footer - add it manually since this is terminal.html
+      const yearSpan = document.createElement('span');
+      yearSpan.id = 'year';
+      yearSpan.textContent = new Date().getFullYear();
+      
+      // Create footer structure
+      let footerHTML = `
+      <footer class="footer">
+        <div class="construction">
+          <img class="rocket" src="img/rocket3.gif" alt="" aria-hidden="true">
+          <img src="img/Under_Construction.gif" alt="Under Construction">
+          <img class="rocket rocket--flip" src="img/Rocket.gif" alt="" aria-hidden="true">
+        </div>
+
+        <div class="footer-actions">
+          <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
+            <img id="mailImg" src="animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+          </a>
+          <a href="../index.html">
+            <img src="img/anihome1.gif" alt="Home" width="88" height="31">
+          </a>
+        </div>
+
+        <p class="copyright">Copyright ${yearSpan.id = yearSpan}, Glappa</p>
+
+        <div class="firefox">
+          <a href="https://www.firefox.com">
+            <img src="img/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+          </a>
+        </div>
+
+        <div class="badges">
+          <img src="img/allbrowsers.gif" alt="">
+          <img src="img/blinktastic_spongebob.gif" alt="">
+          <img src="img/browser1.gif" alt="">
+          <img src="img/browsers.gif" alt="">
+          <img src="img/counter3.gif" alt="">
+          <img src="img/external-content.duckduckgo.com.gif" alt="">
+          <img src="img/hacker.gif" alt="">
+          <img src="img/hugsnotdrugs.gif" alt="">
+        </div>
+
+        <div class="marquee marquee--bottom">
+          <span>&#9733; TILL DEATH DO US PART &#9733; YOU CAN HACK IT &#9733; </span>
+        </div>
+      </footer>`;
+
+      // Insert footer before closing body
+      const currentBodyEnd = document.body.innerHTML.slice(-100);
+      if (!currentBodyEnd.includes('</html>')) {
+        // If there's no closing HTML tag, add it properly
+        document.body.insertAdjacentHTML('beforeend', `</body>`);
+      } else {
+        // Replace footer section
+        const newFooter = document.createElement('div');
+        newFooter.innerHTML = footerHTML;
+        document.body.appendChild(newFooter.firstElementChild);
+      }
+
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    });
+  </script>
+</body>
+</html>

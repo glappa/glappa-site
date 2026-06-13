@@ -1,0 +1,441 @@
+:root {
+  --neon-green: #00ff00;
+  --neon-pink: #ff00ff;
+  --neon-yellow: #ffff00;
+  --neon-cyan: #00ffff;
+}
+
+* { box-sizing: border-box; }
+
+body, html {
+  margin: 0;
+  padding: 0;
+  background-image: url('background.gif');
+  background-repeat: repeat;
+  background-attachment: fixed;
+  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  color: #fff;
+  cursor: url('coursor/WoW Cursor.cur'), auto;
+  overflow-x: hidden;
+}
+
+a { color: var(--neon-cyan); }
+a:visited { color: var(--neon-yellow); }
+
+/* ---------- Marquees (scrollen zufaellig, Inhalt aus script.js) ---------- */
+.marquee {
+  width: 100%;
+  overflow: hidden;
+  background: var(--neon-pink);
+  white-space: nowrap;
+  padding: 4px 0;
+}
+.marquee span {
+  display: inline-block;
+  padding-left: 100%;        /* startet rechts ausserhalb */
+  font-weight: bold;
+  color: #000;
+  letter-spacing: 2px;
+}
+@keyframes scroll-left {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* ---------- Kopfbereich ---------- */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.welcome-img { cursor: pointer; max-width: 60vw; }
+.alien { flex: 0 0 auto; }
+
+/* ---------- Page-Banner (eigener Header pro Unterseite) ---------- */
+.page-banner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  user-select: none;
+  padding: 4px 14px;
+}
+.page-banner h2 {
+  margin: 0;
+  font-size: clamp(2rem, 8vw, 4rem);
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: var(--neon-pink);
+  /* 3D-Welcome.gif-Look: gestaffelte Schatten + Glow */
+  text-shadow:
+    1px 1px 0 #ff66cc,
+    2px 2px 0 #cc00aa,
+    3px 3px 0 #990088,
+    4px 4px 0 #660055,
+    5px 5px 12px rgba(0, 0, 0, 0.8),
+    0 0 18px var(--neon-pink);
+}
+.page-banner pre {
+  font-family: "Courier New", monospace;
+  font-size: clamp(0.65rem, 1.4vw, 0.95rem);
+  color: var(--neon-cyan);
+  text-shadow: 0 0 5px var(--neon-cyan);
+  margin: 4px 0 0;
+  line-height: 1.05;
+  white-space: pre;
+}
+
+/* Varianten */
+.page-banner.green h2 {
+  color: var(--neon-green);
+  text-shadow:
+    1px 1px 0 #66ff66,
+    2px 2px 0 #00cc00,
+    3px 3px 0 #009900,
+    4px 4px 0 #006600,
+    5px 5px 12px rgba(0, 0, 0, 0.8),
+    0 0 18px var(--neon-green);
+}
+.page-banner.yellow h2 {
+  color: var(--neon-yellow);
+  text-shadow:
+    1px 1px 0 #ffff66,
+    2px 2px 0 #cccc00,
+    3px 3px 0 #999900,
+    4px 4px 0 #666600,
+    5px 5px 12px rgba(0, 0, 0, 0.8),
+    0 0 18px var(--neon-yellow);
+}
+.page-banner.cyan h2 {
+  color: var(--neon-cyan);
+  text-shadow:
+    1px 1px 0 #66ffff,
+    2px 2px 0 #00cccc,
+    3px 3px 0 #009999,
+    4px 4px 0 #006666,
+    5px 5px 12px rgba(0, 0, 0, 0.8),
+    0 0 18px var(--neon-cyan);
+}
+/* Secret-Page: geisterhaft halbtransparent */
+.page-banner.ghost h2 {
+  color: rgba(0, 255, 0, 0.55);
+  text-shadow:
+    1px 1px 0 rgba(180, 100, 220, 0.4),
+    2px 2px 0 rgba(140, 70, 180, 0.35),
+    3px 3px 0 rgba(100, 40, 150, 0.3),
+    4px 4px 0 rgba(70, 20, 120, 0.25),
+    0 0 20px rgba(0, 255, 0, 0.4);
+  opacity: 0.75;
+}
+.page-banner.ghost pre {
+  color: rgba(255, 0, 255, 0.5);
+  text-shadow: 0 0 6px rgba(255, 0, 255, 0.7);
+}
+
+/* ---------- Titel mit Neon-Glow ---------- */
+.title {
+  text-align: center;
+  color: var(--neon-green);
+  font-size: clamp(1.6rem, 6vw, 3rem);
+  margin: 12px 8px;
+  text-shadow:
+    0 0 6px var(--neon-green),
+    0 0 12px var(--neon-green),
+    0 0 24px #008800;
+}
+
+/* ---------- Navigation ---------- */
+.nav {
+  text-align: center;
+  font-size: clamp(1rem, 3vw, 1.4rem);
+  margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
+}
+.nav a {
+  text-decoration: none;
+  padding: 2px 6px;
+  display: inline-block;
+}
+.nav a:hover { text-shadow: 0 0 8px var(--neon-cyan); }
+.nav a.current {
+  color: var(--neon-yellow);
+  text-shadow: 0 0 8px var(--neon-yellow);
+  text-decoration: underline;
+}
+.nav .sep { color: var(--neon-yellow); }
+
+/* ---------- Under Construction (mit flankierenden Raketen) ---------- */
+.construction {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 14px auto;
+  flex-wrap: wrap;
+  max-width: 1100px;
+}
+.construction > img { max-width: 70%; height: auto; }
+.construction .rocket { width: 50px; height: auto; max-width: 50px; }
+.rocket--flip { transform: scaleX(-1); }
+
+/* ---------- Featured Stage: Mario+Bingus (Spiney im GIF) + Tux ---------- */
+/* 3-Spalten-Grid haelt Mario+Bingus echt page-zentriert, Tux sitzt in der
+   linken Filler-Spalte (justify-self: end -> am Gap-Rand). Rechte Spalte
+   bleibt leer als Spiegel. Alle Maße via clamp() = dynamisch responsive.
+   Auf schmalen Screens stackt es vertikal: Mario oben, Tux drunter links. */
+.featured-stage {
+  display: grid;
+  grid-template-areas: "tux mario .";
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  column-gap: clamp(16px, 3vw, 40px);
+  row-gap: 24px;
+  align-items: center;
+  margin: 40px auto;
+  max-width: 1100px;
+  padding: 0 20px;
+}
+.tux-offset {
+  grid-area: tux;
+  justify-self: end;
+  width: 100%;
+  max-width: clamp(100px, 14vw, 180px);
+  height: auto;
+}
+.mario-combo {
+  grid-area: mario;
+  width: min(660px, 90vw);
+  height: auto;
+  display: block;
+}
+
+/* Unter ~1000px Viewport waere die Tux-Filler-Spalte zu schmal
+   -> sauber vertikal stacken, Mario bleibt zentriert */
+@media (max-width: 1000px) {
+  .featured-stage {
+    grid-template-areas:
+      "mario"
+      "tux";
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .tux-offset {
+    max-width: clamp(100px, 18vw, 160px);
+    justify-self: start;
+    margin-left: clamp(8px, 3vw, 24px);
+  }
+  .mario-combo {
+    width: min(660px, 100%);
+  }
+}
+
+/* Isaac-Zeile: 4D-Struktur | Isaac | 4D-Struktur */
+.isaac-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 16px;
+  max-width: 760px;
+  margin: 30px auto;
+  padding: 0 20px;
+}
+.isaac-row img {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 220px;
+  height: auto;
+  max-height: 260px;
+  object-fit: contain;
+}
+
+/* ---------- Video-Buehne (page1) ---------- */
+.video-stage {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  text-align: center;
+}
+.video-stage video {
+  width: 100%;
+  max-width: 640px;
+  border: 4px ridge var(--neon-pink);
+  background: #000;
+  display: block;
+  margin: 0 auto;
+}
+.video-stage .prompt {
+  color: var(--neon-cyan);
+  font-size: clamp(1rem, 3vw, 1.4rem);
+  margin: 0 0 16px;
+  text-shadow: 0 0 6px var(--neon-cyan);
+}
+.video-flank {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+.video-flank img { max-width: 90%; height: auto; }
+
+/* ---------- MS-Crash ASCII (unter microsofthappening.gif) ---------- */
+.video-flank {
+  flex-direction: column;
+}
+.ms-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: center;
+}
+.ms-stack img {
+  margin: 0 auto;
+}
+.ms-ascii {
+  font-family: "Courier New", "Lucida Console", monospace;
+  font-size: clamp(0.7rem, 1.4vw, 1rem);
+  font-weight: bold;
+  color: var(--neon-cyan);
+  text-shadow:
+    0 0 5px var(--neon-cyan),
+    0 0 12px rgba(0, 255, 255, 0.5);
+  margin: 4px 0 0;
+  line-height: 1.05;
+  white-space: pre;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+/* ---------- Bounce-Raster ---------- */
+.bounce-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+  justify-items: center;
+}
+.bounce-grid img {
+  width: 111px;
+  height: 171px;
+  object-fit: contain;
+}
+
+/* ---------- Secret-Wand ---------- */
+.secret-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.secret-grid img {
+  max-width: 180px;
+  max-height: 180px;
+  height: auto;
+  width: auto;
+  flex: 0 0 auto;
+}
+.secret-grid img.clickable {
+  cursor: pointer;
+  outline: 2px dashed var(--neon-yellow);
+  outline-offset: 4px;
+}
+.secret-grid img.clickable:hover {
+  outline-color: var(--neon-cyan);
+}
+
+/* ---------- Besucherzaehler ---------- */
+.counter-box {
+  text-align: center;
+  margin: 24px auto;
+  color: var(--neon-yellow);
+  font-size: 1.1rem;
+}
+.counter {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 10px;
+  background: #000;
+  color: #ff2200;
+  font-family: "Courier New", monospace;
+  font-weight: bold;
+  letter-spacing: 4px;
+  border: 2px inset #888;
+  text-shadow: 0 0 6px #ff2200;
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  margin-top: 30px;
+  padding-bottom: 30px;
+  text-align: center;
+}
+.footer-actions {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.copyright { color: #ff0000; font-weight: bold; }
+.firefox img { max-width: 90%; height: auto; }
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 14px auto;
+  max-width: 900px;
+}
+.badges img { height: 31px; width: auto; }
+
+/* ---------- Glitzer am Cursor ---------- */
+.sparkle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  user-select: none;
+  text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+  animation: sparkle-fade 0.9s ease-out forwards;
+}
+@keyframes sparkle-fade {
+  0%   { transform: scale(1) translateY(0) rotate(0deg);    opacity: 1; }
+  100% { transform: scale(0.2) translateY(-30px) rotate(180deg); opacity: 0; }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 720px) {
+  .featured-stage {
+    flex-direction: column;
+    gap: 30px;
+    align-items: stretch;
+  }
+  .tux-offset {
+    align-self: flex-start;
+    margin-left: 10px;
+    width: clamp(100px, 22vw, 140px);
+  }
+  .mario-stage { align-self: center; }
+}
+@media (max-width: 600px) {
+  .isaac-row { gap: 8px; padding: 0 12px; }
+  .isaac-row img { max-height: 180px; }
+  .construction .rocket { width: 38px; max-width: 38px; }
+  .badges img { height: 24px; }
+}
