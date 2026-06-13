@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glappa</title>
+  <meta name="keywords" content="90's Glappa Webseite, Terminal, Hacker">
+  <meta name="description" content="Kleine 90's Webseite mit Retro Terminal Simulator">
+  <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css?v=9">
+  <style>
+    /* ── Bingus Popup ── */
+    #bingus-popup {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0,0,0,0.75);
+      cursor: pointer;
+      animation: bingusIn 0.2s ease;
+    }
+    @keyframes bingusIn {
+      from { opacity: 0; transform: scale(0.85); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    #bingus-popup.show { display: flex; }
+
+    .bingus-card {
+      background: #111;
+      border: 3px solid var(--neon-cyan, #0ff);
+      border-radius: 6px;
+      box-shadow: 0 0 30px var(--neon-cyan, #0ff), 0 0 80px rgba(0,255,255,0.2);
+      padding: 12px;
+      text-align: center;
+      max-width: 90vw;
+    }
+    .bingus-card .bingus-label {
+      font-family: 'Courier New', monospace;
+      color: var(--neon-cyan, #0ff);
+      font-size: 0.8em;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      text-shadow: 0 0 8px var(--neon-cyan, #0ff);
+    }
+    .bingus-card img {
+      display: block;
+      max-width: 380px;
+      max-height: 380px;
+      width: auto;
+      height: auto;
+      border-radius: 3px;
+      image-rendering: pixelated;
+    }
+    .bingus-card .bingus-close {
+      font-family: 'Courier New', monospace;
+      color: #555;
+      font-size: 0.7em;
+      margin-top: 8px;
+      letter-spacing: 0.1em;
+    }
+
+    /* Cursor-Hint beim Hovern über das Bild */
+    .mario-combo { cursor: zoom-in; }
+  </style>
+</head>
+<body>
+
+  <!-- Bingus Popup (erscheint nach 1,5s Hover) -->
+  <div id="bingus-popup" onclick="hideBingus()">
+    <div class="bingus-card">
+      <div class="bingus-label">&#9888; BINGUS DETECTED &#9888;</div>
+      <img id="bingus-gif" src="" alt="Bingus">
+      <div class="bingus-close">[ klicken zum schliessen ]</div>
+    </div>
+  </div>
+
+  <!-- Laufschrift oben -->
+  <div class="marquee marquee--top">
+    <span>&#9733; WILLKOMMEN AUF GLAPPA.DE &#9733; DIE COOLSTE SEITE IM WORLD WIDE WEB &#9733; BEST VIEWED IN 800x600 &#9733; </span>
+  </div>
+
+  <!-- Kopfbereich -->
+  <header class="header">
+    <img class="alien" src="img/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <img class="welcome-img" id="welcomeImg" src="img/welcome.gif" alt="Welcome" title="Klick mich!">
+    <img class="alien" src="img/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <h1 class="title" id="title">Willkommen auf Glappa.de</h1>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <a class="current" href="index.html">&larr; Glappa</a>
+    <span class="sep">|</span>
+    <a href="terminal.html">Terminal</a>
+    <span class="sep">|</span>
+    <a href="page1.html">Video</a>
+    <span class="sep">|</span>
+    <a href="bounce.html">Bounce</a>
+    <span class="sep">|</span>
+    <a href="home/index.html">Home</a>
+    <span class="sep">|</span>
+    <a href="secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction">
+    <img class="rocket" src="img/rocket3.gif" alt="" aria-hidden="true">
+    <img src="img/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="img/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main>
+    <!-- Featured: Mario+Bingus (Spiney ist im GIF eingebacken), Tux links daneben, garantierte Luecke -->
+    <section class="featured-stage">
+      <img class="tux-offset" src="tux_computer_dig_md_clr.gif" alt="Tux am Computer">
+      <img class="mario-combo" id="bingusTrigger" src="img/mario-bingus.gif?v=9" alt="Bingus im Mario-Rahmen mit Spiney" title="psst...">
+    </section>
+
+    <!-- Isaac-Zeile: 4D-Struktur | Isaac | 4D-Struktur -->
+    <div class="isaac-row">
+      <img src="img/3dspace.gif?v=9" alt="4D Struktur">
+      <img src="tboi-isaac.gif?v=9" alt="Isaac">
+      <img src="img/3dspace.gif?v=9" alt="4D Struktur">
+    </div>
+  </main>
+
+  <!-- Besucherzaehler -->
+  <div class="counter-box">
+    <span class="counter-label">Du bist Besucher Nr.</span>
+    <span class="counter" id="visitorCounter">0000000</span>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="construction">
+      <img class="rocket" src="img/rocket3.gif" alt="" aria-hidden="true">
+      <img src="img/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="img/Rocket.gif" alt="" aria-hidden="true">
+    </div>
+
+    <div class="footer-actions">
+      <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
+        <img id="mailImg" src="animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+      </a>
+      <a href="index.html">
+        <img src="img/anihome1.gif" alt="Home" width="88" height="31">
+      </a>
+    </div>
+
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+
+    <div class="firefox">
+      <a href="https://www.firefox.com">
+        <img src="img/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+      </a>
+    </div>
+
+    <div class="badges">
+      <img src="img/allbrowsers.gif" alt="">
+      <img src="img/blinktastic_spongebob.gif" alt="">
+      <img src="img/browser1.gif" alt="">
+      <img src="img/browsers.gif" alt="">
+      <img src="img/counter3.gif" alt="">
+      <img src="img/external-content.duckduckgo.com.gif" alt="">
+      <img src="img/hacker.gif" alt="">
+      <img src="img/hugsnotdrugs.gif" alt="">
+    </div>
+
+    <div class="marquee marquee--bottom">
+      <span>&#9733; THANKS FOR VISITING &#9733; SIGN MY GUESTBOOK &#9733; SEE YOU SPACE COWBOY &#9733; </span>
+    </div>
+  </footer>
+
+  <script src="script.js?v=9"></script>
+  <script>
+    // ── Bingus Hover Easter Egg ─────────────────────────────────
+    // GIF-URLs hier eintragen (direkte Bild-URLs, nicht Pinterest-Pin-Links).
+    // So bekommst du die URL von Pinterest:
+    //   1. Pin öffnen → Rechtsklick auf das GIF → "Bild-Adresse kopieren"
+    //   2. URL sieht so aus: https://i.pinimg.com/originals/xx/xx/xx/xxx.gif
+    const BINGUS_GIFS = [
+      // ← deine GIF-URLs hier einfügen, eine pro Zeile mit Komma
+      'https://i.pinimg.com/originals/BEISPIEL_1.gif',
+      'https://i.pinimg.com/originals/BEISPIEL_2.gif',
+      'https://i.pinimg.com/originals/BEISPIEL_3.gif',
+    ];
+
+    let hoverTimer = null;
+
+    const trigger  = document.getElementById('bingusTrigger');
+    const popup    = document.getElementById('bingus-popup');
+    const gifEl    = document.getElementById('bingus-gif');
+
+    trigger.addEventListener('mouseenter', () => {
+      hoverTimer = setTimeout(() => {
+        const url = BINGUS_GIFS[Math.floor(Math.random() * BINGUS_GIFS.length)];
+        gifEl.src = url;
+        popup.classList.add('show');
+      }, 1500); // 1,5 Sekunden warten
+    });
+
+    trigger.addEventListener('mouseleave', () => {
+      clearTimeout(hoverTimer);
+    });
+
+    function hideBingus() {
+      popup.classList.remove('show');
+      gifEl.src = '';
+    }
+
+    // ESC-Taste schließt den Popup
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') hideBingus();
+    });
+  </script>
+</body>
+</html>
