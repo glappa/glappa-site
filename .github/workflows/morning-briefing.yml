@@ -71,12 +71,15 @@ jobs:
                   f.write("niederschlag=0\n")
           PYEOF
 
-      - name: Verkehr Steinhagen → Stuckenbrock
+      - name: Fahrzeit Steinhagen → Stuckenbrock (OpenRouteService)
         id: verkehr
         run: |
-          DEPART=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          # Koordinaten: Steinhagen NRW → Fossenredde, Stuckenbrock
-          curl -s "https://router.hereapi.com/v8/routes?transportMode=car&origin=52.0016,8.3967&destination=51.8770,8.6330&departureTime=${DEPART}&return=summary&apikey=${{ secrets.HERE_API_KEY }}" > /tmp/traffic.json
+          # OpenRouteService: kostenlos, kein Zahlungsmittel nötig
+          # Koordinaten: [Längengrad, Breitengrad] – ORS-Format
+          curl -s -X POST "https://api.openrouteservice.org/v2/directions/driving-car" \
+            -H "Authorization: ${{ secrets.ORS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"coordinates":[[8.3967,52.0016],[8.6330,51.8770]]}' > /tmp/traffic.json
 
           python3 - << 'PYEOF'
           import json, os
@@ -85,37 +88,21 @@ jobs:
               with open('/tmp/traffic.json') as f:
                   d = json.load(f)
 
-              s        = d['routes'][0]['sections'][0]['summary']
-              dur_sec  = s['duration']
-              base_sec = s['baseDuration']
-              laenge_m = s['length']
+              seg      = d['routes'][0]['summary']
+              dur_sec  = seg['duration']
+              laenge_m = seg['distance']
 
-              dur_min  = dur_sec  // 60
-              base_min = base_sec // 60
-              delay    = dur_min - base_min
+              dur_min  = int(dur_sec  // 60)
               km       = laenge_m / 1000
-
-              if delay >= 10:
-                  status = f"🔴 Stau! +{delay} Min Verzögerung – früher losfahren"
-              elif delay >= 3:
-                  status = f"🟡 Leichte Verzögerung (+{delay} Min)"
-              else:
-                  status = "🟢 Freie Fahrt"
 
               out = os.environ['GITHUB_OUTPUT']
               with open(out, 'a') as f:
-                  f.write(f"status={status}\n")
                   f.write(f"fahrzeit={dur_min}\n")
-                  f.write(f"normal={base_min}\n")
-                  f.write(f"delay={delay}\n")
                   f.write(f"km={km:.1f}\n")
           except Exception as e:
               out = os.environ['GITHUB_OUTPUT']
               with open(out, 'a') as f:
-                  f.write("status=⚠️ Verkehrsdaten nicht verfügbar\n")
                   f.write("fahrzeit=?\n")
-                  f.write("normal=?\n")
-                  f.write("delay=0\n")
                   f.write("km=?\n")
           PYEOF
 
@@ -152,21 +139,22 @@ jobs:
               <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);">
                 <h2 style="margin: 0 0 12px; color: #e74c3c;">🚗 Arbeitsweg</h2>
                 <p style="margin: 0 0 4px; color: #666; font-size: 0.9em;">Steinhagen → Fossenredde, Stuckenbrock</p>
-                <p style="margin: 8px 0; font-size: 1.2em; font-weight: bold;">${{ steps.verkehr.outputs.status }}</p>
                 <table style="border-collapse: collapse; width: 100%; margin-top: 10px;">
                   <tr style="background: #f5f5f5;">
-                    <td style="padding: 8px 12px; border: 1px solid #eee;">⏱️ Fahrzeit (mit Verkehr)</td>
+                    <td style="padding: 8px 12px; border: 1px solid #eee;">⏱️ Typische Fahrzeit</td>
                     <td style="padding: 8px 12px; border: 1px solid #eee; font-weight: bold;">${{ steps.verkehr.outputs.fahrzeit }} Min</td>
                   </tr>
                   <tr>
-                    <td style="padding: 8px 12px; border: 1px solid #eee;">⏱️ Normalfahrzeit</td>
-                    <td style="padding: 8px 12px; border: 1px solid #eee;">${{ steps.verkehr.outputs.normal }} Min</td>
-                  </tr>
-                  <tr style="background: #f5f5f5;">
                     <td style="padding: 8px 12px; border: 1px solid #eee;">📍 Streckenlänge</td>
                     <td style="padding: 8px 12px; border: 1px solid #eee;">${{ steps.verkehr.outputs.km }} km</td>
                   </tr>
                 </table>
+                <div style="margin-top: 14px; text-align: center;">
+                  <a href="https://www.google.com/maps/dir/Steinhagen,+NRW/Fossenredde,+Sch%C3%B6+Holte-Stukenbrock"
+                     style="display: inline-block; padding: 10px 20px; background: #e74c3c; color: white; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                    🗺️ Aktuellen Stau prüfen (Google Maps)
+                  </a>
+                </div>
               </div>
 
               <p style="color: #bbb; font-size: 0.75em; text-align: center; margin-top: 20px;">
