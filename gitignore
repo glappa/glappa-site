@@ -1,0 +1,41 @@
+# Sensible Dateien
+_docker/cookies/
+_docker/cookies.txt
+cookies.txt
+*.cookies
+
+# Umgebungsvariablen / Secrets
+.env
+.env.*
+*.secret
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Temporäre Dateien
+*.tmp
+*.bak
