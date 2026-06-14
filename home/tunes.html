@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tunes &mdash; Glappa Home</title>
+  <meta name="keywords" content="Glappa Home Music Player Tunes MP3 FLAC OGG">
+  <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="home.css?v=4">
+</head>
+<body>
+
+  <div class="marquee marquee--top">
+    <span>&#9836; GLAPPA TUNES &#9836; PLAY YOUR JAMS &#9836; CRANK IT UP &#9836; KEINE WERBUNG &#9836; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <div class="page-banner">
+      <h2>&#9836; TUNES &#9836;</h2>
+<pre>
+  .---------------------------.
+  | (O)===================(O) |
+  |  ░░░░░░░░░░░░░░░░░░░░░░░  |
+  |  ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒  |
+  |    [&lt;&lt;]  [&gt;]  [STOP]      |
+  '---------------------------'
+       ||              ||
+</pre>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <nav class="nav">
+    <a href="../index.html">&larr; Glappa</a>
+    <span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a>
+    <span class="sep">|</span>
+    <a href="../page1.html">Video</a>
+    <span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a>
+    <span class="sep">|</span>
+    <a href="index.html">Home</a>
+    <span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction">
+    <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main>
+    <!-- Music Player -->
+    <section class="player-section">
+      <div class="player" id="player">
+        <div class="player-head">
+          <span class="player-title">&#9836; GLAPPA TUNES</span>
+          <span class="player-version">v1.337</span>
+        </div>
+
+        <div class="player-display">
+          <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
+          <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true"></canvas>
+          <div class="player-time">
+            <span id="curTime">0:00</span>
+            <input type="range" class="player-seek" id="seek" min="0" max="1000" value="0" step="1">
+            <span id="totalTime">0:00</span>
+          </div>
+        </div>
+
+        <div class="player-controls">
+          <button class="player-btn" id="prevBtn" title="Vorheriger Track">&#9198;</button>
+          <button class="player-btn player-btn--play" id="playBtn" title="Play/Pause">&#9654;</button>
+          <button class="player-btn" id="stopBtn" title="Stop">&#9632;</button>
+          <button class="player-btn" id="nextBtn" title="N&auml;chster Track">&#9197;</button>
+          <span class="player-vol">
+            &#128266;
+            <input type="range" id="volume" min="0" max="100" value="80" title="Lautst&auml;rke">
+          </span>
+        </div>
+
+        <div class="player-modes">
+          <button class="player-mode-btn" id="shuffleBtn" title="Shuffle">&#128256; Shuffle</button>
+          <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
+        </div>
+
+        <div class="player-load">
+          <label class="player-file-btn">
+            &#128193; Dateien w&auml;hlen
+            <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+          </label>
+          <span class="player-drop-hint">oder Dateien hier rein-droppen (MP3/WAV/OGG/FLAC/M4A&hellip;)</span>
+        </div>
+
+        <div class="player-playlist" id="playlist">
+          <div class="player-playlist-empty">[ PLAYLIST LEER &mdash; Tracks &uuml;ber Button oder Drop laden ]</div>
+        </div>
+
+        <audio id="audio" preload="metadata"></audio>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="construction">
+      <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+      <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+    </div>
+
+    <div class="footer-actions">
+      <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
+        <img id="mailImg" src="../img/gif/animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+      </a>
+      <a href="../index.html">
+        <img src="../img/gif/anihome1.gif" alt="Home" width="88" height="31">
+      </a>
+    </div>
+
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+
+    <div class="firefox">
+      <a href="https://www.firefox.com">
+        <img src="../img/gif/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+      </a>
+    </div>
+
+    <div class="badges">
+      <img src="../img/gif/allbrowsers.gif" alt="">
+      <img src="../img/gif/blinktastic_spongebob.gif" alt="">
+      <img src="../img/gif/browser1.gif" alt="">
+      <img src="../img/gif/browsers.gif" alt="">
+      <img src="../img/gif/counter3.gif" alt="">
+      <img src="../img/gif/external-content.duckduckgo.com.gif" alt="">
+      <img src="../img/gif/hacker.gif" alt="">
+      <img src="../img/gif/hugsnotdrugs.gif" alt="">
+    </div>
+
+    <div class="marquee marquee--bottom">
+      <span>&#9836; THANKS FOR LISTENING &#9836; HEADBANG RESPONSIBLY &#9836; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=13"></script>
+  <script>
+    // ── Music-Player ──────────────────────────────────────────
+    (function () {
+      const audio   = document.getElementById('audio');
+      const playBtn = document.getElementById('playBtn');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const seek    = document.getElementById('seek');
+      const volEl   = document.getElementById('volume');
+      const titleEl = document.getElementById('trackTitle');
+      const curEl   = document.getElementById('curTime');
+      const totEl   = document.getElementById('totalTime');
+      const plEl    = document.getElementById('playlist');
+      const playerEl= document.getElementById('player');
+      const fileInp = document.getElementById('fileInput');
+      const shufBtn = document.getElementById('shuffleBtn');
+      const repBtn  = document.getElementById('repeatBtn');
+      const canvas  = document.getElementById('vis');
+      const cctx    = canvas.getContext('2d');
+
+      const SUPPORTED = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
+
+      let tracks  = [];     // [{name, url}]
+      let current = -1;
+      let shuffle = false;
+      let repeat  = 'none'; // 'none' | 'all' | 'one'
+      let seekingUser = false;
+
+      // Web-Audio-Spectrum-Analyzer
+      let audioCtx = null;
+      let analyser = null;
+      let visData  = null;
+      let visRaf   = 0;
+      let peaks    = null;
+      let visGrad  = null;
+
+      audio.volume = 0.8;
+
+      function fitCanvas() {
+        const r = canvas.getBoundingClientRect();
+        const w = Math.max(64, Math.floor(r.width));
+        const h = Math.max(40, Math.floor(r.height));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          visGrad = null;
+          peaks = null;
+        }
+      }
+
+      function ensureAudioCtx() {
+        if (audioCtx) return;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;  // alter Browser ohne Web Audio -> Player laeuft trotzdem, nur ohne Visualizer
+        audioCtx = new Ctx();
+        const src = audioCtx.createMediaElementSource(audio);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;            // -> 64 Frequenz-Bins
+        analyser.smoothingTimeConstant = 0.78;
+        visData = new Uint8Array(analyser.frequencyBinCount);
+        src.connect(analyser);
+        analyser.connect(audioCtx.destination);
+      }
+
+      function drawVis() {
+        if (!analyser) { visRaf = 0; return; }
+        analyser.getByteFrequencyData(visData);
+
+        const W = canvas.width;
+        const H = canvas.height;
+        cctx.clearRect(0, 0, W, H);
+
+        if (!visGrad) {
+          visGrad = cctx.createLinearGradient(0, H, 0, 0);
+          visGrad.addColorStop(0.00, '#00ff00');   // green unten
+          visGrad.addColorStop(0.55, '#ffff00');   // yellow mitte
+          visGrad.addColorStop(0.85, '#ff8800');   // orange
+          visGrad.addColorStop(1.00, '#ff00ff');   // pink top
+        }
+
+        const n = visData.length;
+        if (!peaks || peaks.length !== n) peaks = new Float32Array(n);
+
+        const barW = W / n;
+        const gap  = Math.max(1, Math.floor(barW * 0.18));
+
+        cctx.fillStyle = visGrad;
+        for (let i = 0; i < n; i++) {
+          const v = visData[i] / 255;       // 0..1
+          const h = Math.max(1, v * H);
+          const x = Math.floor(i * barW);
+          cctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
+
+          // Peak faellt langsam zurueck
+          if (v > peaks[i]) peaks[i] = v;
+          else              peaks[i] = Math.max(0, peaks[i] - 0.012);
+        }
+
+        // Peaks als cyan-Strich on top
+        cctx.fillStyle = '#00ffff';
+        cctx.shadowColor = '#00ffff';
+        cctx.shadowBlur = 4;
+        for (let i = 0; i < n; i++) {
+          const py = H - peaks[i] * H;
+          const x  = Math.floor(i * barW);
+          cctx.fillRect(x + gap, Math.max(0, py - 2), Math.max(1, Math.floor(barW - gap * 2)), 2);
+        }
+        cctx.shadowBlur = 0;
+
+        visRaf = requestAnimationFrame(drawVis);
+      }
+
+      function startVis() {
+        ensureAudioCtx();
+        if (!audioCtx) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        fitCanvas();
+        if (!visRaf) visRaf = requestAnimationFrame(drawVis);
+      }
+
+      function stopVis() {
+        if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+      }
+
+      function fmt(t) {
+        if (!isFinite(t) || t < 0) return '0:00';
+        const m = Math.floor(t / 60);
+        const s = Math.floor(t % 60);
+        return m + ':' + String(s).padStart(2, '0');
+      }
+
+      function loadFiles(files) {
+        const list = Array.from(files || []).filter(f =>
+          (f.type && f.type.startsWith('audio/')) || SUPPORTED.test(f.name)
+        );
+        for (const f of list) {
+          tracks.push({ name: f.name, url: URL.createObjectURL(f) });
+        }
+        renderPlaylist();
+        if (current === -1 && tracks.length) playTrack(0);
+      }
+
+      function playTrack(i) {
+        if (i < 0 || i >= tracks.length) return;
+        current = i;
+        audio.src = tracks[i].url;
+        titleEl.textContent = tracks[i].name;
+        renderPlaylist();
+        audio.play().catch(() => {});
+      }
+
+      function togglePlay() {
+        if (!tracks.length) return;
+        if (audio.paused) audio.play().catch(() => {});
+        else audio.pause();
+      }
+
+      function next() {
+        if (!tracks.length) return;
+        if (shuffle && tracks.length > 1) {
+          let n; do { n = Math.floor(Math.random() * tracks.length); } while (n === current);
+          playTrack(n);
+        } else {
+          playTrack((current + 1) % tracks.length);
+        }
+      }
+
+      function prev() {
+        if (!tracks.length) return;
+        if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+        playTrack((current - 1 + tracks.length) % tracks.length);
+      }
+
+      function stop() {
+        audio.pause();
+        audio.currentTime = 0;
+      }
+
+      function renderPlaylist() {
+        if (!tracks.length) {
+          plEl.innerHTML = '<div class="player-playlist-empty">[ PLAYLIST LEER &mdash; Tracks &uuml;ber Button oder Drop laden ]</div>';
+          return;
+        }
+        plEl.innerHTML = tracks.map((t, i) =>
+          '<div class="player-track-row' + (i === current ? ' active' : '') + '" data-i="' + i + '">' +
+            '<span class="player-track-num">' + String(i + 1).padStart(2, '0') + '.</span>' +
+            '<span class="player-track-name"></span>' +
+            '<button class="player-track-remove" data-i="' + i + '" title="Entfernen">&times;</button>' +
+          '</div>'
+        ).join('');
+        plEl.querySelectorAll('.player-track-row').forEach(row => {
+          const i = +row.dataset.i;
+          row.querySelector('.player-track-name').textContent = tracks[i].name;
+        });
+      }
+
+      audio.addEventListener('timeupdate', () => {
+        curEl.textContent = fmt(audio.currentTime);
+        if (!seekingUser && audio.duration) {
+          seek.value = (audio.currentTime / audio.duration) * 1000;
+        }
+      });
+      audio.addEventListener('loadedmetadata', () => {
+        totEl.textContent = fmt(audio.duration);
+      });
+      audio.addEventListener('play',  () => { playBtn.innerHTML = '&#10074;&#10074;'; startVis(); });
+      audio.addEventListener('pause', () => { playBtn.innerHTML = '&#9654;'; stopVis(); });
+      audio.addEventListener('ended', () => {
+        stopVis();
+        if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+        const isLast = current === tracks.length - 1;
+        if (isLast && repeat !== 'all' && !shuffle) { stop(); return; }
+        next();
+      });
+
+      // Canvas an Container-Breite anpassen + bei Resize neu fitten
+      window.addEventListener('resize', () => { fitCanvas(); });
+      fitCanvas();
+      audio.addEventListener('error', () => {
+        // MEDIA_ERR_ABORTED (code 1) feuert normal jedes Mal wenn wir audio.src
+        // umschreiben — die alte Quelle wird abgebrochen. Das ist KEIN echter
+        // Fehler, ignorieren. Nur Decode/Network/SRC-Fehler dem User zeigen.
+        const err = audio.error;
+        if (!err || err.code === 1) return;
+        const name = tracks[current] ? tracks[current].name : '?';
+        titleEl.textContent = 'Fehler beim Laden: ' + name;
+        // Bei Decode (3) oder SRC-Not-Supported (4) zum naechsten springen,
+        // damit eine korrupte Datei die Queue nicht blockiert.
+        if ((err.code === 3 || err.code === 4) && tracks.length > 1) {
+          setTimeout(next, 800);
+        }
+      });
+
+      playBtn.addEventListener('click', togglePlay);
+      prevBtn.addEventListener('click', prev);
+      nextBtn.addEventListener('click', next);
+      stopBtn.addEventListener('click', stop);
+      volEl.addEventListener('input', e => { audio.volume = e.target.value / 100; });
+
+      seek.addEventListener('input', () => { seekingUser = true; });
+      seek.addEventListener('change', e => {
+        if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration;
+        seekingUser = false;
+      });
+
+      shufBtn.addEventListener('click', () => {
+        shuffle = !shuffle;
+        shufBtn.classList.toggle('active', shuffle);
+      });
+      repBtn.addEventListener('click', () => {
+        repeat = repeat === 'none' ? 'all' : repeat === 'all' ? 'one' : 'none';
+        repBtn.classList.toggle('active', repeat !== 'none');
+        repBtn.innerHTML = repeat === 'one' ? '&#128257; Repeat 1' : '&#128257; Repeat';
+      });
+
+      plEl.addEventListener('click', e => {
+        const remove = e.target.closest('.player-track-remove');
+        if (remove) {
+          e.stopPropagation();
+          const i = +remove.dataset.i;
+          URL.revokeObjectURL(tracks[i].url);
+          tracks.splice(i, 1);
+          if (current === i) {
+            stop(); audio.removeAttribute('src'); audio.load();
+            current = -1;
+            titleEl.textContent = '— kein Track geladen —';
+            curEl.textContent = '0:00';
+            totEl.textContent = '0:00';
+            seek.value = 0;
+          } else if (current > i) current--;
+          renderPlaylist();
+          return;
+        }
+        const row = e.target.closest('.player-track-row');
+        if (row) playTrack(+row.dataset.i);
+      });
+
+      fileInp.addEventListener('change', e => {
+        loadFiles(e.target.files);
+        e.target.value = '';
+      });
+
+      ['dragenter','dragover'].forEach(ev =>
+        playerEl.addEventListener(ev, e => {
+          e.preventDefault();
+          playerEl.classList.add('drag');
+        })
+      );
+      ['dragleave','dragend','drop'].forEach(ev =>
+        playerEl.addEventListener(ev, e => {
+          if (ev === 'drop') { e.preventDefault(); loadFiles(e.dataTransfer.files); }
+          if (e.target === playerEl || ev !== 'dragleave') playerEl.classList.remove('drag');
+        })
+      );
+
+      document.addEventListener('keydown', e => {
+        if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+        if (e.key === ' ')          { e.preventDefault(); togglePlay(); }
+        else if (e.key === 'ArrowRight' && e.shiftKey) next();
+        else if (e.key === 'ArrowLeft'  && e.shiftKey) prev();
+      });
+    })();
+  </script>
+</body>
+</html>
