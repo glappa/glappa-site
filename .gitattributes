@@ -1,2 +1,0 @@
-# Shell-Scripts laufen auf Linux/VPS — IMMER LF, egal welcher Host commitet
-*.sh text eol=lf

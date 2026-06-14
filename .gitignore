@@ -1,25 +1,24 @@
-# Cookies (enthalten YouTube-Session, niemals committen)
-cookies/youtube.txt
+# YouTube-Session-Cookies — NIEMALS committen
 cookies/*.txt
+**/cookies/*.txt
+_docker/cookies/*.txt
+
+# Python-Cache
+**/__pycache__/
+*.pyc
 
 # App-Runtime
-home/_downloads/
 **/_downloads/
-home/__pycache__/
-**/__pycache__/
 
 # Editor / OS
 .vscode/
 .idea/
 .DS_Store
 *.swp
+*.swo
 
-# Backups
+# Backups / Werkzeuge
 **/_app_original.py
 **/_combo_preview.png
 **/_spiney_*.png
 img/mario-bingus.no-spiney.gif
-
-_docker/cookies/
-
-_docker/cookies/

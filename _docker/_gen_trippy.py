@@ -5,7 +5,7 @@ anime-girl bounces. Jede Variante kombiniert:
   - 1 Accessoire/Decoration (crown/halo/horns/bow/hat/glasses/sparkles/glow/bubble)
   - Eindeutiger Seed -> einzigartige Parameter (Farbe, Position, ...)
 
-Output: img/extra/bx001.gif ... bx120.gif
+Output: img/gif/bx001.gif ... bx120.gif
 """
 import os, glob, random, hashlib
 import numpy as np
@@ -386,8 +386,8 @@ def make_recipes(target_count=80):
 
 # ───────────────────────────── main ─────────────────────────────────
 def main():
-    os.makedirs('img/extra', exist_ok=True)
-    sources = sorted([s for s in glob.glob('img/b*.gif')
+    os.makedirs('img/gif', exist_ok=True)
+    sources = sorted([s for s in glob.glob('img/gif/b*.gif')
                       if os.path.basename(s).replace('b','').replace('.gif','').isdigit()])
     print(f'sources: {len(sources)}')
 
@@ -403,7 +403,7 @@ def main():
 
     ok = 0
     for idx, (src, (label, effects)) in enumerate(targets, 1):
-        fname = f'img/extra/bx{idx:03d}.gif'
+        fname = f'img/gif/bx{idx:03d}.gif'
         try:
             frames, dur, loop = coalesce(src)
             out = apply_pipeline(frames, effects)

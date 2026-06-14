@@ -57,7 +57,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 
   html, body {{
     min-height: 100vh;
-    background-image: url('{glappa}/img/background.gif');
+    background-image: url('{glappa}/img/gif/background.gif');
     background-repeat: repeat;
     background-attachment: fixed;
     color: #fff;
@@ -360,7 +360,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <header class="header">
-    <img class="alien" src="{glappa}/img/alien-dance.gif" alt="" width="70" height="98">
+    <img class="alien" src="{glappa}/img/gif/alien-dance.gif" alt="" width="70" height="98">
     <div class="page-banner yellow">
       <h2>YT ▸ RIP ▸ MP3</h2>
 <pre>
@@ -370,7 +370,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
    '--------------------'
 </pre>
     </div>
-    <img class="alien" src="{glappa}/img/alien-dance.gif" alt="" width="70" height="98">
+    <img class="alien" src="{glappa}/img/gif/alien-dance.gif" alt="" width="70" height="98">
   </header>
 
   <h1 class="title">YT<em>.</em>DL</h1>
@@ -391,9 +391,9 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   </nav>
 
   <div class="construction">
-    <img class="rocket" src="{glappa}/img/rocket3.gif" alt="" aria-hidden="true">
-    <img src="{glappa}/img/Under_Construction.gif" alt="Under Construction">
-    <img class="rocket rocket--flip" src="{glappa}/img/Rocket.gif" alt="" aria-hidden="true">
+    <img class="rocket" src="{glappa}/img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="{glappa}/img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="{glappa}/img/gif/Rocket.gif" alt="" aria-hidden="true">
   </div>
 
   <main class="card">
@@ -444,17 +444,17 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 
   <footer class="footer">
     <div class="construction">
-      <img class="rocket" src="{glappa}/img/rocket3.gif" alt="" aria-hidden="true">
-      <img src="{glappa}/img/Under_Construction.gif" alt="Under Construction">
-      <img class="rocket rocket--flip" src="{glappa}/img/Rocket.gif" alt="" aria-hidden="true">
+      <img class="rocket" src="{glappa}/img/gif/rocket3.gif" alt="" aria-hidden="true">
+      <img src="{glappa}/img/gif/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="{glappa}/img/gif/Rocket.gif" alt="" aria-hidden="true">
     </div>
 
     <div class="footer-actions">
       <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
-        <img src="{glappa}/img/animail1.gif" alt="You Got Mail!" width="88" height="31">
+        <img src="{glappa}/img/gif/animail1.gif" alt="You Got Mail!" width="88" height="31">
       </a>
       <a href="{glappa}/index.html">
-        <img src="{glappa}/img/anihome1.gif" alt="Home" width="88" height="31">
+        <img src="{glappa}/img/gif/anihome1.gif" alt="Home" width="88" height="31">
       </a>
     </div>
 
@@ -462,19 +462,19 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 
     <div class="firefox">
       <a href="https://www.firefox.com">
-        <img src="{glappa}/img/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+        <img src="{glappa}/img/gif/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
       </a>
     </div>
 
     <div class="badges">
-      <img src="{glappa}/img/allbrowsers.gif" alt="">
-      <img src="{glappa}/img/blinktastic_spongebob.gif" alt="">
-      <img src="{glappa}/img/browser1.gif" alt="">
-      <img src="{glappa}/img/browsers.gif" alt="">
-      <img src="{glappa}/img/counter3.gif" alt="">
-      <img src="{glappa}/img/external-content.duckduckgo.com.gif" alt="">
-      <img src="{glappa}/img/hacker.gif" alt="">
-      <img src="{glappa}/img/hugsnotdrugs.gif" alt="">
+      <img src="{glappa}/img/gif/allbrowsers.gif" alt="">
+      <img src="{glappa}/img/gif/blinktastic_spongebob.gif" alt="">
+      <img src="{glappa}/img/gif/browser1.gif" alt="">
+      <img src="{glappa}/img/gif/browsers.gif" alt="">
+      <img src="{glappa}/img/gif/counter3.gif" alt="">
+      <img src="{glappa}/img/gif/external-content.duckduckgo.com.gif" alt="">
+      <img src="{glappa}/img/gif/hacker.gif" alt="">
+      <img src="{glappa}/img/gif/hugsnotdrugs.gif" alt="">
     </div>
 
     <div class="marquee">
@@ -988,12 +988,39 @@ def serve_file(file_id: str):
 
 
 # ── Visitor Counter ───────────────────────────────────────────────
-# Speichert echte unique visits pro Seite in einer JSON-Datei im Volume.
-# Identifikation: long-lived Cookie + IP-Hash als Fallback. F5 zaehlt nicht
-# neu, weil derselbe Visitor wiedererkannt wird.
+# Speichert echte unique visits in einer JSON-Datei im Volume.
+# Identifikation: long-lived Cookie + IP+UA-Hash als Fallback.
+# Bots werden komplett rausgefiltert (UA-basiert) und gar nicht erst gezaehlt.
+# Es gibt einen globalen Bucket (_total) und einen pro Seite. Das count-Feld
+# in der Response ist der globale -> "wie viele Leute besuchen die Webseite".
 COUNTER_FILE = os.path.join(DOWNLOAD_DIR, 'counter.json')
 COUNTER_LOCK = threading.Lock()
 import hashlib
+
+# Bot-/Crawler-Erkennung per User-Agent. Filtert Suchmaschinen, Uptime-Monitore,
+# Preview-Bots, Headless-Browser, generische HTTP-Clients usw.
+_BOT_UA_RE = re.compile(
+    r'bot\b|crawl|spider|slurp|bingpreview|facebookexternalhit|whatsapp|'
+    r'telegram|discordbot|skypeuripreview|linkedinbot|twitterbot|'
+    r'pingdom|uptimerobot|gtmetrix|lighthouse|pagespeed|chrome-lighthouse|'
+    r'headlesschrome|phantomjs|puppeteer|playwright|selenium|'
+    r'monitor|scrape|fetch|wget\b|curl\b|httpclient|python-requests|'
+    r'go-http-client|java/|axios|node-fetch|okhttp|libwww',
+    re.IGNORECASE
+)
+
+def _is_bot():
+    ua = request.headers.get('User-Agent', '') or ''
+    if len(ua) < 15:
+        return True  # leerer oder absurd kurzer UA = kein echter Browser
+    if _BOT_UA_RE.search(ua):
+        return True
+    # Echte Browser senden Sec-Fetch-Site bei XHR/fetch. Fehlt das komplett UND
+    # der UA ist nicht klar als Browser identifizierbar -> wahrscheinlich Bot.
+    if not request.headers.get('Sec-Fetch-Site'):
+        if 'mozilla' not in ua.lower():
+            return True
+    return False
 
 def _load_counter():
     try:
@@ -1007,6 +1034,33 @@ def _save_counter(data):
     with open(tmp, 'w') as f:
         json.dump(data, f)
     os.replace(tmp, COUNTER_FILE)
+
+def _migrate_bucket(bucket):
+    # Altes Format hatte visitors als Liste; neu: dict {vid: iso_timestamp}.
+    v = bucket.get('visitors')
+    if isinstance(v, list):
+        now_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        bucket['visitors'] = {vid: now_iso for vid in v}
+    elif not isinstance(v, dict):
+        bucket['visitors'] = {}
+    bucket['count'] = len(bucket['visitors'])
+    return bucket
+
+def _ensure_total(data):
+    # Wenn _total noch nicht existiert (alte Datei), aus Union aller Site-Buckets
+    # aufbauen, damit der Webseite-Total-Counter nicht bei 0 anfaengt.
+    if '_total' in data and isinstance(data['_total'].get('visitors'), dict):
+        return data
+    all_visitors = {}
+    for k, b in list(data.items()):
+        if k.startswith('_') or not isinstance(b, dict):
+            continue
+        _migrate_bucket(b)
+        for vid, ts in b['visitors'].items():
+            if vid not in all_visitors or ts < all_visitors[vid]:
+                all_visitors[vid] = ts
+    data['_total'] = {'count': len(all_visitors), 'visitors': all_visitors}
+    return data
 
 def _visitor_id():
     """Cookie-basierte ID; Fallback: IP+User-Agent-Hash. Erlaubt cross-origin
@@ -1024,11 +1078,13 @@ def _cors_resp(resp):
     """Allow cross-origin from glappa.de + localhost."""
     origin = request.headers.get('Origin', '')
     allowed = ('https://glappa.de', 'http://glappa.de',
+               'https://www.glappa.de', 'http://www.glappa.de',
                'http://localhost:8099', 'http://127.0.0.1:8099')
     if origin in allowed or origin.startswith(('http://192.168.', 'http://10.')):
         resp.headers['Access-Control-Allow-Origin'] = origin
         resp.headers['Access-Control-Allow-Credentials'] = 'true'
         resp.headers['Vary'] = 'Origin'
+    resp.headers['Cache-Control'] = 'no-store'
     return resp
 
 
@@ -1041,19 +1097,36 @@ def counter_visit():
         resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return _cors_resp(resp)
 
-    site = (request.args.get('site') or 'index').strip()[:32]
-    vid, is_new_fp = _visitor_id()
+    site = (request.args.get('site') or 'index').strip()[:32] or 'index'
 
     with COUNTER_LOCK:
-        data = _load_counter()
-        s = data.setdefault(site, {'count': 0, 'visitors': []})
-        is_new_visit = vid not in s['visitors']
-        if is_new_visit:
-            s['visitors'].append(vid)
+        data = _ensure_total(_load_counter())
+        total = _migrate_bucket(data['_total'])
+        s     = _migrate_bucket(data.setdefault(site, {'count': 0, 'visitors': {}}))
+
+        if _is_bot():
+            # Bots werden nicht gezaehlt. Aktuellen Stand zurueck, kein Cookie.
+            resp = jsonify({'count': total['count'], 'site_count': s['count'],
+                            'new': False, 'bot': True})
+            return _cors_resp(resp)
+
+        vid, _ = _visitor_id()
+        now_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+
+        is_new_total = vid not in total['visitors']
+        is_new_site  = vid not in s['visitors']
+        if is_new_total:
+            total['visitors'][vid] = now_iso
+            total['count'] = len(total['visitors'])
+        if is_new_site:
+            s['visitors'][vid] = now_iso
             s['count'] = len(s['visitors'])
+        if is_new_total or is_new_site:
             _save_counter(data)
 
-    resp = jsonify({'count': s['count'], 'new': is_new_visit})
+    # count = globale unique visitors (echte Menschen), site_count = nur diese Seite
+    resp = jsonify({'count': total['count'], 'site_count': s['count'],
+                    'new': is_new_total})
     # langer Cookie damit derselbe Browser wiedererkannt wird
     resp.set_cookie('glappa_visitor', vid,
                     max_age=60*60*24*365*5,
@@ -1067,10 +1140,15 @@ def counter_visits():
         resp = jsonify({'ok': True})
         resp.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
         return _cors_resp(resp)
-    site = (request.args.get('site') or 'index').strip()[:32]
+    site = (request.args.get('site') or '').strip()[:32]
     with COUNTER_LOCK:
-        data = _load_counter()
-    return _cors_resp(jsonify({'count': data.get(site, {}).get('count', 0)}))
+        data = _ensure_total(_load_counter())
+        total = _migrate_bucket(data['_total'])
+        site_count = 0
+        if site:
+            s = _migrate_bucket(data.setdefault(site, {'count': 0, 'visitors': {}}))
+            site_count = s['count']
+    return _cors_resp(jsonify({'count': total['count'], 'site_count': site_count}))
 
 
 @Downloader.errorhandler(Exception)
@@ -1084,13 +1162,13 @@ if __name__ == '__main__':
     if not os.environ.get('YT_COOKIE_FILE') and not os.environ.get('YT_COOKIE_BROWSER'):
         os.environ['YT_COOKIE_BROWSER'] = 'firefox'
 
-    # Production: SSL geladen -> :8080. Lokal/Dev: Plain HTTP -> :8090.
+    # Production UND Lokal/Dev jetzt einheitlich :8080 (Dev = Plain HTTP, Prod = HTTPS).
     port = int(os.environ.get('DOWNLOADER_PORT', '0'))
     host = os.environ.get('DOWNLOADER_HOST', '0.0.0.0')
     if context is not None:
         Downloader.run(host=host, port=port or 8080, ssl_context=context,
                        threaded=True, debug=False)
     else:
-        print(f'[YT.DL] Dev mode (no SSL). Listening on http://{host}:{port or 8090}/')
-        Downloader.run(host=host, port=port or 8090,
+        print(f'[YT.DL] Dev mode (no SSL). Listening on http://{host}:{port or 8080}/')
+        Downloader.run(host=host, port=port or 8080,
                        threaded=True, debug=False)

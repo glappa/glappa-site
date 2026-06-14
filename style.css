@@ -10,7 +10,7 @@
 body, html {
   margin: 0;
   padding: 0;
-  background-image: url('background.gif');
+  background-image: url('img/gif/background.gif');
   background-repeat: repeat;
   background-attachment: fixed;
   font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
@@ -352,11 +352,6 @@ a:visited { color: var(--neon-yellow); }
 }
 .secret-grid img.clickable {
   cursor: pointer;
-  outline: 2px dashed var(--neon-yellow);
-  outline-offset: 4px;
-}
-.secret-grid img.clickable:hover {
-  outline-color: var(--neon-cyan);
 }
 
 /* ---------- Besucherzaehler ---------- */

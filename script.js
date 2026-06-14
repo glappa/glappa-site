@@ -28,7 +28,7 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
   const isLocal = (h === 'localhost' || h === '127.0.0.1'
                    || h.startsWith('192.168.') || h.startsWith('10.'));
   const base = isLocal
-    ? `${location.protocol}//${h}:8090`
+    ? `${location.protocol}//${h}:8080`
     : 'https://home.glappa.de:8080';
   const site = (location.pathname.split('/').filter(Boolean).slice(-1)[0] || 'index')
                  .replace(/\.html$/, '');

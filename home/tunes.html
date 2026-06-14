@@ -7,7 +7,7 @@
   <meta name="keywords" content="Glappa Home Music Player Tunes MP3 FLAC OGG">
   <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
   <link rel="icon" href="../favicon.ico">
-  <link rel="stylesheet" href="home.css?v=4">
+  <link rel="stylesheet" href="home.css?v=3">
 </head>
 <body>
 
@@ -63,7 +63,6 @@
 
         <div class="player-display">
           <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
-          <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true"></canvas>
           <div class="player-time">
             <span id="curTime">0:00</span>
             <input type="range" class="player-seek" id="seek" min="0" max="1000" value="0" step="1">
@@ -163,8 +162,6 @@
       const fileInp = document.getElementById('fileInput');
       const shufBtn = document.getElementById('shuffleBtn');
       const repBtn  = document.getElementById('repeatBtn');
-      const canvas  = document.getElementById('vis');
-      const cctx    = canvas.getContext('2d');
 
       const SUPPORTED = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
 
@@ -174,101 +171,7 @@
       let repeat  = 'none'; // 'none' | 'all' | 'one'
       let seekingUser = false;
 
-      // Web-Audio-Spectrum-Analyzer
-      let audioCtx = null;
-      let analyser = null;
-      let visData  = null;
-      let visRaf   = 0;
-      let peaks    = null;
-      let visGrad  = null;
-
       audio.volume = 0.8;
-
-      function fitCanvas() {
-        const r = canvas.getBoundingClientRect();
-        const w = Math.max(64, Math.floor(r.width));
-        const h = Math.max(40, Math.floor(r.height));
-        if (canvas.width !== w || canvas.height !== h) {
-          canvas.width = w;
-          canvas.height = h;
-          visGrad = null;
-          peaks = null;
-        }
-      }
-
-      function ensureAudioCtx() {
-        if (audioCtx) return;
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return;  // alter Browser ohne Web Audio -> Player laeuft trotzdem, nur ohne Visualizer
-        audioCtx = new Ctx();
-        const src = audioCtx.createMediaElementSource(audio);
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 128;            // -> 64 Frequenz-Bins
-        analyser.smoothingTimeConstant = 0.78;
-        visData = new Uint8Array(analyser.frequencyBinCount);
-        src.connect(analyser);
-        analyser.connect(audioCtx.destination);
-      }
-
-      function drawVis() {
-        if (!analyser) { visRaf = 0; return; }
-        analyser.getByteFrequencyData(visData);
-
-        const W = canvas.width;
-        const H = canvas.height;
-        cctx.clearRect(0, 0, W, H);
-
-        if (!visGrad) {
-          visGrad = cctx.createLinearGradient(0, H, 0, 0);
-          visGrad.addColorStop(0.00, '#00ff00');   // green unten
-          visGrad.addColorStop(0.55, '#ffff00');   // yellow mitte
-          visGrad.addColorStop(0.85, '#ff8800');   // orange
-          visGrad.addColorStop(1.00, '#ff00ff');   // pink top
-        }
-
-        const n = visData.length;
-        if (!peaks || peaks.length !== n) peaks = new Float32Array(n);
-
-        const barW = W / n;
-        const gap  = Math.max(1, Math.floor(barW * 0.18));
-
-        cctx.fillStyle = visGrad;
-        for (let i = 0; i < n; i++) {
-          const v = visData[i] / 255;       // 0..1
-          const h = Math.max(1, v * H);
-          const x = Math.floor(i * barW);
-          cctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
-
-          // Peak faellt langsam zurueck
-          if (v > peaks[i]) peaks[i] = v;
-          else              peaks[i] = Math.max(0, peaks[i] - 0.012);
-        }
-
-        // Peaks als cyan-Strich on top
-        cctx.fillStyle = '#00ffff';
-        cctx.shadowColor = '#00ffff';
-        cctx.shadowBlur = 4;
-        for (let i = 0; i < n; i++) {
-          const py = H - peaks[i] * H;
-          const x  = Math.floor(i * barW);
-          cctx.fillRect(x + gap, Math.max(0, py - 2), Math.max(1, Math.floor(barW - gap * 2)), 2);
-        }
-        cctx.shadowBlur = 0;
-
-        visRaf = requestAnimationFrame(drawVis);
-      }
-
-      function startVis() {
-        ensureAudioCtx();
-        if (!audioCtx) return;
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-        fitCanvas();
-        if (!visRaf) visRaf = requestAnimationFrame(drawVis);
-      }
-
-      function stopVis() {
-        if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
-      }
 
       function fmt(t) {
         if (!isFinite(t) || t < 0) return '0:00';
@@ -351,32 +254,16 @@
       audio.addEventListener('loadedmetadata', () => {
         totEl.textContent = fmt(audio.duration);
       });
-      audio.addEventListener('play',  () => { playBtn.innerHTML = '&#10074;&#10074;'; startVis(); });
-      audio.addEventListener('pause', () => { playBtn.innerHTML = '&#9654;'; stopVis(); });
+      audio.addEventListener('play',  () => playBtn.innerHTML = '&#10074;&#10074;');
+      audio.addEventListener('pause', () => playBtn.innerHTML = '&#9654;');
       audio.addEventListener('ended', () => {
-        stopVis();
         if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
         const isLast = current === tracks.length - 1;
         if (isLast && repeat !== 'all' && !shuffle) { stop(); return; }
         next();
       });
-
-      // Canvas an Container-Breite anpassen + bei Resize neu fitten
-      window.addEventListener('resize', () => { fitCanvas(); });
-      fitCanvas();
       audio.addEventListener('error', () => {
-        // MEDIA_ERR_ABORTED (code 1) feuert normal jedes Mal wenn wir audio.src
-        // umschreiben — die alte Quelle wird abgebrochen. Das ist KEIN echter
-        // Fehler, ignorieren. Nur Decode/Network/SRC-Fehler dem User zeigen.
-        const err = audio.error;
-        if (!err || err.code === 1) return;
-        const name = tracks[current] ? tracks[current].name : '?';
-        titleEl.textContent = 'Fehler beim Laden: ' + name;
-        // Bei Decode (3) oder SRC-Not-Supported (4) zum naechsten springen,
-        // damit eine korrupte Datei die Queue nicht blockiert.
-        if ((err.code === 3 || err.code === 4) && tracks.length > 1) {
-          setTimeout(next, 800);
-        }
+        titleEl.textContent = 'Fehler beim Laden: ' + (tracks[current] ? tracks[current].name : '?');
       });
 
       playBtn.addEventListener('click', togglePlay);

@@ -12,25 +12,22 @@ Alles in `glappa-site/` **außer** dem `_docker/`-Ordner.
 ```
 glappa-site/
 ├── _docker/         <-- !!! NICHT hochladen — Container-Setup für VPS !!!
-├── coursor/         hoch
-├── home/            hoch (Heat-Death-Page + cs.mp4)
-├── img/             hoch (alle Asset-GIFs)
+├── coursor/         hoch (WoW-Cursor)
+├── home/            hoch (Heat-Death-Page + cs.mp4 + home.css)
+├── img/             hoch
+│   ├── gif/         hoch (ALLE animierten .gif Assets in einem Ordner)
+│   ├── bingus.png   hoch
+│   └── _spiney_capped.png  hoch
 ├── mp3/             hoch
 ├── mp4/             hoch
-├── secret/          hoch (pilzskip.html + Chaos-GIFs)
-├── animail1.gif     hoch
-├── background.gif   hoch
+├── secret/          hoch (nur pilzskip.html — GIFs liegen jetzt in img/gif/)
 ├── bounce.html      hoch
-├── favicon.ico      hoch
+├── favicon.ico      hoch (Browser-Konvention bleibt im Root)
 ├── index.html       hoch
-├── microsofthappening.gif  hoch
 ├── page1.html       hoch
-├── pra.gif          hoch
 ├── script.js        hoch
-├── sh.gif           hoch
 ├── style.css        hoch
-├── tboi-isaac.gif   hoch
-└── tux_computer_dig_md_clr.gif  hoch
+└── terminal.html    hoch
 ```
 
 ## NICHT anfassen auf dem Webserver
