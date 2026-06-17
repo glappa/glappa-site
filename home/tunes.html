@@ -469,6 +469,8 @@
           zoomRate = 0.990 - bass * 0.004;        // reinzoomen
         }
         mScale *= zoomRate;
+        // Nicht weiter rauszoomen als der Start-Zoom – verhindert "ins Leere driften"
+        if (mScale > 3.5) mScale = 3.5;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
         mPhase += 0.5 + treb * 3 + total * 1.2;
         mPoiFrames++;
@@ -493,29 +495,33 @@
           gl.uniform1f(glU.phase,   mPhase);
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-          // Boring-Check: alle ~90 Frames (~1.5s) Pixel-Varianz prüfen.
-          // Wenn das Bild zu einheitlich ist (Regenbogen-Loop, alles schwarz,
-          // alles eine Farbe), nach 3 positiven Checks (~4.5s) resetten.
+          // Boring-Check: alle ~90 Frames (~1.5s) Pixel-Stichprobe ziehen.
+          // Reset wenn:
+          //   A) Bild zu einheitlich (uniform schwarz, uniform Farbe) → niedrige Varianz
+          //   B) Kein Schwarz mehr sichtbar (Rainbow-Loop, reines Außen-Set) → kein Mandelbrot-Inneres
           if (mPoiFrames % 90 === 1) {
-            const sW = 16, sH = 16;
+            const sW = 20, sH = 20;
             const pBuf = new Uint8Array(sW * sH * 4);
-            // Stichprobe aus der Bildmitte
             const rx = Math.floor((W - sW) / 2);
             const ry = Math.floor((H - sH) / 2);
             gl.readPixels(rx, ry, sW, sH, gl.RGBA, gl.UNSIGNED_BYTE, pBuf);
-            let sumL = 0, sumL2 = 0;
+            let sumL = 0, sumL2 = 0, darkCount = 0;
             const cnt = sW * sH;
             for (let k = 0; k < cnt; k++) {
-              // Luminanz (0..1)
-              const lum = (pBuf[k*4]*0.299 + pBuf[k*4+1]*0.587 + pBuf[k*4+2]*0.114) / 255;
+              const r = pBuf[k*4], g = pBuf[k*4+1], b = pBuf[k*4+2];
+              const lum = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
               sumL  += lum;
               sumL2 += lum * lum;
+              // Schwarz-Pixel = Mandelbrot-Inneres (R+G+B < 25)
+              if (r < 25 && g < 25 && b < 25) darkCount++;
             }
-            const meanL = sumL / cnt;
-            const varL  = sumL2 / cnt - meanL * meanL;
-            // Varianz < 0.008 → sehr einheitlich (egal ob schwarz, weiß oder Rainbow-Loop)
-            if (varL < 0.008) mBoringCount++;
-            else              mBoringCount = 0;
+            const varL      = sumL2 / cnt - (sumL / cnt) * (sumL / cnt);
+            const darkRatio = darkCount / cnt;
+            const isBoring =
+              varL < 0.008 ||        // A: uniform (eine Farbe / alles schwarz)
+              darkRatio < 0.02;      // B: kein Mandelbrot-Inneres → Rainbow-Loop
+            if (isBoring) mBoringCount++;
+            else          mBoringCount = 0;
             if (mBoringCount >= 3) pickRandomPoi();
           }
           return;
