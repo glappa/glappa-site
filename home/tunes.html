@@ -311,13 +311,13 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Zoom + Iter dynamisch. Baseline schneller (~3%/frame) damit auch bei
-        // Stille was passiert; Bass laesst den Zoom kicken (bis ~5%/frame).
-        const zoomRate = 0.972 - bass * 0.016;
+        // Zoom: ~1%/frame Baseline, Bass gibt leichten Kick (+0.4%).
+        // So dauert ein voller Zoom-Durchlauf ca. 60-90 Sekunden.
+        const zoomRate = 0.990 - bass * 0.004;
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
-        // Farbphase: konstanter Baseline-Spin + Treble-Kicks
-        mPhase += 1.4 + treb * 8 + total * 3;
+        // Farbphase: langsamer Baseline-Spin (~30°/s) + moderater Treble-Kick
+        mPhase += 0.5 + treb * 3 + total * 1.2;
 
         // Bei tiefem Zoom: random POI ansteuern, reset
         if (mScale < 1e-13) pickRandomPoi();
@@ -326,7 +326,7 @@
         // Zeit-basierter Orbit: Camera kreist langsam um den POI, Radius skaliert
         // mit aktuellem Zoom (= konstanter visueller Wackler), Bass amplifiziert.
         const tnow   = performance.now() / 1000;
-        const orbR   = mScale * (0.18 + bass * 0.45);
+        const orbR   = mScale * (0.10 + bass * 0.25);
         const offX   = Math.sin(tnow * 0.41) * orbR;
         const offY   = Math.cos(tnow * 0.53) * orbR;
         const poi    = POIS[mPoiIdx];
@@ -392,7 +392,7 @@
         const blackRatio = blackCount / (W * H);
         if (blackRatio > 0.7 && mScale < 2.0) mBlackStreak++;
         else                                  mBlackStreak = 0;
-        if (mBlackStreak > 80) pickRandomPoi();
+        if (mBlackStreak > 60) pickRandomPoi();
       }
 
       // --- Dispatcher ---------------------------------------------
