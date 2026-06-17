@@ -81,6 +81,7 @@
           <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
           <div id="visWrap" class="player-vis-wrap">
             <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true" hidden></canvas>
+            <canvas id="visGl" class="player-vis" aria-hidden="true" hidden style="display:block;width:100%;height:100%;position:absolute;top:0;left:0"></canvas>
           </div>
           <div class="player-time">
             <span id="curTime">0:00</span>
@@ -190,6 +191,7 @@
       const repBtn    = document.getElementById('repeatBtn');
       const visBtn    = document.getElementById('visBtn');
       const canvas    = document.getElementById('vis');
+      const glCanvas  = document.getElementById('visGl');
       const visWrap   = document.getElementById('visWrap');
       const cctx      = canvas.getContext('2d');
       const plSearch  = document.getElementById('plSearch');
@@ -215,9 +217,13 @@
       let peaks    = null;
       let visGrad  = null;
 
+      // WebGL-State (lazy-init beim ersten Fractal-Frame)
+      let gl = null, glProg = null, glU = {};
+
       // Mandelbrot-State
-      let mFrameMs  = 16;    // Gleitender Schnitt der Frame-Zeit (ms)
-      let mLastTime = 0;     // timestamp des letzten drawMandelbrot-Aufrufs
+      let mFrameMs   = 16;   // Gleitender Schnitt der Frame-Zeit (ms)
+      let mLastTime  = 0;    // timestamp des letzten drawMandelbrot-Aufrufs
+      let mPoiFrames = 0;    // Frames seit letztem POI-Pick (Fallback-Reset)
       const POIS = [
         { re: -0.7269,             im:  0.1889            }, // Seahorse Valley
         { re: -0.16,               im:  1.0405            }, // Spiral
@@ -237,27 +243,139 @@
         let n;
         do { n = Math.floor(Math.random() * POIS.length); }
         while (POIS.length > 1 && n === mPoiIdx);
-        mPoiIdx = n;
-        mScale  = 3.0;
+        mPoiIdx     = n;
+        mScale      = 3.0;
         mBlackStreak = 0;
-        mImg = null;
-        mFrameMs = 16;   // Frame-Zeit-Schnitt zurücksetzen nach POI-Wechsel
-        mLastTime = 0;
+        mImg        = null;
+        mFrameMs    = 16;
+        mLastTime   = 0;
+        mPoiFrames  = 0;
+      }
+
+      // WebGL-Init: Mandelbrot-Shader kompilieren, Full-Screen-Quad aufsetzen
+      function initWebGL() {
+        if (gl) return true;
+        try {
+          gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
+          if (!gl) return false;
+
+          const VS = `
+            attribute vec2 aPos;
+            void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+          `;
+          const FS = `
+            precision highp float;
+            uniform vec2  uRes;
+            uniform vec2  uCenter;
+            uniform float uScale;
+            uniform int   uMaxIter;
+            uniform float uPhase;
+
+            void main() {
+              vec2 uv = gl_FragCoord.xy / uRes;
+              // Gleiche Koordinaten wie CPU: stepX = stepY = scale/width
+              float aspect = uRes.x / uRes.y;
+              vec2 c = vec2(
+                uCenter.x + (uv.x - 0.5) * uScale,
+                uCenter.y + (uv.y - 0.5) * uScale / aspect
+              );
+              vec2 z = vec2(0.0);
+              float it = 0.0;
+              for (int i = 0; i < 512; i++) {
+                if (i >= uMaxIter) break;
+                float x2 = z.x*z.x, y2 = z.y*z.y;
+                if (x2 + y2 > 4.0) break;
+                z = vec2(x2 - y2 + c.x, 2.0*z.x*z.y + c.y);
+                it += 1.0;
+              }
+              if (it >= float(uMaxIter)) {
+                gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+                return;
+              }
+              // Smooth coloring (identisch zu CPU)
+              float log_zn = log(dot(z, z)) * 0.5;
+              float nu     = log(log_zn / log(2.0)) / log(2.0);
+              float smooth_it = it + 1.0 - nu;
+              float hue = mod(smooth_it * 8.0 + uPhase, 360.0);
+              float s = 0.92, l = 0.55;
+              float cv = (1.0 - abs(2.0*l - 1.0)) * s;
+              float hp = hue / 60.0;
+              float xc = cv * (1.0 - abs(mod(hp, 2.0) - 1.0));
+              vec3 rgb;
+              if      (hp < 1.0) rgb = vec3(cv, xc, 0.0);
+              else if (hp < 2.0) rgb = vec3(xc, cv, 0.0);
+              else if (hp < 3.0) rgb = vec3(0.0, cv, xc);
+              else if (hp < 4.0) rgb = vec3(0.0, xc, cv);
+              else if (hp < 5.0) rgb = vec3(xc, 0.0, cv);
+              else               rgb = vec3(cv, 0.0, xc);
+              gl_FragColor = vec4(rgb + (l - cv * 0.5), 1.0);
+            }
+          `;
+
+          function compileShader(type, src) {
+            const sh = gl.createShader(type);
+            gl.shaderSource(sh, src);
+            gl.compileShader(sh);
+            if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+              console.error('Shader:', gl.getShaderInfoLog(sh));
+              return null;
+            }
+            return sh;
+          }
+          const vs = compileShader(gl.VERTEX_SHADER, VS);
+          const fs = compileShader(gl.FRAGMENT_SHADER, FS);
+          if (!vs || !fs) { gl = null; return false; }
+
+          glProg = gl.createProgram();
+          gl.attachShader(glProg, vs); gl.attachShader(glProg, fs);
+          gl.linkProgram(glProg);
+          if (!gl.getProgramParameter(glProg, gl.LINK_STATUS)) { gl = null; return false; }
+          gl.useProgram(glProg);
+
+          const buf = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+          gl.bufferData(gl.ARRAY_BUFFER,
+            new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+          const posLoc = gl.getAttribLocation(glProg, 'aPos');
+          gl.enableVertexAttribArray(posLoc);
+          gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+          glU = {
+            res:     gl.getUniformLocation(glProg, 'uRes'),
+            center:  gl.getUniformLocation(glProg, 'uCenter'),
+            scale:   gl.getUniformLocation(glProg, 'uScale'),
+            maxIter: gl.getUniformLocation(glProg, 'uMaxIter'),
+            phase:   gl.getUniformLocation(glProg, 'uPhase'),
+          };
+          gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+          return true;
+        } catch (e) {
+          console.error('WebGL init failed:', e);
+          gl = null;
+          return false;
+        }
       }
 
       audio.volume = 0.8;
 
       // --- Visualizer-Lifecycle ----------------------------------
       function fitCanvas() {
-        const r = canvas.getBoundingClientRect();
-        const w = Math.max(64, Math.floor(r.width));
-        const h = Math.max(40, Math.floor(r.height));
+        const r   = visWrap.getBoundingClientRect();
+        const w   = Math.max(64, Math.floor(r.width));
+        const h   = Math.max(40, Math.floor(r.height));
+        // 2D-Spectrum-Canvas: CSS-Pixel genügen
         if (canvas.width !== w || canvas.height !== h) {
-          canvas.width = w;
-          canvas.height = h;
-          visGrad = null;
-          peaks = null;
+          canvas.width = w; canvas.height = h;
+          visGrad = null; peaks = null;
+        }
+        // GL-Canvas: devicePixelRatio × CSS-Größe, max 2560×1440
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const glW = Math.min(2560, Math.round(r.width  * dpr));
+        const glH = Math.min(1440, Math.round(r.height * dpr));
+        if (glCanvas.width !== glW || glCanvas.height !== glH) {
+          glCanvas.width = glW; glCanvas.height = glH;
           mImg = null;
+          if (gl) gl.viewport(0, 0, glW, glH);
         }
       }
 
@@ -316,125 +434,99 @@
         cctx.shadowBlur = 0;
       }
 
-      // --- Mandelbrot-Vis (Auto-Zoom + Audio-Reactive) ------------
+      // --- Mandelbrot-Vis (WebGL GPU-Renderer, Audio-Reactive) ------
       function drawMandelbrot() {
         // Frame-Zeit messen für Lag-Erkennung
         const tNowMs = performance.now();
         if (mLastTime > 0) {
           const dt = tNowMs - mLastTime;
-          // Exponentieller Gleitschnitt: schnell auf Lag reagieren, langsam erholen
           mFrameMs = mFrameMs * 0.85 + dt * 0.15;
         }
         mLastTime = tNowMs;
 
-        const W = canvas.width, H = canvas.height;
-        if (!mImg || mImg.width !== W || mImg.height !== H) {
-          mImg = cctx.createImageData(W, H);
-        }
-        // Audio-Bands -> Bass treibt Zoom, Treble treibt Farbe, Volume tweakt Detail
+        // Audio-Bands → Bass treibt Zoom, Treble treibt Farbe
         const n = visData.length;
         let bass = 0, treb = 0, total = 0;
-        const bassN = Math.max(1, Math.floor(n * 0.12));
+        const bassN     = Math.max(1, Math.floor(n * 0.12));
         const trebStart = Math.floor(n * 0.55);
-        for (let i = 0; i < bassN; i++)     bass += visData[i];
-        for (let i = trebStart; i < n; i++) treb += visData[i];
+        for (let i = 0; i < bassN; i++)     bass  += visData[i];
+        for (let i = trebStart; i < n; i++) treb  += visData[i];
         for (let i = 0; i < n; i++)         total += visData[i];
         bass  /= (bassN * 255);
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Adaptiver Zoom: bei Lag (>35ms/Frame ≈ <28fps) rauszoomen statt reinzoomen.
-        // Unter 25ms (~40fps) normal reinzoomen. Dazwischen sanfter Übergang.
+        // Adaptiver Zoom: bei Lag rauszoomen statt weiter reinzoomen
         let zoomRate;
         if (mFrameMs > 35) {
-          // Laggy → rauszoomen (mScale > 1 = zoom out)
-          const lagFactor = Math.min((mFrameMs - 35) / 40, 1); // 0..1
-          zoomRate = 1.008 + lagFactor * 0.012; // 1.008..1.020 (raus)
+          const lagF = Math.min((mFrameMs - 35) / 40, 1);
+          zoomRate = 1.008 + lagF * 0.012;       // rauszoomen
         } else if (mFrameMs > 22) {
-          // Übergangszone → stabil bleiben (kein Zoom)
-          zoomRate = 1.0;
+          zoomRate = 1.0;                         // halten
         } else {
-          // Smooth → reinzoomen wie gewohnt, Bass gibt Kick
-          zoomRate = 0.990 - bass * 0.004;
+          zoomRate = 0.990 - bass * 0.004;        // reinzoomen
         }
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
-        // Farbphase: langsamer Baseline-Spin (~30°/s) + moderater Treble-Kick
         mPhase += 0.5 + treb * 3 + total * 1.2;
+        mPoiFrames++;
 
-        // Bei tiefem Zoom: random POI ansteuern, reset
-        if (mScale < 1e-13) pickRandomPoi();
-        if (mPoiIdx < 0)    pickRandomPoi();   // erstes Frame
+        if (mScale < 1e-13 || mPoiFrames > 360) pickRandomPoi();
+        if (mPoiIdx < 0) pickRandomPoi();
 
-        // Zeit-basierter Orbit: Camera kreist langsam um den POI, Radius skaliert
-        // mit aktuellem Zoom (= konstanter visueller Wackler), Bass amplifiziert.
-        const tnow   = performance.now() / 1000;
-        const orbR   = mScale * (0.10 + bass * 0.25);
-        const offX   = Math.sin(tnow * 0.41) * orbR;
-        const offY   = Math.cos(tnow * 0.53) * orbR;
-        const poi    = POIS[mPoiIdx];
-        const cx     = poi.re + offX;
-        const cy     = poi.im + offY;
-        const px     = mImg.data;
-        const stepX  = mScale / W;
-        const stepY  = mScale / W;       // gleicher Step fuer aspect-correct
+        const tnow = performance.now() / 1000;
+        const orbR = mScale * (0.10 + bass * 0.25);
+        const poi  = POIS[mPoiIdx];
+        const cx   = poi.re + Math.sin(tnow * 0.41) * orbR;
+        const cy   = poi.im + Math.cos(tnow * 0.53) * orbR;
+
+        // WebGL-Pfad (GPU)
+        if (initWebGL()) {
+          const W = glCanvas.width, H = glCanvas.height;
+          gl.viewport(0, 0, W, H);
+          gl.uniform2f(glU.res,     W, H);
+          gl.uniform2f(glU.center,  cx, cy);
+          gl.uniform1f(glU.scale,   mScale);
+          gl.uniform1i(glU.maxIter, mIter);
+          gl.uniform1f(glU.phase,   mPhase);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          return;
+        }
+
+        // CPU-Fallback (wenn kein WebGL)
+        const W = canvas.width, H = canvas.height;
+        if (!mImg || mImg.width !== W || mImg.height !== H) mImg = cctx.createImageData(W, H);
+        const stepX = mScale / W, stepY = mScale / W;
         const x0Base = cx - (W / 2) * stepX;
         const y0Base = cy - (H / 2) * stepY;
-        const maxIt = mIter;
-        const phase = mPhase;
-
-        let idx = 0;
-        let blackCount = 0;
+        const maxIt = mIter, phase = mPhase;
+        let idx = 0, blackCount = 0;
         for (let py2 = 0; py2 < H; py2++) {
           const y0 = y0Base + py2 * stepY;
           for (let px2 = 0; px2 < W; px2++) {
             const x0 = x0Base + px2 * stepX;
-            let x = 0, y = 0, x2 = 0, y2 = 0;
-            let it = 0;
-            while (x2 + y2 <= 4 && it < maxIt) {
-              y = 2 * x * y + y0;
-              x = x2 - y2 + x0;
-              x2 = x * x;
-              y2 = y * y;
-              it++;
+            let x = 0, y = 0, x2 = 0, y2 = 0, it = 0;
+            while (x2 + y2 <= 4 && it < maxIt) { y = 2*x*y+y0; x = x2-y2+x0; x2=x*x; y2=y*y; it++; }
+            const px = mImg.data;
+            if (it === maxIt) { px[idx]=0; px[idx+1]=0; px[idx+2]=0; blackCount++; }
+            else {
+              const log_zn = Math.log(x2+y2)/2, nu = Math.log(log_zn/Math.LN2)/Math.LN2;
+              const hue = ((it+1-nu)*8+phase)%360;
+              const s=0.92, l=0.55, c=(1-Math.abs(2*l-1))*s, hp=hue/60;
+              const xc=c*(1-Math.abs((hp%2)-1));
+              let r=0,g=0,b=0;
+              if(hp<1){r=c;g=xc;}else if(hp<2){r=xc;g=c;}else if(hp<3){g=c;b=xc;}
+              else if(hp<4){g=xc;b=c;}else if(hp<5){r=xc;b=c;}else{r=c;b=xc;}
+              const m=l-c/2;
+              px[idx]=((r+m)*255)|0; px[idx+1]=((g+m)*255)|0; px[idx+2]=((b+m)*255)|0;
             }
-            if (it === maxIt) {
-              px[idx] = 0; px[idx+1] = 0; px[idx+2] = 0;
-              blackCount++;
-            } else {
-              // Smooth color: it + 1 - log(log|z|)/log2
-              const log_zn = Math.log(x2 + y2) / 2;
-              const nu = Math.log(log_zn / Math.LN2) / Math.LN2;
-              const smooth = it + 1 - nu;
-              const hue = (smooth * 8 + phase) % 360;
-              // HSL -> RGB inline
-              const s = 0.92, l = 0.55;
-              const c = (1 - Math.abs(2 * l - 1)) * s;
-              const hp = hue / 60;
-              const xc = c * (1 - Math.abs((hp % 2) - 1));
-              let r = 0, g = 0, b = 0;
-              if      (hp < 1) { r = c; g = xc; }
-              else if (hp < 2) { r = xc; g = c; }
-              else if (hp < 3) { g = c; b = xc; }
-              else if (hp < 4) { g = xc; b = c; }
-              else if (hp < 5) { r = xc; b = c; }
-              else             { r = c; b = xc; }
-              const m = l - c / 2;
-              px[idx]   = ((r + m) * 255) | 0;
-              px[idx+1] = ((g + m) * 255) | 0;
-              px[idx+2] = ((b + m) * 255) | 0;
-            }
-            px[idx+3] = 255;
-            idx += 4;
+            mImg.data[idx+3]=255; idx+=4;
           }
         }
         cctx.putImageData(mImg, 0, 0);
-
-        // Black-Streak: wenn ueber 70% schwarz UND wir haben bereits reingezoomt,
-        // ist der View "stuck" -> nach ~80 Frames (~1.3s @ 60fps) zu random POI.
         const blackRatio = blackCount / (W * H);
         if (blackRatio > 0.7 && mScale < 2.0) mBlackStreak++;
-        else                                  mBlackStreak = 0;
+        else mBlackStreak = 0;
         if (mBlackStreak > 60) pickRandomPoi();
       }
 
@@ -474,6 +566,7 @@
         if (mode === 'off') {
           if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
           canvas.hidden = true;
+          glCanvas.hidden = true;
           visWrap.classList.remove('fractal-resize');
           cctx.clearRect(0, 0, canvas.width, canvas.height);
           return;
@@ -483,13 +576,16 @@
           visBtn.classList.remove('active');
           visBtn.innerHTML = '♬ Visualizer';
           canvas.hidden = true;
+          glCanvas.hidden = true;
           visWrap.classList.remove('fractal-resize');
           return;
         }
         if (audioCtx.state === 'suspended') audioCtx.resume();
-        canvas.hidden = false;
-        // Fractal-Modus: Wrapper wird vertikal ziehbar
-        if (mode === 'mandelbrot') {
+        // Fractal → GL-Canvas; Spectrum → 2D-Canvas
+        const isFractal = mode === 'mandelbrot';
+        canvas.hidden   =  isFractal;
+        glCanvas.hidden = !isFractal;
+        if (isFractal) {
           visWrap.classList.add('fractal-resize');
           pickRandomPoi();
         } else {
