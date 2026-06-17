@@ -7,7 +7,7 @@
   <meta name="keywords" content="Glappa Home Music Player Tunes MP3 FLAC OGG">
   <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
   <link rel="icon" href="../favicon.ico">
-  <link rel="stylesheet" href="home.css?v=3">
+  <link rel="stylesheet" href="home.css?v=5">
 </head>
 <body>
 
@@ -63,6 +63,7 @@
 
         <div class="player-display">
           <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
+          <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true" hidden></canvas>
           <div class="player-time">
             <span id="curTime">0:00</span>
             <input type="range" class="player-seek" id="seek" min="0" max="1000" value="0" step="1">
@@ -84,6 +85,7 @@
         <div class="player-modes">
           <button class="player-mode-btn" id="shuffleBtn" title="Shuffle">&#128256; Shuffle</button>
           <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
+          <button class="player-mode-btn" id="visBtn" title="Visualizer ein/aus">&#9836; Visualizer</button>
         </div>
 
         <div class="player-load">
@@ -92,6 +94,12 @@
             <input type="file" id="fileInput" accept="audio/*" multiple hidden>
           </label>
           <span class="player-drop-hint">oder Dateien hier rein-droppen (MP3/WAV/OGG/FLAC/M4A&hellip;)</span>
+        </div>
+
+        <div class="player-playlist-search-row">
+          <input id="plSearch" type="search" class="player-playlist-search"
+                 placeholder="&#128270; Playlist filtern&hellip;" aria-label="Playlist filtern">
+          <span id="plSearchCount" class="player-playlist-count" aria-live="polite"></span>
         </div>
 
         <div class="player-playlist" id="playlist">
@@ -160,10 +168,16 @@
       const plEl    = document.getElementById('playlist');
       const playerEl= document.getElementById('player');
       const fileInp = document.getElementById('fileInput');
-      const shufBtn = document.getElementById('shuffleBtn');
-      const repBtn  = document.getElementById('repeatBtn');
+      const shufBtn   = document.getElementById('shuffleBtn');
+      const repBtn    = document.getElementById('repeatBtn');
+      const visBtn    = document.getElementById('visBtn');
+      const canvas    = document.getElementById('vis');
+      const cctx      = canvas.getContext('2d');
+      const plSearch  = document.getElementById('plSearch');
+      const plCountEl = document.getElementById('plSearchCount');
 
       const SUPPORTED = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
+      const VIS_PREF_KEY = 'glappa-tunes-vis';
 
       let tracks  = [];     // [{name, url}]
       let current = -1;
@@ -171,7 +185,278 @@
       let repeat  = 'none'; // 'none' | 'all' | 'one'
       let seekingUser = false;
 
+      // Visualizer-State (Web Audio API, lazy-init beim ersten Anschalten)
+      // visMode: 'off' | 'spectrum' | 'mandelbrot'
+      let visMode  = 'off';
+      const VIS_MODES = ['off', 'spectrum', 'mandelbrot'];
+      let audioCtx = null;
+      let analyser = null;
+      let visData  = null;
+      let visRaf   = 0;
+      let peaks    = null;
+      let visGrad  = null;
+
+      // Mandelbrot-State
+      const POIS = [
+        { re: -0.7269,             im:  0.1889            }, // Seahorse Valley
+        { re: -0.16,               im:  1.0405            }, // Spiral
+        { re: -1.74995768370609,   im:  0                 }, // Mini-Mandel
+        { re: -0.748,              im:  0.1               }, // Misiurewicz
+        { re:  0.3245046418932,    im:  0.04855101129     }, // Deep Spiral
+        { re: -0.10109636384562,   im:  0.95628651080914  }, // Tendril
+      ];
+      let mPoiIdx = -1;            // -1 = noch keiner gewaehlt -> pickRandomPoi setzt
+      let mScale  = 3.0;           // Start: zeigt klassische Mandelbrot
+      let mIter   = 80;
+      let mPhase  = 0;             // Farbphase
+      let mImg    = null;          // Persistenter ImageData-Puffer
+      let mBlackStreak = 0;        // Frames in Folge mit zu viel Schwarz
+
+      function pickRandomPoi() {
+        let n;
+        do { n = Math.floor(Math.random() * POIS.length); }
+        while (POIS.length > 1 && n === mPoiIdx);
+        mPoiIdx = n;
+        mScale  = 3.0;
+        mBlackStreak = 0;
+        mImg = null;
+      }
+
       audio.volume = 0.8;
+
+      // --- Visualizer-Lifecycle ----------------------------------
+      function fitCanvas() {
+        const r = canvas.getBoundingClientRect();
+        const w = Math.max(64, Math.floor(r.width));
+        const h = Math.max(40, Math.floor(r.height));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+          visGrad = null;
+          peaks = null;
+          mImg = null;
+        }
+      }
+
+      function ensureAudioCtx() {
+        if (audioCtx) return true;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return false;
+        try {
+          audioCtx = new Ctx();
+          const src = audioCtx.createMediaElementSource(audio);
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 128;
+          analyser.smoothingTimeConstant = 0.78;
+          visData = new Uint8Array(analyser.frequencyBinCount);
+          src.connect(analyser);
+          analyser.connect(audioCtx.destination);
+          return true;
+        } catch (e) {
+          audioCtx = null;
+          return false;
+        }
+      }
+
+      // --- Spectrum-Vis (Winamp-Style Bars) -----------------------
+      function drawSpectrum() {
+        const W = canvas.width, H = canvas.height;
+        cctx.clearRect(0, 0, W, H);
+        if (!visGrad) {
+          visGrad = cctx.createLinearGradient(0, H, 0, 0);
+          visGrad.addColorStop(0.00, '#00ff00');
+          visGrad.addColorStop(0.55, '#ffff00');
+          visGrad.addColorStop(0.85, '#ff8800');
+          visGrad.addColorStop(1.00, '#ff00ff');
+        }
+        const n = visData.length;
+        if (!peaks || peaks.length !== n) peaks = new Float32Array(n);
+        const barW = W / n;
+        const gap  = Math.max(1, Math.floor(barW * 0.18));
+        cctx.fillStyle = visGrad;
+        for (let i = 0; i < n; i++) {
+          const v = visData[i] / 255;
+          const h = Math.max(1, v * H);
+          const x = Math.floor(i * barW);
+          cctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
+          if (v > peaks[i]) peaks[i] = v;
+          else              peaks[i] = Math.max(0, peaks[i] - 0.012);
+        }
+        cctx.fillStyle = '#00ffff';
+        cctx.shadowColor = '#00ffff';
+        cctx.shadowBlur = 4;
+        for (let i = 0; i < n; i++) {
+          const py = H - peaks[i] * H;
+          const x  = Math.floor(i * barW);
+          cctx.fillRect(x + gap, Math.max(0, py - 2), Math.max(1, Math.floor(barW - gap * 2)), 2);
+        }
+        cctx.shadowBlur = 0;
+      }
+
+      // --- Mandelbrot-Vis (Auto-Zoom + Audio-Reactive) ------------
+      function drawMandelbrot() {
+        const W = canvas.width, H = canvas.height;
+        if (!mImg || mImg.width !== W || mImg.height !== H) {
+          mImg = cctx.createImageData(W, H);
+        }
+        // Audio-Bands -> Bass treibt Zoom, Treble treibt Farbe, Volume tweakt Detail
+        const n = visData.length;
+        let bass = 0, treb = 0, total = 0;
+        const bassN = Math.max(1, Math.floor(n * 0.12));
+        const trebStart = Math.floor(n * 0.55);
+        for (let i = 0; i < bassN; i++)     bass += visData[i];
+        for (let i = trebStart; i < n; i++) treb += visData[i];
+        for (let i = 0; i < n; i++)         total += visData[i];
+        bass  /= (bassN * 255);
+        treb  /= ((n - trebStart) * 255);
+        total /= (n * 255);
+
+        // Zoom + Iter dynamisch. Baseline schneller (~3%/frame) damit auch bei
+        // Stille was passiert; Bass laesst den Zoom kicken (bis ~5%/frame).
+        const zoomRate = 0.972 - bass * 0.016;
+        mScale *= zoomRate;
+        mIter   = Math.min(380, 70 + Math.floor(total * 280));
+        // Farbphase: konstanter Baseline-Spin + Treble-Kicks
+        mPhase += 1.4 + treb * 8 + total * 3;
+
+        // Bei tiefem Zoom: random POI ansteuern, reset
+        if (mScale < 1e-13) pickRandomPoi();
+        if (mPoiIdx < 0)    pickRandomPoi();   // erstes Frame
+
+        // Zeit-basierter Orbit: Camera kreist langsam um den POI, Radius skaliert
+        // mit aktuellem Zoom (= konstanter visueller Wackler), Bass amplifiziert.
+        const tnow   = performance.now() / 1000;
+        const orbR   = mScale * (0.18 + bass * 0.45);
+        const offX   = Math.sin(tnow * 0.41) * orbR;
+        const offY   = Math.cos(tnow * 0.53) * orbR;
+        const poi    = POIS[mPoiIdx];
+        const cx     = poi.re + offX;
+        const cy     = poi.im + offY;
+        const px     = mImg.data;
+        const stepX  = mScale / W;
+        const stepY  = mScale / W;       // gleicher Step fuer aspect-correct
+        const x0Base = cx - (W / 2) * stepX;
+        const y0Base = cy - (H / 2) * stepY;
+        const maxIt = mIter;
+        const phase = mPhase;
+
+        let idx = 0;
+        let blackCount = 0;
+        for (let py2 = 0; py2 < H; py2++) {
+          const y0 = y0Base + py2 * stepY;
+          for (let px2 = 0; px2 < W; px2++) {
+            const x0 = x0Base + px2 * stepX;
+            let x = 0, y = 0, x2 = 0, y2 = 0;
+            let it = 0;
+            while (x2 + y2 <= 4 && it < maxIt) {
+              y = 2 * x * y + y0;
+              x = x2 - y2 + x0;
+              x2 = x * x;
+              y2 = y * y;
+              it++;
+            }
+            if (it === maxIt) {
+              px[idx] = 0; px[idx+1] = 0; px[idx+2] = 0;
+              blackCount++;
+            } else {
+              // Smooth color: it + 1 - log(log|z|)/log2
+              const log_zn = Math.log(x2 + y2) / 2;
+              const nu = Math.log(log_zn / Math.LN2) / Math.LN2;
+              const smooth = it + 1 - nu;
+              const hue = (smooth * 8 + phase) % 360;
+              // HSL -> RGB inline
+              const s = 0.92, l = 0.55;
+              const c = (1 - Math.abs(2 * l - 1)) * s;
+              const hp = hue / 60;
+              const xc = c * (1 - Math.abs((hp % 2) - 1));
+              let r = 0, g = 0, b = 0;
+              if      (hp < 1) { r = c; g = xc; }
+              else if (hp < 2) { r = xc; g = c; }
+              else if (hp < 3) { g = c; b = xc; }
+              else if (hp < 4) { g = xc; b = c; }
+              else if (hp < 5) { r = xc; b = c; }
+              else             { r = c; b = xc; }
+              const m = l - c / 2;
+              px[idx]   = ((r + m) * 255) | 0;
+              px[idx+1] = ((g + m) * 255) | 0;
+              px[idx+2] = ((b + m) * 255) | 0;
+            }
+            px[idx+3] = 255;
+            idx += 4;
+          }
+        }
+        cctx.putImageData(mImg, 0, 0);
+
+        // Black-Streak: wenn ueber 70% schwarz UND wir haben bereits reingezoomt,
+        // ist der View "stuck" -> nach ~80 Frames (~1.3s @ 60fps) zu random POI.
+        const blackRatio = blackCount / (W * H);
+        if (blackRatio > 0.7 && mScale < 2.0) mBlackStreak++;
+        else                                  mBlackStreak = 0;
+        if (mBlackStreak > 80) pickRandomPoi();
+      }
+
+      // --- Dispatcher ---------------------------------------------
+      function drawVis() {
+        if (!analyser || visMode === 'off') { visRaf = 0; return; }
+        analyser.getByteFrequencyData(visData);
+        if (visMode === 'spectrum')   drawSpectrum();
+        else if (visMode === 'mandelbrot') drawMandelbrot();
+        visRaf = requestAnimationFrame(drawVis);
+      }
+
+      function setVisMode(mode) {
+        if (!VIS_MODES.includes(mode)) mode = 'off';
+        visMode = mode;
+        try { localStorage.setItem(VIS_PREF_KEY, mode); } catch (e) {}
+
+        // Button-Label + Active-Class
+        visBtn.classList.toggle('active', mode !== 'off');
+        if      (mode === 'spectrum')   visBtn.innerHTML = '♬ Spectrum';
+        else if (mode === 'mandelbrot') visBtn.innerHTML = '✨ Fractal';
+        else                            visBtn.innerHTML = '♬ Visualizer';
+
+        if (mode === 'off') {
+          if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+          canvas.hidden = true;
+          cctx.clearRect(0, 0, canvas.width, canvas.height);
+          return;
+        }
+        if (!ensureAudioCtx()) {
+          visMode = 'off';
+          visBtn.classList.remove('active');
+          visBtn.innerHTML = '♬ Visualizer';
+          canvas.hidden = true;
+          return;
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        canvas.hidden = false;
+        fitCanvas();
+        // Reset Mandelbrot wenn neu reingewechselt -> random POI
+        if (mode === 'mandelbrot') pickRandomPoi();
+        if (!audio.paused && !visRaf) visRaf = requestAnimationFrame(drawVis);
+      }
+
+      // Cycle-Button: off -> spectrum -> mandelbrot -> off
+      visBtn.addEventListener('click', () => {
+        const i = VIS_MODES.indexOf(visMode);
+        setVisMode(VIS_MODES[(i + 1) % VIS_MODES.length]);
+      });
+
+      // Pref aus localStorage wiederherstellen (Backcompat: '1' -> spectrum)
+      try {
+        const saved = localStorage.getItem(VIS_PREF_KEY);
+        if (saved === '1') setVisMode('spectrum');
+        else if (saved && VIS_MODES.includes(saved)) setVisMode(saved);
+      } catch (e) {}
+
+      window.addEventListener('resize', () => { if (visMode !== 'off') fitCanvas(); });
+
+      // Playlist-Filter: live, debounced light
+      plSearch.addEventListener('input', applyPlaylistFilter);
+      plSearch.addEventListener('search', applyPlaylistFilter);
+      plSearch.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { plSearch.value = ''; applyPlaylistFilter(); plSearch.blur(); }
+      });
 
       function fmt(t) {
         if (!isFinite(t) || t < 0) return '0:00';
@@ -230,6 +515,7 @@
       function renderPlaylist() {
         if (!tracks.length) {
           plEl.innerHTML = '<div class="player-playlist-empty">[ PLAYLIST LEER &mdash; Tracks &uuml;ber Button oder Drop laden ]</div>';
+          plCountEl.textContent = '';
           return;
         }
         plEl.innerHTML = tracks.map((t, i) =>
@@ -243,6 +529,37 @@
           const i = +row.dataset.i;
           row.querySelector('.player-track-name').textContent = tracks[i].name;
         });
+        applyPlaylistFilter();
+      }
+
+      function applyPlaylistFilter() {
+        const q = (plSearch.value || '').toLowerCase().trim();
+        let shown = 0;
+        plEl.querySelectorAll('.player-track-row').forEach(row => {
+          const i = +row.dataset.i;
+          const name = tracks[i] ? tracks[i].name.toLowerCase() : '';
+          const match = !q || name.includes(q);
+          row.style.display = match ? '' : 'none';
+          if (match) shown++;
+        });
+        // Empty-State bei aktivem Filter ohne Treffer
+        let noHit = plEl.querySelector('.player-playlist-nohit');
+        if (q && shown === 0 && tracks.length) {
+          if (!noHit) {
+            noHit = document.createElement('div');
+            noHit.className = 'player-playlist-empty player-playlist-nohit';
+            noHit.textContent = '[ kein Treffer für "' + q + '" ]';
+            plEl.appendChild(noHit);
+          } else {
+            noHit.textContent = '[ kein Treffer für "' + q + '" ]';
+          }
+        } else if (noHit) {
+          noHit.remove();
+        }
+        // Counter
+        if (!tracks.length)      plCountEl.textContent = '';
+        else if (q)              plCountEl.textContent = shown + '/' + tracks.length;
+        else                     plCountEl.textContent = tracks.length + '';
       }
 
       audio.addEventListener('timeupdate', () => {
@@ -254,16 +571,33 @@
       audio.addEventListener('loadedmetadata', () => {
         totEl.textContent = fmt(audio.duration);
       });
-      audio.addEventListener('play',  () => playBtn.innerHTML = '&#10074;&#10074;');
-      audio.addEventListener('pause', () => playBtn.innerHTML = '&#9654;');
+      audio.addEventListener('play',  () => {
+        playBtn.innerHTML = '&#10074;&#10074;';
+        if (visMode !== 'off' && analyser && !visRaf) {
+          if (audioCtx.state === 'suspended') audioCtx.resume();
+          visRaf = requestAnimationFrame(drawVis);
+        }
+      });
+      audio.addEventListener('pause', () => {
+        playBtn.innerHTML = '&#9654;';
+        if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+      });
       audio.addEventListener('ended', () => {
+        if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
         if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
         const isLast = current === tracks.length - 1;
         if (isLast && repeat !== 'all' && !shuffle) { stop(); return; }
         next();
       });
       audio.addEventListener('error', () => {
-        titleEl.textContent = 'Fehler beim Laden: ' + (tracks[current] ? tracks[current].name : '?');
+        // ABORTED (code 1) feuert normal beim Track-Wechsel — ignorieren
+        const err = audio.error;
+        if (!err || err.code === 1) return;
+        const name = tracks[current] ? tracks[current].name : '?';
+        titleEl.textContent = 'Fehler beim Laden: ' + name;
+        if ((err.code === 3 || err.code === 4) && tracks.length > 1) {
+          setTimeout(next, 800);
+        }
       });
 
       playBtn.addEventListener('click', togglePlay);

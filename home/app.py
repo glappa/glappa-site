@@ -440,6 +440,19 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <div id="status"></div>
+    <div id="tunesHint" style="display:none;margin-top:14px;text-align:center">
+      <a id="tunesLink" href="#" target="_blank" style="
+        display:inline-block;padding:10px 22px;
+        background:#000;border:3px outset var(--neon-green);
+        color:var(--neon-green);font-size:1.1rem;font-weight:bold;
+        text-decoration:none;letter-spacing:1px;
+        text-shadow:0 0 6px var(--neon-green),0 0 12px var(--neon-green);">
+        &#9836; In Tunes öffnen &rarr;
+      </a>
+      <div style="font-size:0.78rem;color:#888;margin-top:6px">
+        Datei ins Player-Fenster ziehen oder über "Dateien wählen" laden
+      </div>
+    </div>
   </main>
 
   <footer class="footer">
@@ -564,10 +577,16 @@ async function startDownload() {{
     if (d.error) {{ setSt('Error: ' + d.error, 'err'); unlock(); return; }}
     setBar(100, d.total||'', '', '');
     document.getElementById('bar').classList.add('done');
-    setSt('✓ Done! Saving…', 'ok');
+    setSt('✓ Fertig! Download startet…', 'ok');
     const a = document.createElement('a');
     a.href = '/file/' + d.file_id; a.download = d.filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    // Tunes-Link anzeigen (nur bei MP3)
+    if (fmt === 'mp3') {{
+      const hint = document.getElementById('tunesHint');
+      document.getElementById('tunesLink').href = '{tunes}';
+      hint.style.display = 'block';
+    }}
     unlock();
   }});
 
@@ -778,12 +797,17 @@ def _home_url(glappa_base: str) -> str:
         return f'{glappa_base}/home/index.html'
     return 'https://home.glappa.de'
 
+def _tunes_url(glappa_base: str) -> str:
+    if glappa_base.startswith(('http://localhost', 'http://127.', 'http://192.168.', 'http://10.', 'http://172.')):
+        return f'{glappa_base}/home/tunes.html'
+    return 'https://home.glappa.de/tunes.html'
+
 
 # ── Routes ────────────────────────────────────────────────────────
 @Downloader.route('/')
 def index():
     glappa = _glappa_base()
-    html = INDEX_HTML_TEMPLATE.format(glappa=glappa, home=_home_url(glappa))
+    html = INDEX_HTML_TEMPLATE.format(glappa=glappa, home=_home_url(glappa), tunes=_tunes_url(glappa))
     return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 

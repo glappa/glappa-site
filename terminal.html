@@ -9,15 +9,12 @@
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css?v=9">
   <style>
-    /* ── Terminal-spezifisch ── */
     body {
       background-color: #000 !important;
       background-image: url('img/gif/background.gif') !important;
       background-repeat: repeat !important;
       background-attachment: fixed !important;
     }
-
-    /* Dunkler Overlay damit das Terminal gut lesbar bleibt */
     body::before {
       content: '';
       position: fixed;
@@ -26,19 +23,17 @@
       z-index: 0;
       pointer-events: none;
     }
-
     .marquee, header.header, nav.nav, .term-wrap, .marquee--bottom {
       position: relative;
       z-index: 1;
     }
-
     .term-wrap {
       max-width: 860px;
       margin: 0 auto;
       padding: 10px 16px 40px;
     }
 
-    /* CRT-Effekt */
+    /* CRT-Rahmen */
     #terminal {
       background: #0a0a0a;
       border: 2px solid var(--neon-green);
@@ -62,10 +57,8 @@
       inset: 0;
       background: repeating-linear-gradient(
         to bottom,
-        transparent 0px,
-        transparent 3px,
-        rgba(0,0,0,0.12) 3px,
-        rgba(0,0,0,0.12) 4px
+        transparent 0px, transparent 3px,
+        rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px
       );
       pointer-events: none;
       z-index: 10;
@@ -84,7 +77,6 @@
     .input-row {
       display: flex;
       align-items: center;
-      gap: 0;
     }
     .prompt-label {
       color: var(--neon-cyan);
@@ -107,7 +99,6 @@
       padding: 0 4px;
     }
 
-    /* Zeilen-Farben */
     .line-cmd    { color: var(--neon-cyan);   text-shadow: 0 0 4px var(--neon-cyan); }
     .line-ok     { color: var(--neon-green);  text-shadow: 0 0 3px var(--neon-green); }
     .line-err    { color: #ff4444;            text-shadow: 0 0 4px #ff4444; }
@@ -115,26 +106,52 @@
     .line-sys    { color: #888; }
     .line-art    { color: var(--neon-green);  text-shadow: 0 0 5px var(--neon-green); }
     .line-pink   { color: var(--neon-pink);   text-shadow: 0 0 4px var(--neon-pink); }
+    .line-bios   { color: #aaa; }
+    .line-white  { color: #fff; text-shadow: 0 0 4px #fff; }
 
-    /* Blink-Cursor neben Prompt */
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     .cursor-blink { animation: blink 1s step-start infinite; }
+    .blink-text   { animation: blink 0.8s step-start infinite; }
 
-    /* Boot-Animation */
-    @keyframes fadeInLine {
-      from { opacity: 0; transform: translateX(-6px); }
-      to   { opacity: 1; transform: translateX(0); }
+    /* Press-any-key Bildschirm */
+    #presskey {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      cursor: pointer;
+    }
+    #presskey pre {
+      color: #aaa;
+      font-size: clamp(0.55rem, 1.1vw, 0.78rem);
+      line-height: 1.3;
+      margin: 0 0 28px;
+      text-align: center;
+    }
+    #presskey .pk-msg {
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      letter-spacing: 2px;
+    }
+    #presskey .pk-sub {
+      color: #555;
+      font-family: 'Courier New', monospace;
+      font-size: 0.75rem;
+      margin-top: 6px;
     }
   </style>
 </head>
 <body>
 
-  <!-- Marquee oben -->
   <div class="marquee marquee--top">
     <span>&#9733; WILLKOMMEN AUF GLAPPA.DE &#9733; DIE COOLSTE SEITE IM WORLD WIDE WEB &#9733; BEST VIEWED IN 800x600 &#9733; </span>
   </div>
 
-  <!-- Header -->
   <header class="header">
     <img class="alien" src="img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
     <div class="page-banner green">
@@ -150,7 +167,6 @@
     <img class="alien" src="img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
   </header>
 
-  <!-- Navigation -->
   <nav class="nav">
     <a href="index.html">&larr; Glappa</a>
     <span class="sep">|</span>
@@ -165,9 +181,25 @@
     <a href="secret/pilzskip.html">SUPER Secret Page</a>
   </nav>
 
-  <!-- Terminal -->
   <div class="term-wrap">
     <div id="terminal">
+
+      <!-- Press-any-key Overlay -->
+      <div id="presskey">
+        <pre>
+  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗
+ ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗
+ ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║
+ ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║
+ ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║
+  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝
+
+     GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.
+        </pre>
+        <div class="pk-msg blink-text">PRESS ANY KEY TO BOOT</div>
+        <div class="pk-sub">or click here</div>
+      </div>
+
       <div id="output"></div>
       <div class="input-row" id="input-row" style="display:none">
         <span class="prompt-label">glappa@web:~$&nbsp;</span>
@@ -178,7 +210,6 @@
     </div>
   </div>
 
-  <!-- Footer-Marquee -->
   <div class="marquee marquee--bottom" style="margin-top:20px">
     <span>&#9733; HACK THE PLANET &#9733; ROOT ACCESS GRANTED &#9733; DO NOT HACK GLAPPA.DE &#9733; </span>
   </div>
@@ -186,11 +217,132 @@
   <script src="script.js?v=9"></script>
   <script>
   (function () {
-    const out     = document.getElementById('output');
-    const inputRow = document.getElementById('input-row');
-    const inp     = document.getElementById('cmd-input');
 
-    /* ── Kommandos ─────────────────────────────────────────── */
+    /* ══════════════════════════════════════════════════════════════
+       AUDIO ENGINE  (Web Audio API — keine externen Dateien)
+    ══════════════════════════════════════════════════════════════ */
+    let _actx = null;
+    function actx() {
+      if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (_actx.state === 'suspended') _actx.resume();
+      return _actx;
+    }
+
+    /* Kurzes mechanisches Tastatur-Klick-Geräusch (Windows XP Style) */
+    function playClick() {
+      try {
+        const c = actx();
+        const len = Math.ceil(c.sampleRate * 0.038);
+        const buf = c.createBuffer(1, len, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++)
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 7);
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        const f = c.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 3800; f.Q.value = 0.8;
+        const g = c.createGain(); g.gain.value = 0.28;
+        src.connect(f); f.connect(g); g.connect(c.destination);
+        src.start();
+      } catch(e) {}
+    }
+
+    /* Festplatten-Hochlaufen: tiefes Rauschen das in der Frequenz steigt */
+    function playHDDSpinup() {
+      try {
+        const c = actx();
+        const dur = 2.8;
+        const len = Math.ceil(c.sampleRate * dur);
+        const buf = c.createBuffer(1, len, c.sampleRate);
+        const d = buf.getChannelData(0);
+        let last = 0;
+        for (let i = 0; i < len; i++) {
+          last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+          d[i] = Math.max(-1, Math.min(1, last * 4));
+        }
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        const f = c.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.setValueAtTime(40,  c.currentTime);
+        f.frequency.linearRampToValueAtTime(700, c.currentTime + dur * 0.65);
+        f.frequency.linearRampToValueAtTime(350, c.currentTime + dur);
+        const g = c.createGain();
+        g.gain.setValueAtTime(0, c.currentTime);
+        g.gain.linearRampToValueAtTime(0.55, c.currentTime + 0.35);
+        g.gain.setValueAtTime(0.55, c.currentTime + dur - 0.4);
+        g.gain.linearRampToValueAtTime(0.12, c.currentTime + dur);
+        src.connect(f); f.connect(g); g.connect(c.destination);
+        src.start();
+      } catch(e) {}
+    }
+
+    /* Kopf-Such-Geräusch der Festplatte */
+    function playHDDSeek() {
+      try {
+        const c = actx();
+        const len = Math.ceil(c.sampleRate * 0.11);
+        const buf = c.createBuffer(1, len, c.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++)
+          d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.18));
+        const src = c.createBufferSource();
+        src.buffer = buf;
+        const f = c.createBiquadFilter();
+        f.type = 'bandpass'; f.frequency.value = 1600; f.Q.value = 2.5;
+        const g = c.createGain(); g.gain.value = 0.45;
+        src.connect(f); f.connect(g); g.connect(c.destination);
+        src.start();
+      } catch(e) {}
+    }
+
+    /* BIOS POST-Piep */
+    function playBeep(freq, dur) {
+      freq = freq || 880; dur = dur || 0.14;
+      try {
+        const c = actx();
+        const osc = c.createOscillator();
+        osc.type = 'square'; osc.frequency.value = freq;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.22, c.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + dur);
+        osc.connect(g); g.connect(c.destination);
+        osc.start(); osc.stop(c.currentTime + dur);
+      } catch(e) {}
+    }
+
+    /* Windows XP-artiger Startup-Chime (aufsteigender Akkord) */
+    function playStartupChime() {
+      try {
+        const c = actx();
+        [[523.25, 0, 1.9], [659.25, 0.13, 1.7], [783.99, 0.3, 2.1], [1046.5, 0.58, 2.6]]
+          .forEach(function(n) {
+            var freq = n[0], t = n[1], dur = n[2];
+            var osc  = c.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+            var osc2 = c.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = freq * 2.01;
+            var g = c.createGain();
+            g.gain.setValueAtTime(0, c.currentTime + t);
+            g.gain.linearRampToValueAtTime(0.13, c.currentTime + t + 0.07);
+            g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + dur);
+            var g2 = c.createGain(); g2.gain.value = 0.025;
+            osc.connect(g); osc2.connect(g2); g2.connect(g); g.connect(c.destination);
+            osc.start(c.currentTime + t); osc.stop(c.currentTime + t + dur);
+            osc2.start(c.currentTime + t); osc2.stop(c.currentTime + t + dur);
+          });
+      } catch(e) {}
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       DOM
+    ══════════════════════════════════════════════════════════════ */
+    const presskey  = document.getElementById('presskey');
+    const out       = document.getElementById('output');
+    const inputRow  = document.getElementById('input-row');
+    const inp       = document.getElementById('cmd-input');
+
+    /* ══════════════════════════════════════════════════════════════
+       VIRTUELLES DATEISYSTEM
+    ══════════════════════════════════════════════════════════════ */
     const FS = {
       '/':            { type: 'dir', children: ['home', 'etc', 'var', 'usr', 'secret'] },
       '/home':        { type: 'dir', children: ['glappa'] },
@@ -202,7 +354,6 @@
       '/usr/bin':     { type: 'dir', children: ['cat', 'ls', 'rm', 'vim', 'nano', 'python3', 'nmap', 'hydra'] },
       '/secret':      { type: 'dir', children: ['classified.txt', '???'] },
     };
-
     const FILES = {
       '/home/glappa/README.txt':
         'Willkommen auf Glappa.de!\nDieses Terminal ist rein kosmetisch.\nViel Spaß beim Hacken! 😎\n\n-- Lex',
@@ -225,44 +376,79 @@
     };
 
     let cwd = '/home/glappa';
-    const history = [];
+    const cmdHistory = [];
     let histIdx = -1;
 
-    /* ── ASCII-Art Boot ── */
+    /* ══════════════════════════════════════════════════════════════
+       BOOT-SEQUENZ
+    ══════════════════════════════════════════════════════════════ */
     const BOOT = [
-      { cls: 'line-art',  t: 0,    txt: 'GLAPPA OS v1.337 — KERNEL 9000.1-RETRO' },
-      { cls: 'line-sys',  t: 120,  txt: 'Lade Kernelmodule...          [ OK ]' },
-      { cls: 'line-sys',  t: 240,  txt: 'Initialisiere Neon-Subsystem.. [ OK ]' },
-      { cls: 'line-sys',  t: 360,  txt: 'Starte GIF-Engine v9.0......  [ OK ]' },
-      { cls: 'line-sys',  t: 480,  txt: 'Kalibriere Bingus-Detektor.... [ OK ]' },
-      { cls: 'line-sys',  t: 600,  txt: 'Verbinde mit Matrix........... [ OK ]' },
-      { cls: 'line-err',  t: 720,  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
-      { cls: 'line-sys',  t: 840,  txt: 'Starte Haupt-Shell............' },
-      { cls: 'line-ok',   t: 1000, txt: '' },
-      { cls: 'line-ok',   t: 1020, txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
-      { cls: 'line-ok',   t: 1040, txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
-      { cls: 'line-ok',   t: 1060, txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
-      { cls: 'line-ok',   t: 1080, txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
-      { cls: 'line-ok',   t: 1100, txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
-      { cls: 'line-ok',   t: 1120, txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
-      { cls: 'line-ok',   t: 1140, txt: '' },
-      { cls: 'line-pink', t: 1160, txt: '  Tippe  help  für eine Liste aller Befehle.' },
-      { cls: 'line-info', t: 1180, txt: '  Tippe  neofetch  für Systeminfo.' },
-      { cls: 'line-ok',   t: 1200, txt: '' },
+      // BIOS Phase
+      { t:    0, cls: 'line-bios', txt: 'GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.' },
+      { t:   80, cls: 'line-bios', txt: 'CPU: Intel Pentium MMX 200MHz' },
+      { t:  160, cls: 'line-bios', txt: 'Memory Test: ', ram: true },
+      { t:  900, cls: 'line-bios', txt: 'Memory OK — 32768 KB' },
+      { t: 1000, cls: 'line-bios', txt: 'Detecting IDE drives...' },
+      { t: 1100, sound: 'seek' },
+      { t: 1200, cls: 'line-bios', txt: 'IDE0 Master: GLAPPA-HDD    2048 MB' },
+      { t: 1350, sound: 'seek' },
+      { t: 1450, cls: 'line-bios', txt: 'IDE1 Master: ATAPI CD-ROM  48X' },
+      { t: 1600, cls: 'line-bios', txt: 'Booting from IDE0...' },
+      { t: 1750, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
+      // OS Boot Phase
+      { t: 1900, cls: 'line-art',  txt: 'GLAPPA OS v1.337 — KERNEL 9000.1-RETRO' },
+      { t: 2000, sound: 'seek' },
+      { t: 2050, cls: 'line-sys',  txt: 'Lade Kernelmodule ...............  [ OK ]' },
+      { t: 2150, sound: 'seek' },
+      { t: 2200, cls: 'line-sys',  txt: 'Initialisiere Neon-Subsystem ....  [ OK ]' },
+      { t: 2350, sound: 'seek' },
+      { t: 2400, cls: 'line-sys',  txt: 'Starte GIF-Engine v9.0 ..........  [ OK ]' },
+      { t: 2550, sound: 'seek' },
+      { t: 2600, cls: 'line-sys',  txt: 'Kalibriere Bingus-Detektor ......  [ OK ]' },
+      { t: 2750, sound: 'seek' },
+      { t: 2800, cls: 'line-sys',  txt: 'Verbinde mit Matrix .............  [ OK ]' },
+      { t: 2950, sound: 'seek' },
+      { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
+      { t: 3150, cls: 'line-sys',  txt: 'Starte Haupt-Shell ..............  [ OK ]' },
+      { t: 3300, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
+      // ASCII Art
+      { t: 3450, cls: 'line-ok',   txt: '' },
+      { t: 3470, cls: 'line-ok',   txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
+      { t: 3490, cls: 'line-ok',   txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
+      { t: 3510, cls: 'line-ok',   txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
+      { t: 3530, cls: 'line-ok',   txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
+      { t: 3550, cls: 'line-ok',   txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
+      { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
+      { t: 3590, cls: 'line-ok',   txt: '' },
+      { t: 3610, sound: 'chime' },
+      { t: 3650, cls: 'line-pink', txt: '  Tippe  help  für eine Liste aller Befehle.' },
+      { t: 3670, cls: 'line-info', txt: '  Tippe  neofetch  für Systeminfo.' },
+      { t: 3690, cls: 'line-ok',   txt: '' },
     ];
 
+    /* RAM-Counter Animation */
+    function animateRAM() {
+      const div = document.createElement('div');
+      div.className = 'line-bios';
+      div.textContent = 'Memory Test: 0 KB';
+      out.appendChild(div);
+      const target = 32768;
+      const steps  = 28;
+      let   step   = 0;
+      const iv = setInterval(function() {
+        step++;
+        const val = Math.min(Math.round(target * step / steps), target);
+        div.textContent = 'Memory Test: ' + val + ' KB';
+        if (step >= steps) clearInterval(iv);
+      }, 25);
+    }
+
     /* ── Hilfsfunktionen ── */
-    function appendLine(text, cls = 'line-ok') {
+    function appendLine(text, cls) {
+      cls = cls || 'line-ok';
       const div = document.createElement('div');
       div.className = cls;
       div.textContent = text;
-      out.appendChild(div);
-      out.scrollTop = out.scrollHeight;
-    }
-    function appendHTML(html, cls = 'line-ok') {
-      const div = document.createElement('div');
-      div.className = cls;
-      div.innerHTML = html;
       out.appendChild(div);
       out.scrollTop = out.scrollHeight;
     }
@@ -272,7 +458,6 @@
       if (!p || p === '~') return '/home/glappa';
       if (p.startsWith('~')) p = '/home/glappa' + p.slice(1);
       if (!p.startsWith('/')) p = cwd + '/' + p;
-      // normalize
       const parts = p.split('/').filter(Boolean);
       const stack = [];
       for (const part of parts) {
@@ -282,7 +467,9 @@
       return '/' + stack.join('/');
     }
 
-    /* ── Befehle ── */
+    /* ══════════════════════════════════════════════════════════════
+       BEFEHLE
+    ══════════════════════════════════════════════════════════════ */
     const COMMANDS = {
 
       help() {
@@ -310,9 +497,10 @@
           ['sl',             'Eine Überraschung'],
           ['ping glappa.de', 'Ping!'],
           ['sudo <cmd>',     'Mit Root-Rechten'],
+          ['reboot',         'System neu starten'],
           ['exit',           'Terminal schließen'],
-        ].forEach(([cmd, desc]) => {
-          appendLine(`│  ${cmd.padEnd(20)} ${desc.padEnd(24)}│`, 'line-ok');
+        ].forEach(function([cmd, desc]) {
+          appendLine('│  ' + cmd.padEnd(20) + ' ' + desc.padEnd(24) + '│', 'line-ok');
         });
         appendLine('└──────────────────────────────────────────────┘', 'line-info');
         blank();
@@ -321,17 +509,13 @@
       ls(args) {
         const p = resolvePath(args[0]) || cwd;
         const node = FS[p];
-        if (!node) {
-          appendLine(`ls: ${args[0] || p}: Kein solches Verzeichnis`, 'line-err');
-          return;
-        }
+        if (!node) { appendLine('ls: ' + (args[0]||p) + ': Kein solches Verzeichnis', 'line-err'); return; }
         if (node.type === 'dir') {
           blank();
-          node.children.forEach(c => {
-            const childPath = p === '/' ? '/' + c : p + '/' + c;
-            const isDir = FS[childPath] && FS[childPath].type === 'dir';
-            const cls = isDir ? 'line-info' : 'line-ok';
-            appendLine((isDir ? c + '/' : c).padEnd(18) + (isDir ? '<DIR>' : ''), cls);
+          node.children.forEach(function(c) {
+            const cp = p === '/' ? '/' + c : p + '/' + c;
+            const isDir = FS[cp] && FS[cp].type === 'dir';
+            appendLine((isDir ? c + '/' : c).padEnd(18) + (isDir ? '<DIR>' : ''), isDir ? 'line-info' : 'line-ok');
           });
           blank();
         }
@@ -341,38 +525,26 @@
         const target = args[0];
         if (!target || target === '~') { cwd = '/home/glappa'; return; }
         const p = resolvePath(target);
-        if (FS[p] && FS[p].type === 'dir') {
-          cwd = p;
-        } else if (p === '/secret/???') {
-          appendLine('ZUGANG VERWEIGERT. Du weißt nicht mal wo du hinwillst.', 'line-err');
-        } else {
-          appendLine(`cd: ${target}: Kein solches Verzeichnis`, 'line-err');
-        }
+        if (FS[p] && FS[p].type === 'dir') { cwd = p; }
+        else if (p === '/secret/???') { appendLine('ZUGANG VERWEIGERT.', 'line-err'); }
+        else { appendLine('cd: ' + target + ': Kein solches Verzeichnis', 'line-err'); }
       },
 
-      pwd() { appendLine(cwd); },
+      pwd()  { appendLine(cwd); },
 
       cat(args) {
         if (!args[0]) { appendLine('cat: Fehlende Datei', 'line-err'); return; }
         const p = resolvePath(args[0]);
-        if (FILES[p]) {
-          blank();
-          FILES[p].split('\n').forEach(l => appendLine(l));
-          blank();
-        } else if (FS[p]) {
-          appendLine(`cat: ${args[0]}: Ist ein Verzeichnis`, 'line-err');
-        } else {
-          appendLine(`cat: ${args[0]}: Keine solche Datei oder Verzeichnis`, 'line-err');
-        }
+        if (FILES[p]) { blank(); FILES[p].split('\n').forEach(function(l){ appendLine(l); }); blank(); }
+        else if (FS[p]) { appendLine('cat: ' + args[0] + ': Ist ein Verzeichnis', 'line-err'); }
+        else { appendLine('cat: ' + args[0] + ': Keine solche Datei', 'line-err'); }
       },
 
-      whoami()  { appendLine('glappa (uid=1337 gid=1337 groups=1337(l33t),0(root))'); },
+      whoami() { appendLine('glappa (uid=1337 gid=1337 groups=1337(l33t),0(root))'); },
 
-      'uname'(args) {
-        appendLine('GlappaOS 9000.1-RETRO #1 SMP NEON x86_64 GNU/L33T');
-      },
+      uname()  { appendLine('GlappaOS 9000.1-RETRO #1 SMP NEON x86_64 GNU/L33T'); },
 
-      date() {
+      date()   {
         appendLine(new Date().toLocaleString('de-DE', {
           weekday:'long', year:'numeric', month:'long', day:'numeric',
           hour:'2-digit', minute:'2-digit', second:'2-digit'
@@ -381,91 +553,57 @@
 
       echo(args) { appendLine(args.join(' ')); },
 
-      clear() { out.innerHTML = ''; },
+      clear()  { out.innerHTML = ''; },
 
       history() {
-        if (!history.length) { appendLine('(leer)'); return; }
-        history.forEach((h, i) => appendLine(`  ${String(i+1).padStart(3)}  ${h}`));
+        if (!cmdHistory.length) { appendLine('(leer)'); return; }
+        cmdHistory.forEach(function(h, i) { appendLine('  ' + String(i+1).padStart(3) + '  ' + h); });
       },
 
       neofetch() {
         blank();
-        const art = [
-          '       .,,,,,.        ',
-          '    ,;;;;;;;;;;,      ',
-          '   ;;; ;;    ;;;      ',
-          '  ;;;  ██ ██  ;;      ',
-          '  ;;   ████   ;;      ',
-          '  ;;    ██    ;;      ',
-          '   ;;;       ;;;      ',
-          '    \';;;;;;;;;;;\'     ',
-          '       \'\'\'\'\'\'         ',
-        ];
-        const info = [
-          ['OS',       'GlappaOS 9000.1-RETRO'],
-          ['Host',     'glappa.de (The Coolest Site in WWW)'],
-          ['Shell',    'glappa-sh v1.337'],
-          ['Theme',    'Neon-Dark + Comic Sans'],
-          ['Kernel',   'Retro-5.0-NEON'],
-          ['CPU',      'Intel Pentium MMX @ 200 MHz'],
-          ['RAM',      '32 MB / 64 MB (wir sparen)'],
-          ['Uptime',   'Seit 1997'],
-          ['Browser',  'Netscape Navigator 4'],
-          ['Modus',    '800x600 Beste Auflösung'],
-        ];
-        const rows = Math.max(art.length, info.length);
-        for (let i = 0; i < rows; i++) {
-          const a = (art[i] || '').padEnd(22);
-          const inf = info[i] ? `\x1b[0m${info[i][0].padEnd(10)}: ${info[i][1]}` : '';
-          const div = document.createElement('div');
-          div.style.display = 'flex';
-          div.style.gap = '8px';
-          const left  = document.createElement('span');
-          const right = document.createElement('span');
-          left.className = 'line-ok';
-          left.style.minWidth = '160px';
-          left.textContent = a;
-          right.className = 'line-info';
-          right.textContent = info[i] ? `${info[i][0].padEnd(12)}: ${info[i][1]}` : '';
-          div.appendChild(left);
-          div.appendChild(right);
-          out.appendChild(div);
+        const art  = ['       .,,,,,.        ','    ,;;;;;;;;;;,      ','   ;;; ;;    ;;;      ',
+                       '  ;;;  ██ ██  ;;      ','  ;;   ████   ;;      ','  ;;    ██    ;;      ',
+                       '   ;;;       ;;;      ','    \';;;;;;;;;;;\'     ','       \'\'\'\'\'\'         '];
+        const info = [['OS','GlappaOS 9000.1-RETRO'],['Host','glappa.de (The Coolest Site in WWW)'],
+                       ['Shell','glappa-sh v1.337'],['Theme','Neon-Dark + Comic Sans'],
+                       ['Kernel','Retro-5.0-NEON'],['CPU','Intel Pentium MMX @ 200 MHz'],
+                       ['RAM','32 MB / 64 MB (wir sparen)'],['Uptime','Seit 1997'],
+                       ['Browser','Netscape Navigator 4'],['Modus','800x600 Beste Auflösung']];
+        for (let i = 0; i < Math.max(art.length, info.length); i++) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px';
+          const l = document.createElement('span'); l.className = 'line-ok'; l.style.minWidth = '160px';
+          l.textContent = (art[i] || '').padEnd(22);
+          const r = document.createElement('span'); r.className = 'line-info';
+          r.textContent = info[i] ? info[i][0].padEnd(12) + ': ' + info[i][1] : '';
+          row.appendChild(l); row.appendChild(r); out.appendChild(row);
         }
         blank();
       },
 
       hack() {
-        const lines = [
-          'Verbinde mit Ziel-Server....',
-          'Bypass Firewall............. [ OK ]',
-          'SQL-Injection............... [ OK ]',
-          'Buffer Overflow............. [ OK ]',
-          'Lade geheime Dateien........ [ OK ]',
-          'Lösche Spuren............... [ OK ]',
-          '',
-          'SYSTEM KOMPROMITTIERT !!',
-          '',
-          '  Nur Spaß. Hacking ist illegal. ¯\\_(ツ)_/¯',
-        ];
+        const lines = ['Verbinde mit Ziel-Server....','Bypass Firewall............. [ OK ]',
+                        'SQL-Injection............... [ OK ]','Buffer Overflow............. [ OK ]',
+                        'Lade geheime Dateien........ [ OK ]','Lösche Spuren............... [ OK ]',
+                        '','SYSTEM KOMPROMITTIERT !!','','  Nur Spaß. Hacking ist illegal. ¯\\_(ツ)_/¯'];
         let i = 0;
-        const iv = setInterval(() => {
+        const iv = setInterval(function() {
           if (i >= lines.length) { clearInterval(iv); return; }
           appendLine(lines[i], i < 6 ? 'line-sys' : (i === 7 ? 'line-err' : 'line-ok'));
+          if (i < 6) playHDDSeek();
           i++;
         }, 180);
       },
 
       matrix() {
-        blank();
-        appendLine('[ Matrix-Modus für 3 Sekunden ]', 'line-info');
-        blank();
+        blank(); appendLine('[ Matrix-Modus für 3 Sekunden ]', 'line-info'); blank();
         const chars = '01アイウエオカキクケコサシスセソタチツテト';
         let count = 0;
-        const iv = setInterval(() => {
+        const iv = setInterval(function() {
           if (count++ > 18) { clearInterval(iv); blank(); return; }
           let row = '';
-          for (let i = 0; i < 60; i++)
-            row += chars[Math.floor(Math.random() * chars.length)];
+          for (let i = 0; i < 60; i++) row += chars[Math.floor(Math.random() * chars.length)];
           appendLine(row, 'line-ok');
         }, 80);
       },
@@ -474,74 +612,55 @@
         const text = args.join(' ') || 'Muh! Ich bin eine Retro-Kuh!';
         const line = '-'.repeat(text.length + 2);
         blank();
-        appendLine(` ${line}`);
-        appendLine(`< ${text} >`);
-        appendLine(` ${line}`);
-        appendLine('        \\   ^__^');
-        appendLine('         \\  (oo)\\_______');
-        appendLine('            (__)\\       )\\/\\');
-        appendLine('                ||----w |');
-        appendLine('                ||     ||');
-        blank();
+        appendLine(' ' + line); appendLine('< ' + text + ' >'); appendLine(' ' + line);
+        appendLine('        \\   ^__^'); appendLine('         \\  (oo)\\_______');
+        appendLine('            (__)\\       )\\/\\'); appendLine('                ||----w |');
+        appendLine('                ||     ||'); blank();
       },
 
       fortune() {
-        const quotes = [
-          '"Das Internet ist ein Satz von Röhren." — Senator Ted Stevens',
-          '"640 KB sollten für jeden genug sein." — Bill Gates (angeblich)',
-          '"Ich trinke mein Ovomaltine." — Mystic River',
-          '"Hack the planet! Hack the planet!" — Hackers (1995)',
-          '"All your base are belong to us." — CATS, 1992',
-          '"Ein Tag ohne GIFs ist wie ein Tag ohne Sonnenschein." — Anon',
-          '"sudo make me a sandwich." — xkcd #149',
-          '"Es gibt 10 Arten von Menschen..." — Nerd-Witz',
-          '"rm -rf / — tu das nicht." — jeder Sysadmin',
-          '"404: Weltfrieden nicht gefunden." — HTTP-Error',
-        ];
-        blank();
-        appendLine(quotes[Math.floor(Math.random() * quotes.length)], 'line-pink');
-        blank();
+        const q = ['"Das Internet ist ein Satz von Röhren." — Senator Ted Stevens',
+                   '"640 KB sollten für jeden genug sein." — Bill Gates (angeblich)',
+                   '"Ich trinke mein Ovomaltine." — Mystic River',
+                   '"Hack the planet! Hack the planet!" — Hackers (1995)',
+                   '"All your base are belong to us." — CATS, 1992',
+                   '"Ein Tag ohne GIFs ist wie ein Tag ohne Sonnenschein." — Anon',
+                   '"sudo make me a sandwich." — xkcd #149',
+                   '"Es gibt 10 Arten von Menschen..." — Nerd-Witz',
+                   '"rm -rf / — tu das nicht." — jeder Sysadmin',
+                   '"404: Weltfrieden nicht gefunden." — HTTP-Error'];
+        blank(); appendLine(q[Math.floor(Math.random() * q.length)], 'line-pink'); blank();
       },
 
       sl() {
-        const train = [
-          '      ====        ________                ___________  ',
-          '  _D _|  |_______/        \\__I_I_____===__|_________| ',
-          '   |(_)---  |   H\\________/ |   |        =|___ ___|  ',
-          '   /     |  |   H  |  |     |   |         ||_| |_||  ',
-          '  |      |  |   H  |__--------------------| [___] |  ',
-          '  | ________|___H__/__|_____/[][]~\\_______|       |  ',
-          '  |/ |   |-----------I_____I [][] []  D   |=====__| ',
-          "   \\_|___|_|                        \\____|_[___]__| ",
-          '     |___|_|                         |___|   [___]   ',
-          '      \\___|                           |___|         ',
-        ];
-        blank();
-        appendLine('  SL — Steam Locomotive (du meintest ls?)', 'line-info');
-        blank();
-        train.forEach(l => appendLine(l, 'line-ok'));
-        blank();
-        appendLine('  🚂 CHOO CHOO! Bitte kein sl auf Produktivservern.', 'line-info');
-        blank();
+        const train = ['      ====        ________                ___________  ',
+                        '  _D _|  |_______/        \\__I_I_____===__|_________| ',
+                        '   |(_)---  |   H\\________/ |   |        =|___ ___|  ',
+                        '   /     |  |   H  |  |     |   |         ||_| |_||  ',
+                        '  |      |  |   H  |__--------------------| [___] |  ',
+                        '  | ________|___H__/__|_____/[][]~\\_______|       |  ',
+                        '  |/ |   |-----------I_____I [][] []  D   |=====__| ',
+                        "   \\_|___|_|                        \\____|_[___]__| ",
+                        '     |___|_|                         |___|   [___]   ',
+                        '      \\___|                           |___|         '];
+        blank(); appendLine('  SL — Steam Locomotive (du meintest ls?)', 'line-info'); blank();
+        train.forEach(function(l){ appendLine(l, 'line-ok'); });
+        blank(); appendLine('  🚂 CHOO CHOO!', 'line-info'); blank();
       },
 
       ping(args) {
         const host = args[0] || 'glappa.de';
-        blank();
-        appendLine(`PING ${host}: 56 data bytes`, 'line-sys');
+        blank(); appendLine('PING ' + host + ': 56 data bytes', 'line-sys');
         let i = 0;
-        const iv = setInterval(() => {
+        const iv = setInterval(function() {
           if (i++ >= 4) {
-            clearInterval(iv);
-            blank();
-            appendLine(`--- ${host} ping statistics ---`, 'line-sys');
-            appendLine(`4 packets transmitted, 4 received, 0% packet loss`, 'line-ok');
-            appendLine(`round-trip min/avg/max = 1.337/4.2/13.37 ms`, 'line-ok');
-            blank();
-            return;
+            clearInterval(iv); blank();
+            appendLine('--- ' + host + ' ping statistics ---', 'line-sys');
+            appendLine('4 packets transmitted, 4 received, 0% packet loss', 'line-ok');
+            appendLine('round-trip min/avg/max = 1.337/4.2/13.37 ms', 'line-ok');
+            blank(); return;
           }
-          const ms = (Math.random() * 12 + 1).toFixed(3);
-          appendLine(`64 bytes from ${host}: icmp_seq=${i} ttl=64 time=${ms} ms`);
+          appendLine('64 bytes from ' + host + ': icmp_seq=' + i + ' ttl=64 time=' + (Math.random()*12+1).toFixed(3) + ' ms');
         }, 500);
       },
 
@@ -549,106 +668,121 @@
         if (!args.length) { appendLine('sudo: Befehl fehlt', 'line-err'); return; }
         if (args[0] === 'rm' && args.includes('-rf')) {
           appendLine('sudo: rm -rf: NEIN. Nur nicht.', 'line-err');
-          appendLine('     (Bitte nicht die Produktion zerstören.)', 'line-sys');
-          return;
+          appendLine('     (Bitte nicht die Produktion zerstören.)', 'line-sys'); return;
         }
         if (args[0] === 'make' && args[1] === 'me') {
           appendLine('[sudo] Passwort für glappa: ');
-          setTimeout(() => appendLine('Ein Sandwich wird zubereitet... 🥪', 'line-ok'), 600);
-          return;
+          setTimeout(function(){ appendLine('Ein Sandwich wird zubereitet... 🥪', 'line-ok'); }, 600); return;
         }
-        appendLine(`[sudo] Passwort für glappa: `);
-        setTimeout(() => {
+        appendLine('[sudo] Passwort für glappa: ');
+        setTimeout(function(){
           appendLine('Sorry, try again.', 'line-err');
           appendLine('Sorry, try again.', 'line-err');
           appendLine('sudo: 3 incorrect password attempts', 'line-err');
         }, 700);
       },
 
-      exit() {
-        blank();
-        appendLine('Session beendet. Auf Wiedersehen! 👋', 'line-pink');
-        blank();
-        setTimeout(() => { window.location.href = 'index.html'; }, 1200);
+      reboot() {
+        blank(); appendLine('System wird neu gestartet...', 'line-info'); blank();
+        setTimeout(function(){ window.location.reload(); }, 1400);
       },
 
-      // Leere oder unbekannte Befehle
+      exit() {
+        blank(); appendLine('Session beendet. Auf Wiedersehen! 👋', 'line-pink'); blank();
+        setTimeout(function(){ window.location.href = 'index.html'; }, 1200);
+      },
+
       _unknown(cmd) {
-        appendLine(`${cmd}: Befehl nicht gefunden. Versuche 'help'`, 'line-err');
+        appendLine(cmd + ': Befehl nicht gefunden. Versuche \'help\'', 'line-err');
       }
     };
 
-    /* ── Input verarbeiten ── */
+    /* ══════════════════════════════════════════════════════════════
+       INPUT VERARBEITEN
+    ══════════════════════════════════════════════════════════════ */
     function runCmd(raw) {
       const trimmed = raw.trim();
       if (!trimmed) return;
-
-      history.unshift(trimmed);
+      cmdHistory.unshift(trimmed);
       histIdx = -1;
-
-      const promptStr = `glappa@web:${cwd}$ ${trimmed}`;
-      appendLine(promptStr, 'line-cmd');
-
+      appendLine('glappa@web:' + cwd + '$ ' + trimmed, 'line-cmd');
       const parts = trimmed.split(/\s+/);
       const cmd   = parts[0].toLowerCase();
       const args  = parts.slice(1);
-
-      if (cmd in COMMANDS) {
-        COMMANDS[cmd](args);
-      } else if (cmd === 'uname') {
-        COMMANDS['uname'](args);
-      } else {
-        COMMANDS._unknown(cmd);
-      }
-
-      // Prompt-Label aktualisieren
-      document.querySelector('.prompt-label').textContent = `glappa@web:${cwd}$ `;
+      if (COMMANDS[cmd]) COMMANDS[cmd](args);
+      else COMMANDS._unknown(cmd);
+      document.querySelector('.prompt-label').textContent = 'glappa@web:' + cwd + '$ ';
     }
 
-    inp.addEventListener('keydown', e => {
+    inp.addEventListener('keydown', function(e) {
+      playClick();
       if (e.key === 'Enter') {
-        const val = inp.value;
-        inp.value = '';
-        runCmd(val);
+        const val = inp.value; inp.value = ''; runCmd(val);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (histIdx < history.length - 1) histIdx++;
-        inp.value = history[histIdx] || '';
+        if (histIdx < cmdHistory.length - 1) histIdx++;
+        inp.value = cmdHistory[histIdx] || '';
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         if (histIdx > 0) histIdx--;
         else { histIdx = -1; inp.value = ''; return; }
-        inp.value = history[histIdx] || '';
+        inp.value = cmdHistory[histIdx] || '';
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        // einfache Autovervollständigung
         const partial = inp.value.split(/\s+/).pop();
-        const allCmds = Object.keys(COMMANDS).filter(c => !c.startsWith('_'));
-        const match = allCmds.find(c => c.startsWith(partial));
+        const match = Object.keys(COMMANDS).filter(function(c){ return !c.startsWith('_'); })
+                        .find(function(c){ return c.startsWith(partial); });
         if (match) {
-          const parts = inp.value.split(/\s+/);
-          parts[parts.length - 1] = match;
-          inp.value = parts.join(' ');
+          const p = inp.value.split(/\s+/); p[p.length-1] = match; inp.value = p.join(' ');
         }
       }
     });
 
-    // Klick ins Terminal → fokussiert Input
-    document.getElementById('terminal').addEventListener('click', () => inp.focus());
+    document.getElementById('terminal').addEventListener('click', function() { inp.focus(); });
 
-    /* ── Boot-Sequenz ── */
-    BOOT.forEach(({ cls, t, txt }) => {
-      setTimeout(() => appendLine(txt, cls), t);
-    });
-    setTimeout(() => {
-      inputRow.style.display = 'flex';
-      inp.focus();
-    }, 1300);
+    /* ══════════════════════════════════════════════════════════════
+       BOOT STARTEN — erst nach User-Geste (für Audio-Autoplay)
+    ══════════════════════════════════════════════════════════════ */
+    function startBoot() {
+      presskey.style.display = 'none';
 
-    // Marquee-Scrolling aus script.js überschreiben (Terminal-spezifisch)
-    document.querySelectorAll('.marquee span').forEach(span => {
+      // HDD hochlaufen (sofort)
+      playHDDSpinup();
+      // BIOS-Piep nach 300ms
+      setTimeout(function(){ playBeep(440, 0.18); }, 300);
+
+      BOOT.forEach(function(entry) {
+        setTimeout(function() {
+          if (entry.sound === 'seek')  { playHDDSeek(); return; }
+          if (entry.sound === 'chime') { playStartupChime(); return; }
+          if (entry.ram) { animateRAM(); return; }
+          appendLine(entry.txt, entry.cls);
+        }, entry.t);
+      });
+
+      // Shell freischalten
+      setTimeout(function() {
+        inputRow.style.display = 'flex';
+        inp.focus();
+      }, 3800);
+    }
+
+    // Einmalig auf erste Interaktion warten
+    let booted = false;
+    function onFirstInteraction() {
+      if (booted) return;
+      booted = true;
+      document.removeEventListener('keydown', onFirstInteraction);
+      presskey.removeEventListener('click', onFirstInteraction);
+      startBoot();
+    }
+    document.addEventListener('keydown', onFirstInteraction);
+    presskey.addEventListener('click', onFirstInteraction);
+
+    document.querySelectorAll('.marquee span').forEach(function(span) {
       span.style.animation = 'scroll-left 28s linear infinite';
     });
+
   })();
   </script>
 </body>
