@@ -216,6 +216,8 @@
       let visGrad  = null;
 
       // Mandelbrot-State
+      let mFrameMs  = 16;    // Gleitender Schnitt der Frame-Zeit (ms)
+      let mLastTime = 0;     // timestamp des letzten drawMandelbrot-Aufrufs
       const POIS = [
         { re: -0.7269,             im:  0.1889            }, // Seahorse Valley
         { re: -0.16,               im:  1.0405            }, // Spiral
@@ -239,6 +241,8 @@
         mScale  = 3.0;
         mBlackStreak = 0;
         mImg = null;
+        mFrameMs = 16;   // Frame-Zeit-Schnitt zurücksetzen nach POI-Wechsel
+        mLastTime = 0;
       }
 
       audio.volume = 0.8;
@@ -314,6 +318,15 @@
 
       // --- Mandelbrot-Vis (Auto-Zoom + Audio-Reactive) ------------
       function drawMandelbrot() {
+        // Frame-Zeit messen für Lag-Erkennung
+        const tNowMs = performance.now();
+        if (mLastTime > 0) {
+          const dt = tNowMs - mLastTime;
+          // Exponentieller Gleitschnitt: schnell auf Lag reagieren, langsam erholen
+          mFrameMs = mFrameMs * 0.85 + dt * 0.15;
+        }
+        mLastTime = tNowMs;
+
         const W = canvas.width, H = canvas.height;
         if (!mImg || mImg.width !== W || mImg.height !== H) {
           mImg = cctx.createImageData(W, H);
@@ -330,9 +343,20 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Zoom: ~1%/frame Baseline, Bass gibt leichten Kick (+0.4%).
-        // So dauert ein voller Zoom-Durchlauf ca. 60-90 Sekunden.
-        const zoomRate = 0.990 - bass * 0.004;
+        // Adaptiver Zoom: bei Lag (>35ms/Frame ≈ <28fps) rauszoomen statt reinzoomen.
+        // Unter 25ms (~40fps) normal reinzoomen. Dazwischen sanfter Übergang.
+        let zoomRate;
+        if (mFrameMs > 35) {
+          // Laggy → rauszoomen (mScale > 1 = zoom out)
+          const lagFactor = Math.min((mFrameMs - 35) / 40, 1); // 0..1
+          zoomRate = 1.008 + lagFactor * 0.012; // 1.008..1.020 (raus)
+        } else if (mFrameMs > 22) {
+          // Übergangszone → stabil bleiben (kein Zoom)
+          zoomRate = 1.0;
+        } else {
+          // Smooth → reinzoomen wie gewohnt, Bass gibt Kick
+          zoomRate = 0.990 - bass * 0.004;
+        }
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
         // Farbphase: langsamer Baseline-Spin (~30°/s) + moderater Treble-Kick
