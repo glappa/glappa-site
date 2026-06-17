@@ -16,9 +16,9 @@
 set -euo pipefail
 
 # ── Pfade ────────────────────────────────────────────────────────────
-# UGREEN NAS: Freigegebene Ordner liegen unter /mnt/user/
-# Passe DATA_DIR an falls dein Ordner anders heisst.
-DATA_DIR="/mnt/user/appdata/glappa-site-data"
+# UGREEN NAS: Daten liegen auf /volume1 oder /volume2
+# Passe DATA_DIR an falls dein Volume anders heisst.
+DATA_DIR="/volume1/glappa-site-data"
 COOKIES_DIR="$DATA_DIR/cookies"
 DOWNLOADS_DIR="$DATA_DIR/downloads"
 PROJECT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
