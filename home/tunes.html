@@ -223,7 +223,8 @@
       // Mandelbrot-State
       let mFrameMs   = 16;   // Gleitender Schnitt der Frame-Zeit (ms)
       let mLastTime  = 0;    // timestamp des letzten drawMandelbrot-Aufrufs
-      let mPoiFrames = 0;    // Frames seit letztem POI-Pick (Fallback-Reset)
+      let mPoiFrames   = 0;  // Frames seit letztem POI-Pick (Fallback-Reset)
+      let mBoringCount = 0;  // aufeinanderfolgende "langweilige" Pixel-Checks
       const POIS = [
         { re: -0.7269,             im:  0.1889            }, // Seahorse Valley
         { re: -0.16,               im:  1.0405            }, // Spiral
@@ -243,13 +244,14 @@
         let n;
         do { n = Math.floor(Math.random() * POIS.length); }
         while (POIS.length > 1 && n === mPoiIdx);
-        mPoiIdx     = n;
-        mScale      = 3.0;
+        mPoiIdx      = n;
+        mScale       = 3.0;
         mBlackStreak = 0;
-        mImg        = null;
-        mFrameMs    = 16;
-        mLastTime   = 0;
-        mPoiFrames  = 0;
+        mImg         = null;
+        mFrameMs     = 16;
+        mLastTime    = 0;
+        mPoiFrames   = 0;
+        mBoringCount = 0;
       }
 
       // WebGL-Init: Mandelbrot-Shader kompilieren, Full-Screen-Quad aufsetzen
@@ -490,6 +492,32 @@
           gl.uniform1i(glU.maxIter, mIter);
           gl.uniform1f(glU.phase,   mPhase);
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+          // Boring-Check: alle ~90 Frames (~1.5s) Pixel-Varianz prüfen.
+          // Wenn das Bild zu einheitlich ist (Regenbogen-Loop, alles schwarz,
+          // alles eine Farbe), nach 3 positiven Checks (~4.5s) resetten.
+          if (mPoiFrames % 90 === 1) {
+            const sW = 16, sH = 16;
+            const pBuf = new Uint8Array(sW * sH * 4);
+            // Stichprobe aus der Bildmitte
+            const rx = Math.floor((W - sW) / 2);
+            const ry = Math.floor((H - sH) / 2);
+            gl.readPixels(rx, ry, sW, sH, gl.RGBA, gl.UNSIGNED_BYTE, pBuf);
+            let sumL = 0, sumL2 = 0;
+            const cnt = sW * sH;
+            for (let k = 0; k < cnt; k++) {
+              // Luminanz (0..1)
+              const lum = (pBuf[k*4]*0.299 + pBuf[k*4+1]*0.587 + pBuf[k*4+2]*0.114) / 255;
+              sumL  += lum;
+              sumL2 += lum * lum;
+            }
+            const meanL = sumL / cnt;
+            const varL  = sumL2 / cnt - meanL * meanL;
+            // Varianz < 0.008 → sehr einheitlich (egal ob schwarz, weiß oder Rainbow-Loop)
+            if (varL < 0.008) mBoringCount++;
+            else              mBoringCount = 0;
+            if (mBoringCount >= 3) pickRandomPoi();
+          }
           return;
         }
 
