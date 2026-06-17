@@ -1,0 +1,46 @@
+# docker-compose fuer Synology NAS (Container Manager / DXP 4800 GT)
+#
+# Voraussetzung: Image muss in der GitHub Container Registry verfuegbar sein.
+# Wird automatisch gebaut wenn Code auf 'main' gepusht wird (→ .github/workflows/docker-publish.yml).
+#
+# Einrichtung auf dem NAS:
+#   1. Container Manager → Projekt → Erstellen
+#   2. Diese Datei als docker-compose.yml angeben
+#   3. Pfad fuer das cookies-Verzeichnis anpassen (Zeile "device:" unter volumes)
+#   4. Starten
+#
+# Alternativ per SSH auf dem NAS:
+#   docker compose -f docker-compose.nas.yml up -d
+
+services:
+  glappa:
+    image: ghcr.io/glappa/glappa-site:latest
+    container_name: glappa
+    pull_policy: always
+    ports:
+      - "8099:80"      # Statische Seite (Index, page1, bounce, secret, home)
+      - "8090:8090"    # YouTube-Downloader (app.py)
+    environment:
+      # yt-dlp Cookies fuer YouTube-Bot-Bypass.
+      # Datei im cookies-Verzeichnis auf dem NAS ablegen (Netscape-Format).
+      # Existiert sie nicht, laeuft der Downloader ohne Cookies weiter.
+      - YT_COOKIE_FILE=/cookies/youtube.txt
+    volumes:
+      # Persistente Downloads: ueberlebt Container-Neustarts und Updates
+      - glappa-downloads:/downloads
+      # Cookies-Verzeichnis: Pfad auf dem NAS anpassen falls noetig
+      - glappa-cookies:/cookies
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1/', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  glappa-downloads:
+    # Synology legt Docker-Volumes standardmaessig unter
+    # /volume1/docker/volumes/ ab – kein weiterer Handlungsbedarf.
+    driver: local
+  glappa-cookies:
+    driver: local
