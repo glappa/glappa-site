@@ -26,11 +26,21 @@
     }
 
     .wa-desktop {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px 10px 60px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      grid-template-rows: auto auto auto;
       gap: 0;
+      padding: 20px 20px 60px;
+      max-width: 1100px;
+      margin: 0 auto;
+      align-items: start;
+    }
+    .wa-left  { grid-column: 1; display: flex; flex-direction: column; }
+    .wa-right { grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; margin-left: 0; }
+
+    @media (max-width: 700px) {
+      .wa-desktop { grid-template-columns: 1fr; }
+      .wa-right { grid-column: 1; grid-row: auto; }
     }
 
     /* ── WINDOW FRAME ──────────────────────────────── */
@@ -40,9 +50,9 @@
       border-color: #888 #333 #333 #888;
       box-shadow: 3px 3px 0 #000;
       image-rendering: pixelated;
-      width: 280px;
+      width: 100%;
     }
-    .wa-win + .wa-win { margin-top: 0; border-top: none; }
+    .wa-left .wa-win + .wa-win { border-top: none; }
 
     /* Title bar */
     .wa-bar {
@@ -170,11 +180,19 @@
     #wa-big-vis {
       display: block;
       width: 100%;
-      height: 34px;
+      height: 80px;
       background: #000;
       margin-bottom: 4px;
       border: 1px solid #1a1a1a;
       cursor: pointer;
+    }
+    #wa-big-vis-label {
+      font-family: var(--px);
+      font-size: 5px;
+      color: #336633;
+      text-align: right;
+      margin-bottom: 2px;
+      padding-right: 2px;
     }
 
     /* Seek */
@@ -434,29 +452,62 @@
     }
     .wa-drop.over { border-color: #00ff00; color: #00ff00; background: #001100; }
 
+    /* ── PLAYLIST taller ───────────────────────────── */
+    .wa-pl-list { height: 200px; }
+
     /* ── MILKDROP WINDOW ───────────────────────────── */
-    #wa-milkdrop {
-      width: 280px;
-      margin-top: 0;
-      border-top: none;
-    }
-    .wa-milk-body { padding: 0; position: relative; }
+    #wa-milkdrop { border-left: none; height: 100%; }
+    .wa-milk-body { padding: 0; position: relative; height: calc(100% - 22px); }
     #wa-milk-canvas {
       display: block;
       width: 100%;
-      height: 200px;
+      height: 100%;
+      min-height: 500px;
       background: #000;
       cursor: pointer;
     }
+    .wa-milk-overlay {
+      position: absolute;
+      top: 6px; left: 8px;
+      font-family: var(--px);
+      font-size: 6px;
+      color: rgba(0,255,120,0.5);
+      pointer-events: none;
+      line-height: 2;
+    }
     .wa-milk-hint {
       position: absolute;
-      bottom: 4px;
-      right: 6px;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--px);
+      font-size: 8px;
+      color: rgba(0,255,0,0.7);
+      text-shadow: 0 0 8px #00ff00;
+      pointer-events: none;
+      letter-spacing: 2px;
+      transition: opacity 0.3s;
+    }
+    .wa-milk-presets {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      display: flex;
+      gap: 3px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .wa-milk-pbtn {
       font-family: var(--px);
       font-size: 5px;
-      color: rgba(0,255,0,0.4);
-      pointer-events: none;
+      background: rgba(0,30,0,0.7);
+      border: 1px solid #336633;
+      color: #669966;
+      padding: 2px 4px;
+      cursor: pointer;
     }
+    .wa-milk-pbtn:hover { color: #00ff00; border-color: #00ff00; }
+    .wa-milk-pbtn.active { color: #00ff00; border-color: #00ff00; background: rgba(0,80,0,0.7); text-shadow: 0 0 4px #00ff00; }
   </style>
 </head>
 <body>
@@ -504,7 +555,7 @@
 
   <main>
     <div class="wa-desktop">
-
+      <div class="wa-left">
       <!-- ══ MAIN PLAYER ══ -->
       <div class="wa-win" id="wa-main">
         <div class="wa-bar">
@@ -541,7 +592,8 @@
           </div>
 
           <!-- Big visualizer -->
-          <canvas id="wa-big-vis" width="270" height="34" title="Klick: Vis-Modus wechseln"></canvas>
+          <div id="wa-big-vis-label">KLICK: VIS WECHSELN [BARS / SCOPE / FIRE]</div>
+          <canvas id="wa-big-vis" width="400" height="80" title="Klick: Vis-Modus wechseln"></canvas>
 
           <!-- Seek -->
           <input type="range" class="wa-seekbar" id="waSeek" min="0" max="1000" value="0">
@@ -613,17 +665,26 @@
         </div>
       </div>
 
+      </div><!-- .wa-left -->
+
       <!-- ══ MILKDROP VISUALIZER ══ -->
+      <div class="wa-right">
       <div class="wa-win" id="wa-milkdrop">
         <div class="wa-bar">
-          <span class="wa-bar-title">MILKDROP</span>
+          <span class="wa-bar-title">MILKDROP 2.0 &mdash; GLAPPA EDITION</span>
           <div class="wa-bar-btns"><div class="wa-xbtn">×</div></div>
         </div>
         <div class="wa-milk-body">
-          <canvas id="wa-milk-canvas" width="280" height="200" title="Klick: neues Preset"></canvas>
-          <div class="wa-milk-hint" id="waMilkHint">KLICK: PRESET WECHSELN</div>
+          <canvas id="wa-milk-canvas" width="600" height="500" title="Klick: neues Preset"></canvas>
+          <div class="wa-milk-overlay" id="waMilkOverlay">
+            PRESET: <span id="waMilkPresetName">TUNNEL</span><br>
+            KLICK / TASTE M: WECHSELN
+          </div>
+          <div class="wa-milk-hint" id="waMilkHint"></div>
+          <div class="wa-milk-presets" id="waMilkPresetBtns"></div>
         </div>
       </div>
+      </div><!-- .wa-right -->
 
     </div>
   </main>
@@ -1149,10 +1210,28 @@
       z: Math.random()
     }));
 
+    // Build preset buttons
+    const milkPresetBtns = document.getElementById('waMilkPresetBtns');
+    MILK_PRESETS.forEach((name, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'wa-milk-pbtn' + (i === 0 ? ' active' : '');
+      btn.textContent = name;
+      btn.addEventListener('click', e => { e.stopPropagation(); setMilkPreset(i); });
+      milkPresetBtns.appendChild(btn);
+    });
+
+    function setMilkPreset(i) {
+      milkPreset = i;
+      document.getElementById('waMilkPresetName').textContent = MILK_PRESETS[i];
+      const hint = document.getElementById('waMilkHint');
+      hint.textContent = MILK_PRESETS[i];
+      hint.style.opacity = '1';
+      setTimeout(() => { hint.style.opacity = '0'; }, 1200);
+      milkPresetBtns.querySelectorAll('.wa-milk-pbtn').forEach((b, j) => b.classList.toggle('active', j === i));
+    }
+
     milkCanvas.addEventListener('click', () => {
-      milkPreset = (milkPreset + 1) % MILK_PRESETS.length;
-      document.getElementById('waMilkHint').textContent = MILK_PRESETS[milkPreset];
-      setTimeout(() => { document.getElementById('waMilkHint').textContent = ''; }, 1500);
+      setMilkPreset((milkPreset + 1) % MILK_PRESETS.length);
     });
 
     function getMilkBands() {
@@ -1347,6 +1426,18 @@
       return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)];
     }
 
+    // Resize canvases to actual pixel size
+    function resizeCanvases() {
+      const mRect = milkCanvas.getBoundingClientRect();
+      if (mRect.width > 0) { milkCanvas.width = Math.floor(mRect.width); milkCanvas.height = Math.floor(mRect.height); }
+      const bRect = bigCanvas.getBoundingClientRect();
+      if (bRect.width > 0) { bigCanvas.width = Math.floor(bRect.width); bigCanvas.height = Math.floor(bRect.height); bGrad = null; bPeaks = null; }
+      const sRect = specCanvas.getBoundingClientRect();
+      if (sRect.width > 0) { specCanvas.width = Math.floor(sRect.width); specCanvas.height = Math.floor(sRect.height); }
+    }
+    window.addEventListener('resize', resizeCanvases);
+    setTimeout(resizeCanvases, 100);
+
     // Start idle Milkdrop
     milkRaf = requestAnimationFrame(drawMilk);
 
@@ -1420,7 +1511,7 @@
       else if (e.key === 'ArrowRight' && e.shiftKey) nextTrack();
       else if (e.key === 'ArrowLeft'  && e.shiftKey) prevTrack();
       else if (e.key === 'v' || e.key === 'V')   { bigMode = (bigMode+1)%3; }
-      else if (e.key === 'm' || e.key === 'M')   { milkPreset = (milkPreset+1)%MILK_PRESETS.length; }
+      else if (e.key === 'm' || e.key === 'M')   { setMilkPreset((milkPreset+1)%MILK_PRESETS.length); }
     });
 
     // Footer year
