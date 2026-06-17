@@ -3,456 +3,466 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Winamp &mdash; Glappa Home</title>
+  <title>Winamp &mdash; Glappa</title>
   <link rel="icon" href="../favicon.ico">
   <link rel="stylesheet" href="home.css?v=5">
   <style>
-    body { background: #1a1a2e; }
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-    /* ── Winamp Desktop ─────────────────────────────────── */
+    body { background: #0a0a1a; }
+
+    /* ── WINAMP SKIN VARIABLES ─────────────────────── */
+    :root {
+      --wa-bg:       #232323;
+      --wa-dark:     #1a1a1a;
+      --wa-border-l: #777777;
+      --wa-border-d: #333333;
+      --wa-green:    #00ff00;
+      --wa-green2:   #33cc33;
+      --wa-lcd-bg:   #0a1a0a;
+      --wa-btn:      #4a4a4a;
+      --wa-skin:     #232323;
+      --px: 'Press Start 2P', 'Courier New', monospace;
+    }
+
     .wa-desktop {
       display: flex;
       flex-direction: column;
       align-items: center;
+      padding: 20px 10px 60px;
       gap: 0;
-      padding: 20px 10px 40px;
-      user-select: none;
     }
 
-    /* ── Window Base ────────────────────────────────────── */
+    /* ── WINDOW FRAME ──────────────────────────────── */
     .wa-win {
-      position: relative;
-      background: #232323;
-      border: 2px solid #888;
-      border-top-color: #bbb;
-      border-left-color: #bbb;
-      border-bottom-color: #444;
-      border-right-color: #444;
-      box-shadow: 2px 2px 0 #000, inset 1px 1px 0 #555;
-      font-family: 'Courier New', monospace;
-      cursor: default;
-      margin-bottom: 0;
+      background: var(--wa-bg);
+      border: 2px solid;
+      border-color: #888 #333 #333 #888;
+      box-shadow: 3px 3px 0 #000;
+      image-rendering: pixelated;
+      width: 280px;
     }
+    .wa-win + .wa-win { margin-top: 0; border-top: none; }
 
     /* Title bar */
-    .wa-titlebar {
-      height: 14px;
-      background: linear-gradient(to right, #1a2a8a 0%, #4a6aee 40%, #1a2a8a 100%);
+    .wa-bar {
+      height: 18px;
+      background: linear-gradient(90deg, #003366 0%, #1a5599 40%, #003366 100%);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 3px;
+      padding: 0 4px;
       cursor: move;
     }
-    .wa-titlebar-title {
-      font-size: 8px;
-      color: #aaccff;
-      font-weight: bold;
+    .wa-bar-title {
+      font-family: var(--px);
+      font-size: 6px;
+      color: #88ccff;
       letter-spacing: 1px;
-      text-transform: uppercase;
+      text-shadow: 0 0 4px #0066ff;
     }
-    .wa-titlebar-btns {
-      display: flex;
-      gap: 2px;
+    .wa-bar-btns { display: flex; gap: 2px; }
+    .wa-xbtn {
+      width: 11px; height: 11px;
+      background: #3a4a5a;
+      border: 1px solid #88aacc;
+      border-bottom-color: #223;
+      border-right-color: #223;
+      font-size: 7px; color: #aaccee;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-family: Arial, sans-serif;
     }
-    .wa-tb-btn {
-      width: 9px;
-      height: 9px;
-      background: #667;
-      border: 1px solid #aaa;
-      border-bottom-color: #333;
-      border-right-color: #333;
-      font-size: 5px;
-      color: #ccc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-    }
-    .wa-tb-btn:hover { background: #889; }
-    .wa-tb-btn:active { border-color: #333; border-bottom-color: #aaa; border-right-color: #aaa; }
+    .wa-xbtn:hover { background: #4a6a8a; }
 
-    /* ── MAIN PLAYER ────────────────────────────────────── */
-    #wa-main {
-      width: 275px;
-    }
-    .wa-body {
-      padding: 4px;
+    /* ── MAIN PLAYER BODY ──────────────────────────── */
+    .wa-main-body {
+      padding: 5px;
+      background: var(--wa-bg);
     }
 
-    /* LCD Display */
+    /* LCD */
     .wa-lcd {
-      background: #000;
-      border: 2px inset #555;
-      border-top-color: #333;
-      border-left-color: #333;
-      border-bottom-color: #777;
-      border-right-color: #777;
-      padding: 3px 4px;
+      background: var(--wa-lcd-bg);
+      border: 2px solid;
+      border-color: #333 #666 #666 #333;
+      padding: 4px 5px 3px;
       margin-bottom: 4px;
       position: relative;
-      overflow: hidden;
     }
-    .wa-lcd-scroll {
-      font-size: 10px;
-      color: #00cc00;
+    .wa-lcd-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 3px;
+    }
+    /* Play indicator */
+    .wa-play-ind {
+      font-family: var(--px);
+      font-size: 7px;
+      color: #00ff00;
+      text-shadow: 0 0 6px #00ff00;
+      min-width: 12px;
+    }
+    /* Scrolling title */
+    .wa-title-wrap {
+      flex: 1;
+      overflow: hidden;
+      height: 10px;
+      margin: 0 4px;
+    }
+    .wa-title-txt {
+      font-family: var(--px);
+      font-size: 6px;
+      color: #00ff00;
       white-space: nowrap;
-      overflow: hidden;
-      font-family: 'Courier New', monospace;
-      letter-spacing: 1px;
-      height: 14px;
-      line-height: 14px;
-    }
-    .wa-lcd-scroll span {
       display: inline-block;
+      text-shadow: 0 0 4px #00cc00;
     }
-    .wa-lcd-scroll span.scroll-active {
-      animation: wa-scroll 8s linear infinite;
-      padding-right: 40px;
+    .wa-title-txt.scrolling {
+      animation: wa-scroll 10s linear infinite;
     }
     @keyframes wa-scroll {
       0%   { transform: translateX(100%); }
-      100% { transform: translateX(-100%); }
+      100% { transform: translateX(-300%); }
+    }
+    /* Track number */
+    .wa-tracknum {
+      font-family: var(--px);
+      font-size: 6px;
+      color: #009900;
+      min-width: 18px;
+      text-align: right;
     }
 
-    .wa-lcd-info {
+    /* Time + meta row */
+    .wa-lcd-mid {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 2px;
+      align-items: flex-end;
+      gap: 6px;
     }
-    .wa-lcd-time {
-      font-size: 20px;
-      color: #00ee00;
-      font-family: 'Courier New', monospace;
+    .wa-time {
+      font-family: var(--px);
+      font-size: 18px;
+      color: #00ff00;
+      text-shadow: 0 0 10px #00ff00, 0 0 20px #00aa00;
       letter-spacing: 2px;
       line-height: 1;
-      text-shadow: 0 0 8px #00ff00, 0 0 15px #00aa00;
     }
-    .wa-lcd-meta {
+    .wa-meta {
       display: flex;
       flex-direction: column;
-      align-items: flex-end;
       gap: 1px;
+      font-family: var(--px);
+      font-size: 5px;
+      color: #009900;
     }
-    .wa-lcd-kbps, .wa-lcd-khz {
-      font-size: 9px;
-      color: #00cc00;
-      letter-spacing: 1px;
+    .wa-meta span { display: block; }
+
+    /* Spectrum in LCD (small, like real Winamp) */
+    #wa-spec {
+      display: block;
+      width: 72px;
+      height: 28px;
+      margin-left: auto;
     }
 
-    /* Visualizer */
-    #wa-vis {
+    /* Main big visualizer canvas */
+    #wa-big-vis {
       display: block;
       width: 100%;
-      height: 26px;
+      height: 34px;
       background: #000;
       margin-bottom: 4px;
-      border: 1px solid #333;
+      border: 1px solid #1a1a1a;
+      cursor: pointer;
     }
 
-    /* Seek bar */
-    .wa-seek-wrap {
-      background: #000;
-      border: 1px inset #444;
-      padding: 2px 3px;
-      margin-bottom: 4px;
-    }
-    .wa-seek {
+    /* Seek */
+    .wa-seekbar {
       width: 100%;
       height: 10px;
       -webkit-appearance: none;
       appearance: none;
-      background: #222;
+      background: repeating-linear-gradient(90deg, #1a3a1a 0px, #1a3a1a 2px, #000 2px, #000 4px);
+      border: 1px solid #333;
       cursor: pointer;
-      border: 1px inset #555;
+      display: block;
+      margin-bottom: 4px;
     }
-    .wa-seek::-webkit-slider-thumb {
+    .wa-seekbar::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 10px;
-      height: 10px;
-      background: #aaa;
-      border: 1px solid #fff;
-      border-bottom-color: #555;
-      border-right-color: #555;
+      width: 14px; height: 10px;
+      background: #33cc33;
+      border: 1px solid #66ff66;
+      border-bottom-color: #005500;
+      border-right-color: #005500;
       cursor: pointer;
+      image-rendering: pixelated;
     }
-    .wa-seek::-moz-range-thumb {
-      width: 10px;
-      height: 10px;
-      background: #aaa;
-      border: 1px solid #fff;
+    .wa-seekbar::-moz-range-thumb {
+      width: 12px; height: 8px;
+      background: #33cc33;
+      border: 1px solid #66ff66;
       cursor: pointer;
     }
 
-    /* Controls */
-    .wa-controls {
+    /* Green pixel buttons */
+    .wa-btns {
       display: flex;
-      align-items: center;
-      gap: 3px;
+      gap: 2px;
       margin-bottom: 4px;
+      align-items: center;
     }
-    .wa-btn {
-      background: #3a3a4a;
-      border: 1px solid #777;
-      border-top-color: #aaa;
-      border-left-color: #aaa;
-      border-bottom-color: #333;
-      border-right-color: #333;
-      color: #ccc;
-      font-size: 9px;
-      padding: 2px 5px;
+    .wa-pbtn {
+      background: #336633;
+      border: 1px solid;
+      border-color: #66ff66 #003300 #003300 #66ff66;
+      color: #00ff00;
+      font-size: 10px;
+      width: 28px; height: 18px;
       cursor: pointer;
-      font-family: 'Courier New', monospace;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      min-width: 28px;
-      text-align: center;
+      display: flex; align-items: center; justify-content: center;
+      text-shadow: 0 0 4px #00ff00;
+      image-rendering: pixelated;
+      flex-shrink: 0;
     }
-    .wa-btn:hover { background: #4a4a5a; color: #fff; }
-    .wa-btn:active {
-      border-color: #333;
-      border-bottom-color: #aaa;
-      border-right-color: #aaa;
+    .wa-pbtn:hover { background: #449944; }
+    .wa-pbtn:active {
+      border-color: #003300 #66ff66 #66ff66 #003300;
       transform: translate(1px,1px);
     }
-    .wa-btn.active {
-      background: #2a3a6a;
-      color: #aaccff;
-      border-top-color: #333;
-      border-left-color: #333;
-      border-bottom-color: #aaa;
-      border-right-color: #aaa;
-    }
-    .wa-btn--play { font-size: 12px; min-width: 32px; }
+    .wa-pbtn--wide { width: 38px; }
 
-    /* Volume + Balance */
-    .wa-sliders {
+    /* Volume slider */
+    .wa-vol-row {
       display: flex;
-      gap: 6px;
       align-items: center;
+      gap: 4px;
       margin-bottom: 4px;
     }
-    .wa-slider-label {
-      font-size: 8px;
-      color: #888;
-      letter-spacing: 1px;
+    .wa-vol-lbl {
+      font-family: var(--px);
+      font-size: 5px;
+      color: #009900;
+      min-width: 22px;
     }
-    .wa-slider {
+    .wa-volslider {
       -webkit-appearance: none;
       appearance: none;
+      flex: 1;
       height: 8px;
-      background: #111;
-      border: 1px inset #555;
+      background: repeating-linear-gradient(90deg, #1a3a1a 0, #1a3a1a 2px, #000 2px, #000 4px);
+      border: 1px solid #333;
       cursor: pointer;
     }
-    .wa-slider::-webkit-slider-thumb {
+    .wa-volslider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 8px;
-      height: 12px;
-      background: #aaa;
-      border: 1px solid #ddd;
-      border-bottom-color: #555;
-      border-right-color: #555;
+      width: 10px; height: 12px;
+      background: #33cc33;
+      border: 1px solid #66ff66;
+      border-bottom-color: #004400;
+      border-right-color: #004400;
+      cursor: pointer;
     }
-    .wa-slider::-moz-range-thumb {
-      width: 8px;
-      height: 12px;
-      background: #aaa;
-      border: 1px solid #ddd;
+    .wa-volslider::-moz-range-thumb {
+      width: 8px; height: 10px;
+      background: #33cc33;
+      border: 1px solid #66ff66;
     }
-    #wa-vol { width: 90px; }
-    #wa-bal { width: 70px; }
 
-    /* Mode buttons row */
+    /* Mode / toggle buttons */
     .wa-modes {
       display: flex;
       gap: 3px;
+      flex-wrap: wrap;
     }
-    .wa-mode-btn {
-      background: #2a2a3a;
-      border: 1px solid #666;
-      border-top-color: #999;
-      border-left-color: #999;
-      border-bottom-color: #222;
-      border-right-color: #222;
-      color: #888;
-      font-size: 8px;
-      padding: 2px 5px;
+    .wa-mbtn {
+      background: #1a1a1a;
+      border: 1px solid;
+      border-color: #555 #222 #222 #555;
+      color: #666;
+      font-family: var(--px);
+      font-size: 5px;
+      padding: 2px 4px;
       cursor: pointer;
-      font-family: 'Courier New', monospace;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
+      letter-spacing: 0;
     }
-    .wa-mode-btn:hover { color: #ccc; background: #3a3a4a; }
-    .wa-mode-btn.active {
-      background: #1a2a5a;
-      color: #88aaff;
-      border-top-color: #222;
-      border-left-color: #222;
-      border-bottom-color: #888;
-      border-right-color: #888;
+    .wa-mbtn:hover { color: #aaa; }
+    .wa-mbtn.on {
+      background: #003300;
+      color: #00ff00;
+      border-color: #222 #555 #555 #222;
+      text-shadow: 0 0 4px #00ff00;
     }
 
-    /* ── EQUALIZER ──────────────────────────────────────── */
-    #wa-eq {
-      width: 275px;
-    }
-    .wa-eq-body {
-      padding: 4px;
-    }
-    .wa-eq-row {
+    /* ── EQUALIZER ─────────────────────────────────── */
+    .wa-eq-body { padding: 4px 5px; }
+    .wa-eq-head {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       gap: 5px;
+      margin-bottom: 5px;
     }
-    .wa-eq-band {
+    .wa-eq-lbl {
+      font-family: var(--px);
+      font-size: 5px;
+      color: #009900;
+    }
+    .wa-eq-on {
+      font-family: var(--px);
+      font-size: 5px;
+      background: #003300;
+      border: 1px solid #005500;
+      color: #00cc00;
+      padding: 2px 4px;
+      cursor: pointer;
+    }
+    .wa-eq-on.off { background: #1a1a1a; color: #555; border-color: #333; }
+    .wa-eq-sliders {
+      display: flex;
+      gap: 4px;
+      align-items: flex-end;
+    }
+    .wa-eq-col {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 1px;
+      gap: 2px;
     }
-    .wa-eq-slider {
+    .wa-eq-col:first-child { padding-right: 4px; border-right: 1px solid #333; margin-right: 2px; }
+    input[type=range].wa-eqs {
       -webkit-appearance: slider-vertical;
       appearance: slider-vertical;
       writing-mode: vertical-lr;
       direction: rtl;
       width: 14px;
-      height: 60px;
-      background: #111;
-      border: 1px inset #444;
+      height: 52px;
+      background: #001100;
+      border: 1px solid #004400;
       cursor: pointer;
+      padding: 0;
     }
-    .wa-eq-slider::-webkit-slider-thumb {
+    input[type=range].wa-eqs::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 14px;
-      height: 8px;
-      background: #22cc22;
-      border: 1px solid #55ff55;
-      border-bottom-color: #008800;
-      border-right-color: #008800;
+      width: 12px; height: 5px;
+      background: #33cc33;
+      border: 1px solid #66ff66;
+      border-bottom-color: #004400;
     }
-    .wa-eq-slider::-moz-range-thumb {
-      width: 12px;
-      height: 6px;
-      background: #22cc22;
-      border: 1px solid #55ff55;
+    input[type=range].wa-eqs::-moz-range-thumb {
+      width: 10px; height: 4px;
+      background: #33cc33;
+      border: 1px solid #66ff66;
     }
-    .wa-eq-label {
-      font-size: 6px;
-      color: #666;
-      letter-spacing: 0;
+    .wa-eq-name {
+      font-family: var(--px);
+      font-size: 4px;
+      color: #556655;
       text-align: center;
-    }
-    .wa-eq-preamp {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      border-right: 1px solid #444;
-      padding-right: 6px;
-      margin-right: 1px;
-    }
-    .wa-eq-preamp .wa-eq-label { color: #888; font-size: 7px; }
-    .wa-eq-on-btn {
-      font-size: 8px;
-      color: #888;
-      background: #2a2a3a;
-      border: 1px solid #555;
-      padding: 1px 4px;
-      cursor: pointer;
-      margin-right: auto;
-      font-family: 'Courier New', monospace;
-    }
-    .wa-eq-on-btn.active { color: #00cc00; }
-    .wa-eq-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 4px;
+      line-height: 1.2;
     }
 
-    /* ── PLAYLIST ───────────────────────────────────────── */
-    #wa-pl {
-      width: 275px;
-    }
-    .wa-pl-body {
-      padding: 4px;
+    /* ── PLAYLIST ──────────────────────────────────── */
+    .wa-pl-body { padding: 4px 5px; }
+    .wa-pl-title {
+      font-family: var(--px);
+      font-size: 6px;
+      color: #009900;
+      text-align: center;
+      margin-bottom: 4px;
+      letter-spacing: 2px;
+      text-shadow: 0 0 6px #00cc00;
     }
     .wa-pl-list {
       background: #000;
-      border: 1px inset #444;
-      height: 120px;
+      border: 1px solid #1a3a1a;
+      height: 130px;
       overflow-y: auto;
-      font-size: 10px;
-      color: #aaaaaa;
       scrollbar-width: thin;
-      scrollbar-color: #555 #111;
+      scrollbar-color: #336633 #001100;
     }
-    .wa-pl-list::-webkit-scrollbar { width: 8px; }
-    .wa-pl-list::-webkit-scrollbar-track { background: #111; }
-    .wa-pl-list::-webkit-scrollbar-thumb { background: #555; }
-    .wa-pl-item {
+    .wa-pl-list::-webkit-scrollbar { width: 6px; }
+    .wa-pl-list::-webkit-scrollbar-track { background: #001100; }
+    .wa-pl-list::-webkit-scrollbar-thumb { background: #336633; }
+    .wa-pl-row {
       display: flex;
-      padding: 1px 4px;
+      padding: 2px 4px;
+      font-family: var(--px);
+      font-size: 5px;
+      color: #669966;
       cursor: pointer;
       gap: 4px;
-      border-bottom: 1px solid #1a1a1a;
+      border-bottom: 1px solid #0a1a0a;
+      white-space: nowrap;
     }
-    .wa-pl-item:hover { background: #1a1a4a; color: #ccc; }
-    .wa-pl-item.active { background: #0000aa; color: #fff; }
-    .wa-pl-num { color: #555; min-width: 18px; }
-    .wa-pl-name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-    .wa-pl-dur { color: #555; min-width: 35px; text-align: right; }
-    .wa-pl-empty { color: #444; padding: 4px; text-align: center; font-size: 9px; }
+    .wa-pl-row:hover { background: #001a00; color: #99cc99; }
+    .wa-pl-row.active { background: #003300; color: #00ff00; text-shadow: 0 0 4px #00ff00; }
+    .wa-pl-n { min-width: 20px; color: #336633; }
+    .wa-pl-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .wa-pl-dur { min-width: 28px; text-align: right; color: #336633; }
+    .wa-pl-empty { color: #336633; padding: 8px 4px; font-family: var(--px); font-size: 5px; text-align: center; line-height: 1.8; }
 
-    .wa-pl-actions {
+    .wa-pl-btns {
       display: flex;
-      gap: 3px;
+      gap: 2px;
       margin-top: 3px;
+      flex-wrap: wrap;
     }
-    .wa-pl-file-btn {
-      background: #2a2a3a;
-      border: 1px solid #666;
-      border-top-color: #999;
-      border-left-color: #999;
-      border-bottom-color: #222;
-      border-right-color: #222;
-      color: #aaa;
-      font-size: 8px;
-      padding: 2px 6px;
+    .wa-pl-btn {
+      font-family: var(--px);
+      font-size: 5px;
+      background: #1a2a1a;
+      border: 1px solid;
+      border-color: #556655 #223322 #223322 #556655;
+      color: #669966;
+      padding: 3px 5px;
       cursor: pointer;
-      font-family: 'Courier New', monospace;
-      text-transform: uppercase;
     }
-    .wa-pl-file-btn:hover { color: #fff; background: #3a3a4a; }
+    .wa-pl-btn:hover { color: #00ff00; background: #002200; }
 
-    /* ── LOAD ZONE ──────────────────────────────────────── */
-    .wa-drop-zone {
-      border: 2px dashed #333;
-      padding: 8px;
-      text-align: center;
-      font-size: 9px;
-      color: #555;
+    /* Drop zone */
+    .wa-drop {
+      border: 1px dashed #226622;
       margin-top: 3px;
-      font-family: 'Courier New', monospace;
+      padding: 5px;
+      text-align: center;
+      font-family: var(--px);
+      font-size: 5px;
+      color: #336633;
       letter-spacing: 1px;
+      line-height: 1.8;
     }
-    .wa-drop-zone.drag-over {
-      border-color: #00cc00;
-      color: #00cc00;
-      background: #001100;
-    }
+    .wa-drop.over { border-color: #00ff00; color: #00ff00; background: #001100; }
 
-    /* ── Scrollbar for playlist ─────────────────────────── */
-    @media (max-width: 340px) {
-      #wa-main, #wa-eq, #wa-pl { width: 98vw; }
+    /* ── MILKDROP WINDOW ───────────────────────────── */
+    #wa-milkdrop {
+      width: 280px;
+      margin-top: 0;
+      border-top: none;
+    }
+    .wa-milk-body { padding: 0; position: relative; }
+    #wa-milk-canvas {
+      display: block;
+      width: 100%;
+      height: 200px;
+      background: #000;
+      cursor: pointer;
+    }
+    .wa-milk-hint {
+      position: absolute;
+      bottom: 4px;
+      right: 6px;
+      font-family: var(--px);
+      font-size: 5px;
+      color: rgba(0,255,0,0.4);
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
 
   <div class="marquee marquee--top">
-    <span>&#9836; WINAMP &#9836; IT REALLY WHIPS THE LLAMA'S ASS &#9836; GLAPPA EDITION &#9836; </span>
+    <span>&#9836; WINAMP 2.X &#9836; IT REALLY WHIPS THE LLAMA'S ASS &#9836; GLAPPA EDITION &#9836; MILKDROP ACTIVE &#9836;</span>
   </div>
 
   <header class="header">
@@ -460,12 +470,13 @@
     <div class="page-banner">
       <h2>&#9836; WINAMP &#9836;</h2>
 <pre>
-  _          _
- | |        | |
- | |_   _ __| |_
- |  _| | '__'  _|
- | |   | |  | |_
- |_|   |_|   \__|
+ ___       ___  ________   ________  _____ ______   ________
+|\  \     |\  \|\   ___  \|\   __  \|\   _ \  _   \|\   __  \
+\ \  \    \ \  \ \  \\ \  \ \  \|\  \ \  \\\__\ \  \ \  \|\  \
+ \ \  \  __\ \  \ \  \\ \  \ \   __  \ \  \\|__| \  \ \   ____\
+  \ \  \|\__\_\  \ \  \\ \  \ \  \ \  \ \  \    \ \  \ \  \___|
+   \ \____________\ \__\\ \__\ \__\ \__\ \__\    \ \__\ \__\
+    \|____________|\|__| \|__|\|__|\|__|\|__|     \|__|\|__|
 </pre>
     </div>
     <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
@@ -492,106 +503,129 @@
   </div>
 
   <main>
-    <div class="wa-desktop" id="waDesktop">
+    <div class="wa-desktop">
 
-      <!-- ── MAIN PLAYER ── -->
+      <!-- ══ MAIN PLAYER ══ -->
       <div class="wa-win" id="wa-main">
-        <div class="wa-titlebar" id="wa-main-bar">
-          <span class="wa-titlebar-title">Winamp</span>
-          <div class="wa-titlebar-btns">
-            <div class="wa-tb-btn" title="Minimieren">_</div>
-            <div class="wa-tb-btn" title="Schließen">×</div>
+        <div class="wa-bar">
+          <span class="wa-bar-title">WINAMP</span>
+          <div class="wa-bar-btns">
+            <div class="wa-xbtn">_</div>
+            <div class="wa-xbtn">□</div>
+            <div class="wa-xbtn">×</div>
           </div>
         </div>
-        <div class="wa-body">
+        <div class="wa-main-body">
+
           <!-- LCD -->
           <div class="wa-lcd">
-            <div class="wa-lcd-scroll"><span id="lcdTitle">&#9836; WINAMP &mdash; GLAPPA EDITION &mdash; LOAD SOME TUNES &mdash;</span></div>
-            <div class="wa-lcd-info">
-              <div class="wa-lcd-time" id="lcdTime">0:00</div>
-              <div class="wa-lcd-meta">
-                <div class="wa-lcd-kbps" id="lcdKbps">--- kbps</div>
-                <div class="wa-lcd-khz" id="lcdKhz">44 kHz</div>
+            <div class="wa-lcd-top">
+              <span class="wa-play-ind" id="waPlayInd">▶</span>
+              <div class="wa-title-wrap">
+                <span class="wa-title-txt" id="waTitle">WINAMP &mdash; GLAPPA EDITION</span>
               </div>
+              <span class="wa-tracknum" id="waTrackNum">&nbsp;</span>
+            </div>
+            <div class="wa-lcd-mid">
+              <div>
+                <div class="wa-time" id="waTime">-:--</div>
+                <div class="wa-meta">
+                  <span id="waKbps">--- kbps</span>
+                  <span id="waKhz">44 kHz</span>
+                  <span id="waMode">STEREO</span>
+                </div>
+              </div>
+              <!-- Small spectrum (like real Winamp left area) -->
+              <canvas id="wa-spec" width="72" height="28"></canvas>
             </div>
           </div>
-          <!-- Canvas Visualizer -->
-          <canvas id="wa-vis" width="267" height="26"></canvas>
+
+          <!-- Big visualizer -->
+          <canvas id="wa-big-vis" width="270" height="34" title="Klick: Vis-Modus wechseln"></canvas>
+
           <!-- Seek -->
-          <div class="wa-seek-wrap">
-            <input type="range" class="wa-seek" id="waSeek" min="0" max="1000" value="0" step="1">
+          <input type="range" class="wa-seekbar" id="waSeek" min="0" max="1000" value="0">
+
+          <!-- Transport buttons (pixel style) -->
+          <div class="wa-btns">
+            <button class="wa-pbtn" id="waPrev" title="Vorheriger">⏮</button>
+            <button class="wa-pbtn wa-pbtn--wide" id="waPlay" title="Play/Pause">▶</button>
+            <button class="wa-pbtn" id="waPause" title="Pause">⏸</button>
+            <button class="wa-pbtn" id="waStop" title="Stop">⏹</button>
+            <button class="wa-pbtn" id="waNext" title="Nächster">⏭</button>
+            <button class="wa-pbtn" id="waEject" title="Datei öffnen">⏏</button>
           </div>
-          <!-- Controls -->
-          <div class="wa-controls">
-            <button class="wa-btn" id="waPrev" title="Vorheriger Track">|◀◀</button>
-            <button class="wa-btn wa-btn--play" id="waPlay" title="Play">▶</button>
-            <button class="wa-btn" id="waPause" title="Pause">⏸</button>
-            <button class="wa-btn" id="waStop" title="Stop">■</button>
-            <button class="wa-btn" id="waNext" title="Nächster Track">▶▶|</button>
-            <button class="wa-btn" id="waEject" title="Datei öffnen">⏏</button>
+
+          <!-- Volume -->
+          <div class="wa-vol-row">
+            <span class="wa-vol-lbl">VOL</span>
+            <input type="range" class="wa-volslider" id="waVol" min="0" max="100" value="80">
+            <span class="wa-vol-lbl">BAL</span>
+            <input type="range" class="wa-volslider" id="waBal" min="-50" max="50" value="0" style="max-width:60px">
           </div>
-          <!-- Volume + Balance -->
-          <div class="wa-sliders">
-            <span class="wa-slider-label">VOL</span>
-            <input type="range" class="wa-slider" id="wa-vol" min="0" max="100" value="80">
-            <span class="wa-slider-label">BAL</span>
-            <input type="range" class="wa-slider" id="wa-bal" min="-50" max="50" value="0">
-          </div>
-          <!-- Mode buttons -->
+
+          <!-- Toggle buttons -->
           <div class="wa-modes">
-            <button class="wa-mode-btn" id="waShuffle">SHUF</button>
-            <button class="wa-mode-btn" id="waRepeat">REP</button>
-            <button class="wa-mode-btn active" id="waVisBtn">VIS</button>
-            <button class="wa-mode-btn active" id="waEqBtn">EQ</button>
-            <button class="wa-mode-btn active" id="waPlBtn">PL</button>
+            <button class="wa-mbtn" id="waShuffle">SHUFFLE</button>
+            <button class="wa-mbtn" id="waRepeat">REPEAT</button>
+            <button class="wa-mbtn on" id="waVisToggle">VIS ON</button>
+            <button class="wa-mbtn on" id="waEqToggle">EQ</button>
+            <button class="wa-mbtn on" id="waPlToggle">PL</button>
+            <button class="wa-mbtn on" id="waMilkToggle">MILK</button>
           </div>
         </div>
       </div>
 
-      <!-- ── EQUALIZER ── -->
+      <!-- ══ EQUALIZER ══ -->
       <div class="wa-win" id="wa-eq">
-        <div class="wa-titlebar" id="wa-eq-bar">
-          <span class="wa-titlebar-title">Glappa Equalizer</span>
-          <div class="wa-titlebar-btns">
-            <div class="wa-tb-btn" title="Schließen">×</div>
-          </div>
+        <div class="wa-bar">
+          <span class="wa-bar-title">GLAPPA EQUALIZER</span>
+          <div class="wa-bar-btns"><div class="wa-xbtn">×</div></div>
         </div>
         <div class="wa-eq-body">
-          <div class="wa-eq-header">
-            <button class="wa-eq-on-btn active" id="waEqOn">EQ ON</button>
+          <div class="wa-eq-head">
+            <button class="wa-eq-on" id="waEqOn">EQ ON</button>
+            <span class="wa-eq-lbl">PRESETS: FLAT</span>
+            <button class="wa-pl-btn" id="waEqReset" style="margin-left:auto">RESET</button>
           </div>
-          <div class="wa-eq-row" id="waEqBands">
-            <!-- Preamp + 10 bands generated by JS -->
+          <div class="wa-eq-sliders" id="waEqSliders">
+            <!-- Built by JS -->
           </div>
         </div>
       </div>
 
-      <!-- ── PLAYLIST ── -->
+      <!-- ══ PLAYLIST ══ -->
       <div class="wa-win" id="wa-pl">
-        <div class="wa-titlebar" id="wa-pl-bar">
-          <span class="wa-titlebar-title">Playlist Editor</span>
-          <div class="wa-titlebar-btns">
-            <div class="wa-tb-btn" title="Schließen">×</div>
-          </div>
+        <div class="wa-bar">
+          <span class="wa-bar-title">WINAMP PLAYLIST</span>
+          <div class="wa-bar-btns"><div class="wa-xbtn">×</div></div>
         </div>
         <div class="wa-pl-body">
           <div class="wa-pl-list" id="waPlaylist">
-            <div class="wa-pl-empty">[ PLAYLIST LEER &mdash; +ADD klicken oder Dateien droppen ]</div>
+            <div class="wa-pl-empty">[ PLAYLIST LEER ]<br>+ADD oder Dateien droppen</div>
           </div>
-          <div class="wa-pl-actions">
-            <label class="wa-pl-file-btn">
-              +ADD
-              <input type="file" id="waFileInput" accept="audio/*" multiple hidden>
-            </label>
-            <button class="wa-pl-file-btn" id="waClearPl">CLR</button>
+          <div class="wa-pl-btns">
+            <label class="wa-pl-btn">+ADD<input type="file" id="waFile" accept="audio/*" multiple hidden></label>
+            <button class="wa-pl-btn" id="waClear">CLR</button>
+            <button class="wa-pl-btn" id="waRemove">-REM</button>
           </div>
-          <div class="wa-drop-zone" id="waDropZone">
-            DROP MP3 / WAV / OGG / FLAC FILES HERE
-          </div>
+          <div class="wa-drop" id="waDropZone">DROP MP3 / WAV / OGG / FLAC HERE</div>
         </div>
       </div>
 
-    </div><!-- .wa-desktop -->
+      <!-- ══ MILKDROP VISUALIZER ══ -->
+      <div class="wa-win" id="wa-milkdrop">
+        <div class="wa-bar">
+          <span class="wa-bar-title">MILKDROP</span>
+          <div class="wa-bar-btns"><div class="wa-xbtn">×</div></div>
+        </div>
+        <div class="wa-milk-body">
+          <canvas id="wa-milk-canvas" width="280" height="200" title="Klick: neues Preset"></canvas>
+          <div class="wa-milk-hint" id="waMilkHint">KLICK: PRESET WECHSELN</div>
+        </div>
+      </div>
+
+    </div>
   </main>
 
   <audio id="waAudio" preload="metadata"></audio>
@@ -604,7 +638,7 @@
     </div>
     <div class="footer-actions">
       <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
-        <img id="mailImg" src="../img/gif/animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+        <img id="mailImg" src="../img/gif/animail1.gif" alt="You Got Mail!" width="88" height="31">
       </a>
       <a href="../index.html">
         <img src="../img/gif/anihome1.gif" alt="Home" width="88" height="31">
@@ -627,26 +661,37 @@
       <img src="../img/gif/hugsnotdrugs.gif" alt="">
     </div>
     <div class="marquee marquee--bottom">
-      <span>&#9836; IT REALLY WHIPS THE LLAMA'S ASS &#9836; WINAMP 2.X FOREVER &#9836; </span>
+      <span>&#9836; IT REALLY WHIPS THE LLAMA'S ASS &#9836; WINAMP 2.X &#9836; GLAPPA FOREVER &#9836;</span>
     </div>
   </footer>
 
   <script src="../script.js?v=13"></script>
   <script>
   (function () {
-    // ── State ──────────────────────────────────────────────────────────────
-    const audio    = document.getElementById('waAudio');
-    const canvas   = document.getElementById('wa-vis');
-    const ctx      = canvas.getContext('2d');
-    const lcdTitle = document.getElementById('lcdTitle');
-    const lcdTime  = document.getElementById('lcdTime');
-    const seek     = document.getElementById('waSeek');
-    const volEl    = document.getElementById('wa-vol');
-    const balEl    = document.getElementById('wa-bal');
-    const playlist = document.getElementById('waPlaylist');
-    const fileInp  = document.getElementById('waFileInput');
-    const dropZone = document.getElementById('waDropZone');
+    'use strict';
 
+    // ── DOM refs ──────────────────────────────────────────────────────────
+    const audio      = document.getElementById('waAudio');
+    const specCanvas = document.getElementById('wa-spec');
+    const bigCanvas  = document.getElementById('wa-big-vis');
+    const milkCanvas = document.getElementById('wa-milk-canvas');
+    const sCtx       = specCanvas.getContext('2d');
+    const bCtx       = bigCanvas.getContext('2d');
+    const mCtx       = milkCanvas.getContext('2d');
+
+    const playInd    = document.getElementById('waPlayInd');
+    const titleEl    = document.getElementById('waTitle');
+    const trackNum   = document.getElementById('waTrackNum');
+    const timeEl     = document.getElementById('waTime');
+    const kbpsEl     = document.getElementById('waKbps');
+    const khzEl      = document.getElementById('waKhz');
+    const seek       = document.getElementById('waSeek');
+    const volEl      = document.getElementById('waVol');
+    const playlist   = document.getElementById('waPlaylist');
+    const fileInp    = document.getElementById('waFile');
+    const dropZone   = document.getElementById('waDropZone');
+
+    // ── State ─────────────────────────────────────────────────────────────
     let tracks   = [];
     let current  = -1;
     let shuffle  = false;
@@ -654,375 +699,733 @@
     let seeking  = false;
     let visOn    = true;
     let eqOn     = true;
-    let audioCtx = null;
+    let milkOn   = true;
+
+    // Web Audio
+    let aCtx     = null;
     let analyser = null;
     let visData  = null;
+    let specData = null;
     let visRaf   = 0;
-    let peaks    = null;
-    let visGrad  = null;
-    let scrollTimer = null;
+    let milkRaf  = 0;
 
-    // EQ bands: preamp + 10 Hz bands
-    const EQ_BANDS = ['PREAMP','70','180','320','600','1K','3K','6K','12K','14K','16K'];
-    const eqVals   = new Array(EQ_BANDS.length).fill(50); // 0-100, 50=flat
+    // Big vis: mode 0=bars, 1=scope, 2=fire
+    let bigMode  = 0;
+    let bPeaks   = null;
+    let bGrad    = null;
+
+    // Milkdrop preset (0–4)
+    let milkPreset = 0;
+    let milkPhase  = 0;
+    let milkBass   = 0;
+    let milkTreb   = 0;
+    let milkVol    = 0;
+    // Tunnel warp state
+    let milkZoom   = 1.0;
+    // Fire buffer
+    const fireW = 70, fireH = 50;
+    let fireBuf  = new Float32Array(fireW * fireH);
+
+    // EQ
+    const EQ_LABELS = ['PRE','70','180','320','600','1K','3K','6K','12K','14K','16K'];
+    const EQ_FREQS  = [null, 70, 180, 320, 600, 1000, 3000, 6000, 12000, 14000, 16000];
+    const eqVals    = new Array(EQ_LABELS.length).fill(50);
     let   eqFilters = [];
 
-    // ── EQ Build ───────────────────────────────────────────────────────────
-    const eqRow = document.getElementById('waEqBands');
-    EQ_BANDS.forEach((label, i) => {
-      const div = document.createElement('div');
-      div.className = 'wa-eq-band' + (i === 0 ? ' wa-eq-preamp' : '');
+    // ── Build EQ sliders ─────────────────────────────────────────────────
+    const eqSliders = document.getElementById('waEqSliders');
+    EQ_LABELS.forEach((lbl, i) => {
+      const col = document.createElement('div');
+      col.className = 'wa-eq-col';
       const sl = document.createElement('input');
-      sl.type = 'range';
-      sl.className = 'wa-eq-slider';
+      sl.type = 'range'; sl.className = 'wa-eqs';
       sl.min = 0; sl.max = 100; sl.value = 50; sl.step = 1;
-      sl.dataset.band = i;
-      sl.addEventListener('input', e => {
-        eqVals[i] = +e.target.value;
-        applyEQ();
-      });
+      sl.addEventListener('input', () => { eqVals[i] = +sl.value; applyEQ(); });
       const lb = document.createElement('div');
-      lb.className = 'wa-eq-label';
-      lb.textContent = label;
-      div.appendChild(sl);
-      div.appendChild(lb);
-      eqRow.appendChild(div);
+      lb.className = 'wa-eq-name'; lb.textContent = lbl;
+      col.appendChild(sl); col.appendChild(lb);
+      eqSliders.appendChild(col);
     });
 
-    // ── EQ Apply (Web Audio BiquadFilter) ──────────────────────────────────
-    const EQ_FREQS = [null, 70, 180, 320, 600, 1000, 3000, 6000, 12000, 14000, 16000];
-    function buildEQFilters() {
-      if (!audioCtx) return;
-      eqFilters.forEach(f => { try { f.disconnect(); } catch(e){} });
-      eqFilters = [];
-      if (!eqOn) return;
-      for (let i = 1; i < EQ_BANDS.length; i++) {
-        const f = audioCtx.createBiquadFilter();
-        f.type = (i === 1) ? 'lowshelf' : (i === EQ_BANDS.length - 1) ? 'highshelf' : 'peaking';
-        f.frequency.value = EQ_FREQS[i];
-        f.gain.value = (eqVals[i] - 50) / 50 * 12; // -12 to +12 dB
-        eqFilters.push(f);
-      }
-    }
-
-    function applyEQ() {
-      if (!audioCtx || !analyser) return;
-      buildEQFilters();
-      // Reconnect chain
-      try {
-        if (eqFilters.length) {
-          // src -> filter chain -> analyser -> dest
-          // We just set gain on existing filters if possible
-          for (let i = 1; i < EQ_BANDS.length; i++) {
-            if (eqFilters[i-1]) eqFilters[i-1].gain.value = (eqVals[i] - 50) / 50 * 12;
-          }
-        }
-      } catch(e) {}
-    }
-
-    // ── Audio Context ──────────────────────────────────────────────────────
+    // ── Web Audio init ───────────────────────────────────────────────────
     function ensureCtx() {
-      if (audioCtx) return true;
+      if (aCtx) return true;
       const C = window.AudioContext || window.webkitAudioContext;
       if (!C) return false;
       try {
-        audioCtx = new C();
-        const src = audioCtx.createMediaElementSource(audio);
-        analyser  = audioCtx.createAnalyser();
-        analyser.fftSize = 64;
-        analyser.smoothingTimeConstant = 0.75;
-        visData   = new Uint8Array(analyser.frequencyBinCount);
+        aCtx = new C();
+        const src = aCtx.createMediaElementSource(audio);
+        analyser  = aCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        visData  = new Uint8Array(analyser.frequencyBinCount);
+        specData = new Uint8Array(analyser.frequencyBinCount);
 
-        // Build EQ filters and chain
-        buildEQFilters();
-        let chain = src;
-        eqFilters.forEach(f => { chain.connect(f); chain = f; });
-        chain.connect(analyser);
-        analyser.connect(audioCtx.destination);
+        buildEQChain(src);
         return true;
-      } catch(e) { audioCtx = null; return false; }
+      } catch (e) { aCtx = null; return false; }
     }
 
-    // ── Visualizer ────────────────────────────────────────────────────────
-    function drawVis() {
-      if (!analyser || !visOn) { visRaf = 0; return; }
-      analyser.getByteFrequencyData(visData);
-      const W = canvas.width, H = canvas.height;
-      ctx.clearRect(0, 0, W, H);
-      if (!visGrad) {
-        visGrad = ctx.createLinearGradient(0, H, 0, 0);
-        visGrad.addColorStop(0.00, '#00ff00');
-        visGrad.addColorStop(0.55, '#ffff00');
-        visGrad.addColorStop(0.85, '#ff8800');
-        visGrad.addColorStop(1.00, '#ff0000');
+    function buildEQChain(src) {
+      eqFilters = [];
+      const chain = [];
+      for (let i = 1; i < EQ_LABELS.length; i++) {
+        const f = aCtx.createBiquadFilter();
+        f.type = i === 1 ? 'lowshelf' : i === EQ_LABELS.length - 1 ? 'highshelf' : 'peaking';
+        f.frequency.value = EQ_FREQS[i];
+        f.Q.value = 1.4;
+        f.gain.value = 0;
+        eqFilters.push(f);
+        chain.push(f);
       }
-      const n = visData.length;
-      if (!peaks || peaks.length !== n) peaks = new Float32Array(n);
-      const barW = W / n;
-      const gap  = Math.max(1, Math.floor(barW * 0.15));
-      ctx.fillStyle = visGrad;
-      for (let i = 0; i < n; i++) {
-        const v = visData[i] / 255;
-        const h = Math.max(1, v * H);
-        const x = Math.floor(i * barW);
-        ctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
-        if (v > peaks[i]) peaks[i] = v;
-        else              peaks[i] = Math.max(0, peaks[i] - 0.015);
+      let node = src;
+      chain.forEach(f => { node.connect(f); node = f; });
+      node.connect(analyser);
+      analyser.connect(aCtx.destination);
+    }
+
+    function applyEQ() {
+      if (!eqFilters.length) return;
+      const active = eqOn;
+      for (let i = 0; i < eqFilters.length; i++) {
+        eqFilters[i].gain.value = active ? (eqVals[i + 1] - 50) / 50 * 12 : 0;
       }
-      ctx.fillStyle = '#00ffff';
-      ctx.shadowColor = '#00ffff';
-      ctx.shadowBlur = 3;
-      for (let i = 0; i < n; i++) {
-        const py = H - peaks[i] * H;
-        const x  = Math.floor(i * barW);
-        ctx.fillRect(x + gap, Math.max(0, py - 1), Math.max(1, Math.floor(barW - gap * 2)), 1);
-      }
-      ctx.shadowBlur = 0;
-      visRaf = requestAnimationFrame(drawVis);
     }
 
-    function startVis() {
-      if (!visOn || !analyser) return;
-      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-      if (!visRaf) visRaf = requestAnimationFrame(drawVis);
-    }
+    document.getElementById('waEqOn').addEventListener('click', function () {
+      eqOn = !eqOn;
+      this.textContent = eqOn ? 'EQ ON' : 'EQ OFF';
+      this.classList.toggle('off', !eqOn);
+      applyEQ();
+    });
+    document.getElementById('waEqReset').addEventListener('click', () => {
+      eqVals.fill(50);
+      document.querySelectorAll('.wa-eqs').forEach(s => s.value = 50);
+      applyEQ();
+    });
 
-    function stopVis() {
-      if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
+    // ── Audio events ─────────────────────────────────────────────────────
+    audio.volume = 0.8;
 
-    // ── LCD Scroll ────────────────────────────────────────────────────────
-    function setLCDTitle(text) {
-      lcdTitle.className = text.length > 28 ? 'scroll-active' : '';
-      lcdTitle.textContent = text;
-    }
+    audio.addEventListener('play', () => {
+      playInd.textContent = '▶';
+      playInd.style.color = '#00ff00';
+      document.getElementById('waPlay').textContent = '⏸';
+      if (aCtx && aCtx.state === 'suspended') aCtx.resume();
+      if (visOn && analyser && !visRaf)  visRaf  = requestAnimationFrame(drawVis);
+      if (milkOn && analyser && !milkRaf) milkRaf = requestAnimationFrame(drawMilk);
+    });
+    audio.addEventListener('pause', () => {
+      playInd.textContent = '⏸';
+      document.getElementById('waPlay').textContent = '▶';
+      if (visRaf)  { cancelAnimationFrame(visRaf);  visRaf  = 0; }
+      if (milkRaf) { cancelAnimationFrame(milkRaf); milkRaf = 0; }
+    });
+    audio.addEventListener('ended', () => {
+      if (visRaf)  { cancelAnimationFrame(visRaf);  visRaf  = 0; }
+      if (milkRaf) { cancelAnimationFrame(milkRaf); milkRaf = 0; }
+      if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+      const last = current === tracks.length - 1;
+      if (last && repeat === 'none' && !shuffle) { stop(); return; }
+      nextTrack();
+    });
+    audio.addEventListener('timeupdate', () => {
+      timeEl.textContent = fmt(audio.currentTime);
+      if (!seeking && audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
+    });
 
+    // ── Transport ────────────────────────────────────────────────────────
     function fmt(t) {
-      if (!isFinite(t) || t < 0) return '0:00';
-      const m = Math.floor(t / 60);
-      const s = Math.floor(t % 60);
-      return m + ':' + String(s).padStart(2, '0');
-    }
-
-    // ── Playlist ──────────────────────────────────────────────────────────
-    function renderPlaylist() {
-      if (!tracks.length) {
-        playlist.innerHTML = '<div class="wa-pl-empty">[ PLAYLIST LEER &mdash; +ADD klicken oder Dateien droppen ]</div>';
-        return;
-      }
-      playlist.innerHTML = tracks.map((t, i) =>
-        '<div class="wa-pl-item' + (i === current ? ' active' : '') + '" data-i="' + i + '">' +
-          '<span class="wa-pl-num">' + String(i + 1).padStart(2, '0') + '</span>' +
-          '<span class="wa-pl-name"></span>' +
-          '<span class="wa-pl-dur" data-i="' + i + '">?:??</span>' +
-        '</div>'
-      ).join('');
-      playlist.querySelectorAll('.wa-pl-item').forEach(row => {
-        const i = +row.dataset.i;
-        row.querySelector('.wa-pl-name').textContent = tracks[i].name;
-      });
-      // Scroll active into view
-      const activeEl = playlist.querySelector('.wa-pl-item.active');
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
-    }
-
-    function loadFiles(files) {
-      const supported = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
-      const list = Array.from(files || []).filter(f =>
-        (f.type && f.type.startsWith('audio/')) || supported.test(f.name)
-      );
-      for (const f of list) tracks.push({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) });
-      renderPlaylist();
-      if (current === -1 && tracks.length) playTrack(0);
+      if (!isFinite(t) || t < 0) return '-:--';
+      return Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
     }
 
     function playTrack(i) {
       if (i < 0 || i >= tracks.length) return;
       current = i;
       audio.src = tracks[i].url;
-      setLCDTitle('♬ ' + tracks[i].name);
+      setTitle(tracks[i].name);
+      trackNum.textContent = (i + 1) + '/' + tracks.length;
       renderPlaylist();
       audio.play().catch(() => {});
       ensureCtx();
     }
 
-    function next() {
+    function setTitle(name) {
+      titleEl.textContent = '♬ ' + name;
+      const wrap = titleEl.parentElement;
+      titleEl.className = 'wa-title-txt' + (name.length > 22 ? ' scrolling' : '');
+    }
+
+    function stop() {
+      audio.pause(); audio.currentTime = 0;
+      playInd.textContent = '■';
+      document.getElementById('waPlay').textContent = '▶';
+    }
+
+    function nextTrack() {
       if (!tracks.length) return;
       if (shuffle && tracks.length > 1) {
         let n; do { n = Math.floor(Math.random() * tracks.length); } while (n === current);
         playTrack(n);
-      } else {
-        playTrack((current + 1) % tracks.length);
-      }
+      } else playTrack((current + 1) % tracks.length);
     }
-    function prev() {
+    function prevTrack() {
       if (!tracks.length) return;
       if (audio.currentTime > 3) { audio.currentTime = 0; return; }
       playTrack((current - 1 + tracks.length) % tracks.length);
     }
-    function stop() {
-      audio.pause();
-      audio.currentTime = 0;
-      document.getElementById('waPlay').textContent = '▶';
-    }
 
-    // ── Event Listeners ───────────────────────────────────────────────────
     document.getElementById('waPlay').addEventListener('click', () => {
       if (!tracks.length) return;
-      if (audio.paused) {
-        audio.play().catch(() => {});
-        ensureCtx();
-      } else {
-        audio.pause();
-      }
+      if (audio.paused) { audio.play().catch(() => {}); ensureCtx(); }
+      else audio.pause();
     });
     document.getElementById('waPause').addEventListener('click', () => {
       if (!audio.paused) audio.pause();
       else if (tracks.length) { audio.play().catch(() => {}); ensureCtx(); }
     });
     document.getElementById('waStop').addEventListener('click', stop);
-    document.getElementById('waPrev').addEventListener('click', prev);
-    document.getElementById('waNext').addEventListener('click', next);
+    document.getElementById('waPrev').addEventListener('click', prevTrack);
+    document.getElementById('waNext').addEventListener('click', nextTrack);
     document.getElementById('waEject').addEventListener('click', () => fileInp.click());
-
-    audio.addEventListener('play', () => {
-      document.getElementById('waPlay').textContent = '⏸';
-      startVis();
-    });
-    audio.addEventListener('pause', () => {
-      document.getElementById('waPlay').textContent = '▶';
-      stopVis();
-    });
-    audio.addEventListener('ended', () => {
-      stopVis();
-      if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
-      const isLast = current === tracks.length - 1;
-      if (isLast && repeat === 'none' && !shuffle) { stop(); return; }
-      next();
-    });
-    audio.addEventListener('timeupdate', () => {
-      lcdTime.textContent = fmt(audio.currentTime);
-      if (!seeking && audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
-    });
-    audio.addEventListener('loadedmetadata', () => {});
 
     seek.addEventListener('input', () => { seeking = true; });
     seek.addEventListener('change', e => {
       if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration;
       seeking = false;
     });
-
     volEl.addEventListener('input', e => { audio.volume = e.target.value / 100; });
-    balEl.addEventListener('input', () => {}); // visual only (WebAudio panner would need more setup)
 
-    document.getElementById('waShuffle').addEventListener('click', function() {
-      shuffle = !shuffle;
-      this.classList.toggle('active', shuffle);
+    // ── Mode buttons ─────────────────────────────────────────────────────
+    document.getElementById('waShuffle').addEventListener('click', function () {
+      shuffle = !shuffle; this.classList.toggle('on', shuffle);
+      this.textContent = shuffle ? 'SHUFFLE ON' : 'SHUFFLE';
     });
-    document.getElementById('waRepeat').addEventListener('click', function() {
+    document.getElementById('waRepeat').addEventListener('click', function () {
       repeat = repeat === 'none' ? 'all' : repeat === 'all' ? 'one' : 'none';
-      this.classList.toggle('active', repeat !== 'none');
-      this.textContent = repeat === 'one' ? 'REP1' : 'REP';
+      this.classList.toggle('on', repeat !== 'none');
+      this.textContent = repeat === 'one' ? 'REPEAT 1' : repeat === 'all' ? 'REPEAT ALL' : 'REPEAT';
     });
-    document.getElementById('waVisBtn').addEventListener('click', function() {
-      visOn = !visOn;
-      this.classList.toggle('active', visOn);
-      if (visOn && !audio.paused) startVis();
-      else stopVis();
+    document.getElementById('waVisToggle').addEventListener('click', function () {
+      visOn = !visOn; this.classList.toggle('on', visOn);
+      this.textContent = visOn ? 'VIS ON' : 'VIS OFF';
+      if (!visOn) { if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; } clearVis(); }
+      else if (!audio.paused && analyser && !visRaf) visRaf = requestAnimationFrame(drawVis);
     });
-    document.getElementById('waEqBtn').addEventListener('click', function() {
+    document.getElementById('waEqToggle').addEventListener('click', function () {
       const eq = document.getElementById('wa-eq');
-      const hidden = eq.style.display === 'none';
-      eq.style.display = hidden ? '' : 'none';
-      this.classList.toggle('active', hidden);
+      const hide = eq.style.display !== 'none';
+      eq.style.display = hide ? 'none' : '';
+      this.classList.toggle('on', !hide);
     });
-    document.getElementById('waPlBtn').addEventListener('click', function() {
+    document.getElementById('waPlToggle').addEventListener('click', function () {
       const pl = document.getElementById('wa-pl');
-      const hidden = pl.style.display === 'none';
-      pl.style.display = hidden ? '' : 'none';
-      this.classList.toggle('active', hidden);
+      const hide = pl.style.display !== 'none';
+      pl.style.display = hide ? 'none' : '';
+      this.classList.toggle('on', !hide);
+    });
+    document.getElementById('waMilkToggle').addEventListener('click', function () {
+      milkOn = !milkOn; this.classList.toggle('on', milkOn);
+      this.textContent = milkOn ? 'MILK' : 'MILK OFF';
+      const win = document.getElementById('wa-milkdrop');
+      win.style.display = milkOn ? '' : 'none';
+      if (!milkOn && milkRaf) { cancelAnimationFrame(milkRaf); milkRaf = 0; }
+      else if (milkOn && !audio.paused && analyser) milkRaf = requestAnimationFrame(drawMilk);
+      else if (milkOn) drawMilkIdle();
     });
 
-    document.getElementById('waEqOn').addEventListener('click', function() {
-      eqOn = !eqOn;
-      this.classList.toggle('active', eqOn);
-      this.textContent = eqOn ? 'EQ ON' : 'EQ OFF';
-      applyEQ();
+    // ── Visualizer: small spectrum (LCD area) ────────────────────────────
+    function drawSpec() {
+      const W = specCanvas.width, H = specCanvas.height;
+      sCtx.fillStyle = '#000';
+      sCtx.fillRect(0, 0, W, H);
+      if (!analyser) { drawSpecIdle(); return; }
+      analyser.getByteFrequencyData(specData);
+      const n = Math.min(specData.length, 16);
+      const bw = W / n;
+      for (let i = 0; i < n; i++) {
+        const v = specData[i] / 255;
+        // Draw stacked pixel blocks (like real Winamp)
+        const blocks = Math.floor(v * 7);
+        for (let b = 0; b < blocks; b++) {
+          const hue = b < 5 ? '#00ff00' : b < 6 ? '#ffff00' : '#ff0000';
+          sCtx.fillStyle = hue;
+          sCtx.fillRect(Math.floor(i * bw) + 1, H - (b + 1) * 4, Math.max(1, Math.floor(bw) - 2), 3);
+        }
+      }
+    }
+    let specIdlePhase = 0;
+    function drawSpecIdle() {
+      const W = specCanvas.width, H = specCanvas.height;
+      specIdlePhase += 0.05;
+      const n = 16, bw = W / n;
+      for (let i = 0; i < n; i++) {
+        const v = (Math.sin(specIdlePhase + i * 0.6) * 0.5 + 0.5) * 0.3;
+        const blocks = Math.floor(v * 7);
+        for (let b = 0; b < blocks; b++) {
+          sCtx.fillStyle = b < 5 ? '#00aa00' : b < 6 ? '#aaaa00' : '#aa0000';
+          sCtx.fillRect(Math.floor(i * bw) + 1, H - (b + 1) * 4, Math.max(1, Math.floor(bw) - 2), 3);
+        }
+      }
+    }
+
+    // ── Visualizer: big bars / scope / fire ─────────────────────────────
+    function clearVis() {
+      bCtx.clearRect(0, 0, bigCanvas.width, bigCanvas.height);
+      sCtx.fillStyle = '#000';
+      sCtx.fillRect(0, 0, specCanvas.width, specCanvas.height);
+    }
+
+    function getAudioBands() {
+      if (!analyser) return { bass: 0, treb: 0, vol: 0 };
+      analyser.getByteFrequencyData(visData);
+      const n = visData.length;
+      let bass = 0, treb = 0, total = 0;
+      const bn = Math.max(1, Math.floor(n * 0.1));
+      const ts = Math.floor(n * 0.6);
+      for (let i = 0; i < bn; i++)  bass  += visData[i];
+      for (let i = ts; i < n; i++)  treb  += visData[i];
+      for (let i = 0; i < n; i++)   total += visData[i];
+      return {
+        bass:  bass  / (bn * 255),
+        treb:  treb  / ((n - ts) * 255),
+        vol:   total / (n * 255),
+        raw:   visData
+      };
+    }
+
+    bigCanvas.addEventListener('click', () => { bigMode = (bigMode + 1) % 3; });
+
+    function drawVis() {
+      if (!visOn || !analyser) { visRaf = 0; return; }
+      const bands = getAudioBands();
+      drawSpec();
+      if (bigMode === 0)      drawBars(bands);
+      else if (bigMode === 1) drawScope(bands);
+      else                    drawFire(bands);
+      visRaf = requestAnimationFrame(drawVis);
+    }
+
+    // Bars
+    function drawBars(bands) {
+      const W = bigCanvas.width, H = bigCanvas.height;
+      bCtx.fillStyle = '#000';
+      bCtx.fillRect(0, 0, W, H);
+      if (!bGrad) {
+        bGrad = bCtx.createLinearGradient(0, H, 0, 0);
+        bGrad.addColorStop(0.00, '#00ff00');
+        bGrad.addColorStop(0.60, '#ffff00');
+        bGrad.addColorStop(0.85, '#ff8800');
+        bGrad.addColorStop(1.00, '#ff0000');
+      }
+      const d = bands.raw;
+      const n = Math.min(d.length, 64);
+      if (!bPeaks || bPeaks.length !== n) bPeaks = new Float32Array(n);
+      const bw = W / n;
+      const gap = Math.max(1, Math.floor(bw * 0.2));
+      bCtx.fillStyle = bGrad;
+      for (let i = 0; i < n; i++) {
+        const v = d[i] / 255;
+        const h = Math.max(2, v * H);
+        const x = Math.floor(i * bw);
+        bCtx.fillRect(x + gap, H - h, Math.max(1, Math.floor(bw - gap * 2)), h);
+        if (v > bPeaks[i]) bPeaks[i] = v;
+        else bPeaks[i] = Math.max(0, bPeaks[i] - 0.018);
+      }
+      bCtx.fillStyle = '#00ffff';
+      bCtx.shadowColor = '#00ffff'; bCtx.shadowBlur = 2;
+      for (let i = 0; i < n; i++) {
+        const x = Math.floor(i * bw);
+        const py = H - bPeaks[i] * H;
+        bCtx.fillRect(x + gap, Math.max(0, py - 1), Math.max(1, Math.floor(bw - gap * 2)), 1);
+      }
+      bCtx.shadowBlur = 0;
+    }
+
+    // Oscilloscope
+    let scopeData = null;
+    function drawScope(bands) {
+      const W = bigCanvas.width, H = bigCanvas.height;
+      bCtx.fillStyle = 'rgba(0,0,0,0.3)';
+      bCtx.fillRect(0, 0, W, H);
+      if (!scopeData) scopeData = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(scopeData);
+      const n = scopeData.length;
+      const amp = 1 + bands.bass * 2;
+      bCtx.beginPath();
+      bCtx.strokeStyle = '#00ff00';
+      bCtx.shadowColor = '#00ff00'; bCtx.shadowBlur = 4;
+      bCtx.lineWidth = 1.5;
+      for (let i = 0; i < n; i++) {
+        const x = (i / n) * W;
+        const y = H / 2 + ((scopeData[i] / 128 - 1) * amp * H * 0.45);
+        i === 0 ? bCtx.moveTo(x, y) : bCtx.lineTo(x, y);
+      }
+      bCtx.stroke();
+      bCtx.shadowBlur = 0;
+    }
+
+    // Fire
+    function drawFire(bands) {
+      const W = bigCanvas.width, H = bigCanvas.height;
+      const fw = fireW, fh = fireH;
+      const kick = bands.bass * 80 + bands.vol * 20;
+      // Seed bottom row
+      for (let x = 0; x < fw; x++) {
+        fireBuf[(fh - 1) * fw + x] = Math.min(255, Math.random() * 60 + kick + 10);
+      }
+      // Spread upward
+      for (let y = fh - 2; y >= 0; y--) {
+        for (let x = 0; x < fw; x++) {
+          const v = (
+            fireBuf[(y + 1) * fw + ((x - 1 + fw) % fw)] +
+            fireBuf[(y + 1) * fw + x] +
+            fireBuf[(y + 1) * fw + ((x + 1) % fw)] +
+            fireBuf[Math.min(fh - 1, y + 2) * fw + x]
+          ) / 4.05;
+          fireBuf[y * fw + x] = Math.max(0, v - 0.8);
+        }
+      }
+      // Draw scaled to canvas
+      bCtx.fillStyle = '#000';
+      bCtx.fillRect(0, 0, W, H);
+      const scx = W / fw, scy = H / fh;
+      for (let y = 0; y < fh; y++) {
+        for (let x = 0; x < fw; x++) {
+          const v = fireBuf[y * fw + x];
+          if (v < 1) continue;
+          const t = Math.min(1, v / 255);
+          let r, g, b;
+          if (t < 0.33) { r = Math.floor(t * 3 * 255); g = 0; b = 0; }
+          else if (t < 0.66) { r = 255; g = Math.floor((t - 0.33) * 3 * 255); b = 0; }
+          else { r = 255; g = 255; b = Math.floor((t - 0.66) * 3 * 255); }
+          bCtx.fillStyle = `rgb(${r},${g},${b})`;
+          bCtx.fillRect(Math.floor(x * scx), Math.floor(y * scy), Math.ceil(scx), Math.ceil(scy));
+        }
+      }
+    }
+
+    // Idle vis animation
+    let idlePhase = 0, idleRaf = 0;
+    function drawIdle() {
+      const W = bigCanvas.width, H = bigCanvas.height;
+      bCtx.fillStyle = '#000';
+      bCtx.fillRect(0, 0, W, H);
+      sCtx.fillStyle = '#000';
+      sCtx.fillRect(0, 0, specCanvas.width, specCanvas.height);
+      if (!bGrad) {
+        bGrad = bCtx.createLinearGradient(0, H, 0, 0);
+        bGrad.addColorStop(0.00, '#00ff00');
+        bGrad.addColorStop(0.55, '#ffff00');
+        bGrad.addColorStop(0.85, '#ff8800');
+        bGrad.addColorStop(1.00, '#ff0000');
+      }
+      idlePhase += 0.04;
+      const n = 32, bw = W / n;
+      bCtx.fillStyle = bGrad;
+      for (let i = 0; i < n; i++) {
+        const v = (Math.sin(idlePhase + i * 0.5) * 0.5 + 0.5) * 0.25;
+        const h = Math.max(1, v * H);
+        const x = Math.floor(i * bw);
+        bCtx.fillRect(x + 1, H - h, Math.max(1, Math.floor(bw - 2)), h);
+      }
+      drawSpecIdle();
+      idleRaf = requestAnimationFrame(drawIdle);
+    }
+    idleRaf = requestAnimationFrame(drawIdle);
+
+    audio.addEventListener('play',  () => { cancelAnimationFrame(idleRaf); idleRaf = 0; });
+    audio.addEventListener('pause', () => { setTimeout(() => { if (audio.paused && !idleRaf) idleRaf = requestAnimationFrame(drawIdle); }, 200); });
+    audio.addEventListener('ended', () => { setTimeout(() => { if (audio.paused && !idleRaf) idleRaf = requestAnimationFrame(drawIdle); }, 500); });
+
+    // ── MILKDROP visualizer ───────────────────────────────────────────────
+    // 5 presets: tunnel, radial, plasma, starfield, warp-grid
+    const MILK_PRESETS = ['TUNNEL', 'RADIAL', 'PLASMA', 'STARFIELD', 'WARPGRID'];
+    let milkT = 0;
+    const stars = Array.from({length: 120}, () => ({
+      x: (Math.random() - 0.5) * 2,
+      y: (Math.random() - 0.5) * 2,
+      z: Math.random()
+    }));
+
+    milkCanvas.addEventListener('click', () => {
+      milkPreset = (milkPreset + 1) % MILK_PRESETS.length;
+      document.getElementById('waMilkHint').textContent = MILK_PRESETS[milkPreset];
+      setTimeout(() => { document.getElementById('waMilkHint').textContent = ''; }, 1500);
     });
 
+    function getMilkBands() {
+      if (!analyser) return;
+      analyser.getByteFrequencyData(visData);
+      const n = visData.length;
+      let b = 0, tr = 0, total = 0;
+      const bn = Math.max(1, Math.floor(n * 0.08));
+      const ts = Math.floor(n * 0.55);
+      for (let i = 0; i < bn; i++)  b     += visData[i];
+      for (let i = ts; i < n; i++)  tr    += visData[i];
+      for (let i = 0; i < n; i++)   total += visData[i];
+      milkBass = b  / (bn * 255);
+      milkTreb = tr / ((n - ts) * 255);
+      milkVol  = total / (n * 255);
+    }
+
+    function drawMilk() {
+      if (!milkOn) { milkRaf = 0; return; }
+      if (analyser) getMilkBands();
+      milkT += 0.016 + milkBass * 0.03;
+      const W = milkCanvas.width, H = milkCanvas.height;
+
+      if      (milkPreset === 0) drawMilkTunnel(W, H);
+      else if (milkPreset === 1) drawMilkRadial(W, H);
+      else if (milkPreset === 2) drawMilkPlasma(W, H);
+      else if (milkPreset === 3) drawMilkStars(W, H);
+      else                       drawMilkGrid(W, H);
+
+      milkRaf = requestAnimationFrame(drawMilk);
+    }
+
+    function drawMilkIdle() {
+      milkT += 0.016;
+      const W = milkCanvas.width, H = milkCanvas.height;
+      drawMilkTunnel(W, H);
+      idleRaf = requestAnimationFrame(drawMilkIdle);
+    }
+
+    // Tunnel / warp zoom
+    function drawMilkTunnel(W, H) {
+      const imgD = mCtx.createImageData(W, H);
+      const d = imgD.data;
+      const cx = W / 2, cy = H / 2;
+      const zoom = 1 + milkBass * 0.8;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const dx = (x - cx) / cx, dy = (y - cy) / cy;
+          const dist = Math.sqrt(dx * dx + dy * dy) + 0.001;
+          const angle = Math.atan2(dy, dx);
+          const u = (1 / dist) * zoom + milkT * 0.7;
+          const v = angle / Math.PI + milkT * 0.2 + milkTreb * 0.5;
+          const stripe = Math.floor(u * 8 + v * 6) & 1;
+          const hue = (dist * 200 + milkT * 90 + milkBass * 180) % 360;
+          const bright = Math.min(1, (1 / (dist + 0.2)) * 0.6 + milkVol * 0.4);
+          const [r, g, b] = hslToRgb(hue / 360, 0.9, bright * (stripe ? 0.6 : 0.2));
+          const idx = (y * W + x) * 4;
+          d[idx] = r; d[idx+1] = g; d[idx+2] = b; d[idx+3] = 255;
+        }
+      }
+      mCtx.putImageData(imgD, 0, 0);
+    }
+
+    // Radial burst
+    function drawMilkRadial(W, H) {
+      mCtx.fillStyle = `rgba(0,0,0,${0.15 + milkBass * 0.1})`;
+      mCtx.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2;
+      const rays = 16 + Math.floor(milkBass * 8);
+      for (let i = 0; i < rays; i++) {
+        const angle = (i / rays) * Math.PI * 2 + milkT + milkTreb * 2;
+        const len = (60 + milkBass * 80 + milkVol * 40) * (H / 200);
+        const hue = (i / rays * 360 + milkT * 120) % 360;
+        mCtx.beginPath();
+        mCtx.moveTo(cx, cy);
+        mCtx.lineTo(cx + Math.cos(angle) * len, cy + Math.sin(angle) * len);
+        mCtx.strokeStyle = `hsla(${hue},100%,60%,0.7)`;
+        mCtx.lineWidth = 1 + milkBass * 3;
+        mCtx.shadowColor = `hsl(${hue},100%,70%)`;
+        mCtx.shadowBlur = 6 + milkBass * 10;
+        mCtx.stroke();
+      }
+      mCtx.shadowBlur = 0;
+      // Pulsing center circle
+      mCtx.beginPath();
+      mCtx.arc(cx, cy, 10 + milkBass * 30, 0, Math.PI * 2);
+      const hue0 = (milkT * 200) % 360;
+      mCtx.fillStyle = `hsla(${hue0},100%,70%,0.8)`;
+      mCtx.shadowColor = `hsl(${hue0},100%,80%)`;
+      mCtx.shadowBlur = 20;
+      mCtx.fill();
+      mCtx.shadowBlur = 0;
+    }
+
+    // Plasma
+    function drawMilkPlasma(W, H) {
+      const imgD = mCtx.createImageData(W, H);
+      const d = imgD.data;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const nx = x / W * 4, ny = y / H * 4;
+          const v =
+            Math.sin(nx + milkT) +
+            Math.sin(ny + milkT * 1.3) +
+            Math.sin((nx + ny) * 0.7 + milkT * 0.9) +
+            Math.sin(Math.sqrt(nx * nx + ny * ny) + milkT * 1.1 + milkBass * 3);
+          const hue = (v * 60 + milkT * 60 + milkTreb * 120) % 360;
+          const [r, g, b] = hslToRgb(((hue % 360) + 360) % 360 / 360, 1, 0.5 + milkVol * 0.2);
+          const idx = (y * W + x) * 4;
+          d[idx] = r; d[idx+1] = g; d[idx+2] = b; d[idx+3] = 255;
+        }
+      }
+      mCtx.putImageData(imgD, 0, 0);
+    }
+
+    // Starfield
+    function drawMilkStars(W, H) {
+      mCtx.fillStyle = 'rgba(0,0,0,0.2)';
+      mCtx.fillRect(0, 0, W, H);
+      const speed = 0.005 + milkBass * 0.02 + milkVol * 0.005;
+      for (const s of stars) {
+        s.z -= speed;
+        if (s.z <= 0) { s.x = (Math.random()-0.5)*2; s.y = (Math.random()-0.5)*2; s.z = 1; }
+        const px = (s.x / s.z) * W * 0.5 + W / 2;
+        const py = (s.y / s.z) * H * 0.5 + H / 2;
+        const size = Math.max(0.5, (1 - s.z) * 3 + milkBass * 2);
+        const bright = Math.floor((1 - s.z) * 255);
+        const hue = (milkT * 80 + s.z * 200) % 360;
+        mCtx.beginPath();
+        mCtx.arc(px, py, size, 0, Math.PI * 2);
+        mCtx.fillStyle = `hsl(${hue},80%,${40 + bright / 4}%)`;
+        if (size > 1.5) { mCtx.shadowColor = mCtx.fillStyle; mCtx.shadowBlur = 4; }
+        mCtx.fill();
+        mCtx.shadowBlur = 0;
+      }
+    }
+
+    // Warp grid
+    function drawMilkGrid(W, H) {
+      mCtx.fillStyle = `rgba(0,0,${Math.floor(milkBass * 30)},0.25)`;
+      mCtx.fillRect(0, 0, W, H);
+      const gx = 12, gy = 8;
+      const cx = W / 2, cy = H / 2;
+      const warp = 20 + milkBass * 40;
+      mCtx.lineWidth = 0.8;
+      for (let ix = 0; ix <= gx; ix++) {
+        const hue = (ix / gx * 360 + milkT * 100) % 360;
+        mCtx.strokeStyle = `hsla(${hue},100%,60%,0.7)`;
+        mCtx.shadowColor  = `hsl(${hue},100%,70%)`;
+        mCtx.shadowBlur   = 3 + milkBass * 6;
+        mCtx.beginPath();
+        for (let iy = 0; iy <= gy; iy++) {
+          const bx = (ix / gx - 0.5) * W;
+          const by = (iy / gy - 0.5) * H;
+          const dx = bx - 0, dy = by - 0;
+          const dist = Math.sqrt(dx*dx + dy*dy) / (W*0.6) + 0.001;
+          const wx = bx + Math.sin(milkT * 1.2 + iy * 0.8) * warp / dist;
+          const wy = by + Math.cos(milkT * 0.9 + ix * 0.8) * warp / dist;
+          const px = cx + wx, py = cy + wy;
+          iy === 0 ? mCtx.moveTo(px, py) : mCtx.lineTo(px, py);
+        }
+        mCtx.stroke();
+      }
+      for (let iy = 0; iy <= gy; iy++) {
+        const hue = (iy / gy * 360 + milkT * 120 + 180) % 360;
+        mCtx.strokeStyle = `hsla(${hue},100%,60%,0.7)`;
+        mCtx.shadowColor  = `hsl(${hue},100%,70%)`;
+        mCtx.beginPath();
+        for (let ix = 0; ix <= gx; ix++) {
+          const bx = (ix / gx - 0.5) * W;
+          const by = (iy / gy - 0.5) * H;
+          const dist = Math.sqrt(bx*bx + by*by) / (W*0.6) + 0.001;
+          const wx = bx + Math.sin(milkT * 1.2 + iy * 0.8) * warp / dist;
+          const wy = by + Math.cos(milkT * 0.9 + ix * 0.8) * warp / dist;
+          const px = cx + wx, py = cy + wy;
+          ix === 0 ? mCtx.moveTo(px, py) : mCtx.lineTo(px, py);
+        }
+        mCtx.stroke();
+      }
+      mCtx.shadowBlur = 0;
+    }
+
+    // HSL helper
+    function hslToRgb(h, s, l) {
+      const c = (1 - Math.abs(2*l - 1)) * s;
+      const hp = h * 6;
+      const x = c * (1 - Math.abs((hp % 2) - 1));
+      let r=0, g=0, b=0;
+      if (hp<1){r=c;g=x;} else if(hp<2){r=x;g=c;} else if(hp<3){g=c;b=x;}
+      else if(hp<4){g=x;b=c;} else if(hp<5){r=x;b=c;} else{r=c;b=x;}
+      const m = l - c/2;
+      return [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)];
+    }
+
+    // Start idle Milkdrop
+    milkRaf = requestAnimationFrame(drawMilk);
+
+    // ── Playlist ──────────────────────────────────────────────────────────
+    function renderPlaylist() {
+      if (!tracks.length) {
+        playlist.innerHTML = '<div class="wa-pl-empty">[ PLAYLIST LEER ]<br>+ADD oder Dateien droppen</div>';
+        return;
+      }
+      playlist.innerHTML = tracks.map((t, i) =>
+        `<div class="wa-pl-row${i===current?' active':''}" data-i="${i}">` +
+        `<span class="wa-pl-n">${String(i+1).padStart(2,'0')}.</span>` +
+        `<span class="wa-pl-name"></span>` +
+        `<span class="wa-pl-dur">?:??</span></div>`
+      ).join('');
+      playlist.querySelectorAll('.wa-pl-row').forEach(row => {
+        const i = +row.dataset.i;
+        row.querySelector('.wa-pl-name').textContent = tracks[i].name;
+      });
+      const a = playlist.querySelector('.wa-pl-row.active');
+      if (a) a.scrollIntoView({ block: 'nearest' });
+    }
+
+    function loadFiles(files) {
+      const sup = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
+      const list = Array.from(files || []).filter(f =>
+        (f.type && f.type.startsWith('audio/')) || sup.test(f.name)
+      );
+      for (const f of list) tracks.push({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) });
+      renderPlaylist();
+      if (current === -1 && tracks.length) playTrack(0);
+    }
+
+    playlist.addEventListener('click', e => {
+      const row = e.target.closest('.wa-pl-row');
+      if (row) playTrack(+row.dataset.i);
+    });
     fileInp.addEventListener('change', e => { loadFiles(e.target.files); e.target.value = ''; });
-    document.getElementById('waClearPl').addEventListener('click', () => {
+    document.getElementById('waClear').addEventListener('click', () => {
       tracks.forEach(t => URL.revokeObjectURL(t.url));
-      tracks = []; current = -1;
-      stop(); audio.removeAttribute('src'); audio.load();
-      setLCDTitle('♬ WINAMP — GLAPPA EDITION — LOAD SOME TUNES —');
-      lcdTime.textContent = '0:00';
+      tracks = []; current = -1; stop();
+      audio.removeAttribute('src'); audio.load();
+      titleEl.textContent = 'WINAMP — GLAPPA EDITION';
+      titleEl.className = 'wa-title-txt';
+      trackNum.textContent = '';
+      timeEl.textContent = '-:--';
       seek.value = 0;
       renderPlaylist();
     });
-
-    playlist.addEventListener('click', e => {
-      const row = e.target.closest('.wa-pl-item');
-      if (row) playTrack(+row.dataset.i);
+    document.getElementById('waRemove').addEventListener('click', () => {
+      if (current < 0 || current >= tracks.length) return;
+      URL.revokeObjectURL(tracks[current].url);
+      tracks.splice(current, 1);
+      if (tracks.length === 0) { current = -1; stop(); audio.removeAttribute('src'); audio.load(); }
+      else { current = Math.min(current, tracks.length - 1); playTrack(current); }
+      renderPlaylist();
     });
 
     // Drag & Drop
     const mainWin = document.getElementById('wa-main');
     [mainWin, dropZone].forEach(el => {
-      el.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-      el.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-      el.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        loadFiles(e.dataTransfer.files);
-      });
+      el.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('over'); });
+      el.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+      el.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('over'); loadFiles(e.dataTransfer.files); });
     });
 
-    // Keyboard
+    // Keyboard shortcuts
     document.addEventListener('keydown', e => {
       if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
-      if (e.key === ' ')                         { e.preventDefault(); if (tracks.length) { audio.paused ? audio.play().catch(()=>{}) : audio.pause(); } }
-      else if (e.key === 'ArrowRight' && e.shiftKey) next();
-      else if (e.key === 'ArrowLeft'  && e.shiftKey) prev();
+      if (e.key === ' ')                         { e.preventDefault(); if (tracks.length) audio.paused ? audio.play().catch(()=>{}) : audio.pause(); }
+      else if (e.key === 'ArrowRight' && e.shiftKey) nextTrack();
+      else if (e.key === 'ArrowLeft'  && e.shiftKey) prevTrack();
+      else if (e.key === 'v' || e.key === 'V')   { bigMode = (bigMode+1)%3; }
+      else if (e.key === 'm' || e.key === 'M')   { milkPreset = (milkPreset+1)%MILK_PRESETS.length; }
     });
 
-    // Year in footer
+    // Footer year
     const yr = document.getElementById('year');
     if (yr) yr.textContent = new Date().getFullYear();
-
-    // Idle vis animation (demo bars when no music)
-    let idleRaf = 0;
-    const idleBars = new Uint8Array(32).fill(0);
-    let idlePhase = 0;
-    function drawIdle() {
-      const W = canvas.width, H = canvas.height;
-      ctx.clearRect(0, 0, W, H);
-      const n = idleBars.length;
-      if (!visGrad) {
-        visGrad = ctx.createLinearGradient(0, H, 0, 0);
-        visGrad.addColorStop(0.00, '#00ff00');
-        visGrad.addColorStop(0.55, '#ffff00');
-        visGrad.addColorStop(0.85, '#ff8800');
-        visGrad.addColorStop(1.00, '#ff0000');
-      }
-      const barW = W / n;
-      const gap  = Math.max(1, Math.floor(barW * 0.15));
-      ctx.fillStyle = visGrad;
-      idlePhase += 0.04;
-      for (let i = 0; i < n; i++) {
-        const v = (Math.sin(idlePhase + i * 0.4) * 0.5 + 0.5) * 0.35;
-        const h = Math.max(1, v * H);
-        const x = Math.floor(i * barW);
-        ctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
-      }
-      idleRaf = requestAnimationFrame(drawIdle);
-    }
-    drawIdle();
-    audio.addEventListener('play',  () => { cancelAnimationFrame(idleRaf); idleRaf = 0; });
-    audio.addEventListener('pause', () => { if (!idleRaf) drawIdle(); });
-    audio.addEventListener('ended', () => { setTimeout(() => { if (audio.paused && !idleRaf) drawIdle(); }, 100); });
-
   })();
   </script>
 </body>
