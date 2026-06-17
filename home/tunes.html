@@ -8,6 +8,22 @@
   <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
   <link rel="icon" href="../favicon.ico">
   <link rel="stylesheet" href="home.css?v=5">
+  <style>
+    .player-vis-wrap { position: relative; width: 100%; }
+    .player-vis-wrap.fractal-resize {
+      resize: vertical;
+      overflow: hidden;
+      min-height: 80px;
+      max-height: 700px;
+      border-bottom: 3px solid rgba(0,255,255,0.35);
+      cursor: s-resize;
+    }
+    .player-vis-wrap.fractal-resize canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+  </style>
 </head>
 <body>
 
@@ -63,7 +79,9 @@
 
         <div class="player-display">
           <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
-          <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true" hidden></canvas>
+          <div id="visWrap" class="player-vis-wrap">
+            <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true" hidden></canvas>
+          </div>
           <div class="player-time">
             <span id="curTime">0:00</span>
             <input type="range" class="player-seek" id="seek" min="0" max="1000" value="0" step="1">
@@ -172,6 +190,7 @@
       const repBtn    = document.getElementById('repeatBtn');
       const visBtn    = document.getElementById('visBtn');
       const canvas    = document.getElementById('vis');
+      const visWrap   = document.getElementById('visWrap');
       const cctx      = canvas.getContext('2d');
       const plSearch  = document.getElementById('plSearch');
       const plCountEl = document.getElementById('plSearchCount');
@@ -395,14 +414,27 @@
         if (mBlackStreak > 60) pickRandomPoi();
       }
 
-      // --- Dispatcher ---------------------------------------------
+      // --- Dispatcher (mit try/catch für Fehlertoleranz) ----------
       function drawVis() {
         if (!analyser || visMode === 'off') { visRaf = 0; return; }
         analyser.getByteFrequencyData(visData);
-        if (visMode === 'spectrum')   drawSpectrum();
-        else if (visMode === 'mandelbrot') drawMandelbrot();
+        try {
+          if (visMode === 'spectrum')        drawSpectrum();
+          else if (visMode === 'mandelbrot') drawMandelbrot();
+        } catch (e) {
+          // Fehler im Renderer → POI resetten, trotzdem weiterlaufen
+          pickRandomPoi();
+        }
         visRaf = requestAnimationFrame(drawVis);
       }
+
+      // Watchdog: alle 1.5s prüfen ob RAF noch läuft während Musik spielt
+      setInterval(() => {
+        if (visMode !== 'off' && analyser && !audio.paused && !visRaf) {
+          pickRandomPoi();
+          visRaf = requestAnimationFrame(drawVis);
+        }
+      }, 1500);
 
       function setVisMode(mode) {
         if (!VIS_MODES.includes(mode)) mode = 'off';
@@ -418,6 +450,7 @@
         if (mode === 'off') {
           if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
           canvas.hidden = true;
+          visWrap.classList.remove('fractal-resize');
           cctx.clearRect(0, 0, canvas.width, canvas.height);
           return;
         }
@@ -426,13 +459,19 @@
           visBtn.classList.remove('active');
           visBtn.innerHTML = '♬ Visualizer';
           canvas.hidden = true;
+          visWrap.classList.remove('fractal-resize');
           return;
         }
         if (audioCtx.state === 'suspended') audioCtx.resume();
         canvas.hidden = false;
+        // Fractal-Modus: Wrapper wird vertikal ziehbar
+        if (mode === 'mandelbrot') {
+          visWrap.classList.add('fractal-resize');
+          pickRandomPoi();
+        } else {
+          visWrap.classList.remove('fractal-resize');
+        }
         fitCanvas();
-        // Reset Mandelbrot wenn neu reingewechselt -> random POI
-        if (mode === 'mandelbrot') pickRandomPoi();
         if (!audio.paused && !visRaf) visRaf = requestAnimationFrame(drawVis);
       }
 
@@ -450,6 +489,11 @@
       } catch (e) {}
 
       window.addEventListener('resize', () => { if (visMode !== 'off') fitCanvas(); });
+
+      // ResizeObserver: Canvas-Größe dem ziehbaren Wrapper folgen lassen
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(() => { if (visMode !== 'off') fitCanvas(); }).observe(visWrap);
+      }
 
       // Playlist-Filter: live, debounced light
       plSearch.addEventListener('input', applyPlaylistFilter);
