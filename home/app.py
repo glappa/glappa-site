@@ -800,7 +800,7 @@ def _home_url(glappa_base: str) -> str:
 def _tunes_url(glappa_base: str) -> str:
     if glappa_base.startswith(('http://localhost', 'http://127.', 'http://192.168.', 'http://10.', 'http://172.')):
         return f'{glappa_base}/home/tunes.html'
-    return 'https://home.glappa.de/tunes.html'
+    return 'https://home.glappa.de/home/tunes.html'
 
 
 # ── Routes ────────────────────────────────────────────────────────
