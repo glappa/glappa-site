@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Winamp &mdash; Glappa Home</title>
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="home.css?v=5">
+  <style>
+    body { background: #1a1a2e; }
+
+    /* ── Winamp Desktop ─────────────────────────────────── */
+    .wa-desktop {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      padding: 20px 10px 40px;
+      user-select: none;
+    }
+
+    /* ── Window Base ────────────────────────────────────── */
+    .wa-win {
+      position: relative;
+      background: #232323;
+      border: 2px solid #888;
+      border-top-color: #bbb;
+      border-left-color: #bbb;
+      border-bottom-color: #444;
+      border-right-color: #444;
+      box-shadow: 2px 2px 0 #000, inset 1px 1px 0 #555;
+      font-family: 'Courier New', monospace;
+      cursor: default;
+      margin-bottom: 0;
+    }
+
+    /* Title bar */
+    .wa-titlebar {
+      height: 14px;
+      background: linear-gradient(to right, #1a2a8a 0%, #4a6aee 40%, #1a2a8a 100%);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 3px;
+      cursor: move;
+    }
+    .wa-titlebar-title {
+      font-size: 8px;
+      color: #aaccff;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .wa-titlebar-btns {
+      display: flex;
+      gap: 2px;
+    }
+    .wa-tb-btn {
+      width: 9px;
+      height: 9px;
+      background: #667;
+      border: 1px solid #aaa;
+      border-bottom-color: #333;
+      border-right-color: #333;
+      font-size: 5px;
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .wa-tb-btn:hover { background: #889; }
+    .wa-tb-btn:active { border-color: #333; border-bottom-color: #aaa; border-right-color: #aaa; }
+
+    /* ── MAIN PLAYER ────────────────────────────────────── */
+    #wa-main {
+      width: 275px;
+    }
+    .wa-body {
+      padding: 4px;
+    }
+
+    /* LCD Display */
+    .wa-lcd {
+      background: #000;
+      border: 2px inset #555;
+      border-top-color: #333;
+      border-left-color: #333;
+      border-bottom-color: #777;
+      border-right-color: #777;
+      padding: 3px 4px;
+      margin-bottom: 4px;
+      position: relative;
+      overflow: hidden;
+    }
+    .wa-lcd-scroll {
+      font-size: 10px;
+      color: #00cc00;
+      white-space: nowrap;
+      overflow: hidden;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+      height: 14px;
+      line-height: 14px;
+    }
+    .wa-lcd-scroll span {
+      display: inline-block;
+    }
+    .wa-lcd-scroll span.scroll-active {
+      animation: wa-scroll 8s linear infinite;
+      padding-right: 40px;
+    }
+    @keyframes wa-scroll {
+      0%   { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+
+    .wa-lcd-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 2px;
+    }
+    .wa-lcd-time {
+      font-size: 20px;
+      color: #00ee00;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 2px;
+      line-height: 1;
+      text-shadow: 0 0 8px #00ff00, 0 0 15px #00aa00;
+    }
+    .wa-lcd-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 1px;
+    }
+    .wa-lcd-kbps, .wa-lcd-khz {
+      font-size: 9px;
+      color: #00cc00;
+      letter-spacing: 1px;
+    }
+
+    /* Visualizer */
+    #wa-vis {
+      display: block;
+      width: 100%;
+      height: 26px;
+      background: #000;
+      margin-bottom: 4px;
+      border: 1px solid #333;
+    }
+
+    /* Seek bar */
+    .wa-seek-wrap {
+      background: #000;
+      border: 1px inset #444;
+      padding: 2px 3px;
+      margin-bottom: 4px;
+    }
+    .wa-seek {
+      width: 100%;
+      height: 10px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #222;
+      cursor: pointer;
+      border: 1px inset #555;
+    }
+    .wa-seek::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px;
+      height: 10px;
+      background: #aaa;
+      border: 1px solid #fff;
+      border-bottom-color: #555;
+      border-right-color: #555;
+      cursor: pointer;
+    }
+    .wa-seek::-moz-range-thumb {
+      width: 10px;
+      height: 10px;
+      background: #aaa;
+      border: 1px solid #fff;
+      cursor: pointer;
+    }
+
+    /* Controls */
+    .wa-controls {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      margin-bottom: 4px;
+    }
+    .wa-btn {
+      background: #3a3a4a;
+      border: 1px solid #777;
+      border-top-color: #aaa;
+      border-left-color: #aaa;
+      border-bottom-color: #333;
+      border-right-color: #333;
+      color: #ccc;
+      font-size: 9px;
+      padding: 2px 5px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      min-width: 28px;
+      text-align: center;
+    }
+    .wa-btn:hover { background: #4a4a5a; color: #fff; }
+    .wa-btn:active {
+      border-color: #333;
+      border-bottom-color: #aaa;
+      border-right-color: #aaa;
+      transform: translate(1px,1px);
+    }
+    .wa-btn.active {
+      background: #2a3a6a;
+      color: #aaccff;
+      border-top-color: #333;
+      border-left-color: #333;
+      border-bottom-color: #aaa;
+      border-right-color: #aaa;
+    }
+    .wa-btn--play { font-size: 12px; min-width: 32px; }
+
+    /* Volume + Balance */
+    .wa-sliders {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .wa-slider-label {
+      font-size: 8px;
+      color: #888;
+      letter-spacing: 1px;
+    }
+    .wa-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 8px;
+      background: #111;
+      border: 1px inset #555;
+      cursor: pointer;
+    }
+    .wa-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 8px;
+      height: 12px;
+      background: #aaa;
+      border: 1px solid #ddd;
+      border-bottom-color: #555;
+      border-right-color: #555;
+    }
+    .wa-slider::-moz-range-thumb {
+      width: 8px;
+      height: 12px;
+      background: #aaa;
+      border: 1px solid #ddd;
+    }
+    #wa-vol { width: 90px; }
+    #wa-bal { width: 70px; }
+
+    /* Mode buttons row */
+    .wa-modes {
+      display: flex;
+      gap: 3px;
+    }
+    .wa-mode-btn {
+      background: #2a2a3a;
+      border: 1px solid #666;
+      border-top-color: #999;
+      border-left-color: #999;
+      border-bottom-color: #222;
+      border-right-color: #222;
+      color: #888;
+      font-size: 8px;
+      padding: 2px 5px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .wa-mode-btn:hover { color: #ccc; background: #3a3a4a; }
+    .wa-mode-btn.active {
+      background: #1a2a5a;
+      color: #88aaff;
+      border-top-color: #222;
+      border-left-color: #222;
+      border-bottom-color: #888;
+      border-right-color: #888;
+    }
+
+    /* ── EQUALIZER ──────────────────────────────────────── */
+    #wa-eq {
+      width: 275px;
+    }
+    .wa-eq-body {
+      padding: 4px;
+    }
+    .wa-eq-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 5px;
+    }
+    .wa-eq-band {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+    }
+    .wa-eq-slider {
+      -webkit-appearance: slider-vertical;
+      appearance: slider-vertical;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 14px;
+      height: 60px;
+      background: #111;
+      border: 1px inset #444;
+      cursor: pointer;
+    }
+    .wa-eq-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 8px;
+      background: #22cc22;
+      border: 1px solid #55ff55;
+      border-bottom-color: #008800;
+      border-right-color: #008800;
+    }
+    .wa-eq-slider::-moz-range-thumb {
+      width: 12px;
+      height: 6px;
+      background: #22cc22;
+      border: 1px solid #55ff55;
+    }
+    .wa-eq-label {
+      font-size: 6px;
+      color: #666;
+      letter-spacing: 0;
+      text-align: center;
+    }
+    .wa-eq-preamp {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border-right: 1px solid #444;
+      padding-right: 6px;
+      margin-right: 1px;
+    }
+    .wa-eq-preamp .wa-eq-label { color: #888; font-size: 7px; }
+    .wa-eq-on-btn {
+      font-size: 8px;
+      color: #888;
+      background: #2a2a3a;
+      border: 1px solid #555;
+      padding: 1px 4px;
+      cursor: pointer;
+      margin-right: auto;
+      font-family: 'Courier New', monospace;
+    }
+    .wa-eq-on-btn.active { color: #00cc00; }
+    .wa-eq-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    /* ── PLAYLIST ───────────────────────────────────────── */
+    #wa-pl {
+      width: 275px;
+    }
+    .wa-pl-body {
+      padding: 4px;
+    }
+    .wa-pl-list {
+      background: #000;
+      border: 1px inset #444;
+      height: 120px;
+      overflow-y: auto;
+      font-size: 10px;
+      color: #aaaaaa;
+      scrollbar-width: thin;
+      scrollbar-color: #555 #111;
+    }
+    .wa-pl-list::-webkit-scrollbar { width: 8px; }
+    .wa-pl-list::-webkit-scrollbar-track { background: #111; }
+    .wa-pl-list::-webkit-scrollbar-thumb { background: #555; }
+    .wa-pl-item {
+      display: flex;
+      padding: 1px 4px;
+      cursor: pointer;
+      gap: 4px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .wa-pl-item:hover { background: #1a1a4a; color: #ccc; }
+    .wa-pl-item.active { background: #0000aa; color: #fff; }
+    .wa-pl-num { color: #555; min-width: 18px; }
+    .wa-pl-name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .wa-pl-dur { color: #555; min-width: 35px; text-align: right; }
+    .wa-pl-empty { color: #444; padding: 4px; text-align: center; font-size: 9px; }
+
+    .wa-pl-actions {
+      display: flex;
+      gap: 3px;
+      margin-top: 3px;
+    }
+    .wa-pl-file-btn {
+      background: #2a2a3a;
+      border: 1px solid #666;
+      border-top-color: #999;
+      border-left-color: #999;
+      border-bottom-color: #222;
+      border-right-color: #222;
+      color: #aaa;
+      font-size: 8px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      text-transform: uppercase;
+    }
+    .wa-pl-file-btn:hover { color: #fff; background: #3a3a4a; }
+
+    /* ── LOAD ZONE ──────────────────────────────────────── */
+    .wa-drop-zone {
+      border: 2px dashed #333;
+      padding: 8px;
+      text-align: center;
+      font-size: 9px;
+      color: #555;
+      margin-top: 3px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+    }
+    .wa-drop-zone.drag-over {
+      border-color: #00cc00;
+      color: #00cc00;
+      background: #001100;
+    }
+
+    /* ── Scrollbar for playlist ─────────────────────────── */
+    @media (max-width: 340px) {
+      #wa-main, #wa-eq, #wa-pl { width: 98vw; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="marquee marquee--top">
+    <span>&#9836; WINAMP &#9836; IT REALLY WHIPS THE LLAMA'S ASS &#9836; GLAPPA EDITION &#9836; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <div class="page-banner">
+      <h2>&#9836; WINAMP &#9836;</h2>
+<pre>
+  _          _
+ | |        | |
+ | |_   _ __| |_
+ |  _| | '__'  _|
+ | |   | |  | |_
+ |_|   |_|   \__|
+</pre>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <nav class="nav">
+    <a href="../index.html">&larr; Glappa</a>
+    <span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a>
+    <span class="sep">|</span>
+    <a href="../page1.html">Video</a>
+    <span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a>
+    <span class="sep">|</span>
+    <a href="index.html">Home</a>
+    <span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction">
+    <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main>
+    <div class="wa-desktop" id="waDesktop">
+
+      <!-- ── MAIN PLAYER ── -->
+      <div class="wa-win" id="wa-main">
+        <div class="wa-titlebar" id="wa-main-bar">
+          <span class="wa-titlebar-title">Winamp</span>
+          <div class="wa-titlebar-btns">
+            <div class="wa-tb-btn" title="Minimieren">_</div>
+            <div class="wa-tb-btn" title="Schließen">×</div>
+          </div>
+        </div>
+        <div class="wa-body">
+          <!-- LCD -->
+          <div class="wa-lcd">
+            <div class="wa-lcd-scroll"><span id="lcdTitle">&#9836; WINAMP &mdash; GLAPPA EDITION &mdash; LOAD SOME TUNES &mdash;</span></div>
+            <div class="wa-lcd-info">
+              <div class="wa-lcd-time" id="lcdTime">0:00</div>
+              <div class="wa-lcd-meta">
+                <div class="wa-lcd-kbps" id="lcdKbps">--- kbps</div>
+                <div class="wa-lcd-khz" id="lcdKhz">44 kHz</div>
+              </div>
+            </div>
+          </div>
+          <!-- Canvas Visualizer -->
+          <canvas id="wa-vis" width="267" height="26"></canvas>
+          <!-- Seek -->
+          <div class="wa-seek-wrap">
+            <input type="range" class="wa-seek" id="waSeek" min="0" max="1000" value="0" step="1">
+          </div>
+          <!-- Controls -->
+          <div class="wa-controls">
+            <button class="wa-btn" id="waPrev" title="Vorheriger Track">|◀◀</button>
+            <button class="wa-btn wa-btn--play" id="waPlay" title="Play">▶</button>
+            <button class="wa-btn" id="waPause" title="Pause">⏸</button>
+            <button class="wa-btn" id="waStop" title="Stop">■</button>
+            <button class="wa-btn" id="waNext" title="Nächster Track">▶▶|</button>
+            <button class="wa-btn" id="waEject" title="Datei öffnen">⏏</button>
+          </div>
+          <!-- Volume + Balance -->
+          <div class="wa-sliders">
+            <span class="wa-slider-label">VOL</span>
+            <input type="range" class="wa-slider" id="wa-vol" min="0" max="100" value="80">
+            <span class="wa-slider-label">BAL</span>
+            <input type="range" class="wa-slider" id="wa-bal" min="-50" max="50" value="0">
+          </div>
+          <!-- Mode buttons -->
+          <div class="wa-modes">
+            <button class="wa-mode-btn" id="waShuffle">SHUF</button>
+            <button class="wa-mode-btn" id="waRepeat">REP</button>
+            <button class="wa-mode-btn active" id="waVisBtn">VIS</button>
+            <button class="wa-mode-btn active" id="waEqBtn">EQ</button>
+            <button class="wa-mode-btn active" id="waPlBtn">PL</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── EQUALIZER ── -->
+      <div class="wa-win" id="wa-eq">
+        <div class="wa-titlebar" id="wa-eq-bar">
+          <span class="wa-titlebar-title">Glappa Equalizer</span>
+          <div class="wa-titlebar-btns">
+            <div class="wa-tb-btn" title="Schließen">×</div>
+          </div>
+        </div>
+        <div class="wa-eq-body">
+          <div class="wa-eq-header">
+            <button class="wa-eq-on-btn active" id="waEqOn">EQ ON</button>
+          </div>
+          <div class="wa-eq-row" id="waEqBands">
+            <!-- Preamp + 10 bands generated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PLAYLIST ── -->
+      <div class="wa-win" id="wa-pl">
+        <div class="wa-titlebar" id="wa-pl-bar">
+          <span class="wa-titlebar-title">Playlist Editor</span>
+          <div class="wa-titlebar-btns">
+            <div class="wa-tb-btn" title="Schließen">×</div>
+          </div>
+        </div>
+        <div class="wa-pl-body">
+          <div class="wa-pl-list" id="waPlaylist">
+            <div class="wa-pl-empty">[ PLAYLIST LEER &mdash; +ADD klicken oder Dateien droppen ]</div>
+          </div>
+          <div class="wa-pl-actions">
+            <label class="wa-pl-file-btn">
+              +ADD
+              <input type="file" id="waFileInput" accept="audio/*" multiple hidden>
+            </label>
+            <button class="wa-pl-file-btn" id="waClearPl">CLR</button>
+          </div>
+          <div class="wa-drop-zone" id="waDropZone">
+            DROP MP3 / WAV / OGG / FLAC FILES HERE
+          </div>
+        </div>
+      </div>
+
+    </div><!-- .wa-desktop -->
+  </main>
+
+  <audio id="waAudio" preload="metadata"></audio>
+
+  <footer class="footer">
+    <div class="construction">
+      <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+      <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+    </div>
+    <div class="footer-actions">
+      <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
+        <img id="mailImg" src="../img/gif/animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+      </a>
+      <a href="../index.html">
+        <img src="../img/gif/anihome1.gif" alt="Home" width="88" height="31">
+      </a>
+    </div>
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+    <div class="firefox">
+      <a href="https://www.firefox.com">
+        <img src="../img/gif/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+      </a>
+    </div>
+    <div class="badges">
+      <img src="../img/gif/allbrowsers.gif" alt="">
+      <img src="../img/gif/blinktastic_spongebob.gif" alt="">
+      <img src="../img/gif/browser1.gif" alt="">
+      <img src="../img/gif/browsers.gif" alt="">
+      <img src="../img/gif/counter3.gif" alt="">
+      <img src="../img/gif/external-content.duckduckgo.com.gif" alt="">
+      <img src="../img/gif/hacker.gif" alt="">
+      <img src="../img/gif/hugsnotdrugs.gif" alt="">
+    </div>
+    <div class="marquee marquee--bottom">
+      <span>&#9836; IT REALLY WHIPS THE LLAMA'S ASS &#9836; WINAMP 2.X FOREVER &#9836; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=13"></script>
+  <script>
+  (function () {
+    // ── State ──────────────────────────────────────────────────────────────
+    const audio    = document.getElementById('waAudio');
+    const canvas   = document.getElementById('wa-vis');
+    const ctx      = canvas.getContext('2d');
+    const lcdTitle = document.getElementById('lcdTitle');
+    const lcdTime  = document.getElementById('lcdTime');
+    const seek     = document.getElementById('waSeek');
+    const volEl    = document.getElementById('wa-vol');
+    const balEl    = document.getElementById('wa-bal');
+    const playlist = document.getElementById('waPlaylist');
+    const fileInp  = document.getElementById('waFileInput');
+    const dropZone = document.getElementById('waDropZone');
+
+    let tracks   = [];
+    let current  = -1;
+    let shuffle  = false;
+    let repeat   = 'none';
+    let seeking  = false;
+    let visOn    = true;
+    let eqOn     = true;
+    let audioCtx = null;
+    let analyser = null;
+    let visData  = null;
+    let visRaf   = 0;
+    let peaks    = null;
+    let visGrad  = null;
+    let scrollTimer = null;
+
+    // EQ bands: preamp + 10 Hz bands
+    const EQ_BANDS = ['PREAMP','70','180','320','600','1K','3K','6K','12K','14K','16K'];
+    const eqVals   = new Array(EQ_BANDS.length).fill(50); // 0-100, 50=flat
+    let   eqFilters = [];
+
+    // ── EQ Build ───────────────────────────────────────────────────────────
+    const eqRow = document.getElementById('waEqBands');
+    EQ_BANDS.forEach((label, i) => {
+      const div = document.createElement('div');
+      div.className = 'wa-eq-band' + (i === 0 ? ' wa-eq-preamp' : '');
+      const sl = document.createElement('input');
+      sl.type = 'range';
+      sl.className = 'wa-eq-slider';
+      sl.min = 0; sl.max = 100; sl.value = 50; sl.step = 1;
+      sl.dataset.band = i;
+      sl.addEventListener('input', e => {
+        eqVals[i] = +e.target.value;
+        applyEQ();
+      });
+      const lb = document.createElement('div');
+      lb.className = 'wa-eq-label';
+      lb.textContent = label;
+      div.appendChild(sl);
+      div.appendChild(lb);
+      eqRow.appendChild(div);
+    });
+
+    // ── EQ Apply (Web Audio BiquadFilter) ──────────────────────────────────
+    const EQ_FREQS = [null, 70, 180, 320, 600, 1000, 3000, 6000, 12000, 14000, 16000];
+    function buildEQFilters() {
+      if (!audioCtx) return;
+      eqFilters.forEach(f => { try { f.disconnect(); } catch(e){} });
+      eqFilters = [];
+      if (!eqOn) return;
+      for (let i = 1; i < EQ_BANDS.length; i++) {
+        const f = audioCtx.createBiquadFilter();
+        f.type = (i === 1) ? 'lowshelf' : (i === EQ_BANDS.length - 1) ? 'highshelf' : 'peaking';
+        f.frequency.value = EQ_FREQS[i];
+        f.gain.value = (eqVals[i] - 50) / 50 * 12; // -12 to +12 dB
+        eqFilters.push(f);
+      }
+    }
+
+    function applyEQ() {
+      if (!audioCtx || !analyser) return;
+      buildEQFilters();
+      // Reconnect chain
+      try {
+        if (eqFilters.length) {
+          // src -> filter chain -> analyser -> dest
+          // We just set gain on existing filters if possible
+          for (let i = 1; i < EQ_BANDS.length; i++) {
+            if (eqFilters[i-1]) eqFilters[i-1].gain.value = (eqVals[i] - 50) / 50 * 12;
+          }
+        }
+      } catch(e) {}
+    }
+
+    // ── Audio Context ──────────────────────────────────────────────────────
+    function ensureCtx() {
+      if (audioCtx) return true;
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return false;
+      try {
+        audioCtx = new C();
+        const src = audioCtx.createMediaElementSource(audio);
+        analyser  = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.75;
+        visData   = new Uint8Array(analyser.frequencyBinCount);
+
+        // Build EQ filters and chain
+        buildEQFilters();
+        let chain = src;
+        eqFilters.forEach(f => { chain.connect(f); chain = f; });
+        chain.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        return true;
+      } catch(e) { audioCtx = null; return false; }
+    }
+
+    // ── Visualizer ────────────────────────────────────────────────────────
+    function drawVis() {
+      if (!analyser || !visOn) { visRaf = 0; return; }
+      analyser.getByteFrequencyData(visData);
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      if (!visGrad) {
+        visGrad = ctx.createLinearGradient(0, H, 0, 0);
+        visGrad.addColorStop(0.00, '#00ff00');
+        visGrad.addColorStop(0.55, '#ffff00');
+        visGrad.addColorStop(0.85, '#ff8800');
+        visGrad.addColorStop(1.00, '#ff0000');
+      }
+      const n = visData.length;
+      if (!peaks || peaks.length !== n) peaks = new Float32Array(n);
+      const barW = W / n;
+      const gap  = Math.max(1, Math.floor(barW * 0.15));
+      ctx.fillStyle = visGrad;
+      for (let i = 0; i < n; i++) {
+        const v = visData[i] / 255;
+        const h = Math.max(1, v * H);
+        const x = Math.floor(i * barW);
+        ctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
+        if (v > peaks[i]) peaks[i] = v;
+        else              peaks[i] = Math.max(0, peaks[i] - 0.015);
+      }
+      ctx.fillStyle = '#00ffff';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 3;
+      for (let i = 0; i < n; i++) {
+        const py = H - peaks[i] * H;
+        const x  = Math.floor(i * barW);
+        ctx.fillRect(x + gap, Math.max(0, py - 1), Math.max(1, Math.floor(barW - gap * 2)), 1);
+      }
+      ctx.shadowBlur = 0;
+      visRaf = requestAnimationFrame(drawVis);
+    }
+
+    function startVis() {
+      if (!visOn || !analyser) return;
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      if (!visRaf) visRaf = requestAnimationFrame(drawVis);
+    }
+
+    function stopVis() {
+      if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // ── LCD Scroll ────────────────────────────────────────────────────────
+    function setLCDTitle(text) {
+      lcdTitle.className = text.length > 28 ? 'scroll-active' : '';
+      lcdTitle.textContent = text;
+    }
+
+    function fmt(t) {
+      if (!isFinite(t) || t < 0) return '0:00';
+      const m = Math.floor(t / 60);
+      const s = Math.floor(t % 60);
+      return m + ':' + String(s).padStart(2, '0');
+    }
+
+    // ── Playlist ──────────────────────────────────────────────────────────
+    function renderPlaylist() {
+      if (!tracks.length) {
+        playlist.innerHTML = '<div class="wa-pl-empty">[ PLAYLIST LEER &mdash; +ADD klicken oder Dateien droppen ]</div>';
+        return;
+      }
+      playlist.innerHTML = tracks.map((t, i) =>
+        '<div class="wa-pl-item' + (i === current ? ' active' : '') + '" data-i="' + i + '">' +
+          '<span class="wa-pl-num">' + String(i + 1).padStart(2, '0') + '</span>' +
+          '<span class="wa-pl-name"></span>' +
+          '<span class="wa-pl-dur" data-i="' + i + '">?:??</span>' +
+        '</div>'
+      ).join('');
+      playlist.querySelectorAll('.wa-pl-item').forEach(row => {
+        const i = +row.dataset.i;
+        row.querySelector('.wa-pl-name').textContent = tracks[i].name;
+      });
+      // Scroll active into view
+      const activeEl = playlist.querySelector('.wa-pl-item.active');
+      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function loadFiles(files) {
+      const supported = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
+      const list = Array.from(files || []).filter(f =>
+        (f.type && f.type.startsWith('audio/')) || supported.test(f.name)
+      );
+      for (const f of list) tracks.push({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) });
+      renderPlaylist();
+      if (current === -1 && tracks.length) playTrack(0);
+    }
+
+    function playTrack(i) {
+      if (i < 0 || i >= tracks.length) return;
+      current = i;
+      audio.src = tracks[i].url;
+      setLCDTitle('♬ ' + tracks[i].name);
+      renderPlaylist();
+      audio.play().catch(() => {});
+      ensureCtx();
+    }
+
+    function next() {
+      if (!tracks.length) return;
+      if (shuffle && tracks.length > 1) {
+        let n; do { n = Math.floor(Math.random() * tracks.length); } while (n === current);
+        playTrack(n);
+      } else {
+        playTrack((current + 1) % tracks.length);
+      }
+    }
+    function prev() {
+      if (!tracks.length) return;
+      if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+      playTrack((current - 1 + tracks.length) % tracks.length);
+    }
+    function stop() {
+      audio.pause();
+      audio.currentTime = 0;
+      document.getElementById('waPlay').textContent = '▶';
+    }
+
+    // ── Event Listeners ───────────────────────────────────────────────────
+    document.getElementById('waPlay').addEventListener('click', () => {
+      if (!tracks.length) return;
+      if (audio.paused) {
+        audio.play().catch(() => {});
+        ensureCtx();
+      } else {
+        audio.pause();
+      }
+    });
+    document.getElementById('waPause').addEventListener('click', () => {
+      if (!audio.paused) audio.pause();
+      else if (tracks.length) { audio.play().catch(() => {}); ensureCtx(); }
+    });
+    document.getElementById('waStop').addEventListener('click', stop);
+    document.getElementById('waPrev').addEventListener('click', prev);
+    document.getElementById('waNext').addEventListener('click', next);
+    document.getElementById('waEject').addEventListener('click', () => fileInp.click());
+
+    audio.addEventListener('play', () => {
+      document.getElementById('waPlay').textContent = '⏸';
+      startVis();
+    });
+    audio.addEventListener('pause', () => {
+      document.getElementById('waPlay').textContent = '▶';
+      stopVis();
+    });
+    audio.addEventListener('ended', () => {
+      stopVis();
+      if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+      const isLast = current === tracks.length - 1;
+      if (isLast && repeat === 'none' && !shuffle) { stop(); return; }
+      next();
+    });
+    audio.addEventListener('timeupdate', () => {
+      lcdTime.textContent = fmt(audio.currentTime);
+      if (!seeking && audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
+    });
+    audio.addEventListener('loadedmetadata', () => {});
+
+    seek.addEventListener('input', () => { seeking = true; });
+    seek.addEventListener('change', e => {
+      if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration;
+      seeking = false;
+    });
+
+    volEl.addEventListener('input', e => { audio.volume = e.target.value / 100; });
+    balEl.addEventListener('input', () => {}); // visual only (WebAudio panner would need more setup)
+
+    document.getElementById('waShuffle').addEventListener('click', function() {
+      shuffle = !shuffle;
+      this.classList.toggle('active', shuffle);
+    });
+    document.getElementById('waRepeat').addEventListener('click', function() {
+      repeat = repeat === 'none' ? 'all' : repeat === 'all' ? 'one' : 'none';
+      this.classList.toggle('active', repeat !== 'none');
+      this.textContent = repeat === 'one' ? 'REP1' : 'REP';
+    });
+    document.getElementById('waVisBtn').addEventListener('click', function() {
+      visOn = !visOn;
+      this.classList.toggle('active', visOn);
+      if (visOn && !audio.paused) startVis();
+      else stopVis();
+    });
+    document.getElementById('waEqBtn').addEventListener('click', function() {
+      const eq = document.getElementById('wa-eq');
+      const hidden = eq.style.display === 'none';
+      eq.style.display = hidden ? '' : 'none';
+      this.classList.toggle('active', hidden);
+    });
+    document.getElementById('waPlBtn').addEventListener('click', function() {
+      const pl = document.getElementById('wa-pl');
+      const hidden = pl.style.display === 'none';
+      pl.style.display = hidden ? '' : 'none';
+      this.classList.toggle('active', hidden);
+    });
+
+    document.getElementById('waEqOn').addEventListener('click', function() {
+      eqOn = !eqOn;
+      this.classList.toggle('active', eqOn);
+      this.textContent = eqOn ? 'EQ ON' : 'EQ OFF';
+      applyEQ();
+    });
+
+    fileInp.addEventListener('change', e => { loadFiles(e.target.files); e.target.value = ''; });
+    document.getElementById('waClearPl').addEventListener('click', () => {
+      tracks.forEach(t => URL.revokeObjectURL(t.url));
+      tracks = []; current = -1;
+      stop(); audio.removeAttribute('src'); audio.load();
+      setLCDTitle('♬ WINAMP — GLAPPA EDITION — LOAD SOME TUNES —');
+      lcdTime.textContent = '0:00';
+      seek.value = 0;
+      renderPlaylist();
+    });
+
+    playlist.addEventListener('click', e => {
+      const row = e.target.closest('.wa-pl-item');
+      if (row) playTrack(+row.dataset.i);
+    });
+
+    // Drag & Drop
+    const mainWin = document.getElementById('wa-main');
+    [mainWin, dropZone].forEach(el => {
+      el.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      el.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+      el.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        loadFiles(e.dataTransfer.files);
+      });
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', e => {
+      if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+      if (e.key === ' ')                         { e.preventDefault(); if (tracks.length) { audio.paused ? audio.play().catch(()=>{}) : audio.pause(); } }
+      else if (e.key === 'ArrowRight' && e.shiftKey) next();
+      else if (e.key === 'ArrowLeft'  && e.shiftKey) prev();
+    });
+
+    // Year in footer
+    const yr = document.getElementById('year');
+    if (yr) yr.textContent = new Date().getFullYear();
+
+    // Idle vis animation (demo bars when no music)
+    let idleRaf = 0;
+    const idleBars = new Uint8Array(32).fill(0);
+    let idlePhase = 0;
+    function drawIdle() {
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      const n = idleBars.length;
+      if (!visGrad) {
+        visGrad = ctx.createLinearGradient(0, H, 0, 0);
+        visGrad.addColorStop(0.00, '#00ff00');
+        visGrad.addColorStop(0.55, '#ffff00');
+        visGrad.addColorStop(0.85, '#ff8800');
+        visGrad.addColorStop(1.00, '#ff0000');
+      }
+      const barW = W / n;
+      const gap  = Math.max(1, Math.floor(barW * 0.15));
+      ctx.fillStyle = visGrad;
+      idlePhase += 0.04;
+      for (let i = 0; i < n; i++) {
+        const v = (Math.sin(idlePhase + i * 0.4) * 0.5 + 0.5) * 0.35;
+        const h = Math.max(1, v * H);
+        const x = Math.floor(i * barW);
+        ctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
+      }
+      idleRaf = requestAnimationFrame(drawIdle);
+    }
+    drawIdle();
+    audio.addEventListener('play',  () => { cancelAnimationFrame(idleRaf); idleRaf = 0; });
+    audio.addEventListener('pause', () => { if (!idleRaf) drawIdle(); });
+    audio.addEventListener('ended', () => { setTimeout(() => { if (audio.paused && !idleRaf) drawIdle(); }, 100); });
+
+  })();
+  </script>
+</body>
+</html>
