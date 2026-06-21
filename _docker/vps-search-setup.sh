@@ -158,7 +158,8 @@ check_port() {
     local port="$1"
     local label="$2"
     local owner
-    owner="$(sudo ss -tlnp 2>/dev/null | awk -v p=":$port " '$4 ~ p {print $0; exit}')"
+    # Match :80 am Ende vom 4. Feld (Local Address) — sowohl "0.0.0.0:80" als auch "*:80" und "[::]:80"
+    owner="$(sudo ss -tlnp 2>/dev/null | awk -v p=":${port}\$" 'NR>1 && $4 ~ p {print; exit}')"
     if [ -n "$owner" ]; then
         # Filtere docker-proxy — das ist OK wenn unser Container schon laeuft
         if echo "$owner" | grep -q docker-proxy; then
@@ -166,6 +167,12 @@ check_port() {
         else
             err "Port $port ($label) belegt von:"
             echo "  $owner"
+            # Versuche Prozessname rauszuziehen für hilfreichen Hinweis
+            local proc
+            proc="$(echo "$owner" | grep -oE 'users:\(\("[^"]+"' | head -1 | sed 's/users:((//;s/"//g')"
+            if [ -n "$proc" ]; then
+                err "Stoppen mit:  sudo systemctl stop $proc && sudo systemctl disable $proc"
+            fi
             return 1
         fi
     else
@@ -192,7 +199,15 @@ hr
 say "4) SearXNG secret_key"
 
 SETTINGS="searxng/settings.yml"
-if grep -q "REPLACE_ME_OPENSSL_RAND_HEX_32" "$SETTINGS"; then
+
+# Falls die Datei root-owned ist (z.B. weil das Script frueher mit sudo lief),
+# Ownership zurueck auf den ausfuehrenden User legen.
+if [ ! -w "$SETTINGS" ]; then
+    warn "$SETTINGS nicht schreibbar — fixe Ownership."
+    sudo chown "$(id -u):$(id -g)" "$SETTINGS"
+fi
+
+if grep -q "REPLACE_ME_OPENSSL_RAND_HEX_32" "$SETTINGS" 2>/dev/null; then
     SECRET="$(openssl rand -hex 32)"
     sed -i "s|REPLACE_ME_OPENSSL_RAND_HEX_32|${SECRET}|" "$SETTINGS"
     ok "Frischer secret_key generiert + in $SETTINGS eingesetzt."
@@ -200,8 +215,9 @@ else
     ok "secret_key war schon gesetzt — nicht angefasst."
 fi
 
-# Sicherheit: world-readable wäre schlecht
-chmod 600 "$SETTINGS" 2>/dev/null || true
+# Sicherheit: world-readable wäre schlecht. 644 statt 600,
+# damit SearXNG-Container (UID muss lesen) den File noch sehen kann.
+chmod 644 "$SETTINGS" 2>/dev/null || true
 
 echo
 hr
