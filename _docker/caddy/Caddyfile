@@ -1,0 +1,40 @@
+# Caddyfile fuer den Glappa-VPS
+#
+# Macht TLS-Termination fuer search.glappa.de und proxied auf den
+# searxng-Container im internen Docker-Netz.
+#
+# Caddy holt Letsencrypt-Certs vollautomatisch via ACME (Port 80).
+#
+# WICHTIG: home.glappa.de bleibt auf Port :8080 mit seinem eigenen
+# Letsencrypt-Cert (siehe app.py + docker-compose.vps.yml). Caddy
+# laesst das in Ruhe — wir lauschen hier nur fuer search.glappa.de.
+
+{
+	# E-Mail fuer Letsencrypt-Account-Recovery
+	email lex@glappa.de
+}
+
+search.glappa.de {
+	encode gzip zstd
+
+	# CORS-Header damit das Form auf glappa.de POSTen koennte (GET geht eh).
+	# Origin-Check macht searxng selbst nicht, aber falls man spaeter
+	# JSON-API von glappa.de aus aufruft, ist das hier vorbereitet.
+	@cors header Origin https://glappa.de
+	header @cors {
+		Access-Control-Allow-Origin "https://glappa.de"
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type"
+	}
+
+	reverse_proxy searxng:8080 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output file /var/log/caddy/search.glappa.de.log
+		format console
+	}
+}

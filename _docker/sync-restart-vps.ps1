@@ -32,7 +32,7 @@ if ($OnlyApp) {
     }
 } else {
     Write-Host "-> Komplettes Projekt syncen..." -ForegroundColor Cyan
-    ssh -i $Key $VPS "mkdir -p ${Remote}/home ${Remote}/_docker/cookies ${Remote}/_docker/docker"
+    ssh -i $Key $VPS "mkdir -p ${Remote}/home ${Remote}/_docker/cookies ${Remote}/_docker/docker ${Remote}/_docker/caddy ${Remote}/_docker/searxng"
 
     # Build/Container-Files in _docker/
     scp -i $Key `
@@ -41,10 +41,26 @@ if ($OnlyApp) {
         "${LocalDocker}\docker-compose.vps.yml" `
         "${LocalDocker}\requirements.txt" `
         "${LocalDocker}\vps-deploy.sh" `
+        "${LocalDocker}\vps-search-setup.sh" `
         "${LocalDocker}\restart.sh" `
         "${LocalDocker}\logs.sh" `
         "${VPS}:${Remote}/_docker/"
     scp -i $Key "${LocalDocker}\docker\*" "${VPS}:${Remote}/_docker/docker/"
+
+    # Caddy + SearXNG-Config (search.glappa.de)
+    if (Test-Path "${LocalDocker}\caddy\Caddyfile") {
+        scp -i $Key "${LocalDocker}\caddy\Caddyfile" "${VPS}:${Remote}/_docker/caddy/"
+    }
+    # settings.yml NIE ueberschreiben wenn auf VPS schon ein secret_key drin ist.
+    # Erstdeploy: einmal manuell scp'en (siehe _docker/SEARXNG_SETUP.md).
+    ssh -i $Key $VPS "test -f ${Remote}/_docker/searxng/settings.yml" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "-> searxng/settings.yml fehlt auf VPS -> einmaliges initiales scp" -ForegroundColor Yellow
+        scp -i $Key "${LocalDocker}\searxng\settings.yml" "${VPS}:${Remote}/_docker/searxng/"
+        Write-Host "   WICHTIG: secret_key in settings.yml auf dem VPS ersetzen (siehe SEARXNG_SETUP.md)" -ForegroundColor Yellow
+    } else {
+        Write-Host "-> searxng/settings.yml existiert auf VPS, nicht ueberschrieben" -ForegroundColor DarkGray
+    }
 
     # .dockerignore liegt im Projekt-Root (Build-Context)
     scp -i $Key "${Local}\.dockerignore" "${VPS}:${Remote}/"
