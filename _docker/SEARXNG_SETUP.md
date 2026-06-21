@@ -1,35 +1,56 @@
 # search.glappa.de — Setup-Anleitung
 
-SearXNG (private Meta-Suchmaschine) hinter Caddy als TLS-Reverse-Proxy auf dem VPS.
+SearXNG (private Meta-Suchmaschine) hinter **Apache** als TLS-Reverse-Proxy auf dem VPS.
 
 ```
 glappa.de              (statisch, FTP)  ── home/search.html  ┐
-                                                              │
                                                               │ GET ?q=...
                                                               ▼
-search.glappa.de:443   (VPS, Caddy)     ── TLS + reverse_proxy
+:80/:443               (VPS, Apache)    ── Master-Webserver  (deine anderen Sites laufen weiter!)
                                          │
-                                         ▼
-searxng:8080           (VPS, intern)    ── Suchergebnisse
+                                         ├── andere bestehende vhosts ──→ wie bisher
+                                         │
+                                         └── search.glappa.de  ──→ 127.0.0.1:8888
+                                                                  │
+                                                                  ▼
+                                                            SearXNG-Container (nur lokal sichtbar)
 ```
 
-`home.glappa.de:8080` bleibt unangetastet (eigener Container, eigene Letsencrypt-Certs via `app.py`).
+`home.glappa.de:8080` bleibt unangetastet (eigener Docker-Container, eigene Letsencrypt-Certs via `app.py`).
+
+> **Historie:** Frueher lief das via Caddy auf :80/:443 — wurde umgebaut auf Apache-Reverse-Proxy, damit andere Apache-vhosts (z.B. eine andere Site auf demselben Server) weiterlaufen koennen. Caddy ist out.
 
 ---
 
-## TL;DR (2 Schritte)
+## TL;DR (3 Schritte)
 
 **1) Auf dem VPS** (per SSH einloggen, dann):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/glappa/glappa-site/main/_docker/install-searxng.sh | bash
+cd ~/glappa-site
+git pull origin main
+cd _docker
+bash setup-search-apache.sh
 ```
 
-Das holt das Repo selbst von GitHub (klont `~/glappa-site/` oder pullt main), installiert Docker/UFW-Regeln/SearXNG/Caddy, holt Letsencrypt-Cert, verifiziert — alles in einem Rutsch.
+Das Script erledigt idempotent:
+- Räumt alten Caddy-Container weg
+- Generiert SearXNG `secret_key`
+- Aktiviert Apache + benoetigte Module (ssl, proxy, proxy_http, headers, rewrite)
+- Installiert vhost `search.glappa.de.conf` in `/etc/apache2/sites-available/`
+- Holt Letsencrypt-Cert via `certbot --webroot`
+- Startet SearXNG-Container auf `127.0.0.1:8888`
+- Apache reload + verify
+
+**Bei Erst-Setup auf neuem VPS** (Repo noch nicht da):
+```bash
+curl -fsSL https://raw.githubusercontent.com/glappa/glappa-site/main/_docker/install-searxng.sh | bash
+```
+Klont Repo + ruft `setup-search-apache.sh`.
 
 **2) Lokal** — `home/search.html` + `home/search.css` per FTP nach `glappa.de/home/` hochladen (Static-Only-Workflow wie immer).
 
-Fertig. Aufrufen unter `https://search.glappa.de/` oder via Formular auf `glappa.de/home/search.html`.
+**3) Verify** — `https://search.glappa.de/` aufrufen.
 
 ---
 

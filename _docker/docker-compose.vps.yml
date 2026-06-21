@@ -28,15 +28,15 @@ services:
     command: ["/usr/bin/tini", "--", "python", "/app/glappa-site/home/app.py"]
 
   # ── SearXNG: Meta-Suchmaschine ─────────────────────────────────────
-  # Erreichbar nur intern via Caddy. Nach aussen kommt sie ueber
-  # https://search.glappa.de (siehe caddy-Service unten).
+  # Container hoert intern auf 8080 und wird auf 127.0.0.1:8888 vom Host
+  # gemappt — von dort proxied Apache (vhost search.glappa.de.conf) weiter.
+  # NICHT auf 0.0.0.0 binden, damit nichts direkt aus dem Internet auf
+  # die SearXNG-Instanz zugreifen kann.
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
-    expose:
-      - "8080"
-    networks:
-      - websearch
+    ports:
+      - "127.0.0.1:8888:8080"
     volumes:
       - ./searxng:/etc/searxng:rw
     environment:
@@ -56,33 +56,5 @@ services:
         max-size: "1m"
         max-file: "3"
 
-  # ── Caddy: TLS-Termination + Reverse-Proxy fuer search.glappa.de ───
-  # Ports 80/443 muessen frei sein. home.glappa.de:8080 bleibt
-  # unangetastet (eigene SSL-Logik in app.py).
-  caddy:
-    image: caddy:2-alpine
-    container_name: caddy
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"   # HTTP/3
-    networks:
-      - websearch
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-      - caddy-logs:/var/log/caddy
-    depends_on:
-      - searxng
-    restart: unless-stopped
-
-networks:
-  websearch:
-    driver: bridge
-
 volumes:
   glappa-downloads:
-  caddy-data:
-  caddy-config:
-  caddy-logs:

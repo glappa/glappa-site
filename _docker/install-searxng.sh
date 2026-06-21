@@ -108,7 +108,7 @@ else
 fi
 
 # ── 3) Setup-Script aufrufen ────────────────────────────────────────
-SETUP="$TARGET/_docker/vps-search-setup.sh"
+SETUP="$TARGET/_docker/setup-search-apache.sh"
 if [ ! -f "$SETUP" ]; then
     err "$SETUP fehlt im Repo. Branch $REPO_BRANCH unvollstaendig?"
     exit 1
@@ -118,7 +118,7 @@ chmod +x "$SETUP"
 
 echo
 echo -e "${B}────────────────────────────────────────────────────────────${X}"
-echo -e "${B}  Uebergebe an vps-search-setup.sh...${X}"
+echo -e "${B}  Uebergebe an setup-search-apache.sh...${X}"
 echo -e "${B}────────────────────────────────────────────────────────────${X}"
 echo
 
