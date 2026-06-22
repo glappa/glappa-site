@@ -1,0 +1,366 @@
+/* glappa-style.css — 90er Retro-Override fuer SearXNG (simple theme).
+ *
+ * Wird per Apache mod_substitute in jede HTML-Response von
+ * search.glappa.de injiziert (<link> direkt vor </head>).
+ * Liegt auf dem VPS unter /var/www/search-static/glappa-style.css
+ * und ist erreichbar als https://search.glappa.de/glappa-style.css.
+ *
+ * Strategie: SearXNG nutzt CSS-Custom-Properties im simple-theme. Wir
+ * ueberschreiben die wichtigsten + ergaenzen eigene Regeln fuer Header,
+ * Suchfeld, Buttons, Result-Cards. Alles mit !important weil unsere
+ * Datei NACH dem regulaeren CSS geladen wird — aber Specificity
+ * gewinnt eh, !important nur als Versicherung gegen Update-Drift.
+ */
+
+/* ── Glappa-Farben ────────────────────────────────────────────── */
+:root {
+  --neon-green:  #00ff00;
+  --neon-pink:   #ff00ff;
+  --neon-yellow: #ffff00;
+  --neon-cyan:   #00ffff;
+
+  /* SearXNG simple-theme dark-Variablen ueberschreiben */
+  --color-base-background: #000 !important;
+  --color-base-font:       #00ff00 !important;
+  --color-header-background:#000 !important;
+  --color-toolbar-background:#000 !important;
+  --color-footer-background:#000 !important;
+  --color-result-background:#0a0010 !important;
+  --color-result-link-font:#00ffff !important;
+  --color-result-link-visited-font:#ffff00 !important;
+  --color-result-url-font:#ff00ff !important;
+  --color-result-description-font:#cccccc !important;
+  --color-search-background:#000 !important;
+  --color-search-border:var(--neon-cyan) !important;
+  --color-search-font:var(--neon-green) !important;
+}
+
+/* ── Body + Hintergrund ──────────────────────────────────────── */
+html, body {
+  background: #000 url("https://glappa.de/img/gif/background.gif") repeat !important;
+  background-attachment: fixed !important;
+  color: var(--neon-green) !important;
+  font-family: "Comic Sans MS", "Comic Sans", "Courier New", cursive, monospace !important;
+  cursor: url("https://glappa.de/coursor/WoW%20Cursor.cur"), auto !important;
+}
+
+/* ── Header / Logo ───────────────────────────────────────────── */
+#main_index .title, .title, .header, header {
+  text-align: center !important;
+}
+
+/* Original SearXNG Logo verstecken — wir machen unser eigenes */
+#main_index .title h1,
+.title h1,
+.search_logo {
+  display: none !important;
+}
+
+/* Custom GLAPPA SEARCH Header (injiziert via ::before) */
+#main_index::before,
+body.page_index .center::before {
+  display: block;
+  content: "★ GLAPPA SEARCH ★";
+  font-family: "Comic Sans MS", cursive !important;
+  font-weight: 900 !important;
+  font-size: clamp(2rem, 6vw, 3.5rem) !important;
+  letter-spacing: 0.18em !important;
+  text-align: center;
+  color: var(--neon-pink) !important;
+  text-shadow:
+    1px 1px 0 #ff66cc,
+    2px 2px 0 #cc00aa,
+    3px 3px 0 #990088,
+    4px 4px 0 #660055,
+    0 0 18px var(--neon-pink) !important;
+  margin: 24px auto 8px;
+  padding: 0 12px;
+}
+
+#main_index::after,
+body.page_index .center::after {
+  display: block;
+  content: "✦ NO TRACKING ✦ NO ADS ✦ NO BS ✦";
+  font-family: "Courier New", monospace !important;
+  color: var(--neon-yellow) !important;
+  text-shadow: 0 0 6px var(--neon-yellow);
+  letter-spacing: 0.22em;
+  text-align: center;
+  font-size: 0.85em;
+  margin: 0 auto 18px;
+  animation: glappa-blink 1.6s steps(2) infinite;
+}
+
+@keyframes glappa-blink {
+  0%, 49%   { opacity: 1; }
+  50%, 100% { opacity: 0.5; }
+}
+
+/* ── Such-Eingabefeld ────────────────────────────────────────── */
+input[type="search"],
+input[type="text"],
+.search input,
+#q,
+#search input {
+  background: #000 !important;
+  color: var(--neon-green) !important;
+  font-family: "Courier New", monospace !important;
+  font-size: 1.1em !important;
+  border: 3px inset #888 !important;
+  text-shadow: 0 0 6px var(--neon-green);
+  caret-color: var(--neon-green) !important;
+  padding: 8px 12px !important;
+  letter-spacing: 1px !important;
+}
+input[type="search"]:focus,
+input[type="text"]:focus,
+#q:focus {
+  border-color: var(--neon-yellow) !important;
+  box-shadow: 0 0 12px var(--neon-yellow) !important;
+  outline: none !important;
+}
+input::placeholder {
+  color: #2a5a2a !important;
+}
+
+/* ── Buttons (Submit, Filter) ────────────────────────────────── */
+button,
+input[type="submit"],
+.search button,
+.tabs button,
+.button {
+  background: var(--neon-pink) !important;
+  color: #000 !important;
+  font-family: "Courier New", monospace !important;
+  font-weight: bold !important;
+  letter-spacing: 0.14em !important;
+  border: 3px outset var(--neon-pink) !important;
+  box-shadow: 0 0 10px var(--neon-pink) !important;
+  cursor: pointer !important;
+  padding: 6px 14px !important;
+  text-shadow: none !important;
+}
+button:hover,
+input[type="submit"]:hover {
+  background: var(--neon-yellow) !important;
+  border-color: var(--neon-yellow) !important;
+  box-shadow: 0 0 14px var(--neon-yellow) !important;
+}
+button:active,
+input[type="submit"]:active {
+  border-style: inset !important;
+}
+
+/* ── Such-Box auf Index-Seite ───────────────────────────────── */
+.search_box,
+#search,
+.search_full,
+.center .search {
+  background: rgba(0, 0, 0, 0.6) !important;
+  border: 4px ridge var(--neon-cyan) !important;
+  box-shadow: 0 0 18px var(--neon-cyan), inset 0 0 24px rgba(0,255,255,0.18) !important;
+  padding: 16px !important;
+  border-radius: 0 !important;
+  max-width: 720px;
+  margin: 12px auto !important;
+}
+
+/* ── Result-Cards ────────────────────────────────────────────── */
+article.result,
+.result,
+#results .result {
+  background: rgba(10, 0, 16, 0.85) !important;
+  border: 2px ridge var(--neon-cyan) !important;
+  border-radius: 0 !important;
+  margin: 10px 0 !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.25);
+}
+article.result:hover,
+.result:hover {
+  border-color: var(--neon-yellow) !important;
+  box-shadow: 0 0 14px var(--neon-yellow) !important;
+}
+
+/* Result-Titel */
+.result h3,
+.result_header,
+.result a,
+article.result h3 a {
+  color: var(--neon-cyan) !important;
+  text-shadow: 0 0 5px var(--neon-cyan);
+  font-family: "Comic Sans MS", cursive !important;
+  font-weight: bold !important;
+  text-decoration: none !important;
+}
+.result h3 a:visited,
+.result_header a:visited,
+article.result a:visited {
+  color: var(--neon-yellow) !important;
+  text-shadow: 0 0 5px var(--neon-yellow);
+}
+.result h3 a:hover,
+article.result a:hover {
+  text-decoration: underline !important;
+  color: var(--neon-pink) !important;
+  text-shadow: 0 0 8px var(--neon-pink) !important;
+}
+
+/* Result-URL */
+.result_url,
+.url,
+.result .url {
+  color: var(--neon-pink) !important;
+  font-family: "Courier New", monospace !important;
+  font-size: 0.85em !important;
+  word-break: break-all;
+}
+
+/* Result-Content */
+.result_content,
+.content,
+.result p {
+  color: #ddd !important;
+  font-family: "Comic Sans MS", cursive !important;
+  font-size: 0.95em !important;
+  line-height: 1.4 !important;
+}
+
+/* ── Tabs (Allgemein, Bilder, Videos, etc.) ─────────────────── */
+#categories,
+.tabs,
+.tabs a,
+.category {
+  background: transparent !important;
+}
+
+#categories label,
+.tabs label,
+.category label,
+.tab {
+  background: #000 !important;
+  border: 2px outset var(--neon-cyan) !important;
+  color: var(--neon-cyan) !important;
+  font-family: "Comic Sans MS", cursive !important;
+  font-weight: bold !important;
+  padding: 4px 12px !important;
+  margin: 2px !important;
+  cursor: pointer !important;
+}
+#categories input:checked + label,
+.tabs input:checked + label,
+.tab.active {
+  background: var(--neon-pink) !important;
+  border-color: var(--neon-pink) !important;
+  color: #000 !important;
+  box-shadow: 0 0 10px var(--neon-pink) !important;
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+footer,
+.footer,
+#footer {
+  background: #000 !important;
+  border-top: 3px ridge var(--neon-pink) !important;
+  color: var(--neon-pink) !important;
+  text-align: center !important;
+  padding: 16px 8px !important;
+  font-family: "Comic Sans MS", cursive !important;
+  margin-top: 30px !important;
+}
+footer a, .footer a {
+  color: var(--neon-cyan) !important;
+}
+footer a:visited, .footer a:visited {
+  color: var(--neon-yellow) !important;
+}
+
+/* Footer-Marquee */
+footer::before,
+.footer::before {
+  display: block;
+  content: "★ POWERED BY SEARXNG ON HOME.GLAPPA.DE ★ SELF-HOSTED ★ ";
+  background: var(--neon-pink);
+  color: #000;
+  font-weight: bold;
+  letter-spacing: 2px;
+  padding: 4px 0;
+  margin: 0 -8px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: "Courier New", monospace !important;
+}
+
+/* ── Pagination ──────────────────────────────────────────────── */
+.pagination a,
+#pagination a,
+.next_page,
+.previous_page {
+  background: var(--neon-cyan) !important;
+  color: #000 !important;
+  border: 3px outset var(--neon-cyan) !important;
+  font-family: "Courier New", monospace !important;
+  font-weight: bold !important;
+  letter-spacing: 0.1em !important;
+  padding: 6px 14px !important;
+  margin: 0 4px !important;
+  text-decoration: none !important;
+  box-shadow: 0 0 8px var(--neon-cyan);
+}
+.pagination a:hover,
+.next_page:hover,
+.previous_page:hover {
+  background: var(--neon-yellow) !important;
+  border-color: var(--neon-yellow) !important;
+  box-shadow: 0 0 12px var(--neon-yellow);
+}
+
+/* ── Sidebar / Info-Boxen (infoboxes) ─────────────────────────── */
+.infobox,
+#sidebar,
+aside {
+  background: rgba(0, 26, 26, 0.85) !important;
+  border: 3px ridge var(--neon-green) !important;
+  color: var(--neon-green) !important;
+  font-family: "Comic Sans MS", cursive !important;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+  padding: 10px !important;
+}
+.infobox h2, .infobox h3, .infobox h4 {
+  color: var(--neon-cyan) !important;
+  text-shadow: 0 0 5px var(--neon-cyan);
+}
+
+/* ── Engine-Tags (kleine Pills neben Results) ─────────────────── */
+.engines, .engine_name {
+  color: var(--neon-yellow) !important;
+  font-family: "Courier New", monospace !important;
+  font-size: 0.75em !important;
+  letter-spacing: 1px;
+}
+.engines span, .engine_name span {
+  background: rgba(255, 255, 0, 0.15);
+  border: 1px solid var(--neon-yellow);
+  padding: 1px 6px;
+  margin: 0 2px;
+}
+
+/* ── Selection-Color ─────────────────────────────────────────── */
+::selection {
+  background: var(--neon-pink);
+  color: #000;
+}
+
+/* ── Scrollbar (Webkit) ──────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--neon-pink);
+  border: 2px solid #000;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-yellow);
+}

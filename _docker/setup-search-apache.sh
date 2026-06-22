@@ -156,13 +156,21 @@ if ! systemctl is-active --quiet apache2; then
 fi
 ok "Apache laeuft: $(systemctl is-active apache2)"
 
-say "Aktiviere Module: ssl proxy proxy_http proxy_wstunnel headers rewrite"
-sudo a2enmod ssl proxy proxy_http proxy_wstunnel headers rewrite >/dev/null
+say "Aktiviere Module: ssl proxy proxy_http proxy_wstunnel headers rewrite substitute filter deflate"
+sudo a2enmod ssl proxy proxy_http proxy_wstunnel headers rewrite substitute filter deflate >/dev/null
 ok "Module aktiv"
 
 # Webroot-Ordner fuer ACME-Challenge
 sudo mkdir -p /var/www/html/.well-known/acme-challenge
 sudo chown -R www-data:www-data /var/www/html/.well-known
+
+# Statisches Asset-Verzeichnis fuer glappa-style.css (90er Override)
+sudo mkdir -p /var/www/search-static
+if [ -f "$PROJECT/searxng-static/glappa-style.css" ]; then
+    sudo cp "$PROJECT/searxng-static/glappa-style.css" /var/www/search-static/
+    sudo chown -R www-data:www-data /var/www/search-static
+    ok "glappa-style.css nach /var/www/search-static/ deployed"
+fi
 
 # ── 5) Initialer :80-only vhost (fuer ACME) ────────────────────────
 echo
