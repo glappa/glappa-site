@@ -1099,10 +1099,14 @@ def _visitor_id():
     return f'fp-{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}', True  # neu
 
 def _cors_resp(resp):
-    """Allow cross-origin from glappa.de + localhost."""
+    """Allow cross-origin from glappa.de + localhost.
+    search.glappa.de ist erlaubt, falls jemand search.html direkt nutzt
+    und von dort auch counter angefragt wird (gleiche Apache-Domain)."""
     origin = request.headers.get('Origin', '')
     allowed = ('https://glappa.de', 'http://glappa.de',
                'https://www.glappa.de', 'http://www.glappa.de',
+               'https://search.glappa.de',
+               'https://home.glappa.de', 'https://home.glappa.de:8080',
                'http://localhost:8099', 'http://127.0.0.1:8099')
     if origin in allowed or origin.startswith(('http://192.168.', 'http://10.')):
         resp.headers['Access-Control-Allow-Origin'] = origin

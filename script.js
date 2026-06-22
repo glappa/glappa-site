@@ -19,6 +19,10 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
 // ---------- Besucherzaehler (server-side, file-persistent) ----------
 // app.py speichert pro Visitor-ID (Cookie + IP/UA-Hash Fallback) genau einmal.
 // F5 zaehlt nicht hoch, derselbe Browser bleibt gleiche ID.
+//
+// Endpoint laeuft jetzt unter https://search.glappa.de/api/counter/ (Standard-
+// Port 443 via Apache reverse_proxy). Vorher war's home.glappa.de:8080 direkt
+// — Port 8080 wird in Mobilfunk / Office-WLAN oft geblockt, daher der Wechsel.
 (function () {
   const el = document.getElementById('visitorCounter');
   if (!el) return;
@@ -28,17 +32,25 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
   const isLocal = (h === 'localhost' || h === '127.0.0.1'
                    || h.startsWith('192.168.') || h.startsWith('10.'));
   const base = isLocal
-    ? `${location.protocol}//${h}:8080`
-    : 'https://home.glappa.de:8080';
+    ? `${location.protocol}//${h}:8080/counter`
+    : 'https://search.glappa.de/api/counter';
   const site = (location.pathname.split('/').filter(Boolean).slice(-1)[0] || 'index')
                  .replace(/\.html$/, '');
 
-  fetch(`${base}/counter/visit?site=${encodeURIComponent(site)}`, {
+  fetch(`${base}/visit?site=${encodeURIComponent(site)}`, {
     method: 'POST', credentials: 'include',
   })
     .then(r => r.json())
     .then(d => { el.textContent = String(d.count || 0).padStart(7, '0'); })
-    .catch(() => { el.textContent = '0000000'; });  // graceful fallback
+    .catch((err) => {
+      console.warn('[counter] POST failed, trying GET fallback:', err);
+      // GET-Fallback ohne Cookie — zeigt zumindest die aktuelle Zahl an,
+      // auch wenn third-party-cookies geblockt sind.
+      fetch(`${base}/visits?site=${encodeURIComponent(site)}`)
+        .then(r => r.json())
+        .then(d => { el.textContent = String(d.count || 0).padStart(7, '0'); })
+        .catch(() => { el.textContent = '0000000'; });
+    });
 })();
 
 // ---------- Random Marquee-Sprueche (dynamic, refresh per cycle) ----------
