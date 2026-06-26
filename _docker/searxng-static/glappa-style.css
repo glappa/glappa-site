@@ -390,17 +390,21 @@ footer, .footer, #footer {
   margin: 0 !important;
 }
 
-/* Filterzeile (Sprache / Zeitraum / Sichere Suche): RECHTS + dynamisch.
- * Rueckt nach rechts unter die Such-Buttons, bricht auf schmalen Schirmen
- * sauber um (dann mittig statt rechts, damit nichts abgeschnitten wird). */
+/* Filterzeile (Sprache / Zeitraum / Sichere Suche): kompakt in die
+ * UNTERE RECHTE ECKE des Containers — nur so breit wie noetig, nicht
+ * ueber die ganze Breite verteilt. align-self:flex-end hebt das stretch
+ * des #search-Column-Layouts auf und schiebt den Block nach rechts. */
 .search_filters,
 #search .search_filters {
-  display: flex !important;
+  display: inline-flex !important;
   flex-wrap: wrap !important;
-  justify-content: flex-end !important;   /* nach rechts */
+  justify-content: flex-end !important;
   align-items: center !important;
-  gap: 8px clamp(10px, 2vw, 22px) !important;
-  width: 100% !important;
+  align-self: flex-end !important;        /* in die rechte Ecke */
+  width: auto !important;                 /* nur so breit wie noetig */
+  max-width: 100% !important;
+  margin-left: auto !important;
+  gap: 6px 12px !important;               /* enger zusammen */
 }
 
 /* Native Select-Filter: an Inhalt anpassen (Pfeil naeher am Text),
@@ -429,10 +433,13 @@ select.language,
   overflow: hidden !important;
 }
 
-/* Auf schmalen Schirmen mittig (rechtsbuendig wuerde abschneiden). */
+/* Auf schmalen Schirmen volle Breite + mittig (Ecke wuerde klemmen). */
 @media (max-width: 560px) {
   .search_filters,
   #search .search_filters {
+    align-self: stretch !important;
+    width: 100% !important;
+    margin-left: 0 !important;
     justify-content: center !important;
   }
 }
