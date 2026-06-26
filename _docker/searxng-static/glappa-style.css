@@ -14,7 +14,7 @@
 
 /* ── Web-Fonts (damit Comic Sans / Courier auf ALLEN Clients gleich
  *    aussehen — Linux/Android/iOS haben kein Comic Sans MS). ──────── */
-@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=VT323&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=Share+Tech+Mono&display=swap');
 
 /* ── Glappa-Farben + Fonts ────────────────────────────────────── */
 :root {
@@ -25,7 +25,7 @@
 
   /* Konsistente Font-Stacks mit Web-Font + lokalen Fallbacks */
   --font-display: "Comic Neue", "Comic Sans MS", "Trebuchet MS", cursive, sans-serif;
-  --font-mono:    "VT323", "Courier New", "Consolas", "DejaVu Sans Mono", monospace;
+  --font-mono:    "Share Tech Mono", "Courier New", "Consolas", "DejaVu Sans Mono", monospace;
 
   /* SearXNG simple-theme dark-Variablen ueberschreiben */
   --color-base-background: #000 !important;
@@ -163,23 +163,26 @@ input[type="submit"]:active {
 }
 
 /* ── Icons (Lupe, Clear-X, Kategorie-Icons) ──────────────────────
- * Der leere pinke Kasten neben der Lupe = ein Icon (Clear-Button),
- * dessen Glyph/SVG nicht rendert. Hier sorgen wir dafuer, dass alle
- * Icons sichtbar sind: SVGs bekommen fill=currentColor, Icon-Fonts
- * behalten ihre eigene Schrift (NICHT unsere var(--font-mono)!).
+ * WICHTIG: Icons folgen der TEXTFARBE (currentColor), NICHT hart #000.
+ * Bug vorher: color:#000 machte Kategorie-Icons schwarz — auf dem
+ * schwarzen Tab-Hintergrund unsichtbar (nur bei Hover/aktiv mit pinkem
+ * BG sichtbar). currentColor = cyan auf schwarzem Tab -> immer sichtbar.
  */
 button svg,
 .search svg,
 svg.searxng-icon,
 .searxng-icon,
+.category label svg,
+label.tooltips svg,
 button .icon,
 .search_categories img {
   fill: currentColor !important;
-  color: #000 !important;            /* schwarz auf pinkem Button = sichtbar */
+  color: inherit !important;         /* erbt Tab-Textfarbe (cyan/pink) */
   width: 1.25em !important;
   height: 1.25em !important;
   vertical-align: middle !important;
   display: inline-block !important;
+  flex: 0 0 auto !important;
 }
 
 /* Icon-Fonts (ion-icons) NICHT mit unserer Mono-Schrift ueberschreiben,
@@ -188,9 +191,72 @@ button .icon,
 [class^="ion-"],
 .ion-icon-big {
   font-family: "ionicons", "Ionicons" !important;
-  color: #000 !important;
+  color: inherit !important;
   font-size: 1.25em !important;
   line-height: 1 !important;
+}
+
+/* NUR die pinken Suchbuttons (Lupe/Clear): schwarzes Icon auf pinkem BG. */
+#send_search svg, #send_search .icon, #send_search [class*="ion"],
+#clear_search svg, #clear_search .icon, #clear_search [class*="ion"] {
+  color: #000 !important;
+  fill: #000 !important;
+}
+
+/* Kategorie-NAMEN immer anzeigen — Theme blendet sie bei manchen Breiten
+ * aus (nur Tooltip bei Hover). Wir erzwingen sie dauerhaft sichtbar. */
+.category_name,
+.category .category_name,
+#categories .category_name,
+label.tooltips .category_name {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: static !important;       /* falls als Tooltip absolut positioniert */
+  clip: auto !important;
+  clip-path: none !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  color: inherit !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}
+
+/* ── Lesbarkeit: groessere Schrift ueberall ──────────────────────
+ * Share Tech Mono / Comic Neue duerfen ruhig groesser sein. */
+#q,
+.search_box input[type="search"],
+.search_box input[type="text"] {
+  font-size: 1.3rem !important;
+  padding: 10px 14px !important;
+}
+.category label,
+label.tooltips,
+.category_name,
+.category_button,
+#categories label {
+  font-size: 1.05rem !important;
+}
+.search_filters,
+.search_filters *,
+#search .search_filters label,
+#search .search_filters select {
+  font-size: 1.05rem !important;
+}
+.result h3, .result_header, article.result h3 a {
+  font-size: 1.25rem !important;
+}
+.result_content, .content, .result p {
+  font-size: 1.05rem !important;
+  line-height: 1.5 !important;
+}
+.result_url, .url, .result .url {
+  font-size: 0.95rem !important;
+}
+.infobox, #sidebar, aside,
+footer, .footer, #footer {
+  font-size: 1.02rem !important;
 }
 
 /* Such-Buttons (Lupe + Clear) gleich gross & quadratisch */
@@ -652,4 +718,44 @@ article.result,
   flex-wrap: wrap !important;
   justify-content: center !important;
   gap: 8px !important;
+}
+
+/* ── Back-to-Home Button (klein + dynamisch) ─────────────────────
+ * Wird per Apache mod_substitute als <a id="glappa-home"> vor </body>
+ * injiziert. Fest in der oberen linken Ecke, skaliert mit clamp(). */
+#glappa-home {
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  z-index: 99999 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: clamp(3px, 0.6vw, 7px) clamp(7px, 1.2vw, 14px) !important;
+  background: #000 !important;
+  color: var(--neon-pink) !important;
+  border: 2px outset var(--neon-pink) !important;
+  font-family: var(--font-mono) !important;
+  font-size: clamp(0.72rem, 1.6vw, 1.05rem) !important;
+  font-weight: bold !important;
+  letter-spacing: 1px !important;
+  text-decoration: none !important;
+  text-shadow: 0 0 6px var(--neon-pink) !important;
+  box-shadow: 0 0 10px var(--neon-pink) !important;
+  border-radius: 0 !important;
+  white-space: nowrap !important;
+  transition: background .15s, color .15s, box-shadow .15s !important;
+}
+#glappa-home:hover,
+#glappa-home:focus {
+  background: var(--neon-pink) !important;
+  color: #000 !important;
+  text-shadow: none !important;
+  box-shadow: 0 0 16px var(--neon-yellow) !important;
+  border-style: inset !important;
+}
+/* sehr schmale Schirme: nur das Haus-Icon, Text weg */
+@media (max-width: 460px) {
+  #glappa-home .ghome-text { display: none !important; }
+  #glappa-home { padding: 4px 7px !important; }
 }
