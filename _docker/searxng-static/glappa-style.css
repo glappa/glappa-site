@@ -717,9 +717,10 @@ aside {
 }
 #backToTop { order: 4 !important; }
 
-/* Result-Cards: volle Breite ihrer Spalte. */
-article.result,
-.result {
+/* Result-Cards: volle Breite ihrer Spalte — ABER NICHT Bild-Kacheln
+ * (.result-images), die sollen als kleines Raster nebeneinander stehen. */
+article.result:not(.result-images),
+.result:not(.result-images) {
   box-sizing: border-box !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -746,14 +747,62 @@ article.result,
   }
 }
 
-/* Bilder-Grid (Bilder-Suche) fluessig statt fixe Spaltenbreite. */
-#urls .result-images,
-.result-images,
+/* ── GENERELL: kein Bild laeuft je aus seinem Container ───────────
+ * Gilt fuer ALLE Ergebnistypen (Text-Thumbs, Infobox-Bilder, etc.). */
+#urls img,
+#sidebar img,
+.result img,
+.infobox img,
+#results img {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+/* ── Bilder-Suche: Thumbnail-Raster ──────────────────────────────
+ * Bild-Ergebnisse = <article class="result result-images"> mit
+ * <img class="image_thumbnail">. #urls wird zum Flex-Raster, jede
+ * Kachel klein, Thumbnails strikt auf Kachelbreite begrenzt. */
+#urls:has(.result-images),
+#results.images #urls,
 #results.image_results #urls {
   display: flex !important;
+  flex-direction: row !important;
   flex-wrap: wrap !important;
   justify-content: center !important;
+  align-content: flex-start !important;
+  align-items: flex-start !important;
   gap: 8px !important;
+}
+
+/* Einzelne Bild-Kachel: klein, fixe Maxbreite, nichts laeuft raus. */
+article.result-images,
+.result-images {
+  display: inline-flex !important;     /* Fallback falls #urls kein flex */
+  flex: 0 1 auto !important;
+  width: auto !important;
+  max-width: 190px !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 3px !important;
+  overflow: hidden !important;
+  vertical-align: top !important;
+}
+
+/* Thumbnails strikt auf Kachelbreite. */
+.result-images img,
+.image_thumbnail,
+article.result-images img {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: auto !important;
+  display: block !important;
+  object-fit: cover !important;
+}
+
+/* Detail-Popup (oeffnet beim Klick) darf nicht das Raster sprengen. */
+.result-images .detail {
+  max-width: 100% !important;
+  overflow: hidden !important;
 }
 
 /* ── Back-to-Home Button (klein + dynamisch) ─────────────────────
