@@ -411,9 +411,22 @@ select.language,
 select.time_range,
 select.safesearch {
   width: auto !important;
-  max-width: 14em !important;
+  max-width: 13em !important;
   min-width: 0 !important;
   flex: 0 0 auto !important;
+}
+
+/* Sprachauswahl speziell: die Sprachliste hat SEHR lange Options, dadurch
+ * wird das Select breit und der ▼-Pfeil rutscht weit weg vom Text. Hart
+ * begrenzen + Ueberlauf abschneiden -> Pfeil sitzt eng wie bei den anderen
+ * Filtern, und die ganze Sprachauswahl rueckt mit nach rechts. */
+select.language,
+#language,
+.search_filters #language,
+.search_filters select.language {
+  max-width: 11em !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
 }
 
 /* Auf schmalen Schirmen mittig (rechtsbuendig wuerde abschneiden). */
