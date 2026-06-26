@@ -554,31 +554,89 @@ aside {
   background: var(--neon-yellow);
 }
 
-/* ── Responsive / Dynamisch ──────────────────────────────────────
- * Results + Sidebar fluessig, auf schmalen Schirmen gestapelt. */
-#results,
-.results,
-main {
-  max-width: 100% !important;
+/* ── Results-Layout: ZENTRIERT + dynamisch ───────────────────────
+ * Echte DOM: #results > { #sidebar, #urls(role=main), #backToTop, #pagination }
+ * Vorher klebte alles links (mein altes max-width:100% killte die Theme-
+ * Zentrierung). Jetzt: #results ist ein zentrierter Flex-Container, der
+ * mit der Fensterbreite mitwaechst. #urls (Ergebnisliste) waechst und nutzt
+ * den Platz, #sidebar (Info) rechts daneben — auf schmalen Schirmen darunter.
+ */
+#results {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  align-items: flex-start !important;
+  gap: 20px !important;
+  width: 100% !important;
+  max-width: min(1500px, 95vw) !important;
+  margin: 20px auto !important;
   box-sizing: border-box !important;
 }
 
-/* Result-Spalte + Sidebar nebeneinander wenn Platz, sonst untereinander. */
-@media (max-width: 800px) {
-  #sidebar,
-  aside,
-  .infobox {
-    width: auto !important;
-    max-width: 100% !important;
-    float: none !important;
-    margin: 12px auto !important;
+/* Ergebnisliste: waechst und fuellt den Platz (dynamisch), aber gedeckelt. */
+#urls {
+  order: 1 !important;
+  flex: 1 1 600px !important;
+  min-width: 0 !important;
+  max-width: 1000px !important;
+  box-sizing: border-box !important;
+}
+
+/* Info-Sidebar: feste, sinnvolle Breite rechts; bricht auf Mobile um. */
+#sidebar {
+  order: 2 !important;
+  flex: 0 1 330px !important;
+  min-width: 0 !important;
+  max-width: 360px !important;
+  box-sizing: border-box !important;
+}
+
+/* Answers / Corrections / Suggestions (falls vorhanden): volle Breite OBEN. */
+#results > #answers,
+#results > #corrections,
+#results > #suggestions,
+#results > #apis,
+#results > .answers {
+  order: 0 !important;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+}
+
+/* Pagination + BackToTop: volle Breite unter den Spalten, zentriert. */
+#pagination {
+  order: 3 !important;
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+#backToTop { order: 4 !important; }
+
+/* Result-Cards: volle Breite ihrer Spalte. */
+article.result,
+.result {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Schmale Schirme: Spalten stapeln, Sidebar unter die Ergebnisse. */
+@media (max-width: 860px) {
+  #results {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    max-width: 96vw !important;
   }
-  article.result,
-  .result {
-    width: auto !important;
+  #urls,
+  #sidebar {
+    flex: 1 1 auto !important;
     max-width: 100% !important;
+    width: 100% !important;
   }
-  /* Kategorie-Tabs auf Mobile kompakter */
+  #sidebar { order: 2 !important; }
   #categories label,
   .search_categories label {
     font-size: 0.85em !important;
@@ -587,8 +645,9 @@ main {
 }
 
 /* Bilder-Grid (Bilder-Suche) fluessig statt fixe Spaltenbreite. */
+#urls .result-images,
 .result-images,
-#results.image_results {
+#results.image_results #urls {
   display: flex !important;
   flex-wrap: wrap !important;
   justify-content: center !important;
