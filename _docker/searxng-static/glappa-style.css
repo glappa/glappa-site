@@ -767,46 +767,80 @@ article.result:not(.result-images),
 
 /* ── Bilder-Suche: Thumbnail-Raster ──────────────────────────────
  * Bild-Ergebnisse = <article class="result result-images"> mit
- * <img class="image_thumbnail">. #urls wird zum Flex-Raster, jede
- * Kachel klein, Thumbnails strikt auf Kachelbreite begrenzt. */
-#urls:has(.result-images),
-#results.images #urls,
-#results.image_results #urls {
+ * <img class="image_thumbnail">. Wir erkennen den Bild-Modus ueber die
+ * Thumbnail-Klasse selbst (zuverlaessiger als der #results-Klassenname)
+ * und greifen ALLE direkten Artikel im #urls — egal welche Klasse.
+ *
+ * WICHTIG: Die leeren Cyan-Kaesten entstehen durch unsere allgemeine
+ * .result-Border auf den Bild-Artikeln. Hier neutralisieren wir die
+ * Box-Deko fuer Bild-Kacheln komplett. */
+#urls:has(.image_thumbnail) {
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: wrap !important;
   justify-content: center !important;
   align-content: flex-start !important;
   align-items: flex-start !important;
-  gap: 8px !important;
+  gap: 6px !important;
 }
 
-/* Einzelne Bild-Kachel: klein, fixe Maxbreite, nichts laeuft raus. */
+/* Bild-Kachel via Klasse (greift IMMER, auch ohne :has-Support). */
 article.result-images,
 .result-images {
-  display: inline-flex !important;     /* Fallback falls #urls kein flex */
-  flex: 0 1 auto !important;
+  display: inline-flex !important;     /* flowt + bricht um, auch ohne Flex-Parent */
+  flex: 0 1 180px !important;
   width: auto !important;
-  max-width: 190px !important;
+  max-width: 180px !important;
+  min-width: 0 !important;
   box-sizing: border-box !important;
   margin: 0 !important;
-  padding: 3px !important;
+  padding: 0 !important;
   overflow: hidden !important;
   vertical-align: top !important;
+  border: none !important;             /* keine leere Cyan-Box mehr */
+  background: rgba(10,0,16,0.6) !important;
+  box-shadow: none !important;
+}
+/* Fallback ueber :has — trifft auch Artikel mit abweichender Klasse.
+ * Eigene Regel, damit fehlender :has-Support die Klassen-Regel oben
+ * NICHT mit-verwirft. */
+#urls:has(.image_thumbnail) > article {
+  display: inline-flex !important;
+  flex: 0 1 180px !important;
+  width: auto !important;
+  max-width: 180px !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  vertical-align: top !important;
+  border: none !important;
+  background: rgba(10,0,16,0.6) !important;
+  box-shadow: none !important;
+}
+article.result-images:hover {
+  outline: 2px solid var(--neon-yellow) !important;
 }
 
-/* Thumbnails strikt auf Kachelbreite. */
-.result-images img,
+/* Thumbnail fuellt die Kachel, laeuft NIE raus (Klassen-Regel = immer). */
 .image_thumbnail,
-article.result-images img {
+.result-images img {
   max-width: 100% !important;
   width: 100% !important;
-  height: auto !important;
+  height: 130px !important;
+  display: block !important;
+  object-fit: cover !important;
+}
+/* :has-Fallback fuer abweichende Klassen — eigene Regel. */
+#urls:has(.image_thumbnail) > article img {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 130px !important;
   display: block !important;
   object-fit: cover !important;
 }
 
-/* Detail-Popup (oeffnet beim Klick) darf nicht das Raster sprengen. */
+/* Detail-Popup (oeffnet beim Klick) darf das Raster nicht sprengen. */
 .result-images .detail {
   max-width: 100% !important;
   overflow: hidden !important;
