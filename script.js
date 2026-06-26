@@ -61,6 +61,60 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
     });
 })();
 
+// ---------- Zentrale Navigation (Single Source of Truth) ----------
+// Nav-Eintraege NUR HIER pflegen. Beim Laden wird der Inhalt JEDER
+// <nav class="nav"> (auf allen Seiten) hiermit ueberschrieben — inkl.
+// korrekter relativer Pfade je nach Verzeichnistiefe und automatischer
+// "current"-Markierung der aktuellen Seite. Die hartkodierte Nav in den
+// HTML-Dateien bleibt als No-JS-Fallback erhalten.
+(function () {
+  // href ist root-relativ (von der Seitenwurzel). external:true => absolute
+  // URL in neuem Tab. Reihenfolge = Anzeige-Reihenfolge.
+  const NAV_ITEMS = [
+    { label: '← Glappa',     href: 'index.html' },
+    { label: 'Terminal',          href: 'terminal.html' },
+    { label: 'Video',             href: 'page1.html' },
+    { label: 'Bounce',            href: 'bounce.html' },
+    { label: 'Home',              href: 'home/index.html' },
+    { label: 'Search',            href: 'https://search.glappa.de/', external: true },
+    { label: 'SUPER Secret Page', href: 'secret/pilzskip.html' },
+  ];
+
+  const navs = document.querySelectorAll('nav.nav, [data-glappa-nav]');
+  if (!navs.length) return;
+
+  // Aktuelle Seite als root-relativen Pfad + Verzeichnistiefe bestimmen.
+  const path      = location.pathname;
+  const segs      = path.split('/').filter(Boolean);
+  const endsSlash = path.endsWith('/');
+  const depth     = endsSlash ? segs.length : Math.max(0, segs.length - 1);
+  const prefix    = '../'.repeat(depth);
+  let current     = segs.join('/');
+  if (endsSlash || current === '') current = (current ? current + '/' : '') + 'index.html';
+
+  navs.forEach(nav => {
+    // Kern-Eintraege + optionale seitenspezifische Extras (data-nav-extra,
+    // Format: "Label::href|Label2::href2", href ebenfalls root-relativ).
+    const items = NAV_ITEMS.slice();
+    const extra = nav.getAttribute('data-nav-extra');
+    if (extra) {
+      extra.split('|').forEach(pair => {
+        const idx = pair.indexOf('::');
+        if (idx > 0) items.push({ label: pair.slice(0, idx).trim(), href: pair.slice(idx + 2).trim() });
+      });
+    }
+
+    nav.innerHTML = items.map(item => {
+      const a = document.createElement('a');
+      a.href = item.external ? item.href : prefix + item.href;
+      a.innerHTML = item.label;
+      if (item.external) { a.target = '_blank'; a.rel = 'noopener'; }
+      if (!item.external && item.href === current) a.className = 'current';
+      return a.outerHTML;
+    }).join('<span class="sep">|</span>');
+  });
+})();
+
 // ---------- Random Marquee-Sprueche (dynamic, refresh per cycle) ----------
 (function () {
   const SAYINGS = [
