@@ -12,12 +12,20 @@
  * gewinnt eh, !important nur als Versicherung gegen Update-Drift.
  */
 
-/* ── Glappa-Farben ────────────────────────────────────────────── */
+/* ── Web-Fonts (damit Comic Sans / Courier auf ALLEN Clients gleich
+ *    aussehen — Linux/Android/iOS haben kein Comic Sans MS). ──────── */
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&family=VT323&display=swap');
+
+/* ── Glappa-Farben + Fonts ────────────────────────────────────── */
 :root {
   --neon-green:  #00ff00;
   --neon-pink:   #ff00ff;
   --neon-yellow: #ffff00;
   --neon-cyan:   #00ffff;
+
+  /* Konsistente Font-Stacks mit Web-Font + lokalen Fallbacks */
+  --font-display: "Comic Neue", "Comic Sans MS", "Trebuchet MS", cursive, sans-serif;
+  --font-mono:    "VT323", "Courier New", "Consolas", "DejaVu Sans Mono", monospace;
 
   /* SearXNG simple-theme dark-Variablen ueberschreiben */
   --color-base-background: #000 !important;
@@ -40,7 +48,7 @@ html, body {
   background: #000 url("https://glappa.de/img/gif/background.gif") repeat !important;
   background-attachment: fixed !important;
   color: var(--neon-green) !important;
-  font-family: "Comic Sans MS", "Comic Sans", "Courier New", cursive, monospace !important;
+  font-family: var(--font-display) !important;
   cursor: url("https://glappa.de/coursor/WoW%20Cursor.cur"), auto !important;
 }
 
@@ -61,7 +69,7 @@ html, body {
 body.page_index .center::before {
   display: block;
   content: "★ GLAPPA SEARCH ★";
-  font-family: "Comic Sans MS", cursive !important;
+  font-family: var(--font-display) !important;
   font-weight: 900 !important;
   font-size: clamp(2rem, 6vw, 3.5rem) !important;
   letter-spacing: 0.18em !important;
@@ -81,7 +89,7 @@ body.page_index .center::before {
 body.page_index .center::after {
   display: block;
   content: "✦ NO TRACKING ✦ NO ADS ✦ NO BS ✦";
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
   color: var(--neon-yellow) !important;
   text-shadow: 0 0 6px var(--neon-yellow);
   letter-spacing: 0.22em;
@@ -104,7 +112,7 @@ input[type="text"],
 #search input {
   background: #000 !important;
   color: var(--neon-green) !important;
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
   font-size: 1.1em !important;
   border: 3px inset #888 !important;
   text-shadow: 0 0 6px var(--neon-green);
@@ -131,7 +139,7 @@ input[type="submit"],
 .button {
   background: var(--neon-pink) !important;
   color: #000 !important;
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
   font-weight: bold !important;
   letter-spacing: 0.14em !important;
   border: 3px outset var(--neon-pink) !important;
@@ -151,11 +159,68 @@ input[type="submit"]:active {
   border-style: inset !important;
 }
 
-/* ── Such-Box auf Index-Seite ───────────────────────────────── */
-.search_box,
-#search,
-.search_full,
-.center .search {
+/* ── Icons (Lupe, Clear-X, Kategorie-Icons) ──────────────────────
+ * Der leere pinke Kasten neben der Lupe = ein Icon (Clear-Button),
+ * dessen Glyph/SVG nicht rendert. Hier sorgen wir dafuer, dass alle
+ * Icons sichtbar sind: SVGs bekommen fill=currentColor, Icon-Fonts
+ * behalten ihre eigene Schrift (NICHT unsere var(--font-mono)!).
+ */
+button svg,
+.search svg,
+svg.searxng-icon,
+.searxng-icon,
+button .icon,
+.search_categories img {
+  fill: currentColor !important;
+  color: #000 !important;            /* schwarz auf pinkem Button = sichtbar */
+  width: 1.25em !important;
+  height: 1.25em !important;
+  vertical-align: middle !important;
+  display: inline-block !important;
+}
+
+/* Icon-Fonts (ion-icons) NICHT mit unserer Mono-Schrift ueberschreiben,
+ * sonst werden die Glyphen zu Tofu-Kaesten. Eigene Font behalten. */
+[class*="ion-icon"],
+[class^="ion-"],
+.ion-icon-big {
+  font-family: "ionicons", "Ionicons" !important;
+  color: #000 !important;
+  font-size: 1.25em !important;
+  line-height: 1 !important;
+}
+
+/* Such-Buttons (Lupe + Clear) gleich gross & quadratisch */
+#search button,
+#send_search,
+#clear_search,
+.clear_search {
+  flex: 0 0 auto !important;
+  min-width: 2.6em !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 6px 10px !important;
+}
+
+/* Fallback fuer Clear-Button: falls Icon fehlt, zeige ein "×".
+ * :empty greift nur wenn KEIN sichtbares Icon-Kind da ist. */
+#clear_search:empty::after,
+.clear_search:empty::after {
+  content: "\00d7";          /* × */
+  font-family: var(--font-mono) !important;
+  font-size: 1.3em !important;
+  font-weight: bold !important;
+  color: #000 !important;
+}
+
+/* ── Such-Box auf Index-Seite ───────────────────────────────────
+ * WICHTIG: SearXNG verschachtelt mehrere Wrapper (#search > .search_box
+ * > .search-input-wrap > ...). Wenn jeder einen Rahmen bekommt, entstehen
+ * die doppelten/verschobenen Kaesten. Loesung: NUR das aeussere Formular
+ * #search bekommt EINEN Rahmen, alle inneren Wrapper werden flachgelegt.
+ */
+#search {
   background: rgba(0, 0, 0, 0.6) !important;
   border: 4px ridge var(--neon-cyan) !important;
   box-shadow: 0 0 18px var(--neon-cyan), inset 0 0 24px rgba(0,255,255,0.18) !important;
@@ -163,6 +228,40 @@ input[type="submit"]:active {
   border-radius: 0 !important;
   max-width: 720px;
   margin: 12px auto !important;
+  box-sizing: border-box !important;
+}
+
+/* Innere Wrapper: KEINE eigenen Rahmen/Schatten/Backgrounds mehr */
+.search_box,
+.search_full,
+.center .search,
+#search_view,
+.search-container,
+.search-inner,
+.search-input-wrap,
+#search .search_box {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Suchzeile (Input + Buttons) sauber nebeneinander, kein Umbruch */
+#search .search_box,
+#search .search-input-wrap,
+#search > div {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  width: 100% !important;
+}
+#search #q,
+#search input[type="search"],
+#search input[type="text"] {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;   /* sonst sprengt das Input den Flex-Container */
 }
 
 /* ── Result-Cards ────────────────────────────────────────────── */
@@ -189,7 +288,7 @@ article.result:hover,
 article.result h3 a {
   color: var(--neon-cyan) !important;
   text-shadow: 0 0 5px var(--neon-cyan);
-  font-family: "Comic Sans MS", cursive !important;
+  font-family: var(--font-display) !important;
   font-weight: bold !important;
   text-decoration: none !important;
 }
@@ -211,7 +310,7 @@ article.result a:hover {
 .url,
 .result .url {
   color: var(--neon-pink) !important;
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
   font-size: 0.85em !important;
   word-break: break-all;
 }
@@ -221,7 +320,7 @@ article.result a:hover {
 .content,
 .result p {
   color: #ddd !important;
-  font-family: "Comic Sans MS", cursive !important;
+  font-family: var(--font-display) !important;
   font-size: 0.95em !important;
   line-height: 1.4 !important;
 }
@@ -241,7 +340,7 @@ article.result a:hover {
   background: #000 !important;
   border: 2px outset var(--neon-cyan) !important;
   color: var(--neon-cyan) !important;
-  font-family: "Comic Sans MS", cursive !important;
+  font-family: var(--font-display) !important;
   font-weight: bold !important;
   padding: 4px 12px !important;
   margin: 2px !important;
@@ -265,7 +364,7 @@ footer,
   color: var(--neon-pink) !important;
   text-align: center !important;
   padding: 16px 8px !important;
-  font-family: "Comic Sans MS", cursive !important;
+  font-family: var(--font-display) !important;
   margin-top: 30px !important;
 }
 footer a, .footer a {
@@ -288,7 +387,7 @@ footer::before,
   margin: 0 -8px 12px;
   white-space: nowrap;
   overflow: hidden;
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
 }
 
 /* ── Pagination ──────────────────────────────────────────────── */
@@ -299,7 +398,7 @@ footer::before,
   background: var(--neon-cyan) !important;
   color: #000 !important;
   border: 3px outset var(--neon-cyan) !important;
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
   font-weight: bold !important;
   letter-spacing: 0.1em !important;
   padding: 6px 14px !important;
@@ -322,7 +421,7 @@ aside {
   background: rgba(0, 26, 26, 0.85) !important;
   border: 3px ridge var(--neon-green) !important;
   color: var(--neon-green) !important;
-  font-family: "Comic Sans MS", cursive !important;
+  font-family: var(--font-display) !important;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
   padding: 10px !important;
 }
@@ -334,7 +433,7 @@ aside {
 /* ── Engine-Tags (kleine Pills neben Results) ─────────────────── */
 .engines, .engine_name {
   color: var(--neon-yellow) !important;
-  font-family: "Courier New", monospace !important;
+  font-family: var(--font-mono) !important;
   font-size: 0.75em !important;
   letter-spacing: 1px;
 }
