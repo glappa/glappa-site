@@ -27,13 +27,21 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
   const el = document.getElementById('visitorCounter');
   if (!el) return;
 
-  // Bestimme Counter-Endpoint je nach Umgebung
+  // Bestimme Counter-Endpoint je nach Umgebung.
+  // home/search.glappa.de: SAME-ORIGIN via Apache-Proxy (/api/counter) →
+  //   kein CORS, First-Party-Cookie, bombensicher.
+  // Webhoster glappa.de (kein Backend): cross-origin zur VPS (CORS-Allowlist).
   const h = location.hostname;
   const isLocal = (h === 'localhost' || h === '127.0.0.1'
                    || h.startsWith('192.168.') || h.startsWith('10.'));
-  const base = isLocal
-    ? `${location.protocol}//${h}:8080/counter`
-    : 'https://search.glappa.de/api/counter';
+  let base;
+  if (isLocal) {
+    base = `${location.protocol}//${h}:8080/counter`;
+  } else if (h === 'home.glappa.de' || h === 'search.glappa.de') {
+    base = '/api/counter';                       // same-origin
+  } else {
+    base = 'https://home.glappa.de/api/counter'; // glappa.de → cross-origin
+  }
   const site = (location.pathname.split('/').filter(Boolean).slice(-1)[0] || 'index')
                  .replace(/\.html$/, '');
 
