@@ -381,11 +381,15 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   <nav class="nav">
     <a href="{glappa}/index.html">&larr; Glappa</a>
     <span class="sep">|</span>
+    <a href="{glappa}/terminal.html">Terminal</a>
+    <span class="sep">|</span>
     <a href="{glappa}/page1.html">Video</a>
     <span class="sep">|</span>
     <a href="{glappa}/bounce.html">Bounce</a>
     <span class="sep">|</span>
     <a href="{home}">Home</a>
+    <span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a>
     <span class="sep">|</span>
     <a href="{glappa}/secret/pilzskip.html">SUPER Secret Page</a>
   </nav>
