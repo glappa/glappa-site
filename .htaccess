@@ -1,0 +1,15 @@
+# .htaccess — gehoert in den Webroot von glappa.de (Webhoster / Prohosting24).
+#
+# Leitet ALLE Aufrufe von glappa.de und www.glappa.de dauerhaft (301) auf
+# home.glappa.de weiter — inklusive Pfad und Query-String. Also:
+#   glappa.de/terminal.html        -> home.glappa.de/terminal.html
+#   www.glappa.de/home/tunes.html  -> home.glappa.de/home/tunes.html
+#
+# Die Bedingung greift NUR wenn der Host glappa.de ist. Auf home.glappa.de
+# (VPS-Apache, AllowOverride None) wird diese Datei ohnehin ignoriert, daher
+# entsteht keine Redirect-Schleife.
+
+RewriteEngine On
+
+RewriteCond %{HTTP_HOST} ^(www\.)?glappa\.de$ [NC]
+RewriteRule ^(.*)$ https://home.glappa.de/$1 [R=301,L,QSA]
