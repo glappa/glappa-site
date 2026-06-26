@@ -390,15 +390,38 @@ footer, .footer, #footer {
   margin: 0 !important;
 }
 
-/* Filterzeile (Sprache / Zeitraum / Sichere Suche): zentriert. */
+/* Filterzeile (Sprache / Zeitraum / Sichere Suche): RECHTS + dynamisch.
+ * Rueckt nach rechts unter die Such-Buttons, bricht auf schmalen Schirmen
+ * sauber um (dann mittig statt rechts, damit nichts abgeschnitten wird). */
 .search_filters,
 #search .search_filters {
   display: flex !important;
   flex-wrap: wrap !important;
-  justify-content: center !important;
+  justify-content: flex-end !important;   /* nach rechts */
   align-items: center !important;
-  gap: 10px 18px !important;
+  gap: 8px clamp(10px, 2vw, 22px) !important;
   width: 100% !important;
+}
+
+/* Native Select-Filter: an Inhalt anpassen (Pfeil naeher am Text),
+ * mit sinnvoller Max-Breite, damit lange Options sie nicht aufblaehen. */
+.search_filters select,
+#search .search_filters select,
+select.language,
+select.time_range,
+select.safesearch {
+  width: auto !important;
+  max-width: 14em !important;
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+/* Auf schmalen Schirmen mittig (rechtsbuendig wuerde abschneiden). */
+@media (max-width: 560px) {
+  .search_filters,
+  #search .search_filters {
+    justify-content: center !important;
+  }
 }
 
 /* Jeder Kategorie-Tab: Icon + Text mittig nebeneinander. */
