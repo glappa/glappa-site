@@ -183,6 +183,51 @@
       let visRaf   = 0;
       let peaks    = null;
       let visGrad  = null;
+      const displayEl = document.querySelector('.player-display');
+
+      // --- Bass-/Beat-Analyse (von beiden Modi geteilt) -----------
+      let bassEnv   = 0;     // geglaettete Bass-Huellkurve 0..1 (fast attack)
+      let bassAvg   = 0;     // langsamer Mittelwert fuer Beat-Vergleich
+      let beatFlash = 0;     // 0..1, zuckt auf 1 beim Beat, decayt
+      let barVals   = null;  // pro Anzeige-Balken geglaettete Hoehe
+      let bandEdges = null;  // Bin-Grenzen fuer log-Frequenz-Balken
+      const NUM_BARS = 56;
+
+      function buildBands(n, bars) {
+        bandEdges = new Int32Array(bars + 1);
+        const minBin = 1, maxBin = n;
+        for (let b = 0; b <= bars; b++) {
+          const t = b / bars;
+          bandEdges[b] = Math.min(maxBin, Math.max(minBin,
+            Math.round(minBin * Math.pow(maxBin / minBin, t))));
+        }
+      }
+
+      // Bass-Energie der untersten ~6% Bins; setzt bassEnv + beatFlash.
+      function updateBass() {
+        const n = visData.length;
+        const hi = Math.max(2, Math.floor(n * 0.06));
+        let s = 0;
+        for (let i = 1; i < hi; i++) s += visData[i];
+        const bass = s / ((hi - 1) * 255);    // 0..1
+        if (bass > bassEnv) bassEnv = bass;                  // sofortiger Attack
+        else                bassEnv += (bass - bassEnv) * 0.16; // weicher Release
+        bassAvg += (bass - bassAvg) * 0.05;                  // traeger Mittelwert
+        if (bass > bassAvg * 1.35 + 0.07 && beatFlash < 0.4) beatFlash = 1;
+        else beatFlash = Math.max(0, beatFlash - 0.07);
+        return bass;
+      }
+
+      // Pulsiert das Display-Fenster (Neon-Glow) im Takt des Basses.
+      function pumpDisplay() {
+        if (!displayEl) return;
+        const blur = Math.round(bassEnv * 26 + beatFlash * 22);
+        const a    = (0.25 + bassEnv * 0.55).toFixed(2);
+        displayEl.style.boxShadow =
+          '0 0 ' + blur + 'px rgba(255,0,255,' + a + '), ' +
+          'inset 0 0 ' + Math.round(beatFlash * 30) + 'px rgba(0,255,255,0.25)';
+      }
+      function clearPump() { if (displayEl) displayEl.style.boxShadow = ''; }
 
       // Mandelbrot-State
       const POIS = [
@@ -234,8 +279,10 @@
           audioCtx = new Ctx();
           const src = audioCtx.createMediaElementSource(audio);
           analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 128;
-          analyser.smoothingTimeConstant = 0.78;
+          // 512 -> 256 Bins: feinere Bass-Aufloesung. Glaettung niedrig, wir
+          // machen Attack/Release lieber selbst (punchiger).
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.6;
           visData = new Uint8Array(analyser.frequencyBinCount);
           src.connect(analyser);
           analyser.connect(audioCtx.destination);
@@ -246,10 +293,22 @@
         }
       }
 
-      // --- Spectrum-Vis (Winamp-Style Bars) -----------------------
+      // --- Spectrum-Vis (Winamp-Style Bars, log-Frequenz) ---------
       function drawSpectrum() {
         const W = canvas.width, H = canvas.height;
+        const bass = updateBass();
+        const n = visData.length;
+        const bars = NUM_BARS;
+        if (!bandEdges) buildBands(n, bars);
+        if (!barVals || barVals.length !== bars) barVals = new Float32Array(bars);
+        if (!peaks   || peaks.length   !== bars) peaks   = new Float32Array(bars);
+
         cctx.clearRect(0, 0, W, H);
+        // Beat-Flash: kurzer Magenta-Blitz ueber dem ganzen Display
+        if (beatFlash > 0.01) {
+          cctx.fillStyle = 'rgba(255,0,255,' + (beatFlash * 0.16).toFixed(3) + ')';
+          cctx.fillRect(0, 0, W, H);
+        }
         if (!visGrad) {
           visGrad = cctx.createLinearGradient(0, H, 0, 0);
           visGrad.addColorStop(0.00, '#00ff00');
@@ -257,28 +316,42 @@
           visGrad.addColorStop(0.85, '#ff8800');
           visGrad.addColorStop(1.00, '#ff00ff');
         }
-        const n = visData.length;
-        if (!peaks || peaks.length !== n) peaks = new Float32Array(n);
-        const barW = W / n;
-        const gap  = Math.max(1, Math.floor(barW * 0.18));
+
+        const barW  = W / bars;
+        const gap   = Math.max(1, barW * 0.16);
+        const bw    = Math.max(1, barW - gap * 2);
+        const boost = 1 + bassEnv * 0.55;   // Bass drueckt alle Balken hoch
         cctx.fillStyle = visGrad;
-        for (let i = 0; i < n; i++) {
-          const v = visData[i] / 255;
-          const h = Math.max(1, v * H);
-          const x = Math.floor(i * barW);
-          cctx.fillRect(x + gap, H - h, Math.max(1, Math.floor(barW - gap * 2)), h);
-          if (v > peaks[i]) peaks[i] = v;
-          else              peaks[i] = Math.max(0, peaks[i] - 0.012);
-        }
-        cctx.fillStyle = '#00ffff';
-        cctx.shadowColor = '#00ffff';
-        cctx.shadowBlur = 4;
-        for (let i = 0; i < n; i++) {
-          const py = H - peaks[i] * H;
-          const x  = Math.floor(i * barW);
-          cctx.fillRect(x + gap, Math.max(0, py - 2), Math.max(1, Math.floor(barW - gap * 2)), 2);
+        cctx.shadowColor = '#ff00ff';
+        cctx.shadowBlur  = beatFlash * 12;  // Glow zuckt auf den Beat
+
+        for (let b = 0; b < bars; b++) {
+          const lo = bandEdges[b];
+          const hiB = Math.max(lo + 1, bandEdges[b + 1]);
+          let m = 0;
+          for (let i = lo; i < hiB; i++) if (visData[i] > m) m = visData[i];
+          // perzeptueller Lift fuer's untere Ende -> Bass "schlaegt durch"
+          const lowWeight = 1 + 0.7 * (1 - b / bars);
+          let v = Math.min(1, (m / 255) * lowWeight * boost);
+          // Fast attack, smooth release: Kicks knallen, fallen weich ab
+          if (v > barVals[b]) barVals[b] = v;
+          else                barVals[b] += (v - barVals[b]) * 0.22;
+          const h = Math.max(1, barVals[b] * H);
+          const x = b * barW + gap;
+          cctx.fillRect(x, H - h, bw, h);
+          if (barVals[b] > peaks[b]) peaks[b] = barVals[b];
+          else                       peaks[b] = Math.max(0, peaks[b] - 0.012);
         }
         cctx.shadowBlur = 0;
+
+        // Peak-Caps
+        cctx.fillStyle = '#00ffff';
+        for (let b = 0; b < bars; b++) {
+          const py = H - peaks[b] * H;
+          cctx.fillRect(b * barW + gap, Math.max(0, py - 2), bw, 2);
+        }
+
+        pumpDisplay();
       }
 
       // --- Mandelbrot-Vis (Auto-Zoom + Audio-Reactive) ------------
@@ -287,25 +360,25 @@
         if (!mImg || mImg.width !== W || mImg.height !== H) {
           mImg = cctx.createImageData(W, H);
         }
-        // Audio-Bands -> Bass treibt Zoom, Treble treibt Farbe, Volume tweakt Detail
+        // Audio-Bands -> Bass treibt Zoom, Treble treibt Farbe, Volume tweakt Detail.
+        // Bass-Huellkurve + Beat kommen aus der geteilten Analyse (updateBass).
+        updateBass();
+        const bass = bassEnv;
         const n = visData.length;
-        let bass = 0, treb = 0, total = 0;
-        const bassN = Math.max(1, Math.floor(n * 0.12));
+        let treb = 0, total = 0;
         const trebStart = Math.floor(n * 0.55);
-        for (let i = 0; i < bassN; i++)     bass += visData[i];
         for (let i = trebStart; i < n; i++) treb += visData[i];
         for (let i = 0; i < n; i++)         total += visData[i];
-        bass  /= (bassN * 255);
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
         // Zoom + Iter dynamisch. Baseline schneller (~3%/frame) damit auch bei
-        // Stille was passiert; Bass laesst den Zoom kicken (bis ~5%/frame).
-        const zoomRate = 0.972 - bass * 0.016;
+        // Stille was passiert; Bass laesst den Zoom kicken, Beats geben extra Punch.
+        const zoomRate = 0.972 - bass * 0.016 - beatFlash * 0.02;
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
-        // Farbphase: konstanter Baseline-Spin + Treble-Kicks
-        mPhase += 1.4 + treb * 8 + total * 3;
+        // Farbphase: konstanter Baseline-Spin + Treble-Kicks + Beat-Farbsprung
+        mPhase += 1.4 + treb * 8 + total * 3 + beatFlash * 16;
 
         // Bei tiefem Zoom: random POI ansteuern, reset
         if (mScale < 1e-13) pickRandomPoi();
@@ -381,6 +454,8 @@
         if (blackRatio > 0.7 && mScale < 2.0) mBlackStreak++;
         else                                  mBlackStreak = 0;
         if (mBlackStreak > 80) pickRandomPoi();
+
+        pumpDisplay();
       }
 
       // --- Dispatcher ---------------------------------------------
@@ -407,6 +482,7 @@
           if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
           canvas.hidden = true;
           cctx.clearRect(0, 0, canvas.width, canvas.height);
+          clearPump();
           return;
         }
         if (!ensureAudioCtx()) {
@@ -569,6 +645,7 @@
       audio.addEventListener('pause', () => {
         playBtn.innerHTML = '&#9654;';
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+        clearPump();
       });
       audio.addEventListener('ended', () => {
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
