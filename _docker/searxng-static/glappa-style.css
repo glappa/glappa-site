@@ -821,17 +821,27 @@ article.result:not(.result-images),
 }
 
 /* ── Detail-/Vollbild-Ansicht (Klick auf ein Thumbnail) ──────────
- * Das Theme rendert die Lightbox selbst korrekt — wir mischen uns NICHT
- * mehr ein (eigene object-fit/height-Overrides haben das Bild verschoben/
- * abgeschnitten). Einzige Absicherung: das Detailbild darf seine native
- * Hoehe behalten und wird nur weich auf den Viewport begrenzt. */
-.detail .result-images-source img,
-.detail img {
-  height: auto !important;          /* native Proportionen, kein Crop */
-  max-height: 80vh !important;      /* riesige Bilder passen in den Viewport */
+ * Bei BREITEN Schirmen hat das Theme eine @media-Regel mit hoher Spezifitaet
+ * (z.B. `.result-images .detail img`, 0,2,1), die das Bild auf object-fit:
+ * cover + kurze Hoehe zwingt -> Streifen. Bei schmalen Schirmen greift die
+ * Regel nicht -> Bild korrekt. Wir schlagen sie mit MAXIMALER Spezifitaet
+ * (html body #urls … = 1,2,3+) und erzwingen native Proportionen, contain,
+ * auto-Hoehe -> Bild ist bei JEDER Breite vollstaendig + unverzerrt. */
+html body #urls .detail img,
+html body #urls article.result-images .detail img,
+html body #results .detail img,
+html body .detail .result-images-source img,
+html body .detail img {
   width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
   max-width: 100% !important;
+  max-height: 80vh !important;
   object-fit: contain !important;
+  object-position: center !important;
+  aspect-ratio: auto !important;
+  display: block !important;
+  margin: 0 auto !important;
 }
 
 /* ── Back-to-Home Button (klein + dynamisch) ─────────────────────
