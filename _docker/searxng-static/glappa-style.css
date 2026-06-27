@@ -807,10 +807,10 @@ article.result:not(.result-images),
 /* #urls zentriert die Kacheln (inline-block via text-align). */
 #urls:has(.image_thumbnail) { text-align: center !important; }
 
-/* Thumbnail fuellt die Kachel exakt, laeuft NIE raus. */
+/* NUR das GRID-Thumbnail (.image_thumbnail) bekommt feste Kachel-Hoehe +
+ * cover. Das Detail-Bild (img OHNE Klasse) ist hier bewusst NICHT dabei. */
 #urls .image_thumbnail,
-#urls article.result-images img,
-#results article.result-images img {
+#results .image_thumbnail {
   width: 100% !important;
   max-width: 100% !important;
   height: 130px !important;
@@ -819,11 +819,30 @@ article.result:not(.result-images),
   object-fit: cover !important;
 }
 
-/* Detail-Popup (oeffnet beim Klick) darf das Raster nicht sprengen. */
+/* ── Detail-/Vollbild-Ansicht (Klick auf ein Thumbnail) ──────────
+ * Das grosse Bild ist <img> OHNE Klasse in <a class="result-images-source">
+ * im .detail. Es soll GANZ sichtbar + dynamisch skaliert sein (contain),
+ * nicht zugeschnitten. max-height begrenzt riesige Bilder auf den Viewport. */
+.detail .result-images-source img,
+.detail img,
+#urls .detail img,
+#results .detail img {
+  width: auto !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 75vh !important;
+  object-fit: contain !important;
+  display: block !important;
+  margin: 0 auto !important;
+}
+/* Detail-Container selbst: volle Breite, nichts abgeschnitten. */
+.result-images .detail,
 #urls .result-images .detail,
 #results .result-images .detail {
   max-width: 100% !important;
-  overflow: hidden !important;
+  width: 100% !important;
+  text-align: center !important;
+  overflow: visible !important;
 }
 
 /* ── Back-to-Home Button (klein + dynamisch) ─────────────────────
