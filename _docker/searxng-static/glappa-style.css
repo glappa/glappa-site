@@ -409,15 +409,17 @@ footer, .footer, #footer {
 
 /* Native Select-Filter: an Inhalt anpassen (Pfeil naeher am Text),
  * mit sinnvoller Max-Breite, damit lange Options sie nicht aufblaehen. */
-.search_filters select,
 #search .search_filters select,
+.search_filters select,
 select.language,
 select.time_range,
 select.safesearch {
   width: auto !important;
-  max-width: 13em !important;
+  max-width: 11em !important;
   min-width: 0 !important;
   flex: 0 0 auto !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
 }
 
 /* Sprachauswahl speziell: die Sprachliste hat SEHR lange Options, dadurch
@@ -767,81 +769,59 @@ article.result:not(.result-images),
 
 /* ── Bilder-Suche: Thumbnail-Raster ──────────────────────────────
  * Bild-Ergebnisse = <article class="result result-images"> mit
- * <img class="image_thumbnail">. Wir erkennen den Bild-Modus ueber die
- * Thumbnail-Klasse selbst (zuverlaessiger als der #results-Klassenname)
- * und greifen ALLE direkten Artikel im #urls — egal welche Klasse.
+ * <img class="image_thumbnail"> in #urls.
  *
- * WICHTIG: Die leeren Cyan-Kaesten entstehen durch unsere allgemeine
- * .result-Border auf den Bild-Artikeln. Hier neutralisieren wir die
- * Box-Deko fuer Bild-Kacheln komplett. */
-#urls:has(.image_thumbnail) {
-  display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: wrap !important;
-  justify-content: center !important;
-  align-content: flex-start !important;
-  align-items: flex-start !important;
-  gap: 6px !important;
-}
-
-/* Bild-Kachel via Klasse (greift IMMER, auch ohne :has-Support). */
-article.result-images,
-.result-images {
-  display: inline-flex !important;     /* flowt + bricht um, auch ohne Flex-Parent */
-  flex: 0 1 180px !important;
-  width: auto !important;
+ * KRITISCH (Spezifitaet!): Die Deko-Regel `#results .result` (oben) hat
+ * durch die ID die Spezifitaet (1,0,1) und gewinnt gegen jede `.result-
+ * images`-Regel (0,1,1). Deshalb MUESSEN diese Bild-Regeln ebenfalls eine
+ * ID (#urls / #results) tragen -> (1,1,1) > (1,0,1). Sonst bleiben die
+ * leeren Cyan-Kaesten + Margin-Stacking bestehen (genau der Bug bisher).
+ *
+ * inline-block statt flex: Kacheln flowen + brechen um, auch wenn der
+ * Eltern-Container kein Flex ist — kein :has noetig. */
+#urls article.result-images,
+#urls .result-images,
+#results article.result-images,
+#results .result-images {
+  display: inline-block !important;
+  width: 180px !important;
   max-width: 180px !important;
   min-width: 0 !important;
-  box-sizing: border-box !important;
-  margin: 0 !important;
+  margin: 4px !important;
   padding: 0 !important;
+  border: none !important;             /* killt die Cyan-Box (1,1,1 > 1,0,1) */
+  background: rgba(10, 0, 16, 0.6) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
   overflow: hidden !important;
   vertical-align: top !important;
-  border: none !important;             /* keine leere Cyan-Box mehr */
-  background: rgba(10,0,16,0.6) !important;
-  box-shadow: none !important;
-}
-/* Fallback ueber :has — trifft auch Artikel mit abweichender Klasse.
- * Eigene Regel, damit fehlender :has-Support die Klassen-Regel oben
- * NICHT mit-verwirft. */
-#urls:has(.image_thumbnail) > article {
-  display: inline-flex !important;
-  flex: 0 1 180px !important;
-  width: auto !important;
-  max-width: 180px !important;
   box-sizing: border-box !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  vertical-align: top !important;
-  border: none !important;
-  background: rgba(10,0,16,0.6) !important;
-  box-shadow: none !important;
+  float: none !important;
 }
-article.result-images:hover {
+#urls article.result-images:hover,
+#results article.result-images:hover {
   outline: 2px solid var(--neon-yellow) !important;
+  box-shadow: 0 0 10px var(--neon-yellow) !important;
 }
 
-/* Thumbnail fuellt die Kachel, laeuft NIE raus (Klassen-Regel = immer). */
-.image_thumbnail,
-.result-images img {
-  max-width: 100% !important;
+/* #urls zentriert die Kacheln (inline-block via text-align). */
+#urls:has(.image_thumbnail) { text-align: center !important; }
+
+/* Thumbnail fuellt die Kachel exakt, laeuft NIE raus. */
+#urls .image_thumbnail,
+#urls article.result-images img,
+#results article.result-images img {
   width: 100% !important;
+  max-width: 100% !important;
   height: 130px !important;
   display: block !important;
-  object-fit: cover !important;
-}
-/* :has-Fallback fuer abweichende Klassen — eigene Regel. */
-#urls:has(.image_thumbnail) > article img {
-  max-width: 100% !important;
-  width: 100% !important;
-  height: 130px !important;
-  display: block !important;
+  margin: 0 !important;
   object-fit: cover !important;
 }
 
 /* Detail-Popup (oeffnet beim Klick) darf das Raster nicht sprengen. */
-.result-images .detail {
+#urls .result-images .detail,
+#results .result-images .detail {
   max-width: 100% !important;
   overflow: hidden !important;
 }
