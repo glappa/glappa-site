@@ -203,12 +203,17 @@ button .icon,
   fill: #000 !important;
 }
 
-/* Kategorie-NAMEN immer anzeigen — Theme blendet sie bei manchen Breiten
- * aus (nur Tooltip bei Hover). Wir erzwingen sie dauerhaft sichtbar. */
-.category_name,
-.category .category_name,
-#categories .category_name,
-label.tooltips .category_name {
+/* ── Kategorie-Buttons: Text + Icon IMMER sichtbar ───────────────
+ * WICHTIG (Steam/CEF & alte Browser): NIE `color: inherit` auf dem Namen
+ * verlassen — in aelteren Engines resolved das zu dunkel -> schwarzer Text
+ * auf schwarzem Button = unsichtbar (genau der Bug). Wir setzen die helle
+ * Farbe EXPLIZIT auf Name UND Icon, mit maximaler Spezifitaet, und heben
+ * den Kompakt-Modus (icon-only) des Themes auf. */
+html body #categories .category_name,
+html body #categories .category .category_name,
+html body #categories label .category_name,
+html body #categories label.tooltips .category_name,
+.category_name {
   display: inline-block !important;
   visibility: visible !important;
   opacity: 1 !important;
@@ -217,10 +222,49 @@ label.tooltips .category_name {
   clip-path: none !important;
   width: auto !important;
   height: auto !important;
-  margin: 0 !important;
-  color: inherit !important;
+  max-width: none !important;
+  margin: auto 0 auto 0.25rem !important;
+  padding: 0 !important;
+  color: var(--neon-cyan) !important; /* EXPLIZIT hell, kein inherit */
+  font-size: 1rem !important;
+  text-indent: 0 !important;
   white-space: nowrap !important;
   overflow: visible !important;
+}
+
+/* Label-Text selbst (falls kein .category_name-Wrapper) ebenfalls hell. */
+html body #categories label,
+html body #categories button.category_button,
+html body #categories .category label {
+  color: var(--neon-cyan) !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Kategorie-Icons sichtbar + helle Farbe; Phone-Kompakt-Hide aufheben. */
+html body #categories .category svg,
+html body #categories label svg,
+html body #categories button.category_button svg,
+html body #categories .searxng-icon,
+html body #categories label .icon {
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  fill: currentColor !important;
+  color: var(--neon-cyan) !important;
+  width: 1.15em !important;
+  height: 1.15em !important;
+  vertical-align: middle !important;
+}
+
+/* AKTIVER Tab (heller BG): Text + Icon schwarz, damit lesbar. */
+html body #categories input:checked + label,
+html body #categories input:checked + label .category_name,
+html body #categories input:checked + label svg,
+html body #categories button.category_button.selected,
+html body #categories button.category_button.selected .category_name,
+html body #categories button.category_button.selected svg {
+  color: #000 !important;
 }
 
 /* ── Lesbarkeit: groessere Schrift ueberall ──────────────────────
