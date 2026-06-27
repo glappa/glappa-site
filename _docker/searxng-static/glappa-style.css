@@ -757,14 +757,15 @@ article.result:not(.result-images),
 }
 
 /* ── GENERELL: kein Bild laeuft je aus seinem Container ───────────
- * Gilt fuer ALLE Ergebnistypen (Text-Thumbs, Infobox-Bilder, etc.). */
+ * Nur max-width (gegen Ueberlauf). KEIN height:auto erzwingen — das wuerde
+ * die native Bild-Lightbox stoeren. Hoehe setzt das Theme bzw. unsere
+ * Thumbnail-Regel selbst. .detail-Bilder bleiben ausgenommen. */
 #urls img,
 #sidebar img,
 .result img,
 .infobox img,
 #results img {
   max-width: 100% !important;
-  height: auto !important;
 }
 
 /* ── Bilder-Suche: Thumbnail-Raster ──────────────────────────────
@@ -820,37 +821,17 @@ article.result:not(.result-images),
 }
 
 /* ── Detail-/Vollbild-Ansicht (Klick auf ein Thumbnail) ──────────
- * Das grosse Bild ist <img> OHNE Klasse in <a class="result-images-source">
- * im .detail. Es soll GANZ sichtbar + dynamisch skaliert sein (contain),
- * nicht zugeschnitten. max-height begrenzt riesige Bilder auf den Viewport. */
+ * Das Theme rendert die Lightbox selbst korrekt — wir mischen uns NICHT
+ * mehr ein (eigene object-fit/height-Overrides haben das Bild verschoben/
+ * abgeschnitten). Einzige Absicherung: das Detailbild darf seine native
+ * Hoehe behalten und wird nur weich auf den Viewport begrenzt. */
 .detail .result-images-source img,
-.detail img,
-#urls .detail img,
-#results .detail img {
+.detail img {
+  height: auto !important;          /* native Proportionen, kein Crop */
+  max-height: 80vh !important;      /* riesige Bilder passen in den Viewport */
   width: auto !important;
   max-width: 100% !important;
-  height: auto !important;
-  max-height: 75vh !important;
   object-fit: contain !important;
-  display: block !important;
-  margin: 0 auto !important;
-}
-/* Detail-Container + Bild-Link: volle Breite, AUTO-Hoehe, nichts
- * abgeschnitten. Der <a class="result-images-source"> darf die Bildhoehe
- * NICHT begrenzen — sonst croppt object-fit das Bild zum Streifen. */
-.result-images .detail,
-#urls .result-images .detail,
-#results .result-images .detail,
-.detail .result-images-source,
-.result-images-source {
-  max-width: 100% !important;
-  width: 100% !important;
-  height: auto !important;
-  max-height: none !important;
-  min-height: 0 !important;
-  text-align: center !important;
-  overflow: visible !important;
-  display: block !important;
 }
 
 /* ── Back-to-Home Button (klein + dynamisch) ─────────────────────
