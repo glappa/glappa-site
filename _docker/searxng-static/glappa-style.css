@@ -835,14 +835,22 @@ article.result:not(.result-images),
   display: block !important;
   margin: 0 auto !important;
 }
-/* Detail-Container selbst: volle Breite, nichts abgeschnitten. */
+/* Detail-Container + Bild-Link: volle Breite, AUTO-Hoehe, nichts
+ * abgeschnitten. Der <a class="result-images-source"> darf die Bildhoehe
+ * NICHT begrenzen — sonst croppt object-fit das Bild zum Streifen. */
 .result-images .detail,
 #urls .result-images .detail,
-#results .result-images .detail {
+#results .result-images .detail,
+.detail .result-images-source,
+.result-images-source {
   max-width: 100% !important;
   width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
   text-align: center !important;
   overflow: visible !important;
+  display: block !important;
 }
 
 /* ── Back-to-Home Button (klein + dynamisch) ─────────────────────
