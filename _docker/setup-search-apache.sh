@@ -64,6 +64,30 @@ echo "  Domain:    $DOMAIN"
 echo "  SearXNG:   $SEARXNG_HOST_PORT (intern via Apache)"
 echo
 
+# ── 0) Neueste Git-Aenderungen holen ───────────────────────────────
+hr
+say "0) Neueste Git-Aenderungen holen (origin/main)"
+
+REPO_ROOT="$(cd "$PROJECT/.." && pwd)"
+if [ -d "$REPO_ROOT/.git" ]; then
+    # Ownership-Fix: sonst scheitert git an root-eigener settings.yml
+    # (vom SearXNG-Container angelegt) mit "unable to unlink".
+    if find "$REPO_ROOT" -not -user "$(id -un)" -print -quit 2>/dev/null | grep -q .; then
+        say "Korrigiere Datei-Ownership (sudo chown)…"
+        sudo chown -R "$(id -un):$(id -gn)" "$REPO_ROOT"
+    fi
+    if git -C "$REPO_ROOT" fetch origin 2>/dev/null \
+       && git -C "$REPO_ROOT" reset --hard origin/main >/dev/null 2>&1; then
+        ok "Repo aktualisiert → $(git -C "$REPO_ROOT" rev-parse --short HEAD) $(git -C "$REPO_ROOT" log -1 --format='%s' | cut -c1-50)"
+    else
+        warn "Git-Update fehlgeschlagen — nutze aktuellen Working-Tree-Stand"
+    fi
+    # settings.yml nach reset wieder lesbar fuer den Container machen
+    chmod a+r "$REPO_ROOT/_docker/searxng/settings.yml" 2>/dev/null || true
+else
+    warn "Kein .git in $REPO_ROOT — ueberspringe Git-Update"
+fi
+
 # ── 1) Pre-flight ──────────────────────────────────────────────────
 hr
 say "1) Pre-flight"
