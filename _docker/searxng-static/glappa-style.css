@@ -780,10 +780,12 @@ article.result:not(.result-images),
  *
  * inline-block statt flex: Kacheln flowen + brechen um, auch wenn der
  * Eltern-Container kein Flex ist — kein :has noetig. */
-#urls article.result-images,
-#urls .result-images,
-#results article.result-images,
-#results .result-images {
+/* :not([data-vim-selected]) -> der GEOEFFNETE Artikel (Detail sichtbar) wird
+ * NICHT auf 180px/overflow:hidden geklemmt, sonst clippt er die Lightbox. */
+#urls article.result-images:not([data-vim-selected]),
+#urls .result-images:not([data-vim-selected]),
+#results article.result-images:not([data-vim-selected]),
+#results .result-images:not([data-vim-selected]) {
   display: inline-block !important;
   width: 180px !important;
   max-width: 180px !important;
@@ -821,19 +823,24 @@ article.result:not(.result-images),
 }
 
 /* ── Detail-/Vollbild-Ansicht (Klick auf ein Thumbnail) ──────────
- * Bei BREITEN Schirmen hat das Theme eine @media-Regel mit hoher Spezifitaet
- * (z.B. `.result-images .detail img`, 0,2,1), die das Bild auf object-fit:
- * cover + kurze Hoehe zwingt -> Streifen. Bei schmalen Schirmen greift die
- * Regel nicht -> Bild korrekt. Wir schlagen sie mit MAXIMALER Spezifitaet
- * (html body #urls … = 1,2,3+) und erzwingen native Proportionen, contain,
- * auto-Hoehe -> Bild ist bei JEDER Breite vollstaendig + unverzerrt. */
+ * ECHTE URSACHE (aus client/simple/src/less/): die native Regel
+ * `.result-images img { object-fit: cover; height: @results-image-row-height }`
+ * (~130px) trifft AUCH das Detailbild und zwingt ihm die feste 130px-Streifen-
+ * Hoehe + cover auf. Die spezifischere `a.result-images-source img { contain;
+ * max-height: calc(...) }` ueberschreibt nur object-fit/max-height, NICHT die
+ * fixe `height` -> Bild bleibt 130px hoch = Streifen.
+ *
+ * Fix: maximale Spezifitaet (html body … + Theme-Kontext) und EXPLIZIT
+ * height:auto (killt die 130px) + contain -> Bild voll + unverzerrt. */
+html body #results.image-detail-open .detail img,
+html body article.result-images[data-vim-selected] .detail img,
 html body #urls .detail img,
 html body #urls article.result-images .detail img,
 html body #results .detail img,
 html body .detail .result-images-source img,
 html body .detail img {
   width: auto !important;
-  height: auto !important;
+  height: auto !important;             /* killt die native fixe 130px-Hoehe */
   min-height: 0 !important;
   max-width: 100% !important;
   max-height: 80vh !important;
