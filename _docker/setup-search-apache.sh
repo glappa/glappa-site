@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 #
-# setup-search-apache.sh — search.glappa.de hinter Apache als Reverse-Proxy.
+# setup-search-apache.sh — Deploy-Allrounder fuer den VPS.
+#
+# Ein Aufruf zieht den neuesten Stand von GitHub und faehrt ALLES sauber neu
+# hoch, sodass die Aenderungen live sichtbar sind:
+#   1. git reset --hard origin/main          (neuester Code)            [Step 0]
+#   2. Apache-Reverse-Proxy fuer search.glappa.de + Cert            [Steps 1-7]
+#   3. SearXNG-Container neu starten                                   [Step 8]
+#   4. Glappa-App (YT-Downloader) Image NEU BAUEN + starten          [Step 8b]
 #
 # Architektur:
 #   Apache (auf :80/:443) ── Reverse-Proxy ──► SearXNG (127.0.0.1:8888 Container)
+#   Glappa-App (home.glappa.de:8080) laeuft als eigener Container (glappa).
 #
 # Apache laeuft weiter fuer alle bestehenden vhosts, wir fuegen NUR einen
 # zusaetzlichen vhost search.glappa.de.conf hinzu. Andere Sites sind
@@ -41,8 +49,8 @@ fi
 # ── Status-Modus ───────────────────────────────────────────────────
 if [ "${1:-}" = "--status" ] || [ "${1:-}" = "status" ]; then
     echo "Apache: $(systemctl is-active apache2)"
-    echo "SearXNG (Docker):"
-    $DSUDO docker compose -f "$COMPOSE_FILE" ps searxng 2>/dev/null || true
+    echo "Glappa-App + SearXNG (Docker):"
+    $DSUDO docker compose -f "$COMPOSE_FILE" ps glappa searxng 2>/dev/null || true
     echo
     echo "Apache vhost aktiv?"
     ls -l /etc/apache2/sites-enabled/ | grep search.glappa.de || echo "  (nicht enabled)"
@@ -281,6 +289,38 @@ for i in $(seq 1 10); do
     sleep 2
 done
 
+# ── 8b) Glappa-App-Container (YT-Downloader) neu bauen + starten ────
+echo
+hr
+say "8b) Glappa-App neu bauen + starten (home.glappa.de:8080)"
+
+# WICHTIG: Der App-Code wird per 'COPY . /app/glappa-site/' fest ins Image
+# gebacken (siehe _docker/Dockerfile). Ein 'git pull' (Step 0) allein reicht
+# darum NICHT — ohne Neubau laeuft weiter der alte Stand im Container.
+# --build erzwingt den Image-Neubau; Docker invalidiert den COPY-Layer
+# automatisch, sobald sich Dateien geaendert haben.
+$DSUDO docker compose -f "$COMPOSE_FILE" up -d --build glappa
+ok "glappa-Container neu gebaut + gestartet"
+
+# Alte, jetzt unbenutzte (dangling) Images aufraeumen -> gibt Disk frei.
+# Fasst nur ungetaggte Layer an, nichts Laufendes.
+$DSUDO docker image prune -f >/dev/null 2>&1 || true
+
+sleep 3
+$DSUDO docker compose -f "$COMPOSE_FILE" ps glappa
+
+# Warten bis die App lokal antwortet. -k: das Cert ist fuer home.glappa.de
+# ausgestellt, nicht fuer 127.0.0.1 -> Zertifikatspruefung ueberspringen.
+# Fallback auf http, falls der Container (dev) ohne SSL hochkam.
+for i in $(seq 1 10); do
+    if curl -fsSk --max-time 3 "https://127.0.0.1:8080/" -o /dev/null 2>/dev/null \
+       || curl -fsS  --max-time 3 "http://127.0.0.1:8080/"  -o /dev/null 2>/dev/null; then
+        ok "glappa-App intern erreichbar"
+        break
+    fi
+    sleep 2
+done
+
 # ── 9) Verify ──────────────────────────────────────────────────────
 echo
 hr
@@ -299,6 +339,14 @@ else
     warn "  sudo tail -f /var/log/apache2/$DOMAIN-error.log"
 fi
 
+if curl -fsSk --max-time 8 "https://127.0.0.1:8080/" -o /dev/null 2>/dev/null \
+   || curl -fsS --max-time 8 "http://127.0.0.1:8080/" -o /dev/null 2>/dev/null; then
+    ok "App:      home.glappa.de:8080  →  200"
+else
+    warn "App: home.glappa.de:8080 antwortet nicht — Logs anschauen:"
+    warn "  $DSUDO docker compose -f $COMPOSE_FILE logs --tail=50 glappa"
+fi
+
 # certbot-renewal cron pruefen (certbot installiert die selbst)
 echo
 if systemctl list-timers --all 2>/dev/null | grep -q certbot; then
@@ -309,13 +357,16 @@ echo
 echo -e "${B}════════════════════════════════════════════════════════════${X}"
 echo -e "  ${G}${B}Fertig.${X}"
 echo
-echo "  URL:               https://$DOMAIN/"
+echo "  Search-URL:        https://$DOMAIN/"
+echo "  App-URL:           https://home.glappa.de:8080/  (YT-Downloader)"
 echo "  SearXNG-Container: $SEARXNG_HOST_PORT (intern, nur localhost)"
 echo "  Apache vhost:      /etc/apache2/sites-available/search.glappa.de.conf"
 echo "  Cert:              /etc/letsencrypt/live/$DOMAIN/"
 echo
 echo "  Status:            bash setup-search-apache.sh --status"
+echo "  App neu bauen:     $DSUDO docker compose -f $COMPOSE_FILE up -d --build glappa"
+echo "  App logs:          $DSUDO docker compose -f $COMPOSE_FILE logs -f glappa"
 echo "  Apache reload:     sudo systemctl reload apache2"
 echo "  Apache logs:       sudo tail -f /var/log/apache2/$DOMAIN-error.log"
-echo "  SearXNG logs:      docker compose -f $COMPOSE_FILE logs -f searxng"
+echo "  SearXNG logs:      $DSUDO docker compose -f $COMPOSE_FILE logs -f searxng"
 echo -e "${B}════════════════════════════════════════════════════════════${X}"
