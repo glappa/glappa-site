@@ -35,7 +35,10 @@ COMPOSE_FILE="docker-compose.vps.yml"
 # Pfad + Hash DIESES Scripts — fuer den Selbst-Update-Reexec in Step 0.
 # (Wenn der git pull eine neue Version des Scripts bringt, muessen wir mit ihr
 # neu starten, sonst laeuft die alte, schon geladene Version ohne neue Steps.)
-SELF="$(readlink -f "$0")"
+# WICHTIG: aus dem bereits absoluten $PROJECT bauen — $0 ist relativ und wir
+# haben oben schon ins Script-Verzeichnis ge-cd't, ein readlink -f "$0" wuerde
+# hier ins Leere zeigen und (mit set -e) das Script lautlos beenden.
+SELF="$PROJECT/$(basename "$0")"
 SELF_HASH_BEFORE="$(sha256sum "$SELF" 2>/dev/null | cut -d' ' -f1 || true)"
 
 # ── Farben ─────────────────────────────────────────────────────────
