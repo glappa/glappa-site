@@ -32,6 +32,12 @@ EMAIL="lex@glappa.de"
 SEARXNG_HOST_PORT="127.0.0.1:8888"
 COMPOSE_FILE="docker-compose.vps.yml"
 
+# Pfad + Hash DIESES Scripts — fuer den Selbst-Update-Reexec in Step 0.
+# (Wenn der git pull eine neue Version des Scripts bringt, muessen wir mit ihr
+# neu starten, sonst laeuft die alte, schon geladene Version ohne neue Steps.)
+SELF="$(readlink -f "$0")"
+SELF_HASH_BEFORE="$(sha256sum "$SELF" 2>/dev/null | cut -d' ' -f1 || true)"
+
 # ── Farben ─────────────────────────────────────────────────────────
 G='\033[1;32m'; Y='\033[1;33m'; R='\033[1;31m'; C='\033[1;36m'; B='\033[1m'; X='\033[0m'
 say()  { echo -e "${C}→${X} $*"; }
@@ -92,6 +98,19 @@ if [ -d "$REPO_ROOT/.git" ]; then
     fi
     # settings.yml nach reset wieder lesbar fuer den Container machen
     chmod a+r "$REPO_ROOT/_docker/searxng/settings.yml" 2>/dev/null || true
+
+    # Selbst-Update: Hat der Pull DIESES Script veraendert? Dann mit der neuen
+    # Version neu starten — sonst laeuft die bereits geladene alte Version
+    # weiter und neue Schritte (z.B. 8b App-Rebuild) wuerden fehlen.
+    # GLAPPA_DEPLOY_REEXEC verhindert eine Endlosschleife.
+    if [ "${GLAPPA_DEPLOY_REEXEC:-}" != "1" ]; then
+        SELF_HASH_AFTER="$(sha256sum "$SELF" 2>/dev/null | cut -d' ' -f1 || true)"
+        if [ -n "$SELF_HASH_AFTER" ] && [ "$SELF_HASH_AFTER" != "$SELF_HASH_BEFORE" ]; then
+            ok "Deploy-Script wurde aktualisiert — starte mit neuer Version neu…"
+            export GLAPPA_DEPLOY_REEXEC=1
+            exec bash "$SELF" "$@"
+        fi
+    fi
 else
     warn "Kein .git in $REPO_ROOT — ueberspringe Git-Update"
 fi
