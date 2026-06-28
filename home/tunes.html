@@ -243,7 +243,9 @@
       let mIter   = 80;
       let mPhase  = 0;             // Farbphase
       let mImg    = null;          // Persistenter ImageData-Puffer
-      let mBlackStreak = 0;        // Frames in Folge mit zu viel Schwarz
+      let mBoringStreak = 0;       // Frames in Folge ohne Detail (eine Farbe/Schwarz)
+      let mCamX   = 0, mCamY = 0;  // geglaettete Kamera-Mitte (sanftes Gleiten)
+      let mBassSmooth = 0;         // stark geglaetteter Bass nur fuer die Bewegung
 
       function pickRandomPoi() {
         let n;
@@ -251,8 +253,10 @@
         while (POIS.length > 1 && n === mPoiIdx);
         mPoiIdx = n;
         mScale  = 3.0;
-        mBlackStreak = 0;
+        mBoringStreak = 0;
         mImg = null;
+        mCamX = POIS[n].re;         // Kamera sofort auf neuen POI -> kein Quer-Glide
+        mCamY = POIS[n].im;
       }
 
       audio.volume = 0.8;
@@ -363,7 +367,10 @@
         // Audio-Bands -> Bass treibt Zoom, Treble treibt Farbe, Volume tweakt Detail.
         // Bass-Huellkurve + Beat kommen aus der geteilten Analyse (updateBass).
         updateBass();
-        const bass = bassEnv;
+        // Fuer die *Bewegung* einen stark geglaetteten Bass nehmen, damit die
+        // Kamera nicht bei jedem Beat seitlich ruckt. Der punchige bassEnv bleibt
+        // nur fuer Farbe/Flash.
+        mBassSmooth += (bassEnv - mBassSmooth) * 0.05;
         const n = visData.length;
         let treb = 0, total = 0;
         const trebStart = Math.floor(n * 0.55);
@@ -372,9 +379,9 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Zoom + Iter dynamisch. Baseline schneller (~3%/frame) damit auch bei
-        // Stille was passiert; Bass laesst den Zoom kicken, Beats geben extra Punch.
-        const zoomRate = 0.972 - bass * 0.016 - beatFlash * 0.02;
+        // Zoom + Iter dynamisch. Ruhigere Baseline (~1.5%/frame); Bass laesst den
+        // Zoom sanft kicken (geglaettet, damit kein Ruckeln).
+        const zoomRate = 0.985 - mBassSmooth * 0.012;
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
         // Farbphase: konstanter Baseline-Spin + Treble-Kicks + Beat-Farbsprung
@@ -384,15 +391,17 @@
         if (mScale < 1e-13) pickRandomPoi();
         if (mPoiIdx < 0)    pickRandomPoi();   // erstes Frame
 
-        // Zeit-basierter Orbit: Camera kreist langsam um den POI, Radius skaliert
-        // mit aktuellem Zoom (= konstanter visueller Wackler), Bass amplifiziert.
-        const tnow   = performance.now() / 1000;
-        const orbR   = mScale * (0.18 + bass * 0.45);
-        const offX   = Math.sin(tnow * 0.41) * orbR;
-        const offY   = Math.cos(tnow * 0.53) * orbR;
-        const poi    = POIS[mPoiIdx];
-        const cx     = poi.re + offX;
-        const cy     = poi.im + offY;
+        // Sanfter Orbit: langsame Frequenzen + kleiner Radius. Kamera-Mitte wird
+        // per Tiefpass an's Ziel herangezogen -> fluessiges Gleiten statt Wackeln.
+        const tnow    = performance.now() / 1000;
+        const orbR    = mScale * (0.10 + mBassSmooth * 0.14);
+        const poi     = POIS[mPoiIdx];
+        const targetX = poi.re + Math.sin(tnow * 0.13) * orbR;
+        const targetY = poi.im + Math.cos(tnow * 0.17) * orbR;
+        mCamX += (targetX - mCamX) * 0.05;
+        mCamY += (targetY - mCamY) * 0.05;
+        const cx     = mCamX;
+        const cy     = mCamY;
         const px     = mImg.data;
         const stepX  = mScale / W;
         const stepY  = mScale / W;       // gleicher Step fuer aspect-correct
@@ -402,9 +411,10 @@
         const phase = mPhase;
 
         let idx = 0;
-        let blackCount = 0;
+        let detailCount = 0;     // Pixel die sich vom linken Nachbarn abheben
         for (let py2 = 0; py2 < H; py2++) {
           const y0 = y0Base + py2 * stepY;
+          let prevIt = -999;
           for (let px2 = 0; px2 < W; px2++) {
             const x0 = x0Base + px2 * stepX;
             let x = 0, y = 0, x2 = 0, y2 = 0;
@@ -416,9 +426,12 @@
               y2 = y * y;
               it++;
             }
+            // Detail-Metrik: aendert sich die Iterationszahl spuerbar zum
+            // Nachbarn, ist hier "Struktur". Glatte Flaeche/eine Farbe -> 0.
+            if (px2 > 0 && Math.abs(it - prevIt) >= 2) detailCount++;
+            prevIt = it;
             if (it === maxIt) {
               px[idx] = 0; px[idx+1] = 0; px[idx+2] = 0;
-              blackCount++;
             } else {
               // Smooth color: it + 1 - log(log|z|)/log2
               const log_zn = Math.log(x2 + y2) / 2;
@@ -448,12 +461,12 @@
         }
         cctx.putImageData(mImg, 0, 0);
 
-        // Black-Streak: wenn ueber 70% schwarz UND wir haben bereits reingezoomt,
-        // ist der View "stuck" -> nach ~80 Frames (~1.3s @ 60fps) zu random POI.
-        const blackRatio = blackCount / (W * H);
-        if (blackRatio > 0.7 && mScale < 2.0) mBlackStreak++;
-        else                                  mBlackStreak = 0;
-        if (mBlackStreak > 80) pickRandomPoi();
+        // Boring-Streak: zu wenig Struktur -> eine Farbe / glatter Gradient /
+        // Schwarz fuellt den Schirm. Nach ~25 Frames (~0.4s @ 60fps) neuer POI.
+        const detailRatio = detailCount / (W * H);
+        if (detailRatio < 0.08) mBoringStreak++;
+        else                    mBoringStreak = 0;
+        if (mBoringStreak > 25) pickRandomPoi();
 
         pumpDisplay();
       }
