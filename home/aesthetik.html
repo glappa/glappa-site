@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>(&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; &Auml;STHETIK &#9829; &mdash; Glappa</title>
+  <meta name="keywords" content="Glappa Aesthetik Hexd Trance Y2K 2000s">
+  <meta name="description" content="Hexd Trance 2000s Aesthetik. (&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829;">
+  <link rel="icon" href="../favicon.ico">
+  <style>
+    /* ============================================================
+       aesthetik.html — standalone Hexd / Y2K-Trance Aesthetik.
+       Alles inline -> kann einfach per FTP gedropt werden.
+       Nur relative Pfade (../img, ../script.js).
+       ============================================================ */
+
+    :root {
+      --hx-pink:  #ff1cae;
+      --hx-pink2: #ff66d9;
+      --hx-cyan:  #00f0ff;
+      --hx-purple:#8a2be2;
+      --hx-lime:  #aaff00;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+      cursor: url('../coursor/WoW Cursor.cur'), auto;
+      overflow-x: hidden;
+    }
+
+    /* animierter Neon-Verlauf + Sternenhintergrund uebereinander */
+    body {
+      background:
+        radial-gradient(circle at 20% 10%, rgba(255,28,174,0.18), transparent 45%),
+        radial-gradient(circle at 80% 30%, rgba(0,240,255,0.18), transparent 45%),
+        radial-gradient(circle at 50% 90%, rgba(138,43,226,0.22), transparent 50%),
+        url('../img/gif/3dspace.gif') center/cover fixed,
+        #000;
+      background-blend-mode: screen, screen, screen, normal, normal;
+      animation: hue 18s linear infinite;
+    }
+    @keyframes hue { to { filter: hue-rotate(360deg); } }
+
+    /* CRT-Scanlines drueber */
+    body::after {
+      content: "";
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) 0px,
+        rgba(0,0,0,0) 2px,
+        rgba(0,0,0,0.18) 3px,
+        rgba(0,0,0,0) 4px);
+      mix-blend-mode: multiply;
+    }
+
+    a { color: var(--hx-cyan); }
+    a:visited { color: var(--hx-pink2); }
+
+    /* ---------- Top-Marquee ---------- */
+    .marquee {
+      width: 100%; overflow: hidden; white-space: nowrap; padding: 5px 0;
+      background: linear-gradient(90deg, var(--hx-pink), var(--hx-purple), var(--hx-cyan), var(--hx-pink));
+      background-size: 300% 100%;
+      animation: slide-bg 8s linear infinite;
+      border-bottom: 2px solid #fff;
+    }
+    @keyframes slide-bg { to { background-position: 300% 0; } }
+    .marquee span {
+      display: inline-block; padding-left: 100%;
+      font-weight: bold; color: #000; letter-spacing: 2px;
+      text-shadow: 0 0 4px #fff;
+    }
+    @keyframes scroll-left {
+      0% { transform: translateX(0); } 100% { transform: translateX(-100%); }
+    }
+
+    /* ---------- Navigation (wird von script.js befuellt) ---------- */
+    .nav {
+      text-align: center; font-size: clamp(1rem, 3vw, 1.4rem);
+      margin: 10px 0; display: flex; flex-wrap: wrap;
+      justify-content: center; gap: 6px 10px;
+    }
+    .nav a { text-decoration: none; padding: 2px 6px; display: inline-block; color: var(--hx-cyan); }
+    .nav a:hover { text-shadow: 0 0 8px var(--hx-cyan); }
+    .nav a.current { color: var(--hx-pink); text-shadow: 0 0 8px var(--hx-pink); text-decoration: underline; }
+    .nav .sep { color: var(--hx-pink); }
+
+    /* ---------- Hero / Glitch-Titel ---------- */
+    .hero { text-align: center; padding: 26px 12px 8px; }
+    .kao {
+      font-size: clamp(1.2rem, 5vw, 2.4rem);
+      color: var(--hx-pink2);
+      text-shadow: 0 0 10px var(--hx-pink), 0 0 20px var(--hx-pink);
+      margin: 0 0 6px;
+      animation: bob 2.4s ease-in-out infinite;
+    }
+    @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+    .glitch {
+      position: relative;
+      display: inline-block;
+      font-weight: 900;
+      letter-spacing: 6px;
+      font-size: clamp(2.6rem, 13vw, 7rem);
+      line-height: 1;
+      color: #fff;
+      text-shadow: 0 0 18px var(--hx-pink), 0 0 40px var(--hx-cyan);
+    }
+    .glitch::before, .glitch::after {
+      content: attr(data-text);
+      position: absolute; left: 0; top: 0; width: 100%;
+      overflow: hidden;
+    }
+    .glitch::before {
+      color: var(--hx-cyan);
+      animation: glitch-x 2.6s infinite linear alternate;
+      clip-path: polygon(0 0,100% 0,100% 45%,0 45%);
+    }
+    .glitch::after {
+      color: var(--hx-pink);
+      animation: glitch-y 1.8s infinite linear alternate;
+      clip-path: polygon(0 55%,100% 55%,100% 100%,0 100%);
+    }
+    @keyframes glitch-x {
+      0%{transform:translate(0)} 20%{transform:translate(-4px,2px)}
+      40%{transform:translate(3px,-2px)} 60%{transform:translate(-2px,1px)}
+      80%{transform:translate(2px,-1px)} 100%{transform:translate(0)}
+    }
+    @keyframes glitch-y {
+      0%{transform:translate(0)} 25%{transform:translate(3px,-2px)}
+      50%{transform:translate(-3px,2px)} 75%{transform:translate(2px,2px)}
+      100%{transform:translate(0)}
+    }
+
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--hx-cyan);
+      font-size: clamp(0.9rem, 3vw, 1.3rem);
+      letter-spacing: 3px;
+      text-shadow: 0 0 8px var(--hx-cyan);
+      text-transform: uppercase;
+    }
+
+    /* ---------- Video-Embed im Neon-Rahmen ---------- */
+    .stage {
+      max-width: 760px; margin: 22px auto; padding: 0 16px;
+    }
+    .videoframe {
+      position: relative; padding: 6px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--hx-pink), var(--hx-cyan), var(--hx-purple), var(--hx-pink));
+      background-size: 300% 300%;
+      animation: slide-bg2 6s ease infinite;
+      box-shadow: 0 0 26px rgba(255,28,174,0.6), 0 0 50px rgba(0,240,255,0.35);
+    }
+    @keyframes slide-bg2 {
+      0%{background-position:0 0} 50%{background-position:100% 100%} 100%{background-position:0 0}
+    }
+    .videoframe .ratio {
+      position: relative; width: 100%; padding-top: 56.25%;
+      background: #000; border-radius: 4px; overflow: hidden;
+    }
+    .videoframe iframe {
+      position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
+    }
+    .nowplaying {
+      text-align: center; margin: 10px 0 0;
+      color: var(--hx-lime); font-size: clamp(0.85rem,2.5vw,1.1rem);
+      text-shadow: 0 0 6px var(--hx-lime); letter-spacing: 1px;
+    }
+
+    /* ---------- Heart/Star Banner ---------- */
+    .band {
+      text-align: center; font-size: clamp(1.4rem,5vw,2.2rem);
+      margin: 16px 0; letter-spacing: 4px;
+      animation: blink 1.2s steps(2,start) infinite;
+    }
+    @keyframes blink { 50% { opacity: 0.35; } }
+
+    /* ---------- Aesthetik-Manifest ---------- */
+    .creed {
+      max-width: 620px; margin: 6px auto 30px; padding: 18px 22px;
+      background: rgba(10,0,20,0.55);
+      border: 2px solid var(--hx-pink);
+      border-radius: 10px;
+      box-shadow: 0 0 18px rgba(255,28,174,0.4), inset 0 0 22px rgba(0,240,255,0.12);
+      text-align: center; line-height: 1.7;
+      font-size: clamp(0.95rem,2.6vw,1.15rem);
+    }
+    .creed b { color: var(--hx-pink2); text-shadow: 0 0 6px var(--hx-pink); }
+    .creed .cy { color: var(--hx-cyan); text-shadow: 0 0 6px var(--hx-cyan); }
+
+    .back {
+      text-align: center; margin: 0 0 40px;
+    }
+    .back a {
+      display: inline-block; text-decoration: none;
+      color: #000; font-weight: bold; letter-spacing: 1px;
+      padding: 8px 18px; border-radius: 999px;
+      background: linear-gradient(90deg, var(--hx-cyan), var(--hx-pink2));
+      box-shadow: 0 0 16px rgba(255,102,217,0.6);
+    }
+    .back a:hover { filter: brightness(1.15) saturate(1.2); }
+
+    /* ---------- schwebende Herzen / Sterne ---------- */
+    .floaties { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+    .floaties span {
+      position: absolute; bottom: -40px;
+      font-size: 22px; opacity: 0.8;
+      animation: rise linear infinite;
+      text-shadow: 0 0 8px currentColor;
+    }
+    @keyframes rise {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+      10%  { opacity: 0.9; }
+      100% { transform: translateY(-115vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* ---------- Glitzer am Cursor (von script.js) ---------- */
+    .sparkle {
+      position: fixed; pointer-events: none; z-index: 9999; user-select: none;
+      text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
+      animation: sparkle-fade 0.9s ease-out forwards;
+    }
+    @keyframes sparkle-fade {
+      0%   { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: scale(0.2) translateY(-30px) rotate(180deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="marquee marquee--top">
+    <span>&#9829; HEXD TRANCE 2000s &#9829; (&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; CRANK THE BPM &#9733; GLITTER OVERLOAD &#9733; &#9829;</span>
+  </div>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="../page1.html">Video</a><span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="../home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <p class="kao">(&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; &#65397;&#65387;&#65392;&#65417;&#65439; &#9829;</p>
+      <h1 class="glitch" data-text="&Auml;STHETIK">&Auml;STHETIK</h1>
+      <p class="subtitle">&#9733; hexd mix &#183; trance &#183; 2000s &#9733;</p>
+    </section>
+
+    <section class="stage">
+      <div class="videoframe">
+        <div class="ratio">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/RRc3j_LFOxQ?start=71&amp;rel=0"
+            title="Hexd Mix Trance 2000s"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
+        </div>
+      </div>
+      <p class="nowplaying">&#9836; NOW PLAYING: (&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; HEXD MIX TRANCE 2000s &#9829;</p>
+    </section>
+
+    <div class="band">&#9829; &#10022; &#9829; &#10022; &#9829; &#10022; &#9829; &#10022; &#9829; &#10022; &#9829;</div>
+
+    <section class="creed">
+      <b>&#9829; willkommen in der &Auml;sthetik &#9829;</b><br>
+      schwarzer raum, <span class="cy">neon-pink</span> &amp; <span class="cy">cyan</span>,
+      glitter bis zum anschlag, kaomojis, glitch &amp; trance.<br>
+      <b>turn it up</b> &#8212; das ist <span class="cy">y2k</span> trance fuer die
+      hitze&#173;tod-party. (&#12387;&#9829;&#65439;&#9292;&#9829;)&#12387;
+    </section>
+
+    <div class="back">
+      <a href="index.html">&larr; zur&uuml;ck nach Home</a>
+    </div>
+  </main>
+
+  <div class="floaties" id="floaties" aria-hidden="true"></div>
+
+  <script src="../script.js?v=17"></script>
+  <script>
+    // schwebende Herzen/Sterne erzeugen
+    (function () {
+      const box = document.getElementById('floaties');
+      if (!box) return;
+      const glyphs = ['♥', '✧', '★', '✨', '✯', '💜', '💖', '☆'];
+      const colors = ['#ff1cae', '#00f0ff', '#ff66d9', '#aaff00', '#8a2be2', '#ffffff'];
+      const N = 26;
+      for (let i = 0; i < N; i++) {
+        const s = document.createElement('span');
+        s.textContent = glyphs[Math.floor(Math.random() * glyphs.length)];
+        s.style.left = Math.random() * 100 + 'vw';
+        s.style.color = colors[Math.floor(Math.random() * colors.length)];
+        s.style.fontSize = (14 + Math.random() * 26) + 'px';
+        const dur = 7 + Math.random() * 9;       // 7-16s
+        s.style.animationDuration = dur + 's';
+        s.style.animationDelay = (-Math.random() * dur) + 's';
+        box.appendChild(s);
+      }
+    })();
+
+    // Top-Marquee scrollen lassen (script.js ueberschreibt .marquee span Text;
+    // hier nur sicherstellen dass die Animation laeuft)
+    document.querySelectorAll('.marquee span').forEach(span => {
+      if (!span.style.animation) {
+        span.style.animation = 'scroll-left 26s linear infinite';
+      }
+    });
+  </script>
+</body>
+</html>
