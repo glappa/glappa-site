@@ -1,5 +1,11 @@
-from flask import Flask, Response, request, send_file, jsonify
+from flask import Flask, Response, request, send_file, jsonify, send_from_directory
 import os, re, ssl, sys, json, uuid, threading, queue, time, glob
+
+# Repo-Wurzel (glappa-site/) — eine Ebene ueber home/. Von hier serviert die
+# App ihre eigenen Assets (img, coursor) same-origin, damit der Downloader nicht
+# auf die separate Domain glappa.de angewiesen ist (die diese Dateien u.U. gar
+# nicht ausliefert -> fehlender Hintergrund / kaputte Bilder).
+SITE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # yt-dlp uebernimmt Metadaten + Download + (per ffmpeg) MP3-Konvertierung.
 try:
@@ -43,7 +49,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YT.DL &mdash; Glappa</title>
-<link rel="icon" href="{glappa}/img/favicon.ico">
+<link rel="icon" href="/img/favicon.ico">
 <style>
   :root {{
     --neon-green: #00ff00;
@@ -57,12 +63,12 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 
   html, body {{
     min-height: 100vh;
-    background-image: url('{glappa}/img/gif/background.gif');
+    background-image: url('/img/gif/background.gif');
     background-repeat: repeat;
     background-attachment: fixed;
     color: #fff;
     font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
-    cursor: url('{glappa}/coursor/WoW%20Cursor.cur'), auto;
+    cursor: url('/coursor/WoW%20Cursor.cur'), auto;
     overflow-x: hidden;
   }}
   a {{ color: var(--neon-cyan); }}
@@ -360,7 +366,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <header class="header">
-    <img class="alien" src="{glappa}/img/gif/alien-dance.gif" alt="" width="70" height="98">
+    <img class="alien" src="/img/gif/alien-dance.gif" alt="" width="70" height="98">
     <div class="page-banner yellow">
       <h2>YT ▸ RIP ▸ MP3</h2>
 <pre>
@@ -370,7 +376,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
    '--------------------'
 </pre>
     </div>
-    <img class="alien" src="{glappa}/img/gif/alien-dance.gif" alt="" width="70" height="98">
+    <img class="alien" src="/img/gif/alien-dance.gif" alt="" width="70" height="98">
   </header>
 
   <h1 class="title">YT<em>.</em>DL</h1>
@@ -395,9 +401,9 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   </nav>
 
   <div class="construction">
-    <img class="rocket" src="{glappa}/img/gif/rocket3.gif" alt="" aria-hidden="true">
-    <img src="{glappa}/img/gif/Under_Construction.gif" alt="Under Construction">
-    <img class="rocket rocket--flip" src="{glappa}/img/gif/Rocket.gif" alt="" aria-hidden="true">
+    <img class="rocket" src="/img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="/img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="/img/gif/Rocket.gif" alt="" aria-hidden="true">
   </div>
 
   <main class="card">
@@ -461,17 +467,17 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 
   <footer class="footer">
     <div class="construction">
-      <img class="rocket" src="{glappa}/img/gif/rocket3.gif" alt="" aria-hidden="true">
-      <img src="{glappa}/img/gif/Under_Construction.gif" alt="Under Construction">
-      <img class="rocket rocket--flip" src="{glappa}/img/gif/Rocket.gif" alt="" aria-hidden="true">
+      <img class="rocket" src="/img/gif/rocket3.gif" alt="" aria-hidden="true">
+      <img src="/img/gif/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="/img/gif/Rocket.gif" alt="" aria-hidden="true">
     </div>
 
     <div class="footer-actions">
       <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
-        <img src="{glappa}/img/gif/animail1.gif" alt="You Got Mail!" width="88" height="31">
+        <img src="/img/gif/animail1.gif" alt="You Got Mail!" width="88" height="31">
       </a>
       <a href="{glappa}/index.html">
-        <img src="{glappa}/img/gif/anihome1.gif" alt="Home" width="88" height="31">
+        <img src="/img/gif/anihome1.gif" alt="Home" width="88" height="31">
       </a>
     </div>
 
@@ -479,19 +485,19 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 
     <div class="firefox">
       <a href="https://www.firefox.com">
-        <img src="{glappa}/img/gif/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+        <img src="/img/gif/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
       </a>
     </div>
 
     <div class="badges">
-      <img src="{glappa}/img/gif/allbrowsers.gif" alt="">
-      <img src="{glappa}/img/gif/blinktastic_spongebob.gif" alt="">
-      <img src="{glappa}/img/gif/browser1.gif" alt="">
-      <img src="{glappa}/img/gif/browsers.gif" alt="">
-      <img src="{glappa}/img/gif/counter3.gif" alt="">
-      <img src="{glappa}/img/gif/external-content.duckduckgo.com.gif" alt="">
-      <img src="{glappa}/img/gif/hacker.gif" alt="">
-      <img src="{glappa}/img/gif/hugsnotdrugs.gif" alt="">
+      <img src="/img/gif/allbrowsers.gif" alt="">
+      <img src="/img/gif/blinktastic_spongebob.gif" alt="">
+      <img src="/img/gif/browser1.gif" alt="">
+      <img src="/img/gif/browsers.gif" alt="">
+      <img src="/img/gif/counter3.gif" alt="">
+      <img src="/img/gif/external-content.duckduckgo.com.gif" alt="">
+      <img src="/img/gif/hacker.gif" alt="">
+      <img src="/img/gif/hugsnotdrugs.gif" alt="">
     </div>
 
     <div class="marquee">
@@ -813,6 +819,24 @@ def index():
     glappa = _glappa_base()
     html = INDEX_HTML_TEMPLATE.format(glappa=glappa, home=_home_url(glappa), tunes=_tunes_url(glappa))
     return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
+# ── Same-origin Assets (Bilder, Cursor, Favicon) ──────────────────
+# Werden direkt aus der Repo-Wurzel ausgeliefert. send_from_directory
+# schuetzt automatisch gegen Path-Traversal. Lange Cache-Zeit, da statisch.
+@Downloader.route('/img/<path:subpath>')
+def serve_img(subpath):
+    return send_from_directory(os.path.join(SITE_ROOT, 'img'), subpath,
+                               max_age=86400)
+
+@Downloader.route('/coursor/<path:subpath>')
+def serve_coursor(subpath):
+    return send_from_directory(os.path.join(SITE_ROOT, 'coursor'), subpath,
+                               max_age=86400)
+
+@Downloader.route('/favicon.ico')
+def serve_favicon():
+    return send_from_directory(SITE_ROOT, 'favicon.ico', max_age=86400)
 
 
 @Downloader.route('/info', methods=['POST'])
