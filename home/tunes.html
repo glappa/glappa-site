@@ -430,20 +430,23 @@
         const bps = bpm / 60;                   // Beats pro Sekunde
         // 10% kleinere Skala je Beat, anteilig pro Frame (~60fps) angewandt.
         let zoomRate = Math.pow(0.90, bps / 60);
-        // Bass/Beat geben nur noch einen kleinen Extra-Schub, damit's atmet.
-        zoomRate *= 1 - (mBassSmooth * 0.006 + beatFlash * 0.004);
+        // Bass/Beat geben einen kleinen Extra-Schub auf den Beat, damit's "atmet".
+        zoomRate *= 1 - (mBassSmooth * 0.006 + beatFlash * 0.006);
         mScale *= zoomRate;
-        // Iterationen mit der Zoomtiefe hochziehen: je tiefer, desto mehr Detail
-        // bleibt aufgeloest -> kein vorzeitiges Verflachen (das sonst den
-        // Boring-Reset triggert). total (Lautstaerke) gibt extra Schaerfe.
-        const depth = Math.log(3.0 / mScale);   // 0 am Start, ~30 am Limit
-        mIter   = Math.min(440, 70 + Math.floor(total * 230) + Math.floor(depth * 6));
+        // Iterationen mit Zoomtiefe + Lautstaerke, aber bewusst GEDECKELT: tief
+        // drin ist fast alles "im Set" (schwarz) und durchlaeuft die volle
+        // Schleife -> zu viele Iterationen pro Frame lassen die Seite haengen.
+        const depth = Math.log(3.0 / mScale);   // 0 am Start, ~27 am Reset
+        mIter   = Math.min(340, 80 + Math.floor(total * 180) + Math.floor(depth * 4));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt jetzt klar auf dem Beat.
         mPhase += 0.2 + treb * 10 + total * 4 + beatFlash * 22;
 
-        // Bei tiefem Zoom: random POI ansteuern, reset
-        if (mScale < 1e-13) pickRandomPoi();
+        // DAUERSCHLEIFE: rechtzeitig neu starten, BEVOR die float64-Genauigkeit
+        // am Limit (~1e-13) bricht und die Ansicht zu einer schweren, flimmernden
+        // Schwarzflaeche entartet (genau dort haengt/"crasht" es). Ein voller
+        // Faktor 10 Sicherheitsabstand -> es zoomt endlos sauber weiter.
+        if (mScale < 1e-12) pickRandomPoi();
         if (mPoiIdx < 0)    pickRandomPoi();   // erstes Frame
 
         // Sanfter Orbit: langsame Frequenzen + kleiner Radius. Kamera-Mitte wird
@@ -464,6 +467,9 @@
         const y0Base = cy - (H / 2) * stepY;
         const maxIt = mIter;
         const phase = mPhase;
+        // Helligkeit pulsiert auf den Beat + Treble -> das ganze Fraktal "blitzt"
+        // hoerbar im Takt, ohne dafuer das Zoom-Tempo anzuheben.
+        const lBase = 0.55 + Math.min(0.20, beatFlash * 0.20 + treb * 0.08);
 
         let idx = 0;
         let detailCount = 0;     // Pixel die sich vom linken Nachbarn abheben
@@ -493,8 +499,8 @@
               const nu = Math.log(log_zn / Math.LN2) / Math.LN2;
               const smooth = it + 1 - nu;
               const hue = (smooth * 8 + phase) % 360;
-              // HSL -> RGB inline
-              const s = 0.92, l = 0.55;
+              // HSL -> RGB inline (Helligkeit pulsiert auf den Beat)
+              const s = 0.92, l = lBase;
               const c = (1 - Math.abs(2 * l - 1)) * s;
               const hp = hue / 60;
               const xc = c * (1 - Math.abs((hp % 2) - 1));
