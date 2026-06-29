@@ -3,292 +3,337 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>(&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; &Auml;STHETIK &#9829; &mdash; Glappa</title>
-  <meta name="keywords" content="Glappa Aesthetik Hexd Trance Y2K 2000s">
-  <meta name="description" content="Hexd Trance 2000s Aesthetik. (&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829;">
+  <title>&#9829; &Auml;STHETIK &#9829; &mdash; Glappa</title>
+  <meta name="keywords" content="Glappa Aesthetik Y2K 2000s scene kawaii bl&uuml;mchen">
+  <meta name="description" content="Y2K scene kawaii &Auml;sthetik. &#9829; in love &#9829;">
   <link rel="icon" href="../favicon.ico">
   <style>
     /* ============================================================
-       aesthetik.html — standalone Hexd / Y2K-Trance Aesthetik.
-       Alles inline -> kann einfach per FTP gedropt werden.
-       Nur relative Pfade (../img, ../script.js).
+       aesthetik.html — Y2K / Scene-Kawaii Aesthetik.
+       Komplett inline (nur ../img, ../script.js relativ).
+       Look: Lavendel-Gingham, animierter Decoden-Rahmen rund um die
+       ganze Seite, Glitzer, Mond, Pixel-Herzen, "now playing".
        ============================================================ */
 
     :root {
-      --hx-pink:  #ff1cae;
-      --hx-pink2: #ff66d9;
-      --hx-cyan:  #00f0ff;
-      --hx-purple:#8a2be2;
-      --hx-lime:  #aaff00;
+      --lav:    #b07fd6;   /* Grund-Lila des Ginghams      */
+      --lav-dk: #9a5fc8;
+      --pink:   #ff4fb0;   /* Hotpink Akzent               */
+      --pink2:  #ff8ad6;
+      --babyblue:#7fd4ff;
+      --lemon:  #ffe066;   /* Mond / Sterne                */
+      --mint:   #a7f3a0;
+      --cream:  #fff4fb;
+      --rahmen: 52px;      /* Dicke des Decoden-Rahmens     */
     }
 
     * { box-sizing: border-box; }
 
     html, body {
-      margin: 0;
-      padding: 0;
-      min-height: 100%;
-      background: #000;
-      color: #fff;
-      font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+      margin: 0; padding: 0; min-height: 100%;
+      color: #5a2a7a;
+      font-family: "Comic Sans MS", "Comic Sans", "Segoe UI", cursive, sans-serif;
       cursor: url('../coursor/WoW Cursor.cur'), auto;
       overflow-x: hidden;
     }
 
-    /* animierter Neon-Verlauf + Sternenhintergrund uebereinander */
+    /* ---------- Lavendel-Gingham Hintergrund ---------- */
     body {
+      background-color: var(--lav);
+      background-image:
+        repeating-linear-gradient( 45deg, rgba(255,255,255,.40) 0 26px, transparent 26px 52px),
+        repeating-linear-gradient(-45deg, rgba(255,255,255,.40) 0 26px, transparent 26px 52px);
+      animation: bg-drift 22s linear infinite;
+    }
+    @keyframes bg-drift {
+      from { background-position: 0 0, 0 0; }
+      to   { background-position: 104px 104px, -104px 104px; }
+    }
+
+    /* sanftes Glitzer-Overlay drueber */
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background:
-        radial-gradient(circle at 20% 10%, rgba(255,28,174,0.18), transparent 45%),
-        radial-gradient(circle at 80% 30%, rgba(0,240,255,0.18), transparent 45%),
-        radial-gradient(circle at 50% 90%, rgba(138,43,226,0.22), transparent 50%),
-        url('../img/gif/3dspace.gif') center/cover fixed,
-        #000;
-      background-blend-mode: screen, screen, screen, normal, normal;
-      animation: hue 18s linear infinite;
+        radial-gradient(circle at 18% 22%, rgba(255,255,255,.7) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 72% 14%, rgba(255,255,255,.6) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 44% 64%, rgba(255,255,255,.55) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 88% 78%, rgba(255,255,255,.6) 0 1.5px, transparent 2px),
+        radial-gradient(circle at 30% 88%, rgba(255,255,255,.55) 0 1.5px, transparent 2px);
+      background-size: 340px 340px;
+      animation: twinkle 3.5s ease-in-out infinite alternate;
     }
-    @keyframes hue { to { filter: hue-rotate(360deg); } }
+    @keyframes twinkle { from { opacity:.35; } to { opacity:.9; } }
 
-    /* CRT-Scanlines drueber */
-    body::after {
-      content: "";
-      position: fixed; inset: 0;
-      pointer-events: none;
-      z-index: 50;
-      background: repeating-linear-gradient(
-        to bottom,
-        rgba(0,0,0,0) 0px,
-        rgba(0,0,0,0) 2px,
-        rgba(0,0,0,0.18) 3px,
-        rgba(0,0,0,0) 4px);
-      mix-blend-mode: multiply;
+    /* ============================================================
+       Animierter Decoden-Rahmen rund um die ganze Seite
+       4 Streifen (oben/unten/links/rechts) mit endlos scrollenden
+       Kawaii-Emojis. Fixed -> bleibt beim Scrollen am Rand.
+       ============================================================ */
+    .frame { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+    .frame .edge {
+      position: absolute; overflow: hidden;
+      background:
+        repeating-linear-gradient(90deg, rgba(255,255,255,.92) 0 8px, rgba(255,240,250,.92) 8px 16px);
+      box-shadow: inset 0 0 0 3px var(--pink), 0 0 10px rgba(255,79,176,.5);
     }
+    .frame .edge.top,
+    .frame .edge.bottom { left: 0; right: 0; height: var(--rahmen); }
+    .frame .edge.top    { top: 0; }
+    .frame .edge.bottom { bottom: 0; }
+    .frame .edge.left,
+    .frame .edge.right  { top: 0; bottom: 0; width: var(--rahmen); }
+    .frame .edge.left   { left: 0; }
+    .frame .edge.right  { right: 0; }
 
-    a { color: var(--hx-cyan); }
-    a:visited { color: var(--hx-pink2); }
+    .frame .run {
+      white-space: nowrap;
+      font-size: calc(var(--rahmen) * .62);
+      line-height: var(--rahmen);
+      will-change: transform;
+      letter-spacing: 4px;
+    }
+    .frame .edge.top    .run { animation: marq-x 36s linear infinite; }
+    .frame .edge.bottom .run { animation: marq-x 36s linear infinite reverse; }
+    @keyframes marq-x { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
-    /* ---------- Top-Marquee ---------- */
-    .marquee {
-      width: 100%; overflow: hidden; white-space: nowrap; padding: 5px 0;
-      background: linear-gradient(90deg, var(--hx-pink), var(--hx-purple), var(--hx-cyan), var(--hx-pink));
-      background-size: 300% 100%;
-      animation: slide-bg 8s linear infinite;
-      border-bottom: 2px solid #fff;
+    .frame .edge.left  .run,
+    .frame .edge.right .run {
+      writing-mode: vertical-rl; text-orientation: upright;
+      height: max-content;
+    }
+    .frame .edge.left  .run { animation: marq-y 36s linear infinite; }
+    .frame .edge.right .run { animation: marq-y 36s linear infinite reverse; }
+    @keyframes marq-y { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+
+    /* Eck-Schleifen ueber den Kreuzungen */
+    .frame .corner {
+      position: absolute; width: var(--rahmen); height: var(--rahmen);
+      display: flex; align-items: center; justify-content: center;
+      font-size: calc(var(--rahmen) * .7);
+      background: var(--cream);
+      box-shadow: inset 0 0 0 3px var(--pink), 0 0 10px rgba(255,79,176,.6);
+      animation: wob 2.2s ease-in-out infinite;
+    }
+    .frame .corner.tl { top:0; left:0; }
+    .frame .corner.tr { top:0; right:0; }
+    .frame .corner.bl { bottom:0; left:0; }
+    .frame .corner.br { bottom:0; right:0; }
+    @keyframes wob { 0%,100%{transform:rotate(-7deg) scale(1)} 50%{transform:rotate(7deg) scale(1.12)} }
+
+    /* ---------- Inhalts-Wrapper (haelt Abstand zum Rahmen) ---------- */
+    .page { position: relative; z-index: 5; padding: calc(var(--rahmen) + 8px) 14px; }
+
+    a { color: var(--pink); }
+    a:visited { color: var(--lav-dk); }
+
+    /* ---------- Top-Marquee (eigene Klasse, damit script.js sie nicht
+                   mit Retro-Sprueche ueberschreibt) ---------- */
+    .kbar {
+      max-width: 980px; margin: 0 auto 14px; overflow: hidden; white-space: nowrap;
+      padding: 5px 0; border-radius: 999px;
+      background: linear-gradient(90deg, var(--pink), var(--babyblue), var(--pink2), var(--lemon), var(--pink));
+      background-size: 300% 100%; animation: slide-bg 9s linear infinite;
+      box-shadow: 0 0 0 3px #fff, 0 0 14px rgba(255,79,176,.5);
     }
     @keyframes slide-bg { to { background-position: 300% 0; } }
-    .marquee span {
+    .kbar span {
       display: inline-block; padding-left: 100%;
-      font-weight: bold; color: #000; letter-spacing: 2px;
-      text-shadow: 0 0 4px #fff;
+      font-weight: bold; color: #fff; letter-spacing: 2px;
+      text-shadow: 1px 1px 0 var(--pink), 0 0 6px rgba(255,79,176,.7);
     }
-    @keyframes scroll-left {
-      0% { transform: translateX(0); } 100% { transform: translateX(-100%); }
-    }
+    @keyframes scroll-left { 0% { transform: translateX(0);} 100% { transform: translateX(-100%);} }
 
-    /* ---------- Navigation (wird von script.js befuellt) ---------- */
+    /* ---------- Navigation (script.js befuellt) ---------- */
     .nav {
-      text-align: center; font-size: clamp(1rem, 3vw, 1.4rem);
-      margin: 10px 0; display: flex; flex-wrap: wrap;
-      justify-content: center; gap: 6px 10px;
+      text-align: center; font-size: clamp(.95rem, 2.8vw, 1.3rem);
+      margin: 10px auto 6px; display: flex; flex-wrap: wrap;
+      justify-content: center; gap: 6px 10px; max-width: 980px;
     }
-    .nav a { text-decoration: none; padding: 2px 6px; display: inline-block; color: var(--hx-cyan); }
-    .nav a:hover { text-shadow: 0 0 8px var(--hx-cyan); }
-    .nav a.current { color: var(--hx-pink); text-shadow: 0 0 8px var(--hx-pink); text-decoration: underline; }
-    .nav .sep { color: var(--hx-pink); }
+    .nav a {
+      text-decoration: none; padding: 3px 10px; display: inline-block;
+      color: var(--lav-dk); font-weight: bold;
+      background: rgba(255,255,255,.65); border-radius: 999px;
+      box-shadow: 0 0 0 2px var(--pink2);
+    }
+    .nav a:hover { background:#fff; color: var(--pink); text-shadow: 0 0 6px var(--pink2); }
+    .nav a.current { background: var(--pink); color:#fff; box-shadow: 0 0 0 2px #fff, 0 0 10px var(--pink); }
+    .nav .sep { display:none; }
 
-    /* ---------- Hero / Glitch-Titel ---------- */
-    .hero { text-align: center; padding: 26px 12px 8px; }
-    .kao {
-      font-size: clamp(1.2rem, 5vw, 2.4rem);
-      color: var(--hx-pink2);
-      text-shadow: 0 0 10px var(--hx-pink), 0 0 20px var(--hx-pink);
-      margin: 0 0 6px;
-      animation: bob 2.4s ease-in-out infinite;
+    /* ---------- Hero ---------- */
+    .hero { position: relative; text-align: center; max-width: 980px; margin: 18px auto 6px; padding: 6px 8px 0; }
+    .title {
+      font-size: clamp(2.4rem, 11vw, 6rem); line-height: 1; margin: 0;
+      font-weight: 900; letter-spacing: 4px; color: #fff;
+      -webkit-text-stroke: 2px var(--pink);
+      text-shadow: 3px 3px 0 var(--pink2), 0 0 18px rgba(255,138,214,.9);
+      animation: bob 3s ease-in-out infinite;
     }
-    @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-
-    .glitch {
-      position: relative;
-      display: inline-block;
-      font-weight: 900;
-      letter-spacing: 6px;
-      font-size: clamp(2.6rem, 13vw, 7rem);
-      line-height: 1;
-      color: #fff;
-      text-shadow: 0 0 18px var(--hx-pink), 0 0 40px var(--hx-cyan);
-    }
-    .glitch::before, .glitch::after {
-      content: attr(data-text);
-      position: absolute; left: 0; top: 0; width: 100%;
-      overflow: hidden;
-    }
-    .glitch::before {
-      color: var(--hx-cyan);
-      animation: glitch-x 2.6s infinite linear alternate;
-      clip-path: polygon(0 0,100% 0,100% 45%,0 45%);
-    }
-    .glitch::after {
-      color: var(--hx-pink);
-      animation: glitch-y 1.8s infinite linear alternate;
-      clip-path: polygon(0 55%,100% 55%,100% 100%,0 100%);
-    }
-    @keyframes glitch-x {
-      0%{transform:translate(0)} 20%{transform:translate(-4px,2px)}
-      40%{transform:translate(3px,-2px)} 60%{transform:translate(-2px,1px)}
-      80%{transform:translate(2px,-1px)} 100%{transform:translate(0)}
-    }
-    @keyframes glitch-y {
-      0%{transform:translate(0)} 25%{transform:translate(3px,-2px)}
-      50%{transform:translate(-3px,2px)} 75%{transform:translate(2px,2px)}
-      100%{transform:translate(0)}
-    }
-
+    @keyframes bob { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-8px) rotate(1deg)} }
     .subtitle {
-      margin: 10px 0 0;
-      color: var(--hx-cyan);
-      font-size: clamp(0.9rem, 3vw, 1.3rem);
-      letter-spacing: 3px;
-      text-shadow: 0 0 8px var(--hx-cyan);
-      text-transform: uppercase;
+      margin: 8px 0 0; color: var(--pink); font-weight: bold;
+      font-size: clamp(.9rem, 3vw, 1.3rem); letter-spacing: 2px;
+      -webkit-text-stroke: .6px #fff; text-shadow: 1px 1px 0 #fff;
     }
+    .moon { font-size: clamp(2.4rem,8vw,4.6rem); filter: drop-shadow(0 0 10px var(--lemon)); animation: spin-slow 14s linear infinite; display:inline-block; }
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .inlove {
+      display: inline-block; transform: rotate(-12deg);
+      font-size: clamp(1rem,4vw,1.7rem); font-weight: 900; color: var(--pink);
+      -webkit-text-stroke: 1px #fff; text-shadow: 2px 2px 0 #fff;
+      animation: heartbeat 1.3s ease-in-out infinite;
+    }
+    @keyframes heartbeat { 0%,100%{transform:rotate(-12deg) scale(1)} 50%{transform:rotate(-12deg) scale(1.18)} }
 
-    /* ---------- Video-Embed im Neon-Rahmen ---------- */
-    .stage {
-      max-width: 760px; margin: 22px auto; padding: 0 16px;
+    /* ---------- Decoden-Player-Karte ---------- */
+    .stage { max-width: 720px; margin: 18px auto; padding: 0 6px; position: relative; }
+    .card {
+      position: relative; padding: 14px; border-radius: 22px;
+      background:
+        repeating-linear-gradient( 45deg, rgba(255,255,255,.55) 0 16px, transparent 16px 32px),
+        repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 16px, transparent 16px 32px),
+        linear-gradient(135deg, var(--pink2), var(--babyblue), var(--lemon), var(--pink2));
+      background-size: 64px 64px, 64px 64px, 300% 300%;
+      animation: slide-bg2 10s ease infinite;
+      box-shadow: 0 0 0 4px #fff, 0 0 0 8px var(--pink), 0 10px 30px rgba(120,40,160,.45);
     }
-    .videoframe {
-      position: relative; padding: 6px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, var(--hx-pink), var(--hx-cyan), var(--hx-purple), var(--hx-pink));
-      background-size: 300% 300%;
-      animation: slide-bg2 6s ease infinite;
-      box-shadow: 0 0 26px rgba(255,28,174,0.6), 0 0 50px rgba(0,240,255,0.35);
-    }
-    @keyframes slide-bg2 {
-      0%{background-position:0 0} 50%{background-position:100% 100%} 100%{background-position:0 0}
-    }
-    .videoframe .ratio {
-      position: relative; width: 100%; padding-top: 56.25%;
-      background: #000; border-radius: 4px; overflow: hidden;
-    }
-    .videoframe iframe {
-      position: absolute; inset: 0; width: 100%; height: 100%; border: 0;
-    }
+    @keyframes slide-bg2 { 0%{background-position:0 0,0 0,0% 50%} 50%{background-position:0 0,0 0,100% 50%} 100%{background-position:0 0,0 0,0% 50%} }
+    .ratio { position: relative; width: 100%; padding-top: 56.25%; background:#1a0a26; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 3px #fff; }
+    .ratio iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+
     .nowplaying {
-      text-align: center; margin: 10px 0 0;
-      color: var(--hx-lime); font-size: clamp(0.85rem,2.5vw,1.1rem);
-      text-shadow: 0 0 6px var(--hx-lime); letter-spacing: 1px;
+      text-align: center; margin: 14px auto 0; max-width: 720px;
+      font-weight: 900; line-height: 1.5;
+      font-size: clamp(1rem, 4.2vw, 1.9rem);
+      color: var(--pink);
+      -webkit-text-stroke: 1.2px #fff;
+      text-shadow: 2px 2px 0 #fff, 0 0 10px var(--pink2);
     }
+    .nowplaying .small { display:block; font-size: .62em; color: var(--lav-dk); -webkit-text-stroke: .6px #fff; }
+    .nowplaying .marqee-track { animation: pulse 1.6s ease-in-out infinite; display:inline-block; }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
 
-    /* ---------- Heart/Star Banner ---------- */
-    .band {
-      text-align: center; font-size: clamp(1.4rem,5vw,2.2rem);
-      margin: 16px 0; letter-spacing: 4px;
-      animation: blink 1.2s steps(2,start) infinite;
-    }
-    @keyframes blink { 50% { opacity: 0.35; } }
+    /* ---------- Sticker-Reihe ---------- */
+    .stickers { text-align:center; font-size: clamp(1.4rem,6vw,2.4rem); margin: 14px 0; letter-spacing: 6px; animation: blink 1.4s steps(2,start) infinite; }
+    @keyframes blink { 50% { opacity:.4; } }
 
-    /* ---------- Aesthetik-Manifest ---------- */
+    /* ---------- Kawaii-Manifest ---------- */
     .creed {
-      max-width: 620px; margin: 6px auto 30px; padding: 18px 22px;
-      background: rgba(10,0,20,0.55);
-      border: 2px solid var(--hx-pink);
-      border-radius: 10px;
-      box-shadow: 0 0 18px rgba(255,28,174,0.4), inset 0 0 22px rgba(0,240,255,0.12);
-      text-align: center; line-height: 1.7;
-      font-size: clamp(0.95rem,2.6vw,1.15rem);
+      max-width: 600px; margin: 8px auto 26px; padding: 18px 22px;
+      background: rgba(255,255,255,.78); border: 3px dashed var(--pink);
+      border-radius: 18px; color: #6a2f8a; text-align: center; line-height: 1.7;
+      font-size: clamp(.95rem, 2.6vw, 1.12rem);
+      box-shadow: 0 6px 18px rgba(120,40,160,.3);
     }
-    .creed b { color: var(--hx-pink2); text-shadow: 0 0 6px var(--hx-pink); }
-    .creed .cy { color: var(--hx-cyan); text-shadow: 0 0 6px var(--hx-cyan); }
+    .creed b { color: var(--pink); }
 
-    .back {
-      text-align: center; margin: 0 0 40px;
-    }
+    .back { text-align: center; margin: 0 auto 36px; }
     .back a {
-      display: inline-block; text-decoration: none;
-      color: #000; font-weight: bold; letter-spacing: 1px;
-      padding: 8px 18px; border-radius: 999px;
-      background: linear-gradient(90deg, var(--hx-cyan), var(--hx-pink2));
-      box-shadow: 0 0 16px rgba(255,102,217,0.6);
+      display: inline-block; text-decoration: none; color:#fff; font-weight: 900;
+      letter-spacing: 1px; padding: 10px 22px; border-radius: 999px;
+      background: linear-gradient(90deg, var(--pink), var(--pink2));
+      box-shadow: 0 0 0 3px #fff, 0 6px 16px rgba(255,79,176,.55);
     }
-    .back a:hover { filter: brightness(1.15) saturate(1.2); }
+    .back a:hover { filter: brightness(1.08) saturate(1.15); }
 
     /* ---------- schwebende Herzen / Sterne ---------- */
-    .floaties { position: fixed; inset: 0; pointer-events: none; z-index: 1; overflow: hidden; }
+    .floaties { position: fixed; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
     .floaties span {
-      position: absolute; bottom: -40px;
-      font-size: 22px; opacity: 0.8;
-      animation: rise linear infinite;
-      text-shadow: 0 0 8px currentColor;
+      position: absolute; bottom: -40px; font-size: 22px; opacity: .85;
+      animation: rise linear infinite; text-shadow: 0 0 8px currentColor;
     }
     @keyframes rise {
       0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
-      10%  { opacity: 0.9; }
-      100% { transform: translateY(-115vh) rotate(360deg); opacity: 0; }
+      10%  { opacity: .95; }
+      100% { transform: translateY(-118vh) rotate(360deg); opacity: 0; }
     }
 
-    /* ---------- Glitzer am Cursor (von script.js) ---------- */
+    /* ---------- Cursor-Glitzer (script.js) ---------- */
     .sparkle {
       position: fixed; pointer-events: none; z-index: 9999; user-select: none;
       text-shadow: 0 0 6px currentColor, 0 0 12px currentColor;
-      animation: sparkle-fade 0.9s ease-out forwards;
+      animation: sparkle-fade .9s ease-out forwards;
     }
     @keyframes sparkle-fade {
       0%   { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
-      100% { transform: scale(0.2) translateY(-30px) rotate(180deg); opacity: 0; }
+      100% { transform: scale(.2) translateY(-30px) rotate(180deg); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
     }
   </style>
 </head>
 <body>
 
-  <div class="marquee marquee--top">
-    <span>&#9829; HEXD TRANCE 2000s &#9829; (&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; CRANK THE BPM &#9733; GLITTER OVERLOAD &#9733; &#9829;</span>
+  <!-- Animierter Decoden-Rahmen um die ganze Seite -->
+  <div class="frame" aria-hidden="true">
+    <div class="edge top"><div class="run">&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;</div></div>
+    <div class="edge bottom"><div class="run">&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;</div></div>
+    <div class="edge left"><div class="run">&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;</div></div>
+    <div class="edge right"><div class="run">&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;</div></div>
+    <div class="corner tl">&#127872;</div>
+    <div class="corner tr">&#127800;</div>
+    <div class="corner bl">&#128156;</div>
+    <div class="corner br">&#127872;</div>
   </div>
 
-  <nav class="nav" data-glappa-nav>
-    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
-    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
-    <a href="../page1.html">Video</a><span class="sep">|</span>
-    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
-    <a href="../home/index.html">Home</a><span class="sep">|</span>
-    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
-    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
-  </nav>
+  <div class="page">
 
-  <main>
-    <section class="hero">
-      <p class="kao">(&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; &#65397;&#65387;&#65392;&#65417;&#65439; &#9829;</p>
-      <h1 class="glitch" data-text="&Auml;STHETIK">&Auml;STHETIK</h1>
-      <p class="subtitle">&#9733; hexd mix &#183; trance &#183; 2000s &#9733;</p>
-    </section>
-
-    <section class="stage">
-      <div class="videoframe">
-        <div class="ratio">
-          <iframe
-            src="https://www.youtube-nocookie.com/embed/RRc3j_LFOxQ?start=71&amp;rel=0"
-            title="Hexd Mix Trance 2000s"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen></iframe>
-        </div>
-      </div>
-      <p class="nowplaying">&#9836; NOW PLAYING: (&#12387;&#9676;&#9697;&#9676;)&#12387; &#9829; HEXD MIX TRANCE 2000s &#9829;</p>
-    </section>
-
-    <div class="band">&#9829; &#10022; &#9829; &#10022; &#9829; &#10022; &#9829; &#10022; &#9829; &#10022; &#9829;</div>
-
-    <section class="creed">
-      <b>&#9829; willkommen in der &Auml;sthetik &#9829;</b><br>
-      schwarzer raum, <span class="cy">neon-pink</span> &amp; <span class="cy">cyan</span>,
-      glitter bis zum anschlag, kaomojis, glitch &amp; trance.<br>
-      <b>turn it up</b> &#8212; das ist <span class="cy">y2k</span> trance fuer die
-      hitze&#173;tod-party. (&#12387;&#9829;&#65439;&#9292;&#9829;)&#12387;
-    </section>
-
-    <div class="back">
-      <a href="index.html">&larr; zur&uuml;ck nach Home</a>
+    <div class="kbar">
+      <span>&#9829; in love &#9829; &#10024; scene kawaii y2k &#10024; &#127800; turn it up &#127800; &#9829; bl&uuml;mchen 4 ever &#9829; &#10024; glitter overload &#10024;</span>
     </div>
-  </main>
+
+    <nav class="nav" data-glappa-nav>
+      <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+      <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+      <a href="../page1.html">Video</a><span class="sep">|</span>
+      <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+      <a href="../home/index.html">Home</a><span class="sep">|</span>
+      <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+      <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+    </nav>
+
+    <main>
+      <section class="hero">
+        <span class="moon">&#127769;</span>
+        <span class="inlove">&#9829; in love &#9829;</span>
+        <h1 class="title">&Auml;STHETIK</h1>
+        <p class="subtitle">&#10024; &#65397;&#65387;&#65392;&#65417;&#65439; &#183; scene &#183; kawaii &#183; y2k &#10024;</p>
+      </section>
+
+      <section class="stage">
+        <div class="card">
+          <div class="ratio">
+            <iframe
+              src="https://www.youtube-nocookie.com/embed/63lhPFr9Bng?rel=0"
+              title="Bl&uuml;mchen &mdash; S.O.S. Herz in Not"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerpolicy="strict-origin-when-cross-origin"
+              allowfullscreen></iframe>
+          </div>
+        </div>
+        <p class="nowplaying">
+          &#9734; now playing &#9734;
+          <span class="marqee-track">~ Bl&uuml;mchen &ndash; S.O.S. &ndash; Herz In Not ~</span>
+          <span class="small">&#127925; 1997 &#183; eurodance &#183; herz in not &#127925;</span>
+        </p>
+      </section>
+
+      <div class="stickers">&#127800; &#9733; &#128156; &#10022; &#127872; &#9829; &#127769; &#10022; &#128151; &#9733; &#127800;</div>
+
+      <section class="creed">
+        <b>&#9829; willkommen in der &Auml;sthetik &#9829;</b><br>
+        lavendel-gingham, glitter bis zum anschlag, pixel-herzen &amp;
+        ein bisschen mondschein. <b>turn it up</b> &#8212; das ist
+        scene-kawaii f&uuml;r die hitze&#173;tod-party. (&#12387;&#9829;&#9829;)&#12387;
+      </section>
+
+      <div class="back">
+        <a href="index.html">&larr; zur&uuml;ck nach Home</a>
+      </div>
+    </main>
+
+  </div>
 
   <div class="floaties" id="floaties" aria-hidden="true"></div>
 
@@ -298,8 +343,8 @@
     (function () {
       const box = document.getElementById('floaties');
       if (!box) return;
-      const glyphs = ['♥', '✧', '★', '✨', '✯', '💜', '💖', '☆'];
-      const colors = ['#ff1cae', '#00f0ff', '#ff66d9', '#aaff00', '#8a2be2', '#ffffff'];
+      const glyphs = ['♥', '✧', '★', '✨', '🌸', '💜', '💖', '☆', '🎀'];
+      const colors = ['#ff4fb0', '#7fd4ff', '#ff8ad6', '#ffe066', '#a7f3a0', '#ffffff'];
       const N = 26;
       for (let i = 0; i < N; i++) {
         const s = document.createElement('span');
@@ -314,12 +359,10 @@
       }
     })();
 
-    // Top-Marquee scrollen lassen (script.js ueberschreibt .marquee span Text;
-    // hier nur sicherstellen dass die Animation laeuft)
-    document.querySelectorAll('.marquee span').forEach(span => {
-      if (!span.style.animation) {
-        span.style.animation = 'scroll-left 26s linear infinite';
-      }
+    // Eigene Kawaii-Marquee animieren (NICHT .marquee, damit script.js den
+    // Text nicht mit Retro-Spruechen ersetzt)
+    document.querySelectorAll('.kbar span').forEach(span => {
+      span.style.animation = 'scroll-left 24s linear infinite';
     });
   </script>
 </body>
