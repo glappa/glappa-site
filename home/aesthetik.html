@@ -16,12 +16,14 @@
        ============================================================ */
 
     :root {
-      --lav:    #b07fd6;   /* Grund-Lila des Ginghams      */
+      --lav:    #c7a4e6;   /* softes Lavendel-Lila (heller, wie im Bild) */
       --lav-dk: #9a5fc8;
       --pink:   #ff4fb0;   /* Hotpink Akzent               */
       --pink2:  #ff8ad6;
+      --rose:   #ff7ac6;   /* Pixel-Rosen                  */
       --babyblue:#7fd4ff;
-      --lemon:  #ffe066;   /* Mond / Sterne                */
+      --lemon:  #ffe066;   /* Sterne                       */
+      --gold:   #ffd23f;   /* grosser Mond / Gold-Glitzer  */
       --mint:   #a7f3a0;
       --cream:  #fff4fb;
       --rahmen: 52px;      /* Dicke des Decoden-Rahmens     */
@@ -41,8 +43,8 @@
     body {
       background-color: var(--lav);
       background-image:
-        repeating-linear-gradient( 45deg, rgba(255,255,255,.40) 0 26px, transparent 26px 52px),
-        repeating-linear-gradient(-45deg, rgba(255,255,255,.40) 0 26px, transparent 26px 52px);
+        repeating-linear-gradient( 45deg, rgba(255,255,255,.46) 0 26px, transparent 26px 52px),
+        repeating-linear-gradient(-45deg, rgba(255,255,255,.46) 0 26px, transparent 26px 52px);
       animation: bg-drift 22s linear infinite;
     }
     @keyframes bg-drift {
@@ -247,6 +249,50 @@
       100% { transform: translateY(-118vh) rotate(360deg); opacity: 0; }
     }
 
+    /* ============================================================
+       Deko-Szene wie im Referenzbild: grosser Gold-Mond, Pixel-Rosen,
+       Magenta-Sterne und Gold-Glitzer ueber dem Gingham. Liegt HINTER
+       dem Inhalt (z-index 3 < .page 5), damit die Player-Karte und der
+       "now playing"-Text lesbar bleiben — Deko sitzt in den Raendern.
+       ============================================================ */
+    .scene { position: fixed; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+
+    /* grosser Gold-Mond unten links (reine CSS-Sichel via mask) */
+    .scene .moon-deco {
+      position: absolute; left: 3.5%; bottom: 15%;
+      width: clamp(78px, 15vw, 165px); aspect-ratio: 1; border-radius: 50%;
+      background: radial-gradient(circle at 36% 34%, #fff3b0 0 16%, var(--gold) 58%, #f0b32f 100%);
+      -webkit-mask: radial-gradient(circle at 78% 32%, transparent 0 52%, #000 53%);
+              mask: radial-gradient(circle at 78% 32%, transparent 0 52%, #000 53%);
+      filter: drop-shadow(0 0 16px rgba(255,210,63,.85));
+      animation: moon-bob 9s ease-in-out infinite;
+    }
+    @keyframes moon-bob {
+      0%,100% { transform: rotate(-16deg) translateY(0); }
+      50%     { transform: rotate(-16deg) translateY(-14px); }
+    }
+
+    /* Streu-Deko: Rosen / Sterne / Glitzer */
+    .scene .deco {
+      position: absolute; display: block; line-height: 1; user-select: none;
+      -webkit-text-stroke: 1px #fff;
+      filter: drop-shadow(0 0 6px currentColor);
+      animation: deco-tw 3.2s ease-in-out infinite;
+    }
+    .scene .spark { color: var(--gold); -webkit-text-stroke: .5px #fff; }
+    .scene .star  { color: var(--pink); }
+    .scene .rose  { color: var(--rose); -webkit-text-stroke: 0; filter: drop-shadow(0 0 7px var(--pink2)); }
+    @keyframes deco-tw {
+      0%,100% { opacity: .6; transform: scale(.9)  rotate(-7deg); }
+      50%     { opacity: 1;  transform: scale(1.14) rotate(7deg); }
+    }
+
+    /* auf schmalen Screens nur wenige Deko-Elemente, sonst zu voll */
+    @media (max-width: 760px) {
+      .scene .hide-sm   { display: none; }
+      .scene .moon-deco { bottom: 9%; left: 2%; }
+    }
+
     /* ---------- Cursor-Glitzer (script.js) ---------- */
     .sparkle {
       position: fixed; pointer-events: none; z-index: 9999; user-select: none;
@@ -267,14 +313,36 @@
 
   <!-- Animierter Decoden-Rahmen um die ganze Seite -->
   <div class="frame" aria-hidden="true">
-    <div class="edge top"><div class="run">&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;&#127800;&#127872;&#128151;&#127807;&#11088;&#129776;&#127804;&#128156;</div></div>
-    <div class="edge bottom"><div class="run">&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;&#127872;&#127800;&#128156;&#129776;&#11088;&#127807;&#128151;&#127804;</div></div>
-    <div class="edge left"><div class="run">&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;&#127800;&#128151;&#11088;&#127872;&#127804;&#129776;&#127807;&#128156;</div></div>
-    <div class="edge right"><div class="run">&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;&#128156;&#127807;&#129776;&#127804;&#127872;&#11088;&#128151;&#127800;</div></div>
+    <div class="edge top"><div class="run">&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;</div></div>
+    <div class="edge bottom"><div class="run">&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;</div></div>
+    <div class="edge left"><div class="run">&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;</div></div>
+    <div class="edge right"><div class="run">&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;</div></div>
     <div class="corner tl">&#127872;</div>
-    <div class="corner tr">&#127800;</div>
-    <div class="corner bl">&#128156;</div>
-    <div class="corner br">&#127872;</div>
+    <div class="corner tr">&#127801;</div>
+    <div class="corner bl">&#127800;</div>
+    <div class="corner br">&#128151;</div>
+  </div>
+
+  <!-- Deko-Szene (Gold-Mond, Rosen, Sterne, Glitzer) wie im Referenzbild -->
+  <div class="scene" aria-hidden="true">
+    <span class="moon-deco"></span>
+
+    <!-- linker Cluster (wie im Bild: Rosen + Sterne + Glitzer) -->
+    <b class="deco spark"        style="left:7%;  top:14%;    font-size:30px; animation-delay:-.2s">&#10022;</b>
+    <b class="deco star"         style="left:13%; top:9%;     font-size:26px; animation-delay:-1.1s">&#10027;</b>
+    <b class="deco rose"         style="left:5%;  top:30%;    font-size:30px; animation-delay:-.6s">&#10048;</b>
+    <b class="deco spark"        style="left:16%; top:27%;    font-size:22px; animation-delay:-1.6s">&#10022;</b>
+    <b class="deco star  hide-sm" style="left:9%;  top:46%;    font-size:24px; animation-delay:-.9s">&#10027;</b>
+    <b class="deco rose  hide-sm" style="left:15%; top:40%;    font-size:26px; animation-delay:-2.1s">&#10047;</b>
+    <b class="deco spark hide-sm" style="left:6%;  top:58%;    font-size:20px; animation-delay:-1.3s">&#10022;</b>
+    <b class="deco rose"         style="left:12%; bottom:13%; font-size:28px; animation-delay:-.4s">&#10048;</b>
+
+    <!-- oben / rechts (sparsamer, da dort die Player-Karte liegt) -->
+    <b class="deco star  hide-sm" style="right:8%;  top:11%;    font-size:26px; animation-delay:-.7s">&#10027;</b>
+    <b class="deco spark"         style="right:6%;  top:24%;    font-size:28px; animation-delay:-1.8s">&#10022;</b>
+    <b class="deco rose  hide-sm" style="right:11%; top:38%;    font-size:24px; animation-delay:-1.0s">&#10047;</b>
+    <b class="deco spark hide-sm" style="right:7%;  bottom:20%; font-size:22px; animation-delay:-2.4s">&#10022;</b>
+    <b class="deco star  hide-sm" style="right:13%; bottom:31%; font-size:22px; animation-delay:-.5s">&#10027;</b>
   </div>
 
   <div class="page">
