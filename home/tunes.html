@@ -387,10 +387,10 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Zoom an die Musik koppeln: bei Stille fast eingefroren, Bass + Beat
-        // treiben das Reinzoomen. Minimale Baseline -> wirkt nicht mehr "von der
-        // Musik losgeloest" und deutlich ruhiger als vorher.
-        const zoomRate = 1 - (0.0015 + mBassSmooth * 0.022 + beatFlash * 0.012);
+        // Immer ins Set HINEINzoomen (mScale wird kleiner). Moderate Baseline
+        // damit es klar reingeht, Bass + Beat beschleunigen den Zoom. Es wird
+        // NIE rausgezoomt -> kein "die ganze Zeit nur raus" mehr.
+        const zoomRate = 1 - (0.007 + mBassSmooth * 0.020 + beatFlash * 0.012);
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
@@ -471,18 +471,14 @@
         }
         cctx.putImageData(mImg, 0, 0);
 
-        // Boring-Streak: zu wenig Struktur (alles schwarz / eine Farbe). Statt
-        // sofort hektisch den POI zu wechseln (alte 0.4s -> wirkte rapide),
-        // erst sanft RAUSZOOMEN um wieder Struktur zu finden; nur als letztes
-        // Mittel nach ~2.5s einen neuen POI setzen.
+        // Boring-Streak: ist zu lange (~1.3s) nur EINE Farbe / kaum Struktur zu
+        // sehen (z.B. in einen schwarzen "See" reingezoomt), wird das Fraktal
+        // NEU GESTARTET: pickRandomPoi() setzt mScale zurueck auf die
+        // Gesamtansicht und zoomt an einer neuen zufaelligen Stelle wieder rein.
         const detailRatio = detailCount / (W * H);
-        if (detailRatio < 0.06) {
-          mBoringStreak++;
-          mScale *= 1.03;                 // sanft zurueck zu mehr Detail
-        } else {
-          mBoringStreak = 0;
-        }
-        if (mBoringStreak > 150) pickRandomPoi();
+        if (detailRatio < 0.05) mBoringStreak++;
+        else                    mBoringStreak = 0;
+        if (mBoringStreak > 80) pickRandomPoi();
 
         pumpDisplay();
       }
