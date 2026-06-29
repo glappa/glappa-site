@@ -270,19 +270,21 @@
       function clearPump() { if (displayEl) displayEl.style.boxShadow = ''; }
 
       // Mandelbrot-State
-      // Nur "echte" Randpunkte (Misiurewicz / Boundary): die haben bis ans
-      // float64-Limit selbstaehnliche Struktur -> man kann ewig reinzoomen ohne
-      // in einen schwarzen "See" zu fallen, der sofort einen Reset ausloest.
+      // Kuratierte Deep-Zoom-Punkte: nur filigrane/spiralige Randpunkte
+      // (Misiurewicz / Boundary) -> lange, farbenfrohe Zoomfahrten OHNE grosse
+      // schwarze Seen, die sonst sofort einen Reset ausloesen. Schwache Punkte
+      // (schnell zu Ende, viel Schwarz) sind raus.
+      //   s = Start-Skala: bewusst KLEIN, damit der Zoom gleich mitten in der
+      //   farbigen Randstruktur startet statt auf der grossen schwarzen
+      //   Hauptfigur ("nicht so viel Schwarz am Anfang").
       const POIS = [
-        { re: -0.743643887037151,  im:  0.131825904205330 }, // Seahorse Valley (klassischer Deep-Zoom)
-        { re: -0.77568377,         im:  0.13646737        }, // Misiurewicz: selbstaehnliche Spiralen
-        { re: -0.10109636384562,   im:  0.95628651080914  }, // Triple-Spiral / Tendril
-        { re:  0.3245046418932,    im:  0.04855101129     }, // Deep Spiral
-        { re: -0.16,               im:  1.0405            }, // Spiral
-        { re: -0.748,              im:  0.1               }, // Seahorse Valley (Misiurewicz)
+        { re: -0.743643887037151,  im:  0.131825904205330, s: 0.70 }, // Seahorse Valley
+        { re: -0.77568377,         im:  0.13646737,        s: 0.55 }, // Misiurewicz-Spirale
+        { re: -0.10109636384562,   im:  0.95628651080914,  s: 0.85 }, // Triple-Spiral / Tendril
+        { re:  0.3245046418932,    im:  0.04855101129,     s: 0.28 }, // Elephant Valley / Deep Spiral
       ];
       let mPoiIdx = -1;            // -1 = noch keiner gewaehlt -> pickRandomPoi setzt
-      let mScale  = 3.0;           // Start: zeigt klassische Mandelbrot
+      let mScale  = 1.0;           // wird beim ersten Frame von pickRandomPoi gesetzt
       let mIter   = 80;
       let mPhase  = 0;             // Farbphase
       let mImg    = null;          // Persistenter ImageData-Puffer
@@ -295,7 +297,7 @@
         do { n = Math.floor(Math.random() * POIS.length); }
         while (POIS.length > 1 && n === mPoiIdx);
         mPoiIdx = n;
-        mScale  = 3.0;
+        mScale  = POIS[n].s || 1.0; // Start-Skala des POI -> gleich in der Struktur
         mBoringStreak = 0;
         mImg = null;
         mCamX = POIS[n].re;         // Kamera sofort auf neuen POI -> kein Quer-Glide
@@ -436,7 +438,7 @@
         // Iterationen mit Zoomtiefe + Lautstaerke, aber bewusst GEDECKELT: tief
         // drin ist fast alles "im Set" (schwarz) und durchlaeuft die volle
         // Schleife -> zu viele Iterationen pro Frame lassen die Seite haengen.
-        const depth = Math.log(3.0 / mScale);   // 0 am Start, ~27 am Reset
+        const depth = Math.log(3.0 / mScale);   // ~1-2 am Start, ~28 am Reset
         mIter   = Math.min(340, 80 + Math.floor(total * 180) + Math.floor(depth * 4));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt jetzt klar auf dem Beat.
@@ -524,8 +526,8 @@
 
         // Boring-Streak: ist zu lange (~2.5s) nur EINE Farbe / kaum Struktur zu
         // sehen (z.B. in einen schwarzen "See" reingezoomt), wird das Fraktal
-        // NEU GESTARTET: pickRandomPoi() setzt mScale zurueck auf die
-        // Gesamtansicht und zoomt an einer neuen zufaelligen Stelle wieder rein.
+        // NEU GESTARTET: pickRandomPoi() setzt mScale auf die Startansicht eines
+        // neuen zufaelligen POI und zoomt dort wieder rein.
         // Schwelle bewusst hoch -> kurze flache Stellen loesen KEINEN Reset aus.
         const detailRatio = detailCount / (W * H);
         if (detailRatio < 0.05) mBoringStreak++;
