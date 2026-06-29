@@ -494,10 +494,27 @@
 
       // --- Dispatcher ---------------------------------------------
       function drawVis() {
-        if (!analyser || visMode === 'off') { visRaf = 0; return; }
-        analyser.getByteFrequencyData(visData);
-        if (visMode === 'spectrum')   drawSpectrum();
-        else if (visMode === 'mandelbrot') drawMandelbrot();
+        if (!analyser || visMode === 'off' || audio.paused) { visRaf = 0; return; }
+        // Naechsten Frame ZUERST einplanen, dann erst zeichnen. Wirft ein
+        // einzelner Frame eine Exception, stirbt dadurch NICHT die ganze
+        // Schleife (sonst bleibt der Visualizer stehen, waehrend die Musik
+        // weiterlaeuft). Das try/catch ueberspringt nur den kaputten Frame.
+        visRaf = requestAnimationFrame(drawVis);
+        try {
+          analyser.getByteFrequencyData(visData);
+          if (visMode === 'spectrum')        drawSpectrum();
+          else if (visMode === 'mandelbrot') drawMandelbrot();
+        } catch (e) { /* Frame ueberspringen, Schleife laeuft weiter */ }
+      }
+
+      // Startet die Render-Schleife, falls sie laufen SOLLTE aber gerade nicht
+      // laeuft. Idempotent (der !visRaf-Guard verhindert Doppel-Schleifen) und
+      // dient als Watchdog: wird aus 'play'/'playing'/'timeupdate' aufgerufen,
+      // damit eine aus irgendeinem Grund gestorbene Schleife sich selbst wieder
+      // faengt, solange Musik laeuft.
+      function kickVis() {
+        if (audio.paused || visMode === 'off' || !analyser || visRaf) return;
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         visRaf = requestAnimationFrame(drawVis);
       }
 
@@ -531,7 +548,7 @@
         fitCanvas();
         // Reset Mandelbrot wenn neu reingewechselt -> random POI
         if (mode === 'mandelbrot') pickRandomPoi();
-        if (!audio.paused && !visRaf) visRaf = requestAnimationFrame(drawVis);
+        kickVis();
       }
 
       // Cycle-Button: off -> spectrum -> mandelbrot -> off
@@ -670,17 +687,21 @@
         if (!seekingUser && audio.duration) {
           seek.value = (audio.currentTime / audio.duration) * 1000;
         }
+        // Watchdog: feuert ~4x/s waehrend des Abspielens. Sollte die Render-
+        // Schleife je gestorben sein (kaputter Frame, ungluecklich getimtes
+        // pause/play beim Track-Wechsel), startet sie hier von selbst neu.
+        kickVis();
       });
       audio.addEventListener('loadedmetadata', () => {
         totEl.textContent = fmt(audio.duration);
       });
       audio.addEventListener('play',  () => {
         playBtn.innerHTML = '&#10074;&#10074;';
-        if (visMode !== 'off' && analyser && !visRaf) {
-          if (audioCtx.state === 'suspended') audioCtx.resume();
-          visRaf = requestAnimationFrame(drawVis);
-        }
+        kickVis();
       });
+      // 'playing' (echtes Anlaufen nach Buffering/Track-Wechsel) als zusaetzlicher
+      // Aufhaenger -> deckt die Faelle ab, in denen 'play' zu frueh feuert.
+      audio.addEventListener('playing', kickVis);
       audio.addEventListener('pause', () => {
         playBtn.innerHTML = '&#9654;';
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
