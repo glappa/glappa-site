@@ -7,7 +7,7 @@
   <meta name="keywords" content="Glappa Home Music Player Tunes MP3 FLAC OGG">
   <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
   <link rel="icon" href="../favicon.ico">
-  <link rel="stylesheet" href="home.css?v=6">
+  <link rel="stylesheet" href="home.css?v=7">
 </head>
 <body>
 
@@ -59,7 +59,7 @@
 
         <div class="player-display">
           <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
-          <canvas id="vis" class="player-vis" width="600" height="80" aria-hidden="true" hidden></canvas>
+          <canvas id="vis" class="player-vis" width="600" height="110" aria-hidden="true" hidden title="&#8597; unten rechts ziehen zum Vergr&ouml;&szlig;ern"></canvas>
           <div class="player-time">
             <span id="curTime">0:00</span>
             <input type="range" class="player-seek" id="seek" min="0" max="1000" value="0" step="1">
@@ -387,13 +387,15 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Zoom + Iter dynamisch. Ruhigere Baseline (~1.5%/frame); Bass laesst den
-        // Zoom sanft kicken (geglaettet, damit kein Ruckeln).
-        const zoomRate = 0.985 - mBassSmooth * 0.012;
+        // Zoom an die Musik koppeln: bei Stille fast eingefroren, Bass + Beat
+        // treiben das Reinzoomen. Minimale Baseline -> wirkt nicht mehr "von der
+        // Musik losgeloest" und deutlich ruhiger als vorher.
+        const zoomRate = 1 - (0.0015 + mBassSmooth * 0.022 + beatFlash * 0.012);
         mScale *= zoomRate;
         mIter   = Math.min(380, 70 + Math.floor(total * 280));
-        // Farbphase: konstanter Baseline-Spin + Treble-Kicks + Beat-Farbsprung
-        mPhase += 1.4 + treb * 8 + total * 3 + beatFlash * 16;
+        // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
+        // der Farbsprung sitzt jetzt klar auf dem Beat.
+        mPhase += 0.2 + treb * 10 + total * 4 + beatFlash * 22;
 
         // Bei tiefem Zoom: random POI ansteuern, reset
         if (mScale < 1e-13) pickRandomPoi();
@@ -469,12 +471,18 @@
         }
         cctx.putImageData(mImg, 0, 0);
 
-        // Boring-Streak: zu wenig Struktur -> eine Farbe / glatter Gradient /
-        // Schwarz fuellt den Schirm. Nach ~25 Frames (~0.4s @ 60fps) neuer POI.
+        // Boring-Streak: zu wenig Struktur (alles schwarz / eine Farbe). Statt
+        // sofort hektisch den POI zu wechseln (alte 0.4s -> wirkte rapide),
+        // erst sanft RAUSZOOMEN um wieder Struktur zu finden; nur als letztes
+        // Mittel nach ~2.5s einen neuen POI setzen.
         const detailRatio = detailCount / (W * H);
-        if (detailRatio < 0.08) mBoringStreak++;
-        else                    mBoringStreak = 0;
-        if (mBoringStreak > 25) pickRandomPoi();
+        if (detailRatio < 0.06) {
+          mBoringStreak++;
+          mScale *= 1.03;                 // sanft zurueck zu mehr Detail
+        } else {
+          mBoringStreak = 0;
+        }
+        if (mBoringStreak > 150) pickRandomPoi();
 
         pumpDisplay();
       }
@@ -535,6 +543,11 @@
       } catch (e) {}
 
       window.addEventListener('resize', () => { if (visMode !== 'off') fitCanvas(); });
+      // Canvas ist per CSS (resize: vertical) in der Hoehe ziehbar -> Backing-
+      // Store live nachfuehren, damit die Vis in der neuen Groesse scharf bleibt.
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => { if (visMode !== 'off') fitCanvas(); }).observe(canvas);
+      }
 
       // Playlist-Filter: live, debounced light
       plSearch.addEventListener('input', applyPlaylistFilter);
