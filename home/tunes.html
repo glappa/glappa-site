@@ -201,6 +201,34 @@
       let bandEdges = null;  // Bin-Grenzen fuer log-Frequenz-Balken
       const NUM_BARS = 56;
 
+      // --- BPM-Schaetzung (aus den erkannten Beats) ----------------
+      let bpm        = 120;  // geglaettetes Tempo, neutraler Startwert
+      let bpmTarget  = 120;  // Rohziel aus dem Median der Beat-Abstaende
+      let lastBeatT  = 0;    // Zeitpunkt des letzten Beats (s)
+      const beatIvals = [];  // Ringpuffer der letzten Beat-Abstaende (s)
+
+      // Wird bei jedem erkannten Beat aufgerufen: misst den Abstand zum
+      // vorigen Beat und schaetzt daraus per Median (robust gegen Aussetzer/
+      // Doppel-Trigger) das Tempo. Plausibel sind ~50..200 BPM.
+      function registerBeat() {
+        const now = performance.now() / 1000;
+        if (lastBeatT > 0) {
+          const iv = now - lastBeatT;            // Abstand in Sekunden
+          if (iv >= 0.30 && iv <= 1.20) {        // 50..200 BPM
+            beatIvals.push(iv);
+            if (beatIvals.length > 8) beatIvals.shift();
+            const sorted = beatIvals.slice().sort((a, b) => a - b);
+            const med = sorted[sorted.length >> 1];
+            bpmTarget = Math.min(180, Math.max(60, 60 / med));
+          }
+        }
+        lastBeatT = now;
+      }
+
+      function resetBpm() {
+        bpm = 120; bpmTarget = 120; lastBeatT = 0; beatIvals.length = 0;
+      }
+
       function buildBands(n, bars) {
         bandEdges = new Int32Array(bars + 1);
         const minBin = 1, maxBin = n;
@@ -221,8 +249,12 @@
         if (bass > bassEnv) bassEnv = bass;                  // sofortiger Attack
         else                bassEnv += (bass - bassEnv) * 0.16; // weicher Release
         bassAvg += (bass - bassAvg) * 0.05;                  // traeger Mittelwert
-        if (bass > bassAvg * 1.35 + 0.07 && beatFlash < 0.4) beatFlash = 1;
-        else beatFlash = Math.max(0, beatFlash - 0.07);
+        if (bass > bassAvg * 1.35 + 0.07 && beatFlash < 0.4) {
+          beatFlash = 1;
+          registerBeat();                                    // Tempo-Schaetzer fuettern
+        } else {
+          beatFlash = Math.max(0, beatFlash - 0.07);
+        }
         return bass;
       }
 
@@ -390,11 +422,16 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Immer ins Set HINEINzoomen (mScale wird kleiner). Bewusst LANGSAM:
-        // gemaechliche Baseline, Bass + Beat geben nur einen sanften Schub. So
-        // dauert ein Tauchgang bis zum Reset deutlich laenger. Es wird NIE
-        // rausgezoomt -> kein "die ganze Zeit nur raus" mehr.
-        const zoomRate = 1 - (0.0035 + mBassSmooth * 0.010 + beatFlash * 0.006);
+        // Immer ins Set HINEINzoomen (mScale wird kleiner). Tempo folgt dem
+        // BPM der Musik: ein KONSTANTER Zoom-Faktor pro Beat -> schnellere Songs
+        // zoomen schneller, langsamere langsamer. ~120 BPM entspricht der
+        // bisherigen ruhigen Geschwindigkeit. Es wird NIE rausgezoomt.
+        bpm += (bpmTarget - bpm) * 0.08;        // Tempo sanft nachfuehren
+        const bps = bpm / 60;                   // Beats pro Sekunde
+        // 10% kleinere Skala je Beat, anteilig pro Frame (~60fps) angewandt.
+        let zoomRate = Math.pow(0.90, bps / 60);
+        // Bass/Beat geben nur noch einen kleinen Extra-Schub, damit's atmet.
+        zoomRate *= 1 - (mBassSmooth * 0.006 + beatFlash * 0.004);
         mScale *= zoomRate;
         // Iterationen mit der Zoomtiefe hochziehen: je tiefer, desto mehr Detail
         // bleibt aufgeloest -> kein vorzeitiges Verflachen (das sonst den
@@ -599,6 +636,7 @@
       function playTrack(i) {
         if (i < 0 || i >= tracks.length) return;
         current = i;
+        resetBpm();                  // Tempo-Schaetzer fuer den neuen Track zuruecksetzen
         audio.src = tracks[i].url;
         titleEl.textContent = tracks[i].name;
         renderPlaylist();
