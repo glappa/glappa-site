@@ -1,30 +1,41 @@
 #!/usr/bin/env bash
 #
-# setup-home-apache.sh — home.glappa.de:443 von Apache direkt aus
-# ~/glappa-site/ servieren lassen.
+# setup-home-apache.sh — ALL-IN-ONE Deploy fuer home.glappa.de.
+#
+# Ein einziger Befehl holt den neusten Stand von GitHub und macht alles live:
+#   - statische Seite (~/glappa-site/) via Apache auf :443
+#   - Downloader (Flask app.py) als Container neu gebaut + gestartet auf :8080
+#   - SearXNG-Container neu gestartet (zieht ggf. neue settings.yml)
 #
 # Aufruf (auf dem VPS):
-#   cd ~/glappa-site && git pull && bash _docker/setup-home-apache.sh
+#   bash _docker/setup-home-apache.sh        # holt selbst git pull + restartet
 #
 # Macht idempotent:
+#   0) Neuster Stand von GitHub (git pull, re-exec falls sich das Skript aendert)
 #   1) Pre-flight (Apache da, Repo da, Cert da)
 #   2) Permissions: www-data muss /home/glappa/glappa-site lesen koennen
 #      (per ACL falls verfuegbar, sonst chmod o+rX)
 #   3) Alte home.glappa.de vhosts disablen + backuppen
 #   4) Neuen vhost installieren (DocumentRoot=~/glappa-site)
 #   5) Apache configtest + reload
-#   6) Verify
+#   6) Downloader (:8080) + SearXNG Container neu bauen & starten
+#   7) Verify
 #
-# Danach reicht `git pull origin main` auf dem VPS um die Site zu deployen.
+# Damit reicht EIN Aufruf um sowohl die statische Seite als auch den
+# Downloader/SearXNG auf den neusten GitHub-Stand zu bringen.
 
 set -euo pipefail
 
-cd "$(dirname "$(readlink -f "$0")")"
+SELF="$(readlink -f "$0")"
+cd "$(dirname "$SELF")"
 PROJECT="$(pwd)"
 SITE_ROOT="$(cd .. && pwd)"   # = ~/glappa-site
 DOMAIN="home.glappa.de"
 VHOST_NAME="home.glappa.de.conf"
 APACHE_USER="www-data"
+COMPOSE_FILE="$PROJECT/docker-compose.vps.yml"
+DL_PORT=8080                  # Downloader (Flask app.py)
+SEARX_ADDR="127.0.0.1:8888"   # SearXNG (lokal, Apache proxied davor)
 
 G='\033[1;32m'; Y='\033[1;33m'; R='\033[1;31m'; C='\033[1;36m'; B='\033[1m'; X='\033[0m'
 say()  { echo -e "${C}→${X} $*"; }
@@ -39,7 +50,34 @@ echo -e "${B}  home.glappa.de — DocumentRoot = ${SITE_ROOT}${X}"
 echo -e "${B}════════════════════════════════════════════════════════════${X}"
 echo
 
+# ── 0) Neuster Stand von GitHub ────────────────────────────────
+hr
+say "0) Neuster Stand von GitHub"
+
+# GLAPPA_NO_PULL verhindert eine Endlosschleife: nach einem Pull, der dieses
+# Skript selbst veraendert hat, exec'en wir uns einmal neu (bash liest Skripte
+# zur Laufzeit nach — sonst liefe eine gemischte Alt/Neu-Version).
+if [ -n "${GLAPPA_NO_PULL:-}" ]; then
+    ok "Bereits aktualisiert (Re-Exec) — ueberspringe git pull"
+elif [ -d "$SITE_ROOT/.git" ] && command -v git >/dev/null 2>&1; then
+    BEFORE="$(git -C "$SITE_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+    if git -C "$SITE_ROOT" pull --ff-only; then
+        AFTER="$(git -C "$SITE_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
+        ok "Repo aktuell ($AFTER)"
+        if [ "$BEFORE" != "$AFTER" ]; then
+            ok "Neuer Code geholt — starte Skript mit aktueller Version neu"
+            export GLAPPA_NO_PULL=1
+            exec bash "$SELF" "$@"
+        fi
+    else
+        warn "git pull fehlgeschlagen (lokale Aenderungen/offline?) — fahre mit aktuellem Stand fort"
+    fi
+else
+    warn "Kein git-Repo unter $SITE_ROOT oder git fehlt — ueberspringe Pull"
+fi
+
 # ── 1) Pre-flight ──────────────────────────────────────────────
+echo
 hr
 say "1) Pre-flight"
 
@@ -153,10 +191,10 @@ say "Aktiviere Module: ssl headers rewrite expires"
 sudo a2enmod ssl headers rewrite expires >/dev/null
 ok "Module aktiv"
 
-# ── 6) configtest + reload ──────────────────────────────────────
+# ── 5) configtest + reload ──────────────────────────────────────
 echo
 hr
-say "6) Apache config test + reload"
+say "5) Apache config test + reload"
 
 if sudo apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
     sudo systemctl reload apache2
@@ -165,6 +203,44 @@ else
     err "Apache configtest FAILED:"
     sudo apache2ctl configtest
     exit 1
+fi
+
+# ── 6) Downloader (:8080) + SearXNG Container neu bauen & starten ─
+echo
+hr
+say "6) Downloader (:$DL_PORT) + SearXNG neu bauen & starten"
+
+if ! command -v docker >/dev/null 2>&1; then
+    warn "Docker fehlt — ueberspringe Container. Erstinstallation via:  bash _docker/vps-deploy.sh"
+elif [ ! -f "$COMPOSE_FILE" ]; then
+    warn "Compose-Datei fehlt: $COMPOSE_FILE — ueberspringe Container"
+else
+    # docker braucht evtl. sudo (wenn User nicht in der docker-Gruppe ist)
+    DOCKER_SUDO=""
+    docker ps >/dev/null 2>&1 || DOCKER_SUDO="sudo"
+
+    # Compose v2 (docker compose) bevorzugt, sonst v1 (docker-compose)
+    COMPOSE_BIN="docker compose"
+    $DOCKER_SUDO docker compose version >/dev/null 2>&1 || COMPOSE_BIN="docker-compose"
+
+    say "Baue + starte Container neu (glappa rebuild aus aktuellem Code)..."
+    if $DOCKER_SUDO $COMPOSE_BIN -f "$COMPOSE_FILE" up -d --build; then
+        ok "Container gebaut + gestartet (Downloader :$DL_PORT)"
+        # SearXNG explizit neu starten, damit es eine evtl. neue settings.yml
+        # (per Volume gemountet -> 'up' allein startet dafuer nicht neu) zieht.
+        if $DOCKER_SUDO docker ps -a --format '{{.Names}}' | grep -q '^searxng$'; then
+            $DOCKER_SUDO $COMPOSE_BIN -f "$COMPOSE_FILE" restart searxng >/dev/null \
+                && ok "SearXNG neu gestartet" \
+                || warn "SearXNG-Restart fehlgeschlagen"
+        else
+            warn "SearXNG-Container nicht gefunden — wurde via 'up' gestartet (siehe oben)"
+        fi
+        echo
+        $DOCKER_SUDO $COMPOSE_BIN -f "$COMPOSE_FILE" ps || true
+    else
+        err "Container-Build/-Start fehlgeschlagen — siehe Ausgabe oben"
+        warn "Logs:  $DOCKER_SUDO $COMPOSE_BIN -f $COMPOSE_FILE logs --tail 50"
+    fi
 fi
 
 # ── 7) Verify ───────────────────────────────────────────────────
@@ -196,16 +272,37 @@ for blocked in "/_docker/" "/.git/config"; do
     fi
 done
 
+# Downloader (:8080) erreichbar? (app.py spricht HTTPS, Fallback HTTP)
+if command -v docker >/dev/null 2>&1 && [ -f "$COMPOSE_FILE" ]; then
+    DL="$(curl -ksS -o /dev/null -w '%{http_code}' --max-time 8 "https://127.0.0.1:${DL_PORT}/" 2>/dev/null || echo 000)"
+    [ "$DL" = "000" ] && DL="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "http://127.0.0.1:${DL_PORT}/" 2>/dev/null || echo 000)"
+    if [ "$DL" = "200" ] || [ "$DL" = "301" ] || [ "$DL" = "302" ]; then
+        ok "Downloader :$DL_PORT  →  HTTP $DL"
+    else
+        warn "Downloader :$DL_PORT  →  HTTP $DL (Container noch am Hochfahren? Logs checken)"
+    fi
+
+    # SearXNG (lokal auf $SEARX_ADDR) erreichbar?
+    SX="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "http://${SEARX_ADDR}/" 2>/dev/null || echo 000)"
+    if [ "$SX" = "200" ] || [ "$SX" = "302" ]; then
+        ok "SearXNG $SEARX_ADDR  →  HTTP $SX"
+    else
+        warn "SearXNG $SEARX_ADDR  →  HTTP $SX (Container noch am Hochfahren?)"
+    fi
+fi
+
 echo
 echo -e "${B}════════════════════════════════════════════════════════════${X}"
-echo -e "  ${G}${B}Fertig.${X}"
+echo -e "  ${G}${B}Fertig — alles auf dem neusten GitHub-Stand & live.${X}"
 echo
-echo "  https://$DOMAIN/        → ~/glappa-site/index.html (statisch)"
-echo "  https://$DOMAIN:8080/   → unangetastet (Flask app.py / YouTube)"
+echo "  https://$DOMAIN/        → ~/glappa-site/index.html (statisch, Apache)"
+echo "  https://$DOMAIN:$DL_PORT/   → Downloader (Flask app.py) — neu gebaut & gestartet"
+echo "  https://search.glappa.de/ → SearXNG (neu gestartet)"
 echo
-echo "  Deploy ab jetzt:   cd ~/glappa-site && git pull origin main"
-echo "                     (kein zusaetzlicher Sync noetig)"
+echo "  Deploy ab jetzt:   bash _docker/setup-home-apache.sh"
+echo "                     (holt git pull + baut/restartet alles selbst)"
 echo
 echo "  Backup alter Configs:  $BACKUP_DIR/"
-echo "  Logs:                  sudo tail -f /var/log/apache2/$DOMAIN-error.log"
+echo "  Apache-Logs:           sudo tail -f /var/log/apache2/$DOMAIN-error.log"
+echo "  Container-Logs:        ${DOCKER_SUDO:+$DOCKER_SUDO }${COMPOSE_BIN:-docker compose} -f $COMPOSE_FILE logs -f"
 echo -e "${B}════════════════════════════════════════════════════════════${X}"
