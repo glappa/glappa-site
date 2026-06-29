@@ -322,11 +322,51 @@ say "8b) Glappa-App neu bauen + starten (home.glappa.de:8080)"
 # --build erzwingt den Image-Neubau; Docker invalidiert den COPY-Layer
 # automatisch, sobald sich Dateien geaendert haben.
 #
-# Vorher den alten Container gezielt entfernen: laeuft noch ein 'glappa'
-# unter diesem Namen (aus einem frueheren Start / anderen Compose-Projekt /
-# docker run), scheitert 'up' sonst an einem Name-Konflikt und der alte
-# (veraltete) Container laeuft einfach weiter. Gleiches Muster wie bei searxng.
+# Vorher Port 8080 ZUVERLAESSIG freiraeumen, sonst scheitert 'up' an
+# "bind: address already in use" und der alte Stand laeuft einfach weiter.
+# Drei moegliche Blockierer werden abgeraeumt:
+#   a) der per Name bekannte 'glappa'-Container,
+#   b) ein anders benannter Alt-Container, der Host-Port 8080 veroeffentlicht
+#      (frueheres Compose-Projekt / manuelles 'docker run'),
+#   c) ein Nicht-Docker-Hostprozess auf 8080 (z.B. der alte
+#      youtube-downloader.service / ein direkt gestartetes app.py),
+#      den 'docker rm' NICHT erwischt.
+say "Port 8080 freiraeumen (alten Container/Prozess beenden)…"
+
+# a) bekannter Container
 $DSUDO docker rm -f glappa >/dev/null 2>&1 || true
+
+# b) jeder laufende Container, der Host-Port 8080 publisht
+PORT_HOGS="$($DSUDO docker ps -q --filter "publish=8080" 2>/dev/null || true)"
+if [ -n "$PORT_HOGS" ]; then
+    warn "Weitere Container belegen Port 8080 — werden entfernt:"
+    $DSUDO docker ps --filter "publish=8080" --format '   - {{.Names}} ({{.Image}})' || true
+    $DSUDO docker rm -f $PORT_HOGS >/dev/null 2>&1 || true
+fi
+
+# c) Nicht-Docker-Hostprozess auf 8080 (ss bevorzugt, fuser als Fallback)
+HOST_PIDS="$(sudo ss -ltnHp "sport = :8080" 2>/dev/null \
+              | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u | tr '\n' ' ' || true)"
+if [ -z "${HOST_PIDS// /}" ] && command -v fuser >/dev/null 2>&1; then
+    HOST_PIDS="$(sudo fuser 8080/tcp 2>/dev/null \
+                  | tr -s ' ' '\n' | grep -E '^[0-9]+$' | tr '\n' ' ' || true)"
+fi
+if [ -n "${HOST_PIDS// /}" ]; then
+    warn "Host-Prozess(e) belegen Port 8080 (PID:${HOST_PIDS}) — werden beendet"
+    # Falls es der alte systemd-Dienst ist: sauber stoppen + deaktivieren.
+    for svc in youtube-downloader glappa-downloader glappa-app glappa; do
+        if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
+            sudo systemctl disable --now "$svc" >/dev/null 2>&1 || true
+            warn "systemd-Dienst '$svc' gestoppt + deaktiviert"
+        fi
+    done
+    # Was dann noch haengt, hart beenden.
+    sudo kill $HOST_PIDS >/dev/null 2>&1 || true
+    sleep 1
+    sudo kill -9 $HOST_PIDS >/dev/null 2>&1 || true
+fi
+ok "Port 8080 frei"
+
 $DSUDO docker compose -f "$COMPOSE_FILE" up -d --build glappa
 ok "glappa-Container neu gebaut + gestartet"
 
