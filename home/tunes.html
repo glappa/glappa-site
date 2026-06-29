@@ -238,13 +238,16 @@
       function clearPump() { if (displayEl) displayEl.style.boxShadow = ''; }
 
       // Mandelbrot-State
+      // Nur "echte" Randpunkte (Misiurewicz / Boundary): die haben bis ans
+      // float64-Limit selbstaehnliche Struktur -> man kann ewig reinzoomen ohne
+      // in einen schwarzen "See" zu fallen, der sofort einen Reset ausloest.
       const POIS = [
-        { re: -0.7269,             im:  0.1889            }, // Seahorse Valley
-        { re: -0.16,               im:  1.0405            }, // Spiral
-        { re: -1.74995768370609,   im:  0                 }, // Mini-Mandel
-        { re: -0.748,              im:  0.1               }, // Misiurewicz
+        { re: -0.743643887037151,  im:  0.131825904205330 }, // Seahorse Valley (klassischer Deep-Zoom)
+        { re: -0.77568377,         im:  0.13646737        }, // Misiurewicz: selbstaehnliche Spiralen
+        { re: -0.10109636384562,   im:  0.95628651080914  }, // Triple-Spiral / Tendril
         { re:  0.3245046418932,    im:  0.04855101129     }, // Deep Spiral
-        { re: -0.10109636384562,   im:  0.95628651080914  }, // Tendril
+        { re: -0.16,               im:  1.0405            }, // Spiral
+        { re: -0.748,              im:  0.1               }, // Seahorse Valley (Misiurewicz)
       ];
       let mPoiIdx = -1;            // -1 = noch keiner gewaehlt -> pickRandomPoi setzt
       let mScale  = 3.0;           // Start: zeigt klassische Mandelbrot
@@ -387,12 +390,17 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Immer ins Set HINEINzoomen (mScale wird kleiner). Moderate Baseline
-        // damit es klar reingeht, Bass + Beat beschleunigen den Zoom. Es wird
-        // NIE rausgezoomt -> kein "die ganze Zeit nur raus" mehr.
-        const zoomRate = 1 - (0.007 + mBassSmooth * 0.020 + beatFlash * 0.012);
+        // Immer ins Set HINEINzoomen (mScale wird kleiner). Bewusst LANGSAM:
+        // gemaechliche Baseline, Bass + Beat geben nur einen sanften Schub. So
+        // dauert ein Tauchgang bis zum Reset deutlich laenger. Es wird NIE
+        // rausgezoomt -> kein "die ganze Zeit nur raus" mehr.
+        const zoomRate = 1 - (0.0035 + mBassSmooth * 0.010 + beatFlash * 0.006);
         mScale *= zoomRate;
-        mIter   = Math.min(380, 70 + Math.floor(total * 280));
+        // Iterationen mit der Zoomtiefe hochziehen: je tiefer, desto mehr Detail
+        // bleibt aufgeloest -> kein vorzeitiges Verflachen (das sonst den
+        // Boring-Reset triggert). total (Lautstaerke) gibt extra Schaerfe.
+        const depth = Math.log(3.0 / mScale);   // 0 am Start, ~30 am Limit
+        mIter   = Math.min(440, 70 + Math.floor(total * 230) + Math.floor(depth * 6));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt jetzt klar auf dem Beat.
         mPhase += 0.2 + treb * 10 + total * 4 + beatFlash * 22;
@@ -471,14 +479,15 @@
         }
         cctx.putImageData(mImg, 0, 0);
 
-        // Boring-Streak: ist zu lange (~1.3s) nur EINE Farbe / kaum Struktur zu
+        // Boring-Streak: ist zu lange (~2.5s) nur EINE Farbe / kaum Struktur zu
         // sehen (z.B. in einen schwarzen "See" reingezoomt), wird das Fraktal
         // NEU GESTARTET: pickRandomPoi() setzt mScale zurueck auf die
         // Gesamtansicht und zoomt an einer neuen zufaelligen Stelle wieder rein.
+        // Schwelle bewusst hoch -> kurze flache Stellen loesen KEINEN Reset aus.
         const detailRatio = detailCount / (W * H);
         if (detailRatio < 0.05) mBoringStreak++;
         else                    mBoringStreak = 0;
-        if (mBoringStreak > 80) pickRandomPoi();
+        if (mBoringStreak > 150) pickRandomPoi();
 
         pumpDisplay();
       }
