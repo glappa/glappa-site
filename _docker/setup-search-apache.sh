@@ -321,6 +321,12 @@ say "8b) Glappa-App neu bauen + starten (home.glappa.de:8080)"
 # darum NICHT — ohne Neubau laeuft weiter der alte Stand im Container.
 # --build erzwingt den Image-Neubau; Docker invalidiert den COPY-Layer
 # automatisch, sobald sich Dateien geaendert haben.
+#
+# Vorher den alten Container gezielt entfernen: laeuft noch ein 'glappa'
+# unter diesem Namen (aus einem frueheren Start / anderen Compose-Projekt /
+# docker run), scheitert 'up' sonst an einem Name-Konflikt und der alte
+# (veraltete) Container laeuft einfach weiter. Gleiches Muster wie bei searxng.
+$DSUDO docker rm -f glappa >/dev/null 2>&1 || true
 $DSUDO docker compose -f "$COMPOSE_FILE" up -d --build glappa
 ok "glappa-Container neu gebaut + gestartet"
 
