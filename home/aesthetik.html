@@ -54,15 +54,23 @@
       to   { background-position: 40px -30px, -40px 20px, 20px -20px, 0 0; }
     }
 
-    /* fauler Scene-Schachbrett-Schleier */
+    /* Scene-Schachbrett + Punktraster — scrollt endlos diagonal von
+       rechts-oben nach links-unten (nahtlos kachelnd). */
     body::before {
-      content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      opacity: .45;
-      background: repeating-conic-gradient(#000 0 25%, transparent 0 50%) 0 0 / 54px 54px;
+      content: ""; position: fixed; inset: -2px; z-index: 0; pointer-events: none;
+      opacity: .5;
+      background:
+        radial-gradient(rgba(255,122,224,.12) 1.5px, transparent 2px) 0 0 / 27px 27px,
+        repeating-conic-gradient(#000 0 25%, transparent 0 50%) 0 0 / 54px 54px;
+      animation: bg-scroll 7s linear infinite;
     }
-    /* Glitzer-Overlay (wie in den GIFs) */
+    @keyframes bg-scroll {
+      from { background-position: 0 0, 0 0; }
+      to   { background-position: -54px 54px, -54px 54px; }
+    }
+    /* Glitzer-Overlay (wie in den GIFs) — scrollt langsamer mit (Parallax) */
     body::after {
-      content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      content: ""; position: fixed; inset: -2px; z-index: 1; pointer-events: none;
       background:
         radial-gradient(circle at 18% 22%, #fff 0 1.4px, transparent 2.2px),
         radial-gradient(circle at 72% 14%, var(--pink2) 0 1.4px, transparent 2.2px),
@@ -71,9 +79,14 @@
         radial-gradient(circle at 30% 88%, var(--teal) 0 1.4px, transparent 2.2px),
         radial-gradient(circle at 62% 40%, #fff 0 1.2px, transparent 2px);
       background-size: 320px 320px;
-      animation: twinkle 2.8s ease-in-out infinite alternate;
+      animation: twinkle 2.8s ease-in-out infinite alternate,
+                 glit-scroll 22s linear infinite;
     }
     @keyframes twinkle { from { opacity:.35; } to { opacity:1; } }
+    @keyframes glit-scroll {
+      from { background-position: 0 0; }
+      to   { background-position: -320px 320px; }
+    }
 
     /* ============================================================
        Animierter Grunge-Rahmen mit Scene-Emojis rund um die Seite
@@ -258,6 +271,42 @@
       100% { transform: scale(.2) translateY(-30px) rotate(180deg); opacity: 0; }
     }
 
+    /* ---------- CRT / Alt-Fernseher-Filter (liegt ueber allem) ---------- */
+    .crt {
+      position: fixed; inset: 0; z-index: 9000; pointer-events: none;
+      /* RGB-Lochmaske (vertikal) + Scanlines (horizontal) */
+      background:
+        repeating-linear-gradient(90deg,
+          rgba(255,0,90,.07)   0 1px,
+          rgba(0,255,120,.05)  1px 2px,
+          rgba(60,120,255,.07) 2px 3px),
+        repeating-linear-gradient(0deg,
+          rgba(0,0,0,.30) 0 1px,
+          rgba(0,0,0,0)   1px 3px);
+      background-size: 3px 100%, 100% 3px;
+      animation: crt-flicker 3.2s ease-in-out infinite;
+    }
+    /* Vignette + Bildroehren-Rundung */
+    .crt::after {
+      content: ""; position: absolute; inset: 0;
+      background: radial-gradient(130% 130% at 50% 50%, transparent 56%, rgba(0,0,0,.62) 100%);
+      box-shadow: inset 0 0 120px rgba(0,0,0,.55);
+    }
+    /* langsam durchlaufender Helligkeits-Balken (Bildrolle) */
+    .crt::before {
+      content: ""; position: absolute; left: 0; right: 0; top: -25%; height: 25%;
+      background: linear-gradient(to bottom, transparent, rgba(255,255,255,.05) 50%, transparent);
+      animation: crt-roll 6s linear infinite;
+    }
+    @keyframes crt-roll { to { top: 120%; } }
+    @keyframes crt-flicker {
+      0%,100% { opacity: 1; }
+      46% { opacity: .97; }
+      47% { opacity: .88; }
+      48% { opacity: .98; }
+      73% { opacity: .94; }
+    }
+
     @media (max-width: 620px) {
       .wall { grid-template-columns: 1fr; }
     }
@@ -317,6 +366,9 @@
   </div>
 
   <div class="floaties" id="floaties" aria-hidden="true"></div>
+
+  <!-- CRT / Alt-Fernseher-Filter: Scanlines, Lochmaske, Vignette, Bildrolle -->
+  <div class="crt" aria-hidden="true"></div>
 
   <script src="../script.js?v=17"></script>
   <script>
