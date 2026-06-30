@@ -55,9 +55,31 @@ echo "Compose:    $COMPOSE"
 echo "Build:      ${BUILD:-(nein, nur restart)}"
 echo
 
-# ── Stop alten Container falls einer laeuft ─────────────────────────
-if $SUDO docker ps --format '{{.Names}}' | grep -q '^glappa$'; then
-    echo -e "${C}→${X} alter Container laeuft, hole ihn weg..."
+# ── Alles stoppen: Compose-Stack + ALLES auf Port 8080 ─────────────
+# Sorgt fuer einen wirklich sauberen Neustart (kein Namens-/Port-
+# Konflikt) und faehrt ALLE Container des Stacks runter — inkl. searxng.
+echo -e "${C}→${X} stoppe & entferne Compose-Stack (glappa, searxng, …)..."
+$SUDO docker compose -f "$COMPOSE" down --remove-orphans || true
+
+echo -e "${C}→${X} raeume Port 8080 frei (Container + Host-Prozesse)..."
+# 1) (fremde) Container, die den Host-Port 8080 veroeffentlichen, weg
+PORT_CTRS=$($SUDO docker ps -aq --filter "publish=8080" 2>/dev/null || true)
+if [ -n "$PORT_CTRS" ]; then
+    echo -e "   ${Y}•${X} stoppe/entferne Container auf :8080 → $(echo "$PORT_CTRS" | tr '\n' ' ')"
+    $SUDO docker rm -f $PORT_CTRS >/dev/null 2>&1 || true
+fi
+# 2) Host-Prozesse, die noch auf :8080 lauschen, beenden (fuser, sonst ss)
+if command -v fuser >/dev/null 2>&1; then
+    $SUDO fuser -k 8080/tcp >/dev/null 2>&1 || true
+elif command -v ss >/dev/null 2>&1; then
+    PIDS=$($SUDO ss -ltnp 2>/dev/null | awk '$4 ~ /:8080$/' \
+             | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+    if [ -n "$PIDS" ]; then
+        echo -e "   ${Y}•${X} beende Host-Prozesse auf :8080 → $(echo "$PIDS" | tr '\n' ' ')"
+        for p in $PIDS; do $SUDO kill    "$p" 2>/dev/null || true; done
+        sleep 1
+        for p in $PIDS; do $SUDO kill -9 "$p" 2>/dev/null || true; done
+    fi
 fi
 
 # ── Build + Start ───────────────────────────────────────────────────
