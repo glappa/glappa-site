@@ -5,10 +5,11 @@
 # Voraussetzung: Firefox darf zu, muss nicht laufen (sqlite-db wird gelesen).
 #
 # Cron-Aufruf alle 6h (via deploy/cron-Setup):
-#   0 */6 * * * bash /home/glappa/glappa-site/auto-refresh-cookies.sh >> /tmp/cookie-refresh.log 2>&1
+#   0 */6 * * * bash /home/glappa/glappa-site/scripts/auto-refresh-cookies.sh >> /tmp/cookie-refresh.log 2>&1
 
 set -e
-cd "$(dirname "$(readlink -f "$0")")"
+# Liegt in scripts/ — eine Ebene hoch ins Projekt-Root (cookies/ liegt dort)
+cd "$(dirname "$(readlink -f "$0")")/.."
 
 # Aktives Firefox-Profil suchen (jenes mit der neuesten cookies.sqlite mtime)
 PROFILE_DIR=$(ls -dt /mnt/c/Users/Prieb/AppData/Roaming/Mozilla/Firefox/Profiles/*.default-release 2>/dev/null | head -1)

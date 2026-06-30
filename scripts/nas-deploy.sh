@@ -8,10 +8,10 @@
 #   2. Repo klonen (einmalig):
 #        cd /mnt/user/appdata && git clone https://github.com/glappa/glappa-site.git
 #   3. In den Ordner wechseln und Skript starten:
-#        cd glappa-site && bash nas-deploy.sh
+#        cd glappa-site && bash scripts/nas-deploy.sh
 #
 # Update (nach Code-Aenderungen):
-#        cd /mnt/user/appdata/glappa-site && git pull && bash nas-deploy.sh
+#        cd /mnt/user/appdata/glappa-site && git pull && bash scripts/nas-deploy.sh
 
 set -euo pipefail
 
@@ -21,7 +21,8 @@ set -euo pipefail
 DATA_DIR="/volume1/glappa-site-data"
 COOKIES_DIR="$DATA_DIR/cookies"
 DOWNLOADS_DIR="$DATA_DIR/downloads"
-PROJECT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+# Liegt in scripts/ — eine Ebene hoch ins Projekt-Root (Dockerfile, app.py ...)
+PROJECT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 
 PORT_WEB=8099    # Webseite  → http://<NAS-IP>:8099
 PORT_API=8090    # Downloader→ http://<NAS-IP>:8090
@@ -125,5 +126,5 @@ echo "  Befehle:"
 echo "    Logs:      docker compose -f $PROJECT/docker-compose.run.yml logs -f"
 echo "    Neustart:  docker compose -f $PROJECT/docker-compose.run.yml restart"
 echo "    Stoppen:   docker compose -f $PROJECT/docker-compose.run.yml down"
-echo "    Update:    git pull && bash nas-deploy.sh"
+echo "    Update:    git pull && bash scripts/nas-deploy.sh"
 echo "═══════════════════════════════════════════════════════════"

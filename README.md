@@ -100,7 +100,7 @@ Ein vollwertiger In-Browser-Musik-Player:
 - **Backend:** Python / Flask (`home/app.py`) — YouTube-Downloader + server-seitiger Besucherzähler
 - **Suche:** SearXNG im Docker-Container, 90er-Skin via `_docker/searxng-static/glappa-style.css` (per Apache `mod_substitute` injiziert)
 - **Deployment:** Docker Compose (`_docker/docker-compose.vps.yml`) + Setup-Skripte (`_docker/setup-search-apache.sh`)
-- Läuft sogar auf einer **UGREEN NAS** — siehe `docker-compose.nas.yml` & `nas-deploy.sh`
+- Läuft sogar auf einer **UGREEN NAS** — siehe `docker-compose.nas.yml` & `scripts/nas-deploy.sh`
 
 ---
 
