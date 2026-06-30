@@ -71,6 +71,7 @@ Ein vollwertiger In-Browser-Musik-Player:
 - Selbst-gehostete **[SearXNG](https://github.com/searxng/searxng)**-Metasuche, komplett im Glappa-Neon-Skin
 - **Kein Tracking, keine Werbung**, Ergebnisse aus vielen Quellen
 - Bilder-Suche als Kachel-Raster, Kategorien, Sprach-/Zeit-/Safe-Search-Filter
+- **Dateiformat-Filter** in der Bilder-Suche — „Alle Formate" oder gezielt GIF / JPG / PNG / WebP / SVG / BMP / TIFF / ICO / AVIF / HEIC
 
 ---
 
@@ -90,7 +91,7 @@ Ein vollwertiger In-Browser-Musik-Player:
 
 - **Frontend:** handgeschriebenes HTML / CSS / Vanilla-JS — eine zentrale `script.js` (Navigation, Counter, Lauftext, Glitzer-Cursor)
 - **Backend:** Python / Flask (`home/app.py`) — YouTube-Downloader + server-seitiger Besucherzähler
-- **Suche:** SearXNG im Docker-Container, 90er-Skin via `_docker/searxng-static/glappa-style.css` (per Apache `mod_substitute` injiziert)
+- **Suche:** SearXNG im Docker-Container, 90er-Skin via `_docker/searxng-static/glappa-style.css` + Bilder-Dateiformat-Filter via `_docker/searxng-static/glappa-search.js` (beide per Apache `mod_substitute` injiziert)
 - **Deployment:** Docker Compose (`_docker/docker-compose.vps.yml`) + Setup-Skripte (`_docker/setup-search-apache.sh`)
 - Läuft sogar auf einer **UGREEN NAS** — siehe `docker-compose.nas.yml` & `scripts/nas-deploy.sh`
 
