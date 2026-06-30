@@ -201,6 +201,34 @@
       let bandEdges = null;  // Bin-Grenzen fuer log-Frequenz-Balken
       const NUM_BARS = 56;
 
+      // --- BPM-Schaetzung (aus den erkannten Beats) ----------------
+      let bpm        = 120;  // geglaettetes Tempo, neutraler Startwert
+      let bpmTarget  = 120;  // Rohziel aus dem Median der Beat-Abstaende
+      let lastBeatT  = 0;    // Zeitpunkt des letzten Beats (s)
+      const beatIvals = [];  // Ringpuffer der letzten Beat-Abstaende (s)
+
+      // Wird bei jedem erkannten Beat aufgerufen: misst den Abstand zum
+      // vorigen Beat und schaetzt daraus per Median (robust gegen Aussetzer/
+      // Doppel-Trigger) das Tempo. Plausibel sind ~50..200 BPM.
+      function registerBeat() {
+        const now = performance.now() / 1000;
+        if (lastBeatT > 0) {
+          const iv = now - lastBeatT;            // Abstand in Sekunden
+          if (iv >= 0.30 && iv <= 1.20) {        // 50..200 BPM
+            beatIvals.push(iv);
+            if (beatIvals.length > 8) beatIvals.shift();
+            const sorted = beatIvals.slice().sort((a, b) => a - b);
+            const med = sorted[sorted.length >> 1];
+            bpmTarget = Math.min(180, Math.max(60, 60 / med));
+          }
+        }
+        lastBeatT = now;
+      }
+
+      function resetBpm() {
+        bpm = 120; bpmTarget = 120; lastBeatT = 0; beatIvals.length = 0;
+      }
+
       function buildBands(n, bars) {
         bandEdges = new Int32Array(bars + 1);
         const minBin = 1, maxBin = n;
@@ -221,8 +249,12 @@
         if (bass > bassEnv) bassEnv = bass;                  // sofortiger Attack
         else                bassEnv += (bass - bassEnv) * 0.16; // weicher Release
         bassAvg += (bass - bassAvg) * 0.05;                  // traeger Mittelwert
-        if (bass > bassAvg * 1.35 + 0.07 && beatFlash < 0.4) beatFlash = 1;
-        else beatFlash = Math.max(0, beatFlash - 0.07);
+        if (bass > bassAvg * 1.35 + 0.07 && beatFlash < 0.4) {
+          beatFlash = 1;
+          registerBeat();                                    // Tempo-Schaetzer fuettern
+        } else {
+          beatFlash = Math.max(0, beatFlash - 0.07);
+        }
         return bass;
       }
 
@@ -238,16 +270,21 @@
       function clearPump() { if (displayEl) displayEl.style.boxShadow = ''; }
 
       // Mandelbrot-State
+      // Kuratierte Deep-Zoom-Punkte: nur filigrane/spiralige Randpunkte
+      // (Misiurewicz / Boundary) -> lange, farbenfrohe Zoomfahrten OHNE grosse
+      // schwarze Seen, die sonst sofort einen Reset ausloesen. Schwache Punkte
+      // (schnell zu Ende, viel Schwarz) sind raus.
+      //   s = Start-Skala: bewusst KLEIN, damit der Zoom gleich mitten in der
+      //   farbigen Randstruktur startet statt auf der grossen schwarzen
+      //   Hauptfigur ("nicht so viel Schwarz am Anfang").
       const POIS = [
-        { re: -0.7269,             im:  0.1889            }, // Seahorse Valley
-        { re: -0.16,               im:  1.0405            }, // Spiral
-        { re: -1.74995768370609,   im:  0                 }, // Mini-Mandel
-        { re: -0.748,              im:  0.1               }, // Misiurewicz
-        { re:  0.3245046418932,    im:  0.04855101129     }, // Deep Spiral
-        { re: -0.10109636384562,   im:  0.95628651080914  }, // Tendril
+        { re: -0.743643887037151,  im:  0.131825904205330, s: 0.70 }, // Seahorse Valley
+        { re: -0.77568377,         im:  0.13646737,        s: 0.55 }, // Misiurewicz-Spirale
+        { re: -0.10109636384562,   im:  0.95628651080914,  s: 0.85 }, // Triple-Spiral / Tendril
+        { re:  0.3245046418932,    im:  0.04855101129,     s: 0.28 }, // Elephant Valley / Deep Spiral
       ];
       let mPoiIdx = -1;            // -1 = noch keiner gewaehlt -> pickRandomPoi setzt
-      let mScale  = 3.0;           // Start: zeigt klassische Mandelbrot
+      let mScale  = 1.0;           // wird beim ersten Frame von pickRandomPoi gesetzt
       let mIter   = 80;
       let mPhase  = 0;             // Farbphase
       let mImg    = null;          // Persistenter ImageData-Puffer
@@ -260,7 +297,7 @@
         do { n = Math.floor(Math.random() * POIS.length); }
         while (POIS.length > 1 && n === mPoiIdx);
         mPoiIdx = n;
-        mScale  = 3.0;
+        mScale  = POIS[n].s || 1.0; // Start-Skala des POI -> gleich in der Struktur
         mBoringStreak = 0;
         mImg = null;
         mCamX = POIS[n].re;         // Kamera sofort auf neuen POI -> kein Quer-Glide
@@ -387,18 +424,31 @@
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
 
-        // Immer ins Set HINEINzoomen (mScale wird kleiner). Moderate Baseline
-        // damit es klar reingeht, Bass + Beat beschleunigen den Zoom. Es wird
-        // NIE rausgezoomt -> kein "die ganze Zeit nur raus" mehr.
-        const zoomRate = 1 - (0.007 + mBassSmooth * 0.020 + beatFlash * 0.012);
+        // Immer ins Set HINEINzoomen (mScale wird kleiner). Tempo folgt dem
+        // BPM der Musik: ein KONSTANTER Zoom-Faktor pro Beat -> schnellere Songs
+        // zoomen schneller, langsamere langsamer. ~120 BPM entspricht der
+        // bisherigen ruhigen Geschwindigkeit. Es wird NIE rausgezoomt.
+        bpm += (bpmTarget - bpm) * 0.08;        // Tempo sanft nachfuehren
+        const bps = bpm / 60;                   // Beats pro Sekunde
+        // 10% kleinere Skala je Beat, anteilig pro Frame (~60fps) angewandt.
+        let zoomRate = Math.pow(0.90, bps / 60);
+        // Bass/Beat geben einen kleinen Extra-Schub auf den Beat, damit's "atmet".
+        zoomRate *= 1 - (mBassSmooth * 0.006 + beatFlash * 0.006);
         mScale *= zoomRate;
-        mIter   = Math.min(380, 70 + Math.floor(total * 280));
+        // Iterationen mit Zoomtiefe + Lautstaerke, aber bewusst GEDECKELT: tief
+        // drin ist fast alles "im Set" (schwarz) und durchlaeuft die volle
+        // Schleife -> zu viele Iterationen pro Frame lassen die Seite haengen.
+        const depth = Math.log(3.0 / mScale);   // ~1-2 am Start, ~28 am Reset
+        mIter   = Math.min(340, 80 + Math.floor(total * 180) + Math.floor(depth * 4));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt jetzt klar auf dem Beat.
         mPhase += 0.2 + treb * 10 + total * 4 + beatFlash * 22;
 
-        // Bei tiefem Zoom: random POI ansteuern, reset
-        if (mScale < 1e-13) pickRandomPoi();
+        // DAUERSCHLEIFE: rechtzeitig neu starten, BEVOR die float64-Genauigkeit
+        // am Limit (~1e-13) bricht und die Ansicht zu einer schweren, flimmernden
+        // Schwarzflaeche entartet (genau dort haengt/"crasht" es). Ein voller
+        // Faktor 10 Sicherheitsabstand -> es zoomt endlos sauber weiter.
+        if (mScale < 1e-12) pickRandomPoi();
         if (mPoiIdx < 0)    pickRandomPoi();   // erstes Frame
 
         // Sanfter Orbit: langsame Frequenzen + kleiner Radius. Kamera-Mitte wird
@@ -419,6 +469,9 @@
         const y0Base = cy - (H / 2) * stepY;
         const maxIt = mIter;
         const phase = mPhase;
+        // Helligkeit pulsiert auf den Beat + Treble -> das ganze Fraktal "blitzt"
+        // hoerbar im Takt, ohne dafuer das Zoom-Tempo anzuheben.
+        const lBase = 0.55 + Math.min(0.20, beatFlash * 0.20 + treb * 0.08);
 
         let idx = 0;
         let detailCount = 0;     // Pixel die sich vom linken Nachbarn abheben
@@ -448,8 +501,8 @@
               const nu = Math.log(log_zn / Math.LN2) / Math.LN2;
               const smooth = it + 1 - nu;
               const hue = (smooth * 8 + phase) % 360;
-              // HSL -> RGB inline
-              const s = 0.92, l = 0.55;
+              // HSL -> RGB inline (Helligkeit pulsiert auf den Beat)
+              const s = 0.92, l = lBase;
               const c = (1 - Math.abs(2 * l - 1)) * s;
               const hp = hue / 60;
               const xc = c * (1 - Math.abs((hp % 2) - 1));
@@ -471,24 +524,42 @@
         }
         cctx.putImageData(mImg, 0, 0);
 
-        // Boring-Streak: ist zu lange (~1.3s) nur EINE Farbe / kaum Struktur zu
+        // Boring-Streak: ist zu lange (~2.5s) nur EINE Farbe / kaum Struktur zu
         // sehen (z.B. in einen schwarzen "See" reingezoomt), wird das Fraktal
-        // NEU GESTARTET: pickRandomPoi() setzt mScale zurueck auf die
-        // Gesamtansicht und zoomt an einer neuen zufaelligen Stelle wieder rein.
+        // NEU GESTARTET: pickRandomPoi() setzt mScale auf die Startansicht eines
+        // neuen zufaelligen POI und zoomt dort wieder rein.
+        // Schwelle bewusst hoch -> kurze flache Stellen loesen KEINEN Reset aus.
         const detailRatio = detailCount / (W * H);
         if (detailRatio < 0.05) mBoringStreak++;
         else                    mBoringStreak = 0;
-        if (mBoringStreak > 80) pickRandomPoi();
+        if (mBoringStreak > 150) pickRandomPoi();
 
         pumpDisplay();
       }
 
       // --- Dispatcher ---------------------------------------------
       function drawVis() {
-        if (!analyser || visMode === 'off') { visRaf = 0; return; }
-        analyser.getByteFrequencyData(visData);
-        if (visMode === 'spectrum')   drawSpectrum();
-        else if (visMode === 'mandelbrot') drawMandelbrot();
+        if (!analyser || visMode === 'off' || audio.paused) { visRaf = 0; return; }
+        // Naechsten Frame ZUERST einplanen, dann erst zeichnen. Wirft ein
+        // einzelner Frame eine Exception, stirbt dadurch NICHT die ganze
+        // Schleife (sonst bleibt der Visualizer stehen, waehrend die Musik
+        // weiterlaeuft). Das try/catch ueberspringt nur den kaputten Frame.
+        visRaf = requestAnimationFrame(drawVis);
+        try {
+          analyser.getByteFrequencyData(visData);
+          if (visMode === 'spectrum')        drawSpectrum();
+          else if (visMode === 'mandelbrot') drawMandelbrot();
+        } catch (e) { /* Frame ueberspringen, Schleife laeuft weiter */ }
+      }
+
+      // Startet die Render-Schleife, falls sie laufen SOLLTE aber gerade nicht
+      // laeuft. Idempotent (der !visRaf-Guard verhindert Doppel-Schleifen) und
+      // dient als Watchdog: wird aus 'play'/'playing'/'timeupdate' aufgerufen,
+      // damit eine aus irgendeinem Grund gestorbene Schleife sich selbst wieder
+      // faengt, solange Musik laeuft.
+      function kickVis() {
+        if (audio.paused || visMode === 'off' || !analyser || visRaf) return;
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         visRaf = requestAnimationFrame(drawVis);
       }
 
@@ -522,7 +593,7 @@
         fitCanvas();
         // Reset Mandelbrot wenn neu reingewechselt -> random POI
         if (mode === 'mandelbrot') pickRandomPoi();
-        if (!audio.paused && !visRaf) visRaf = requestAnimationFrame(drawVis);
+        kickVis();
       }
 
       // Cycle-Button: off -> spectrum -> mandelbrot -> off
@@ -573,6 +644,7 @@
       function playTrack(i) {
         if (i < 0 || i >= tracks.length) return;
         current = i;
+        resetBpm();                  // Tempo-Schaetzer fuer den neuen Track zuruecksetzen
         audio.src = tracks[i].url;
         titleEl.textContent = tracks[i].name;
         renderPlaylist();
@@ -661,17 +733,21 @@
         if (!seekingUser && audio.duration) {
           seek.value = (audio.currentTime / audio.duration) * 1000;
         }
+        // Watchdog: feuert ~4x/s waehrend des Abspielens. Sollte die Render-
+        // Schleife je gestorben sein (kaputter Frame, ungluecklich getimtes
+        // pause/play beim Track-Wechsel), startet sie hier von selbst neu.
+        kickVis();
       });
       audio.addEventListener('loadedmetadata', () => {
         totEl.textContent = fmt(audio.duration);
       });
       audio.addEventListener('play',  () => {
         playBtn.innerHTML = '&#10074;&#10074;';
-        if (visMode !== 'off' && analyser && !visRaf) {
-          if (audioCtx.state === 'suspended') audioCtx.resume();
-          visRaf = requestAnimationFrame(drawVis);
-        }
+        kickVis();
       });
+      // 'playing' (echtes Anlaufen nach Buffering/Track-Wechsel) als zusaetzlicher
+      // Aufhaenger -> deckt die Faelle ab, in denen 'play' zu frueh feuert.
+      audio.addEventListener('playing', kickVis);
       audio.addEventListener('pause', () => {
         playBtn.innerHTML = '&#9654;';
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
