@@ -218,13 +218,19 @@ ok "Module aktiv"
 sudo mkdir -p /var/www/html/.well-known/acme-challenge
 sudo chown -R www-data:www-data /var/www/html/.well-known
 
-# Statisches Asset-Verzeichnis fuer glappa-style.css (90er Override)
+# Statische Assets: glappa-style.css (90er Override) + glappa-search.js
+# (Dateiformat-Filter fuer die Bilder-Suche). Beide werden per mod_substitute
+# in jede SearXNG-HTML-Response injiziert.
 sudo mkdir -p /var/www/search-static
 if [ -f "$PROJECT/searxng-static/glappa-style.css" ]; then
     sudo cp "$PROJECT/searxng-static/glappa-style.css" /var/www/search-static/
-    sudo chown -R www-data:www-data /var/www/search-static
     ok "glappa-style.css nach /var/www/search-static/ deployed"
 fi
+if [ -f "$PROJECT/searxng-static/glappa-search.js" ]; then
+    sudo cp "$PROJECT/searxng-static/glappa-search.js" /var/www/search-static/
+    ok "glappa-search.js nach /var/www/search-static/ deployed"
+fi
+sudo chown -R www-data:www-data /var/www/search-static
 
 # ── 5) Initialer :80-only vhost (fuer ACME) ────────────────────────
 echo
