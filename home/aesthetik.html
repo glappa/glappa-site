@@ -4,79 +4,86 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>&#9829; &Auml;STHETIK &#9829; &mdash; Glappa</title>
-  <meta name="keywords" content="Glappa Aesthetik Y2K 2000s scene kawaii bl&uuml;mchen">
-  <meta name="description" content="Y2K scene kawaii &Auml;sthetik. &#9829; in love &#9829;">
+  <meta name="keywords" content="Glappa Aesthetik scene emo goth nightcore trance 2000s 2005 blingee picmix">
+  <meta name="description" content="2000s scene / emo / goth nightcore &Auml;sthetik. &#9829; trance 2000 &#9829;">
   <link rel="icon" href="../favicon.ico">
   <style>
     /* ============================================================
-       aesthetik.html — Y2K / Scene-Kawaii Aesthetik.
+       aesthetik.html — 2000s SCENE / EMO / GOTH NIGHTCORE Aesthetik.
+       Look: schwarz + Neon (pink/lila/rot), Glitzer, Totenkoepfe,
+       Herzen, Scene-Sterne, Grunge-Rahmen, "Blingee-Wall" aus den
+       vier Referenz-GIFs. Deko nur aus Motiven der GIFs.
        Komplett inline (nur ../img, ../script.js relativ).
-       Look: Lavendel-Gingham, animierter Decoden-Rahmen rund um die
-       ganze Seite, Glitzer, Mond, Pixel-Herzen, "now playing".
        ============================================================ */
 
     :root {
-      --lav:    #c7a4e6;   /* softes Lavendel-Lila (heller, wie im Bild) */
-      --lav-dk: #9a5fc8;
-      --pink:   #ff4fb0;   /* Hotpink Akzent               */
-      --pink2:  #ff8ad6;
-      --rose:   #ff7ac6;   /* Pixel-Rosen                  */
-      --babyblue:#7fd4ff;
-      --lemon:  #ffe066;   /* Sterne                       */
-      --gold:   #ffd23f;   /* grosser Mond / Gold-Glitzer  */
-      --mint:   #a7f3a0;
-      --cream:  #fff4fb;
-      --rahmen: 52px;      /* Dicke des Decoden-Rahmens     */
+      --bg:      #07030d;   /* fast-schwarzes Lila      */
+      --bg2:     #14071e;
+      --pink:    #ff2bb4;   /* Neon-Pink                */
+      --pink2:   #ff7ae0;
+      --purple:  #a64dff;   /* Neon-Lila                */
+      --purple2: #c98bff;
+      --red:     #ff1f48;   /* Emo-Rot                  */
+      --teal:    #19e3ff;   /* Cyan-Akzent (lexycat)    */
+      --ink:     #ffd9f4;   /* Text: blass-pink         */
+      --rahmen:  46px;      /* Dicke des Grunge-Rahmens */
     }
 
     * { box-sizing: border-box; }
 
     html, body {
       margin: 0; padding: 0; min-height: 100%;
-      color: #5a2a7a;
+      color: var(--ink);
       font-family: "Comic Sans MS", "Comic Sans", "Segoe UI", cursive, sans-serif;
       cursor: url('../coursor/WoW Cursor.cur'), auto;
       overflow-x: hidden;
     }
 
-    /* ---------- Lavendel-Gingham Hintergrund ---------- */
+    /* ---------- Schwarzer Neon-Glow Hintergrund ---------- */
     body {
-      background-color: var(--lav);
-      background-image:
-        repeating-linear-gradient( 45deg, rgba(255,255,255,.46) 0 26px, transparent 26px 52px),
-        repeating-linear-gradient(-45deg, rgba(255,255,255,.46) 0 26px, transparent 26px 52px);
-      animation: bg-drift 22s linear infinite;
+      background:
+        radial-gradient(circle at 15% 18%, rgba(255,43,180,.30), transparent 42%),
+        radial-gradient(circle at 85% 22%, rgba(166,77,255,.28), transparent 44%),
+        radial-gradient(circle at 50% 92%, rgba(255,31,72,.22), transparent 46%),
+        var(--bg);
+      background-attachment: fixed;
+      animation: glowdrift 17s ease-in-out infinite alternate;
     }
-    @keyframes bg-drift {
-      from { background-position: 0 0, 0 0; }
-      to   { background-position: 104px 104px, -104px 104px; }
+    @keyframes glowdrift {
+      from { background-position: 0 0, 0 0, 0 0, 0 0; }
+      to   { background-position: 40px -30px, -40px 20px, 20px -20px, 0 0; }
     }
 
-    /* sanftes Glitzer-Overlay drueber */
+    /* fauler Scene-Schachbrett-Schleier */
     body::before {
       content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background:
-        radial-gradient(circle at 18% 22%, rgba(255,255,255,.7) 0 1.5px, transparent 2px),
-        radial-gradient(circle at 72% 14%, rgba(255,255,255,.6) 0 1.5px, transparent 2px),
-        radial-gradient(circle at 44% 64%, rgba(255,255,255,.55) 0 1.5px, transparent 2px),
-        radial-gradient(circle at 88% 78%, rgba(255,255,255,.6) 0 1.5px, transparent 2px),
-        radial-gradient(circle at 30% 88%, rgba(255,255,255,.55) 0 1.5px, transparent 2px);
-      background-size: 340px 340px;
-      animation: twinkle 3.5s ease-in-out infinite alternate;
+      opacity: .45;
+      background: repeating-conic-gradient(#000 0 25%, transparent 0 50%) 0 0 / 54px 54px;
     }
-    @keyframes twinkle { from { opacity:.35; } to { opacity:.9; } }
+    /* Glitzer-Overlay (wie in den GIFs) */
+    body::after {
+      content: ""; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background:
+        radial-gradient(circle at 18% 22%, #fff 0 1.4px, transparent 2.2px),
+        radial-gradient(circle at 72% 14%, var(--pink2) 0 1.4px, transparent 2.2px),
+        radial-gradient(circle at 44% 64%, #fff 0 1.4px, transparent 2.2px),
+        radial-gradient(circle at 88% 78%, var(--purple2) 0 1.4px, transparent 2.2px),
+        radial-gradient(circle at 30% 88%, var(--teal) 0 1.4px, transparent 2.2px),
+        radial-gradient(circle at 62% 40%, #fff 0 1.2px, transparent 2px);
+      background-size: 320px 320px;
+      animation: twinkle 2.8s ease-in-out infinite alternate;
+    }
+    @keyframes twinkle { from { opacity:.35; } to { opacity:1; } }
 
     /* ============================================================
-       Animierter Decoden-Rahmen rund um die ganze Seite
-       4 Streifen (oben/unten/links/rechts) mit endlos scrollenden
-       Kawaii-Emojis. Fixed -> bleibt beim Scrollen am Rand.
+       Animierter Grunge-Rahmen mit Scene-Emojis rund um die Seite
        ============================================================ */
     .frame { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
     .frame .edge {
       position: absolute; overflow: hidden;
-      background:
-        repeating-linear-gradient(90deg, rgba(255,255,255,.92) 0 8px, rgba(255,240,250,.92) 8px 16px);
-      box-shadow: inset 0 0 0 3px var(--pink), 0 0 10px rgba(255,79,176,.5);
+      background: linear-gradient(180deg, #1a0a26, #06030a);
+      box-shadow: inset 0 0 0 2px var(--pink), inset 0 0 14px rgba(255,43,180,.8),
+                  0 0 12px rgba(166,77,255,.6);
     }
     .frame .edge.top,
     .frame .edge.bottom { left: 0; right: 0; height: var(--rahmen); }
@@ -89,13 +96,14 @@
 
     .frame .run {
       white-space: nowrap;
-      font-size: calc(var(--rahmen) * .62);
+      font-size: calc(var(--rahmen) * .56);
       line-height: var(--rahmen);
       will-change: transform;
-      letter-spacing: 4px;
+      letter-spacing: 5px;
+      filter: drop-shadow(0 0 4px var(--pink));
     }
-    .frame .edge.top    .run { animation: marq-x 36s linear infinite; }
-    .frame .edge.bottom .run { animation: marq-x 36s linear infinite reverse; }
+    .frame .edge.top    .run { animation: marq-x 34s linear infinite; }
+    .frame .edge.bottom .run { animation: marq-x 34s linear infinite reverse; }
     @keyframes marq-x { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
     .frame .edge.left  .run,
@@ -103,194 +111,160 @@
       writing-mode: vertical-rl; text-orientation: upright;
       height: max-content;
     }
-    .frame .edge.left  .run { animation: marq-y 36s linear infinite; }
-    .frame .edge.right .run { animation: marq-y 36s linear infinite reverse; }
+    .frame .edge.left  .run { animation: marq-y 34s linear infinite; }
+    .frame .edge.right .run { animation: marq-y 34s linear infinite reverse; }
     @keyframes marq-y { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 
-    /* Eck-Schleifen ueber den Kreuzungen */
     .frame .corner {
       position: absolute; width: var(--rahmen); height: var(--rahmen);
       display: flex; align-items: center; justify-content: center;
-      font-size: calc(var(--rahmen) * .7);
-      background: var(--cream);
-      box-shadow: inset 0 0 0 3px var(--pink), 0 0 10px rgba(255,79,176,.6);
-      animation: wob 2.2s ease-in-out infinite;
+      font-size: calc(var(--rahmen) * .62);
+      background: #0a0410;
+      box-shadow: inset 0 0 0 2px var(--purple), 0 0 12px rgba(166,77,255,.8);
+      animation: wob 2s ease-in-out infinite;
     }
     .frame .corner.tl { top:0; left:0; }
     .frame .corner.tr { top:0; right:0; }
     .frame .corner.bl { bottom:0; left:0; }
     .frame .corner.br { bottom:0; right:0; }
-    @keyframes wob { 0%,100%{transform:rotate(-7deg) scale(1)} 50%{transform:rotate(7deg) scale(1.12)} }
+    @keyframes wob { 0%,100%{transform:rotate(-8deg) scale(1)} 50%{transform:rotate(8deg) scale(1.14)} }
 
-    /* ---------- Inhalts-Wrapper (haelt Abstand zum Rahmen) ---------- */
+    /* ---------- Inhalts-Wrapper ---------- */
     .page { position: relative; z-index: 5; padding: calc(var(--rahmen) + 8px) 14px; }
 
-    a { color: var(--pink); }
-    a:visited { color: var(--lav-dk); }
+    a { color: var(--teal); }
+    a:visited { color: var(--purple2); }
 
-    /* ---------- Top-Marquee (eigene Klasse, damit script.js sie nicht
-                   mit Retro-Sprueche ueberschreibt) ---------- */
+    /* ---------- Top-Marquee (.kbar, von script.js unangetastet) ---------- */
     .kbar {
       max-width: 980px; margin: 0 auto 14px; overflow: hidden; white-space: nowrap;
-      padding: 5px 0; border-radius: 999px;
-      background: linear-gradient(90deg, var(--pink), var(--babyblue), var(--pink2), var(--lemon), var(--pink));
-      background-size: 300% 100%; animation: slide-bg 9s linear infinite;
-      box-shadow: 0 0 0 3px #fff, 0 0 14px rgba(255,79,176,.5);
+      padding: 6px 0; border-radius: 999px;
+      background: linear-gradient(90deg, var(--pink), var(--purple), var(--red), var(--teal), var(--pink));
+      background-size: 300% 100%; animation: slide-bg 8s linear infinite;
+      box-shadow: 0 0 0 2px #000, 0 0 16px rgba(255,43,180,.7);
     }
     @keyframes slide-bg { to { background-position: 300% 0; } }
     .kbar span {
       display: inline-block; padding-left: 100%;
       font-weight: bold; color: #fff; letter-spacing: 2px;
-      text-shadow: 1px 1px 0 var(--pink), 0 0 6px rgba(255,79,176,.7);
+      text-shadow: 0 0 6px #000, 1px 1px 0 var(--red);
     }
     @keyframes scroll-left { 0% { transform: translateX(0);} 100% { transform: translateX(-100%);} }
 
-    /* ---------- Navigation (script.js befuellt) ---------- */
+    /* ---------- Navigation ---------- */
     .nav {
       text-align: center; font-size: clamp(.95rem, 2.8vw, 1.3rem);
       margin: 10px auto 6px; display: flex; flex-wrap: wrap;
       justify-content: center; gap: 6px 10px; max-width: 980px;
     }
     .nav a {
-      text-decoration: none; padding: 3px 10px; display: inline-block;
-      color: var(--lav-dk); font-weight: bold;
-      background: rgba(255,255,255,.65); border-radius: 999px;
-      box-shadow: 0 0 0 2px var(--pink2);
+      text-decoration: none; padding: 3px 12px; display: inline-block;
+      color: var(--pink2); font-weight: bold;
+      background: rgba(10,4,18,.8); border-radius: 999px;
+      box-shadow: 0 0 0 1.5px var(--purple), 0 0 8px rgba(166,77,255,.5);
     }
-    .nav a:hover { background:#fff; color: var(--pink); text-shadow: 0 0 6px var(--pink2); }
-    .nav a.current { background: var(--pink); color:#fff; box-shadow: 0 0 0 2px #fff, 0 0 10px var(--pink); }
+    .nav a:hover { background:#000; color: var(--teal); box-shadow: 0 0 0 1.5px var(--teal), 0 0 12px var(--teal); }
+    .nav a.current { background: var(--pink); color:#000; box-shadow: 0 0 0 1.5px #fff, 0 0 12px var(--pink); }
     .nav .sep { display:none; }
 
     /* ---------- Hero ---------- */
-    .hero { position: relative; text-align: center; max-width: 980px; margin: 18px auto 6px; padding: 6px 8px 0; }
+    .hero { position: relative; text-align: center; max-width: 980px; margin: 20px auto 6px; padding: 6px 8px 0; }
+    .skulls { font-size: clamp(1.3rem,5vw,2rem); letter-spacing: 8px; filter: drop-shadow(0 0 6px var(--red)); animation: blink 1.5s steps(2,start) infinite; }
+    @keyframes blink { 50% { opacity:.45; } }
     .title {
-      font-size: clamp(2.4rem, 11vw, 6rem); line-height: 1; margin: 0;
+      font-size: clamp(2.6rem, 12vw, 6.4rem); line-height: 1; margin: 4px 0 0;
       font-weight: 900; letter-spacing: 4px; color: #fff;
       -webkit-text-stroke: 2px var(--pink);
-      text-shadow: 3px 3px 0 var(--pink2), 0 0 18px rgba(255,138,214,.9);
-      animation: bob 3s ease-in-out infinite;
+      text-shadow:
+        0 0 10px var(--pink), 0 0 26px var(--purple),
+        3px 3px 0 var(--red), -2px -2px 0 var(--teal);
+      animation: bob 3.2s ease-in-out infinite;
     }
-    @keyframes bob { 0%,100%{transform:translateY(0) rotate(-1deg)} 50%{transform:translateY(-8px) rotate(1deg)} }
+    @keyframes bob { 0%,100%{transform:translateY(0) rotate(-1.5deg)} 50%{transform:translateY(-9px) rotate(1.5deg)} }
     .subtitle {
-      margin: 8px 0 0; color: var(--pink); font-weight: bold;
+      margin: 10px 0 0; color: var(--pink2); font-weight: bold;
       font-size: clamp(.9rem, 3vw, 1.3rem); letter-spacing: 2px;
-      -webkit-text-stroke: .6px #fff; text-shadow: 1px 1px 0 #fff;
+      text-shadow: 0 0 8px var(--purple), 1px 1px 0 #000;
     }
-    .moon { font-size: clamp(2.4rem,8vw,4.6rem); filter: drop-shadow(0 0 10px var(--lemon)); animation: spin-slow 14s linear infinite; display:inline-block; }
-    @keyframes spin-slow { to { transform: rotate(360deg); } }
-    .inlove {
-      display: inline-block; transform: rotate(-12deg);
-      font-size: clamp(1rem,4vw,1.7rem); font-weight: 900; color: var(--pink);
-      -webkit-text-stroke: 1px #fff; text-shadow: 2px 2px 0 #fff;
-      animation: heartbeat 1.3s ease-in-out infinite;
+    .tagline {
+      display: inline-block; margin-top: 10px; transform: rotate(-6deg);
+      font-size: clamp(1rem,4vw,1.7rem); font-weight: 900; color: var(--red);
+      -webkit-text-stroke: 1px #000; text-shadow: 0 0 10px var(--red), 2px 2px 0 #000;
+      animation: heartbeat 1.2s ease-in-out infinite;
     }
-    @keyframes heartbeat { 0%,100%{transform:rotate(-12deg) scale(1)} 50%{transform:rotate(-12deg) scale(1.18)} }
+    @keyframes heartbeat { 0%,100%{transform:rotate(-6deg) scale(1)} 50%{transform:rotate(-6deg) scale(1.16)} }
 
-    /* ---------- Decoden-Player-Karte ---------- */
-    .stage { max-width: 720px; margin: 18px auto; padding: 0 6px; position: relative; }
-    .card {
-      position: relative; padding: 14px; border-radius: 22px;
-      background:
-        repeating-linear-gradient( 45deg, rgba(255,255,255,.55) 0 16px, transparent 16px 32px),
-        repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 16px, transparent 16px 32px),
-        linear-gradient(135deg, var(--pink2), var(--babyblue), var(--lemon), var(--pink2));
-      background-size: 64px 64px, 64px 64px, 300% 300%;
-      animation: slide-bg2 10s ease infinite;
-      box-shadow: 0 0 0 4px #fff, 0 0 0 8px var(--pink), 0 10px 30px rgba(120,40,160,.45);
-    }
-    @keyframes slide-bg2 { 0%{background-position:0 0,0 0,0% 50%} 50%{background-position:0 0,0 0,100% 50%} 100%{background-position:0 0,0 0,0% 50%} }
-    .ratio { position: relative; width: 100%; padding-top: 56.25%; background:#1a0a26; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 3px #fff; }
-    .ratio iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-
+    /* ---------- now playing (ohne Video) ---------- */
     .nowplaying {
-      text-align: center; margin: 14px auto 0; max-width: 720px;
+      text-align: center; margin: 16px auto 4px; max-width: 760px;
       font-weight: 900; line-height: 1.5;
-      font-size: clamp(1rem, 4.2vw, 1.9rem);
-      color: var(--pink);
-      -webkit-text-stroke: 1.2px #fff;
-      text-shadow: 2px 2px 0 #fff, 0 0 10px var(--pink2);
+      font-size: clamp(1rem, 4.2vw, 1.8rem);
+      color: var(--teal);
+      text-shadow: 0 0 10px var(--teal), 2px 2px 0 #000;
     }
-    .nowplaying .small { display:block; font-size: .62em; color: var(--lav-dk); -webkit-text-stroke: .6px #fff; }
-    .nowplaying .marqee-track { animation: pulse 1.6s ease-in-out infinite; display:inline-block; }
-    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+    .nowplaying .small { display:block; font-size: .6em; color: var(--pink2); text-shadow: 0 0 8px var(--pink); }
+    .nowplaying .track { animation: pulse 1.5s ease-in-out infinite; display:inline-block; }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+
+    /* ---------- Blingee-Wall: die vier GIFs ---------- */
+    .wall {
+      max-width: 880px; margin: 20px auto; padding: 0 6px;
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px 20px;
+      justify-items: center;
+    }
+    .gifcard {
+      position: relative; padding: 9px; border-radius: 10px; background: #0a0410;
+      box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--pink), 0 0 22px rgba(255,43,180,.55);
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+    .gifcard:nth-child(odd)  { transform: rotate(-2.5deg); }
+    .gifcard:nth-child(even) { transform: rotate(2.5deg); }
+    .gifcard:nth-child(2n)   { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--purple), 0 0 22px rgba(166,77,255,.55); }
+    .gifcard:nth-child(3)    { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--red), 0 0 22px rgba(255,31,72,.55); }
+    .gifcard:hover { transform: rotate(0deg) scale(1.04); box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--teal), 0 0 28px var(--teal); z-index: 3; }
+    .gifcard img {
+      display: block; width: 100%; max-width: 280px; height: auto;
+      image-rendering: pixelated; border-radius: 4px;
+    }
+    .gifcard figcaption {
+      margin-top: 7px; text-align: center; font-weight: 900; letter-spacing: 1px;
+      font-size: clamp(.85rem, 2.6vw, 1.05rem); color: #fff;
+      text-shadow: 0 0 8px var(--pink), 1px 1px 0 #000;
+    }
 
     /* ---------- Sticker-Reihe ---------- */
-    .stickers { text-align:center; font-size: clamp(1.4rem,6vw,2.4rem); margin: 14px 0; letter-spacing: 6px; animation: blink 1.4s steps(2,start) infinite; }
-    @keyframes blink { 50% { opacity:.4; } }
+    .stickers { text-align:center; font-size: clamp(1.4rem,6vw,2.3rem); margin: 16px 0; letter-spacing: 6px; filter: drop-shadow(0 0 6px var(--purple)); animation: blink 1.5s steps(2,start) infinite; }
 
-    /* ---------- Kawaii-Manifest ---------- */
+    /* ---------- Scene/Emo-Manifest ---------- */
     .creed {
-      max-width: 600px; margin: 8px auto 26px; padding: 18px 22px;
-      background: rgba(255,255,255,.78); border: 3px dashed var(--pink);
-      border-radius: 18px; color: #6a2f8a; text-align: center; line-height: 1.7;
+      max-width: 620px; margin: 8px auto 26px; padding: 18px 22px;
+      background: rgba(8,3,14,.82); border: 2px dashed var(--pink);
+      border-radius: 14px; color: var(--ink); text-align: center; line-height: 1.7;
       font-size: clamp(.95rem, 2.6vw, 1.12rem);
-      box-shadow: 0 6px 18px rgba(120,40,160,.3);
+      box-shadow: 0 0 18px rgba(255,43,180,.4), inset 0 0 24px rgba(166,77,255,.18);
     }
-    .creed b { color: var(--pink); }
+    .creed b { color: var(--pink2); text-shadow: 0 0 8px var(--pink); }
+    .creed .coffin { display:block; margin-top:8px; color: var(--red); font-style: italic; text-shadow: 0 0 8px var(--red); }
 
     .back { text-align: center; margin: 0 auto 36px; }
     .back a {
-      display: inline-block; text-decoration: none; color:#fff; font-weight: 900;
+      display: inline-block; text-decoration: none; color:#000; font-weight: 900;
       letter-spacing: 1px; padding: 10px 22px; border-radius: 999px;
-      background: linear-gradient(90deg, var(--pink), var(--pink2));
-      box-shadow: 0 0 0 3px #fff, 0 6px 16px rgba(255,79,176,.55);
+      background: linear-gradient(90deg, var(--pink), var(--purple));
+      box-shadow: 0 0 0 2px #000, 0 0 16px var(--pink);
     }
-    .back a:hover { filter: brightness(1.08) saturate(1.15); }
+    .back a:hover { filter: brightness(1.12) saturate(1.2); color:#000; }
 
-    /* ---------- schwebende Herzen / Sterne ---------- */
+    /* ---------- schwebende Totenkoepfe / Herzen / Sterne ---------- */
     .floaties { position: fixed; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
     .floaties span {
-      position: absolute; bottom: -40px; font-size: 22px; opacity: .85;
+      position: absolute; bottom: -40px; font-size: 22px; opacity: .9;
       animation: rise linear infinite; text-shadow: 0 0 8px currentColor;
     }
     @keyframes rise {
       0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
       10%  { opacity: .95; }
       100% { transform: translateY(-118vh) rotate(360deg); opacity: 0; }
-    }
-
-    /* ============================================================
-       Deko-Szene wie im Referenzbild: grosser Gold-Mond, Pixel-Rosen,
-       Magenta-Sterne und Gold-Glitzer ueber dem Gingham. Liegt HINTER
-       dem Inhalt (z-index 3 < .page 5), damit die Player-Karte und der
-       "now playing"-Text lesbar bleiben — Deko sitzt in den Raendern.
-       ============================================================ */
-    .scene { position: fixed; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
-
-    /* grosser Gold-Mond unten links (reine CSS-Sichel via mask) */
-    .scene .moon-deco {
-      position: absolute; left: 3.5%; bottom: 15%;
-      width: clamp(78px, 15vw, 165px); aspect-ratio: 1; border-radius: 50%;
-      background: radial-gradient(circle at 36% 34%, #fff3b0 0 16%, var(--gold) 58%, #f0b32f 100%);
-      -webkit-mask: radial-gradient(circle at 78% 32%, transparent 0 52%, #000 53%);
-              mask: radial-gradient(circle at 78% 32%, transparent 0 52%, #000 53%);
-      filter: drop-shadow(0 0 16px rgba(255,210,63,.85));
-      animation: moon-bob 9s ease-in-out infinite;
-    }
-    @keyframes moon-bob {
-      0%,100% { transform: rotate(-16deg) translateY(0); }
-      50%     { transform: rotate(-16deg) translateY(-14px); }
-    }
-
-    /* Streu-Deko: Rosen / Sterne / Glitzer */
-    .scene .deco {
-      position: absolute; display: block; line-height: 1; user-select: none;
-      -webkit-text-stroke: 1px #fff;
-      filter: drop-shadow(0 0 6px currentColor);
-      animation: deco-tw 3.2s ease-in-out infinite;
-    }
-    .scene .spark { color: var(--gold); -webkit-text-stroke: .5px #fff; }
-    .scene .star  { color: var(--pink); }
-    .scene .rose  { color: var(--rose); -webkit-text-stroke: 0; filter: drop-shadow(0 0 7px var(--pink2)); }
-    @keyframes deco-tw {
-      0%,100% { opacity: .6; transform: scale(.9)  rotate(-7deg); }
-      50%     { opacity: 1;  transform: scale(1.14) rotate(7deg); }
-    }
-
-    /* auf schmalen Screens nur wenige Deko-Elemente, sonst zu voll */
-    @media (max-width: 760px) {
-      .scene .hide-sm   { display: none; }
-      .scene .moon-deco { bottom: 9%; left: 2%; }
     }
 
     /* ---------- Cursor-Glitzer (script.js) ---------- */
@@ -304,6 +278,9 @@
       100% { transform: scale(.2) translateY(-30px) rotate(180deg); opacity: 0; }
     }
 
+    @media (max-width: 620px) {
+      .wall { grid-template-columns: 1fr; }
+    }
     @media (prefers-reduced-motion: reduce) {
       * { animation: none !important; }
     }
@@ -311,44 +288,22 @@
 </head>
 <body>
 
-  <!-- Animierter Decoden-Rahmen um die ganze Seite -->
+  <!-- Animierter Grunge-Rahmen mit Scene-Emojis -->
   <div class="frame" aria-hidden="true">
-    <div class="edge top"><div class="run">&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;&#127801;&#127800;&#127872;&#128151;&#127799;&#128156;&#11088;&#10024;</div></div>
-    <div class="edge bottom"><div class="run">&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;&#10024;&#11088;&#128156;&#127799;&#128151;&#127872;&#127800;&#127801;</div></div>
-    <div class="edge left"><div class="run">&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;&#127801;&#127872;&#128151;&#127800;&#128156;&#127799;&#11088;&#10024;</div></div>
-    <div class="edge right"><div class="run">&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;&#10024;&#11088;&#127799;&#128156;&#127800;&#128151;&#127872;&#127801;</div></div>
-    <div class="corner tl">&#127872;</div>
-    <div class="corner tr">&#127801;</div>
-    <div class="corner bl">&#127800;</div>
-    <div class="corner br">&#128151;</div>
-  </div>
-
-  <!-- Deko-Szene (Gold-Mond, Rosen, Sterne, Glitzer) wie im Referenzbild -->
-  <div class="scene" aria-hidden="true">
-    <span class="moon-deco"></span>
-
-    <!-- linker Cluster (wie im Bild: Rosen + Sterne + Glitzer) -->
-    <b class="deco spark"        style="left:7%;  top:14%;    font-size:30px; animation-delay:-.2s">&#10022;</b>
-    <b class="deco star"         style="left:13%; top:9%;     font-size:26px; animation-delay:-1.1s">&#10027;</b>
-    <b class="deco rose"         style="left:5%;  top:30%;    font-size:30px; animation-delay:-.6s">&#10048;</b>
-    <b class="deco spark"        style="left:16%; top:27%;    font-size:22px; animation-delay:-1.6s">&#10022;</b>
-    <b class="deco star  hide-sm" style="left:9%;  top:46%;    font-size:24px; animation-delay:-.9s">&#10027;</b>
-    <b class="deco rose  hide-sm" style="left:15%; top:40%;    font-size:26px; animation-delay:-2.1s">&#10047;</b>
-    <b class="deco spark hide-sm" style="left:6%;  top:58%;    font-size:20px; animation-delay:-1.3s">&#10022;</b>
-    <b class="deco rose"         style="left:12%; bottom:13%; font-size:28px; animation-delay:-.4s">&#10048;</b>
-
-    <!-- oben / rechts (sparsamer, da dort die Player-Karte liegt) -->
-    <b class="deco star  hide-sm" style="right:8%;  top:11%;    font-size:26px; animation-delay:-.7s">&#10027;</b>
-    <b class="deco spark"         style="right:6%;  top:24%;    font-size:28px; animation-delay:-1.8s">&#10022;</b>
-    <b class="deco rose  hide-sm" style="right:11%; top:38%;    font-size:24px; animation-delay:-1.0s">&#10047;</b>
-    <b class="deco spark hide-sm" style="right:7%;  bottom:20%; font-size:22px; animation-delay:-2.4s">&#10022;</b>
-    <b class="deco star  hide-sm" style="right:13%; bottom:31%; font-size:22px; animation-delay:-.5s">&#10027;</b>
+    <div class="edge top"><div class="run">&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;</div></div>
+    <div class="edge bottom"><div class="run">&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;</div></div>
+    <div class="edge left"><div class="run">&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;&#11088;&#128420;&#129415;&#10022;&#128148;&#128156;&#9760;&#128152;</div></div>
+    <div class="edge right"><div class="run">&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;&#128152;&#9760;&#128156;&#128148;&#10022;&#129415;&#128420;&#11088;</div></div>
+    <div class="corner tl">&#9760;</div>
+    <div class="corner tr">&#128420;</div>
+    <div class="corner bl">&#129415;</div>
+    <div class="corner br">&#11088;</div>
   </div>
 
   <div class="page">
 
     <div class="kbar">
-      <span>&#9829; in love &#9829; &#10024; scene kawaii y2k &#10024; &#127800; turn it up &#127800; &#9829; bl&uuml;mchen 4 ever &#9829; &#10024; glitter overload &#10024;</span>
+      <span>&#9829; nightcore 4 ever &#9829; &#10022; trance 2000 &#10022; &#9760; 2005 emo &#9760; &#128152; scene queen &#128152; &#10022; xX glitter overload Xx &#10022; &#128156; i love you &#128156;</span>
     </div>
 
     <nav class="nav" data-glappa-nav>
@@ -363,37 +318,46 @@
 
     <main>
       <section class="hero">
-        <span class="moon">&#127769;</span>
-        <span class="inlove">&#9829; in love &#9829;</span>
+        <div class="skulls">&#9760; &#10022; &#128148; &#10022; &#9760;</div>
         <h1 class="title">&Auml;STHETIK</h1>
-        <p class="subtitle">&#10024; &#65397;&#65387;&#65392;&#65417;&#65439; &#183; scene &#183; kawaii &#183; y2k &#10024;</p>
+        <p class="subtitle">&#10022; trance &middot; 2000 &middot; nightcore &middot; scene &middot; emo &#10022;</p>
+        <span class="tagline">xX &#9829; i love you &#9829; Xx</span>
       </section>
 
-      <section class="stage">
-        <div class="card">
-          <div class="ratio">
-            <iframe
-              src="https://www.youtube-nocookie.com/embed/63lhPFr9Bng?rel=0"
-              title="Bl&uuml;mchen &mdash; S.O.S. Herz in Not"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerpolicy="strict-origin-when-cross-origin"
-              allowfullscreen></iframe>
-          </div>
-        </div>
-        <p class="nowplaying">
-          &#9734; now playing &#9734;
-          <span class="marqee-track">~ Bl&uuml;mchen &ndash; S.O.S. &ndash; Herz In Not ~</span>
-          <span class="small">&#127925; 1997 &#183; eurodance &#183; herz in not &#127925;</span>
-        </p>
+      <p class="nowplaying">
+        &#9734; now playing &#9734;
+        <span class="track">~ Nightcore &ndash; Trance 2000 Mix ~</span>
+        <span class="small">&#9835; bpm 160 &middot; nightcore &middot; herz in not &#9835;</span>
+      </p>
+
+      <!-- Blingee-Wall: die vier Referenz-GIFs -->
+      <section class="wall">
+        <figure class="gifcard">
+          <img src="../img/scene/lexycat.gif" alt="scene nightcore anime girl" loading="lazy">
+          <figcaption>&#9829; nightcore &#9829;</figcaption>
+        </figure>
+        <figure class="gifcard">
+          <img src="../img/scene/gothangel.gif" alt="goth angel anime girl" loading="lazy">
+          <figcaption>&#129415; goth angel &#129415;</figcaption>
+        </figure>
+        <figure class="gifcard">
+          <img src="../img/scene/emo2005.gif" alt="2005 emo anime girl" loading="lazy">
+          <figcaption>&#9760; 2005 emo &#9760;</figcaption>
+        </figure>
+        <figure class="gifcard">
+          <img src="../img/scene/scenequeen.gif" alt="scene queen anime girl" loading="lazy">
+          <figcaption>&#10022; scene queen &#10022;</figcaption>
+        </figure>
       </section>
 
-      <div class="stickers">&#127800; &#9733; &#128156; &#10022; &#127872; &#9829; &#127769; &#10022; &#128151; &#9733; &#127800;</div>
+      <div class="stickers">&#9760; &#10022; &#128148; &#128156; &#11088; &#128152; &#129415; &#128420; &#10022; &#9760;</div>
 
       <section class="creed">
-        <b>&#9829; willkommen in der &Auml;sthetik &#9829;</b><br>
-        lavendel-gingham, glitter bis zum anschlag, pixel-herzen &amp;
-        ein bisschen mondschein. <b>turn it up</b> &#8212; das ist
-        scene-kawaii f&uuml;r die hitze&#173;tod-party. (&#12387;&#9829;&#9829;)&#12387;
+        <b>xX willkommen in der &Auml;sthetik Xx</b><br>
+        schwarz, neon &amp; glitzer bis zum anschlag &#8212; totenk&ouml;pfe,
+        gebrochene herzen, scene-sterne und ganz viel <b>nightcore</b>.
+        das ist <b>trance 2000</b> emo-scene f&uuml;r die ewig dunkle nacht.
+        <span class="coffin">&#9760; &bdquo;yes i sleep in a coffin, doesn&rsquo;t everybody?&ldquo; &#9760;</span>
       </section>
 
       <div class="back">
@@ -407,13 +371,13 @@
 
   <script src="../script.js?v=17"></script>
   <script>
-    // schwebende Herzen/Sterne erzeugen
+    // schwebende Scene-Glyphen erzeugen (nur Motive aus den GIFs)
     (function () {
       const box = document.getElementById('floaties');
       if (!box) return;
-      const glyphs = ['♥', '✧', '★', '✨', '🌸', '💜', '💖', '☆', '🎀'];
-      const colors = ['#ff4fb0', '#7fd4ff', '#ff8ad6', '#ffe066', '#a7f3a0', '#ffffff'];
-      const N = 26;
+      const glyphs = ['☠', '❂', '⭐', '💔', '🖤', '☆', '🦋', '✨', '⚜'];
+      const colors = ['#ff2bb4', '#a64dff', '#ff1f48', '#19e3ff', '#ff7ae0', '#ffffff'];
+      const N = 28;
       for (let i = 0; i < N; i++) {
         const s = document.createElement('span');
         s.textContent = glyphs[Math.floor(Math.random() * glyphs.length)];
@@ -427,10 +391,10 @@
       }
     })();
 
-    // Eigene Kawaii-Marquee animieren (NICHT .marquee, damit script.js den
+    // Eigene Scene-Marquee animieren (NICHT .marquee, damit script.js den
     // Text nicht mit Retro-Spruechen ersetzt)
     document.querySelectorAll('.kbar span').forEach(span => {
-      span.style.animation = 'scroll-left 24s linear infinite';
+      span.style.animation = 'scroll-left 26s linear infinite';
     });
   </script>
 </body>
