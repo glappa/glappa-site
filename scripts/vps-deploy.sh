@@ -11,12 +11,13 @@
 #   6) Cron einrichten fuer Mitternacht-Restart
 #   7) Verify
 #
-# Aufruf:   bash vps-deploy.sh
-# Update:   bash vps-deploy.sh        (laeuft komplett idempotent durch)
+# Aufruf:   bash scripts/vps-deploy.sh
+# Update:   bash scripts/vps-deploy.sh        (laeuft komplett idempotent durch)
 
 set -euo pipefail
 
-PROJECT="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+# Liegt in scripts/ — eine Ebene hoch ins Projekt-Root (compose, Dockerfile ...)
+PROJECT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 OLD_SVC="youtube-downloader.service"
 DOMAIN="home.glappa.de"
 PORT=8080
@@ -161,7 +162,7 @@ echo "    Status:        $SUDO docker compose -f docker-compose.vps.yml ps"
 echo "    Logs:          $SUDO docker compose -f docker-compose.vps.yml logs -f"
 echo "    Restart:       $SUDO docker compose -f docker-compose.vps.yml restart"
 echo "    Stoppen:       $SUDO docker compose -f docker-compose.vps.yml down"
-echo "    Update Code:   bash vps-deploy.sh   (laeuft idempotent durch)"
+echo "    Update Code:   bash scripts/vps-deploy.sh   (laeuft idempotent durch)"
 echo
 echo "  Wenn alter Service zurueck soll:"
 echo "    docker compose down + sudo systemctl enable --now $OLD_SVC"

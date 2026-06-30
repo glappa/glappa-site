@@ -3,14 +3,15 @@
 # refresh-cookies.sh — frische Firefox-Cookies fuer den Downloader extrahieren.
 #
 # Nutze das, wenn der Downloader plotzlich "YouTube Bot-Check" wirft:
-#   bash refresh-cookies.sh
+#   bash scripts/refresh-cookies.sh
 #
 # Liest Cookies aus dem aktiven Firefox-Profil, schreibt nur die YouTube/Google
 # Cookies als Netscape-Datei nach ./cookies/youtube.txt. Sync zu WSL passiert
 # automatisch falls /mnt/c verfuegbar ist.
 
 set -euo pipefail
-cd "$(dirname "$(readlink -f "$0")")"
+# Liegt in scripts/ — eine Ebene hoch ins Projekt-Root (cookies/ liegt dort)
+cd "$(dirname "$(readlink -f "$0")")/.."
 
 if ! python -c "import yt_dlp" 2>/dev/null; then
     echo "yt-dlp fehlt: pip install yt-dlp" >&2

@@ -31,7 +31,7 @@ if ($OnlyApp) {
     }
 } else {
     Write-Host "→ Komplettes Projekt syncen..." -ForegroundColor Cyan
-    ssh -i $Key $VPS "mkdir -p ${Remote}/home ${Remote}/cookies ${Remote}/docker"
+    ssh -i $Key $VPS "mkdir -p ${Remote}/home ${Remote}/cookies ${Remote}/docker ${Remote}/scripts"
 
     scp -i $Key `
         "${Local}\Dockerfile" `
@@ -39,10 +39,11 @@ if ($OnlyApp) {
         "${Local}\docker-compose.vps.yml" `
         "${Local}\.dockerignore" `
         "${Local}\requirements.txt" `
-        "${Local}\vps-deploy.sh" `
         "${Local}\restart.sh" `
         "${VPS}:${Remote}/"
 
+    # Deploy-Skripte leben jetzt in scripts/
+    scp -i $Key "${Local}\scripts\vps-deploy.sh" "${VPS}:${Remote}/scripts/"
     scp -i $Key "${Local}\docker\*" "${VPS}:${Remote}/docker/"
     scp -i $Key "${Local}\home\app.py" "${VPS}:${Remote}/home/"
     if (Test-Path "${Local}\cookies\youtube.txt") {

@@ -14,13 +14,14 @@
 #   5) Baut und startet den Container (docker compose up -d --build)
 #   6) Wartet auf Healthcheck, druckt Status + URLs
 #
-# Aufruf:   bash deploy.sh
-# Update:   bash deploy.sh        (laeuft einfach nochmal durch)
-# Stop:     docker compose down   (im Projektordner)
+# Aufruf:   bash scripts/deploy.sh
+# Update:   bash scripts/deploy.sh        (laeuft einfach nochmal durch)
+# Stop:     docker compose down           (im Projektordner)
 
 set -euo pipefail
 
-cd "$(dirname "$(readlink -f "$0")")"
+# Liegt in scripts/ — eine Ebene hoch ins Projekt-Root (Dockerfile, compose ...)
+cd "$(dirname "$(readlink -f "$0")")/.."
 PROJECT_DIR="$(pwd)"
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -96,7 +97,7 @@ EOF
         echo -e "  ${B}WSL muss EINMAL neu gestartet werden:${X}"
         echo "    1) exit                       # raus aus diesem Terminal"
         echo "    2) (Windows PowerShell)  wsl --shutdown"
-        echo "    3) wsl wieder starten und:    bash deploy.sh"
+        echo "    3) wsl wieder starten und:    bash scripts/deploy.sh"
         echo "═══════════════════════════════════════════════════════════"
         exit 0
     else
@@ -197,5 +198,5 @@ echo
 echo -e "  ${B}Befehle:${X}"
 echo "    Logs:        $SUDO docker compose logs -f"
 echo "    Stoppen:     $SUDO docker compose down"
-echo "    Update:      bash deploy.sh    (rebuild + restart)"
+echo "    Update:      bash scripts/deploy.sh    (rebuild + restart)"
 echo "═══════════════════════════════════════════════════════════"
