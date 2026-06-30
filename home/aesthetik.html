@@ -210,7 +210,7 @@
     .wall {
       max-width: 880px; margin: 20px auto; padding: 0 6px;
       display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px 20px;
-      justify-items: center;
+      justify-items: center; align-items: start;
     }
     .gifcard {
       position: relative; padding: 9px; border-radius: 10px; background: #0a0410;
@@ -226,27 +226,7 @@
       display: block; width: 100%; max-width: 280px; height: auto;
       image-rendering: pixelated; border-radius: 4px;
     }
-    .gifcard figcaption {
-      margin-top: 7px; text-align: center; font-weight: 900; letter-spacing: 1px;
-      font-size: clamp(.85rem, 2.6vw, 1.05rem); color: #fff;
-      text-shadow: 0 0 8px var(--pink), 1px 1px 0 #000;
-    }
-
-    /* ---------- Sticker-Reihe ---------- */
-    .stickers { text-align:center; font-size: clamp(1.4rem,6vw,2.3rem); margin: 16px 0; letter-spacing: 6px; filter: drop-shadow(0 0 6px var(--purple)); animation: blink 1.5s steps(2,start) infinite; }
-
-    /* ---------- Scene/Emo-Manifest ---------- */
-    .creed {
-      max-width: 620px; margin: 8px auto 26px; padding: 18px 22px;
-      background: rgba(8,3,14,.82); border: 2px dashed var(--pink);
-      border-radius: 14px; color: var(--ink); text-align: center; line-height: 1.7;
-      font-size: clamp(.95rem, 2.6vw, 1.12rem);
-      box-shadow: 0 0 18px rgba(255,43,180,.4), inset 0 0 24px rgba(166,77,255,.18);
-    }
-    .creed b { color: var(--pink2); text-shadow: 0 0 8px var(--pink); }
-    .creed .coffin { display:block; margin-top:8px; color: var(--red); font-style: italic; text-shadow: 0 0 8px var(--red); }
-
-    .back { text-align: center; margin: 0 auto 36px; }
+    .back { text-align: center; margin: 26px auto 36px; }
     .back a {
       display: inline-block; text-decoration: none; color:#000; font-weight: 900;
       letter-spacing: 1px; padding: 10px 22px; border-radius: 999px;
@@ -317,30 +297,16 @@
       <section class="wall">
         <figure class="gifcard">
           <img src="../img/scene/lexycat.gif" alt="scene nightcore anime girl" loading="lazy">
-          <figcaption>&#9829; nightcore &#9829;</figcaption>
         </figure>
         <figure class="gifcard">
           <img src="../img/scene/gothangel.gif" alt="goth angel anime girl" loading="lazy">
-          <figcaption>&#129415; goth angel &#129415;</figcaption>
         </figure>
         <figure class="gifcard">
           <img src="../img/scene/emo2005.gif" alt="2005 emo anime girl" loading="lazy">
-          <figcaption>&#9760; 2005 emo &#9760;</figcaption>
         </figure>
         <figure class="gifcard">
           <img src="../img/scene/scenequeen.gif" alt="scene queen anime girl" loading="lazy">
-          <figcaption>&#10022; scene queen &#10022;</figcaption>
         </figure>
-      </section>
-
-      <div class="stickers">&#9760; &#10022; &#128148; &#128156; &#11088; &#128152; &#129415; &#128420; &#10022; &#9760;</div>
-
-      <section class="creed">
-        <b>xX willkommen in der &Auml;sthetik Xx</b><br>
-        schwarz, neon &amp; glitzer bis zum anschlag &#8212; totenk&ouml;pfe,
-        gebrochene herzen, scene-sterne und ganz viel <b>nightcore</b>.
-        das ist <b>trance 2000</b> emo-scene f&uuml;r die ewig dunkle nacht.
-        <span class="coffin">&#9760; &bdquo;yes i sleep in a coffin, doesn&rsquo;t everybody?&ldquo; &#9760;</span>
       </section>
 
       <div class="back">
