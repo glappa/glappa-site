@@ -580,9 +580,12 @@ a:visited { color: var(--neon-yellow); }
   /* Aliens kleiner, damit sie mit dem HOME-Banner in einer Reihe bleiben */
   .header { gap: 8px; }
   .alien { width: 48px; height: auto; }
+  .page-banner { padding: 4px 6px; max-width: 100%; }
+  .page-banner pre { font-size: clamp(0.42rem, 2.2vw, 0.72rem); }
 }
 
 @media (max-width: 380px) {
   .header { gap: 6px; }
   .alien { width: 38px; height: auto; }
+  .page-banner pre { font-size: clamp(0.36rem, 2vw, 0.6rem); }
 }
