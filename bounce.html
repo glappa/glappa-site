@@ -10,7 +10,10 @@
   <link rel="stylesheet" href="style.css?v=17">
   <style>
     /* ---------- Bounce: unendlich viele GIFs mit Zufalls-Variationen ---------- */
-    /* Jedes GIF bekommt per JS eigene Farb-/Form-Werte, aber keine Bewegung. */
+    /* Jedes GIF bekommt per JS eigene Farb-Werte, bleibt aber gleich ausgerichtet
+       (keine Spiegelung/Drehung/Skalierung). Die GIFs selbst huepfen (eigene
+       Animation), die Welle entsteht nur dadurch, dass jedes GIF zeitversetzt
+       nach Spalte/Zeile zu spielen beginnt (siehe Script unten). */
     .bounce-hint {
       text-align: center;
       font-family: 'Comic Sans MS', cursive, sans-serif;
@@ -161,16 +164,37 @@
 
     const rnd = (a, b) => a + Math.random() * (b - a);
 
-    // Jedes GIF bekommt eine quasi-einzigartige (statische) Optik: Farbdrehung,
-    // Saettigung, Helligkeit, Spiegelung, Skalierung, Drehung + ab und zu einen
-    // Spezial-Effekt (Negativ / Sepia / Kontrast). Keine Bewegung/Animation.
-    function makeItem() {
+    // Spalten des Rasters ermitteln (auto-fit macht das je nach Fensterbreite
+    // unterschiedlich), damit der Start-Zeitpunkt spaltenweise wellenartig laeuft.
+    // Live berechnet (nicht gecacht), da sich die Breite waehrend des Scrollens
+    // aendern kann und neue Batches immer den aktuellen Stand nutzen sollen.
+    function getColumns() {
+      const cols = getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length;
+      return cols > 0 ? cols : 1;
+    }
+
+    const WAVE_COL_STEP = 90;  // ms Verzoegerung je Spalte nach rechts
+    const WAVE_ROW_STEP = 140; // ms Verzoegerung je Zeile nach unten
+    const WAVE_CYCLE = 1500;   // ms, danach wiederholt sich der Versatz
+    function waveDelayMs(index) {
+      const columns = getColumns();
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      return (col * WAVE_COL_STEP + row * WAVE_ROW_STEP) % WAVE_CYCLE;
+    }
+
+    // Jedes GIF bekommt eine quasi-einzigartige Farboptik (Farbdrehung, Saettigung,
+    // Helligkeit, ab und zu Negativ/Sepia/Kontrast), bleibt aber gleich ausgerichtet
+    // (keine Spiegelung/Drehung/Skalierung). Die Welle entsteht nicht durch Bewegen
+    // des <img>, sondern dadurch, dass jedes GIF zeitversetzt zu spielen beginnt --
+    // die Huepf-Bewegung der GIFs selbst erzeugt so den Wellen-Eindruck.
+    function makeItem(index) {
       const img = document.createElement('img');
-      img.src = 'img/gif/' + nextName() + '.gif';
       img.alt = 'bouncing girl';
       img.loading = 'lazy';
       img.decoding = 'async';
       img.className = 'bx-item';
+      img.dataset.index = index;
 
       const hue = Math.floor(rnd(0, 360));
       const sat = rnd(0.7, 2.4).toFixed(2);
@@ -182,10 +206,10 @@
       else if (r < 0.20) extra = ' contrast(1.7)';
       img.style.filter = 'hue-rotate(' + hue + 'deg) saturate(' + sat + ') brightness(' + bri + ')' + extra;
 
-      const flip  = Math.random() < 0.5 ? -1 : 1;
-      const scale = rnd(0.82, 1.18).toFixed(2);
-      const rot   = rnd(-8, 8).toFixed(1);
-      img.style.transform = 'scaleX(' + flip + ') scale(' + scale + ') rotate(' + rot + 'deg)';
+      const src = 'img/gif/' + nextName() + '.gif';
+      const delay = waveDelayMs(index);
+      if (delay > 0) setTimeout(function () { img.src = src; }, delay);
+      else img.src = src;
       return img;
     }
 
@@ -196,7 +220,7 @@
 
     function addBatch(n) {
       const frag = document.createDocumentFragment();
-      for (let i = 0; i < n && count < MAX; i++, count++) frag.appendChild(makeItem());
+      for (let i = 0; i < n && count < MAX; i++, count++) frag.appendChild(makeItem(count));
       grid.appendChild(frag);
       if (count >= MAX) {
         const hint = document.getElementById('bounceHint');
