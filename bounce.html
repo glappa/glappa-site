@@ -10,15 +10,7 @@
   <link rel="stylesheet" href="style.css?v=17">
   <style>
     /* ---------- Bounce: unendlich viele GIFs mit Zufalls-Variationen ---------- */
-    /* Jedes GIF bekommt per JS eigene Farb-/Form-Werte; hier nur der Huepf-Takt. */
-    .bx-item {
-      animation: bx-bob 2.4s ease-in-out infinite;
-      will-change: translate;
-    }
-    @keyframes bx-bob {
-      0%, 100% { translate: 0 0; }
-      50%      { translate: 0 -12px; }
-    }
+    /* Jedes GIF bekommt per JS eigene Farb-/Form-Werte, aber keine Bewegung. */
     .bounce-hint {
       text-align: center;
       font-family: 'Comic Sans MS', cursive, sans-serif;
@@ -32,7 +24,7 @@
     @keyframes bx-blink { 50% { opacity: .35; } }
     #bounceSentinel { height: 1px; }
     @media (prefers-reduced-motion: reduce) {
-      .bx-item, .bounce-hint { animation: none; }
+      .bounce-hint { animation: none; }
     }
   </style>
 </head>
@@ -169,9 +161,9 @@
 
     const rnd = (a, b) => a + Math.random() * (b - a);
 
-    // Jedes GIF bekommt eine quasi-einzigartige Optik: Farbdrehung, Saettigung,
-    // Helligkeit, Spiegelung, Skalierung, Drehung + ab und zu einen Spezial-
-    // Effekt (Negativ / Sepia / Kontrast) und einen eigenen Huepf-Rhythmus.
+    // Jedes GIF bekommt eine quasi-einzigartige (statische) Optik: Farbdrehung,
+    // Saettigung, Helligkeit, Spiegelung, Skalierung, Drehung + ab und zu einen
+    // Spezial-Effekt (Negativ / Sepia / Kontrast). Keine Bewegung/Animation.
     function makeItem() {
       const img = document.createElement('img');
       img.src = 'img/gif/' + nextName() + '.gif';
@@ -194,9 +186,6 @@
       const scale = rnd(0.82, 1.18).toFixed(2);
       const rot   = rnd(-8, 8).toFixed(1);
       img.style.transform = 'scaleX(' + flip + ') scale(' + scale + ') rotate(' + rot + 'deg)';
-
-      img.style.animationDuration = rnd(1.4, 3.6).toFixed(2) + 's';
-      img.style.animationDelay    = (-rnd(0, 3)).toFixed(2) + 's';
       return img;
     }
 
