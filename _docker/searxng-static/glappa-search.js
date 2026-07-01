@@ -73,33 +73,12 @@
     try { window.localStorage.setItem(LS_KEY, v); } catch (e) { /* ignore */ }
   }
 
-  /* Sind wir in der Bilder-Suche? Mehrere robuste Signale. */
-  function isImageSearch() {
-    if (document.querySelector("article.result-images")) return true;
-
-    var inputs = document.querySelectorAll(
-      '#categories input, .search_categories input, input[id^="checkbox_"], input[name^="category_"]'
-    );
-    for (var i = 0; i < inputs.length; i++) {
-      var inp = inputs[i];
-      if (inp.checked) {
-        var key = (inp.name || "") + " " + (inp.id || "") + " " + (inp.value || "");
-        if (/image|bilder/i.test(key)) return true;
-      }
-    }
-
-    try {
-      var p = new URLSearchParams(window.location.search);
-      if (/image/i.test(p.get("categories") || "")) return true;
-      var it = p.keys();
-      var k = it.next();
-      while (!k.done) {
-        if (/category_images/i.test(k.value)) return true;
-        k = it.next();
-      }
-    } catch (e) { /* ignore */ }
-
-    return false;
+  /* Filter NUR zeigen, wenn echte Bild-Ergebnisse gerendert sind — d.h. der
+   * Nutzer hat wirklich auf "Bilder" gesucht. SearXNG rendert Bild-Treffer
+   * immer als <article class="result-images">. Auf der Startseite (Index) und
+   * bei Nicht-Bild-Kategorien gibt es diese Elemente nicht -> kein Filter. */
+  function hasImageResults() {
+    return !!document.querySelector("article.result-images");
   }
 
   /* Eine evtl. ueber SearXNGs image_proxy verpackte URL auspacken
@@ -280,51 +259,42 @@
     return wrap;
   }
 
-  /* Sichtbarkeit der ganzen Filtergruppe an "ist Bilder-Suche?" koppeln —
-   * relevant auf der Startseite, wenn man die Kategorie-Tabs umschaltet. */
-  function refreshVisibility(wrap) {
-    if (!wrap) return;
-    wrap.style.display = isImageSearch() ? "" : "none";
+  /* Dropdown bauen + Filter anwenden — aber NUR auf der Bilder-Ergebnisseite. */
+  function ensureUI() {
+    if (!hasImageResults()) return;
+    if (!buildDropdown()) return;
+    applyFilter();
   }
 
   var rafPending = false;
-  function scheduleApply() {
+  function scheduleEnsure() {
     if (rafPending) return;
     rafPending = true;
     window.requestAnimationFrame(function () {
       rafPending = false;
-      applyFilter();
+      ensureUI();
     });
   }
 
   function init() {
-    var wrap = buildDropdown();
-    if (!wrap) return;
-    refreshVisibility(wrap);
+    ensureUI();
 
-    if (isImageSearch()) applyFilter();
-
-    // Kategorie-Wechsel auf der Startseite -> Sichtbarkeit nachziehen.
-    var catInputs = document.querySelectorAll(
-      '#categories input, .search_categories input, input[name^="category_"]'
-    );
-    for (var i = 0; i < catInputs.length; i++) {
-      catInputs[i].addEventListener("change", function () { refreshVisibility(wrap); });
-    }
-
-    // Sicherheitsnetz: falls Ergebnisse asynchron nachgerendert werden,
-    // Filter erneut anwenden (entprellt via requestAnimationFrame).
-    var urls = document.getElementById("urls") || document.getElementById("results");
-    if (urls && window.MutationObserver) {
+    // Sicherheitsnetz: falls die Ergebnisliste asynchron (nach-)gerendert wird,
+    // erneut pruefen/anwenden. Beobachtet werden NUR die Ergebnis-Container —
+    // die Filterzeile (wo das Dropdown sitzt) liegt ausserhalb, daher keine
+    // Selbst-Ausloese-Schleife. childList meldet keine Attribut-Aenderungen,
+    // applyFilter setzt nur Styles/data-* -> kein Retrigger.
+    var target = document.getElementById("results") || document.getElementById("urls");
+    if (target && window.MutationObserver) {
       var mo = new MutationObserver(function (mutations) {
         for (var m = 0; m < mutations.length; m++) {
           if (mutations[m].addedNodes && mutations[m].addedNodes.length) {
-            scheduleApply();
+            scheduleEnsure();
             return;
           }
         }
       });
-      mo.observe(urls, { childList: true, subtree: true });
+      mo.observe(target, { childList: true, subtree: true });
     }
   }
 
