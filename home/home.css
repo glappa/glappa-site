@@ -2,6 +2,10 @@
    Standalone-Bundle: enthaelt alle Styles die home/index.html braucht,
    damit der home/ Ordner einfach aufs VPS gedropt werden kann. */
 
+/* Web-Font: Comic Neue als Comic-Sans-Ersatz fuer Clients ohne
+   "Comic Sans MS" (Linux/Android/iOS) -> gleicher Look wie Firefox Desktop. */
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+
 :root {
   --neon-green:  #00ff00;
   --neon-pink:   #ff00ff;
@@ -17,7 +21,7 @@ body, html {
   background-image: url('../img/gif/background.gif');
   background-repeat: repeat;
   background-attachment: fixed;
-  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
   color: #fff;
   cursor: url('../coursor/WoW Cursor.cur'), auto;
   overflow-x: hidden;
@@ -60,7 +64,7 @@ a:visited { color: var(--neon-yellow); }
   flex-direction: column;
   align-items: center;
   text-align: center;
-  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
   user-select: none;
   padding: 4px 14px;
 }
