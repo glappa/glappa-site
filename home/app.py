@@ -51,6 +51,9 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 <title>YT.DL &mdash; Glappa</title>
 <link rel="icon" href="/img/favicon.ico">
 <style>
+  /* Web-Font: Comic Neue als Comic-Sans-Ersatz fuer Clients ohne
+     "Comic Sans MS" (Android/iOS/Linux) -> Look wie Firefox Desktop. */
+  @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
   :root {{
     --neon-green: #00ff00;
     --neon-pink:  #ff00ff;
@@ -67,7 +70,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
     background-repeat: repeat;
     background-attachment: fixed;
     color: #fff;
-    font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+    font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
     cursor: url('/coursor/WoW%20Cursor.cur'), auto;
     overflow-x: hidden;
   }}
@@ -106,7 +109,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   .page-banner {{
     display: inline-flex; flex-direction: column;
     align-items: center; text-align: center;
-    font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+    font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
     user-select: none; padding: 4px 14px;
   }}
   .page-banner h2 {{
@@ -254,7 +257,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
     background: #111;
     border: 3px outset var(--border);
     color: #aaa;
-    font-family: "Comic Sans MS", cursive, sans-serif;
+    font-family: "Comic Sans MS", "Comic Neue", cursive, sans-serif;
     font-weight: bold;
     font-size: 0.95rem;
     cursor: pointer;
@@ -280,7 +283,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
     background: #000;
     border: 4px outset var(--neon-green);
     color: var(--neon-green);
-    font-family: "Comic Sans MS", cursive, sans-serif;
+    font-family: "Comic Sans MS", "Comic Neue", cursive, sans-serif;
     font-size: 1.4rem;
     font-weight: bold;
     letter-spacing: 2px;

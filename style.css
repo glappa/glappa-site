@@ -1,3 +1,10 @@
+/* Web-Font (damit Comic Sans auf ALLEN Clients gleich aussieht — Linux/
+   Android/iOS haben kein "Comic Sans MS". Comic Neue ist ein quasi-
+   identischer Klon; Desktop-Firefox nutzt weiterhin echtes Comic Sans MS,
+   Android faellt jetzt auf Comic Neue statt auf die haessliche cursive-
+   Systemschrift zurueck -> gleicher Look wie Firefox Desktop). */
+@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap');
+
 :root {
   --neon-green: #00ff00;
   --neon-pink: #ff00ff;
@@ -13,7 +20,7 @@ body, html {
   background-image: url('img/gif/background.gif');
   background-repeat: repeat;
   background-attachment: fixed;
-  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
   color: #fff;
   cursor: url('coursor/WoW Cursor.cur'), auto;
   overflow-x: hidden;
@@ -60,7 +67,7 @@ a:visited { color: var(--neon-yellow); }
   flex-direction: column;
   align-items: center;
   text-align: center;
-  font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
+  font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
   user-select: none;
   padding: 4px 14px;
 }
