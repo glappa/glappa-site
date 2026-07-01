@@ -577,4 +577,12 @@ a:visited { color: var(--neon-yellow); }
   .badges img { height: 24px; }
   .player-vol { margin-left: 0; width: 100%; }
   .player-vol input[type="range"] { flex: 1; }
+  /* Aliens kleiner, damit sie mit dem HOME-Banner in einer Reihe bleiben */
+  .header { gap: 8px; }
+  .alien { width: 48px; height: auto; }
+}
+
+@media (max-width: 380px) {
+  .header { gap: 6px; }
+  .alien { width: 38px; height: auto; }
 }
