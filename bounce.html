@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bounce &mdash; Glappa</title>
   <meta name="keywords" content="90's Glappa Webseite Bounce">
-  <meta name="description" content="Bouncy Balls Forever">
+  <meta name="description" content="Bounce Forever">
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css?v=17">
   <style>
-    /* ---------- Bounce: unendlich viele Baelle mit Zufalls-Variationen ---------- */
-    /* Jeder Ball bekommt per JS eigene Farb-/Form-Werte; hier nur der Huepf-Takt. */
-    .bx-ball {
+    /* ---------- Bounce: unendlich viele GIFs mit Zufalls-Variationen ---------- */
+    /* Jedes GIF bekommt per JS eigene Farb-/Form-Werte; hier nur der Huepf-Takt. */
+    .bx-item {
       animation: bx-bob 2.4s ease-in-out infinite;
       will-change: translate;
     }
@@ -32,14 +32,14 @@
     @keyframes bx-blink { 50% { opacity: .35; } }
     #bounceSentinel { height: 1px; }
     @media (prefers-reduced-motion: reduce) {
-      .bx-ball, .bounce-hint { animation: none; }
+      .bx-item, .bounce-hint { animation: none; }
     }
   </style>
 </head>
 <body>
 
   <div class="marquee marquee--top">
-    <span>&#9733; BOUNCE ZONE &#9733; SO VIELE B&Auml;LLE &#9733; H&Uuml;PF H&Uuml;PF H&Uuml;PF &#9733; </span>
+    <span>&#9733; BOUNCE ZONE &#9733; SO VIEL BOUNCE &#9733; H&Uuml;PF H&Uuml;PF H&Uuml;PF &#9733; </span>
   </div>
 
   <header class="header">
@@ -74,8 +74,8 @@
     <img class="rocket rocket--flip" src="img/gif/Rocket.gif" alt="" aria-hidden="true">
   </div>
 
-  <!-- Die Baelle werden per JS unendlich nachgeladen (siehe Script unten). -->
-  <main class="bounce-grid" id="bounceGrid" aria-label="unendlich viele huepfende Baelle">
+  <!-- Die GIFs werden per JS unendlich nachgeladen (siehe Script unten). -->
+  <main class="bounce-grid" id="bounceGrid" aria-label="endlose Bounce-Galerie">
     <noscript>
       <!-- Fallback ohne JavaScript: statische Grund-Sammlung -->
       <img src="img/gif/b1.gif" alt="bouncing girl 1">
@@ -98,7 +98,7 @@
     </noscript>
   </main>
 
-  <p class="bounce-hint" id="bounceHint">&#9660; einfach weiter scrollen &hellip; es kommen immer neue B&auml;lle &#9660;</p>
+  <p class="bounce-hint" id="bounceHint">&#9660; einfach weiter scrollen &hellip; es kommt immer mehr Bounce &#9660;</p>
   <div id="bounceSentinel" aria-hidden="true"></div>
 
   <footer class="footer">
@@ -169,16 +169,16 @@
 
     const rnd = (a, b) => a + Math.random() * (b - a);
 
-    // Jeder Ball bekommt eine quasi-einzigartige Optik: Farbdrehung, Saettigung,
+    // Jedes GIF bekommt eine quasi-einzigartige Optik: Farbdrehung, Saettigung,
     // Helligkeit, Spiegelung, Skalierung, Drehung + ab und zu einen Spezial-
     // Effekt (Negativ / Sepia / Kontrast) und einen eigenen Huepf-Rhythmus.
-    function makeBall() {
+    function makeItem() {
       const img = document.createElement('img');
       img.src = 'img/gif/' + nextName() + '.gif';
-      img.alt = 'huepfender Ball';
+      img.alt = 'bouncing girl';
       img.loading = 'lazy';
       img.decoding = 'async';
-      img.className = 'bx-ball';
+      img.className = 'bx-item';
 
       const hue = Math.floor(rnd(0, 360));
       const sat = rnd(0.7, 2.4).toFixed(2);
@@ -207,15 +207,15 @@
 
     function addBatch(n) {
       const frag = document.createDocumentFragment();
-      for (let i = 0; i < n && count < MAX; i++, count++) frag.appendChild(makeBall());
+      for (let i = 0; i < n && count < MAX; i++, count++) frag.appendChild(makeItem());
       grid.appendChild(frag);
       if (count >= MAX) {
         const hint = document.getElementById('bounceHint');
-        if (hint) hint.textContent = '★ das waren ' + MAX + ' Bälle — genug gehüpft? ★';
+        if (hint) hint.textContent = '★ das waren ' + MAX + ' GIFs — genug gebounct? ★';
       }
     }
 
-    // Solange der Sentinel nah genug am Viewport ist, immer weiter Baelle
+    // Solange der Sentinel nah genug am Viewport ist, immer weiter GIFs
     // nachschieben. (Ein IntersectionObserver feuert bei durchgehendem
     // Sichtkontakt nur einmal — deshalb hier scroll-gesteuert.)
     let ticking = false;
