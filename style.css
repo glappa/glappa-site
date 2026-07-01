@@ -440,4 +440,12 @@ a:visited { color: var(--neon-yellow); }
   .isaac-row img { max-height: 180px; }
   .construction .rocket { width: 38px; max-width: 38px; }
   .badges img { height: 24px; }
+  /* Aliens kleiner, damit sie mit dem Banner in einer Reihe bleiben */
+  .header { gap: 8px; }
+  .alien { width: 48px; height: auto; }
+}
+
+@media (max-width: 380px) {
+  .header { gap: 6px; }
+  .alien { width: 38px; height: auto; }
 }
