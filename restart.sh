@@ -12,6 +12,12 @@
 #   bash restart.sh --no-build (nur restart, kein rebuild — schneller)
 #   bash restart.sh --pull     (vorher 'git pull' — neuesten Code holen)
 #   bash restart.sh --no-cron  (den taeglichen Auto-Restart-Cron nicht setzen)
+#   bash restart.sh -logs      (NICHTS neu starten — nur die Live-Logs
+#                               ALLER laufenden Container zeigen)
+#
+# Nach jedem Restart (und im -logs-Modus) folgt das Skript den Logs *aller*
+# laufenden Container — nicht nur dem eigenen Compose-Stack. So sieht man auch
+# Nachbar-Container (z. B. searxng), die in keiner docker-compose.yml stehen.
 #
 # Auf dem VPS richtet das Skript ausserdem einen cron ein, der den Container
 # jede Nacht um 00:00 neu startet (idempotent — legt nichts doppelt an).
@@ -28,19 +34,56 @@ ok()   { echo -e "${G}✓${X} $*"; }
 warn() { echo -e "${Y}•${X} $*"; }
 err()  { echo -e "${R}✗${X} $*" >&2; }
 
+TAIL=50   # wieviele alte Zeilen pro Container beim Anhaengen zeigen
+
+# ── Alle laufenden Container live verfolgen ─────────────────────────
+# 'docker compose logs' zeigt nur den eigenen Stack (hier bloss 'glappa').
+# Fuer "alles" haengen wir uns an JEDEN laufenden Container und praefixen
+# jede Zeile mit dem farbigen Container-Namen, damit man sieht wer spricht.
+# Ctrl+C beendet alle Streams zugleich.
+follow_all_logs() {
+    local names
+    mapfile -t names < <($SUDO docker ps --format '{{.Names}}' | sort)
+    if [ "${#names[@]}" -eq 0 ]; then
+        warn "keine laufenden Container gefunden."
+        return 0
+    fi
+    say "folge Logs von: ${names[*]}"
+    echo
+
+    # Namen auf gleiche Breite auffuellen -> saubere Spalten.
+    local w=0 n
+    for n in "${names[@]}"; do [ "${#n}" -gt "$w" ] && w="${#n}"; done
+
+    local pids=()
+    # Beim Verlassen (Ctrl+C / Fehler) alle Hintergrund-Streams abraeumen.
+    trap 'kill "${pids[@]}" 2>/dev/null; trap - INT TERM EXIT' INT TERM EXIT
+    for n in "${names[@]}"; do
+        local label
+        label=$(printf "%-${w}s" "$n")
+        # sed -u = ungepuffert, damit Zeilen sofort erscheinen (kein Blockpuffer).
+        $SUDO docker logs -f --tail "$TAIL" "$n" 2>&1 \
+            | sed -u "s/^/$(printf '%b' "${C}${label}${X} | ")/" &
+        pids+=($!)
+    done
+    wait
+}
+
 # ── Args / Auto-detect ──────────────────────────────────────────────
 COMPOSE=""
 BUILD="--build"
 PULL=0
 CRON=1
+LOGS_ONLY=0
 for arg in "$@"; do
     case "$arg" in
-        --local)    COMPOSE="docker-compose.yml" ;;
-        --vps)      COMPOSE="docker-compose.vps.yml" ;;
-        --no-build) BUILD="" ;;
-        --pull)     PULL=1 ;;
-        --no-cron)  CRON=0 ;;
-        *)          echo "Unbekanntes Flag: $arg" >&2; exit 1 ;;
+        --local)      COMPOSE="docker-compose.yml" ;;
+        --vps)        COMPOSE="docker-compose.vps.yml" ;;
+        --no-build)   BUILD="" ;;
+        --pull)       PULL=1 ;;
+        --no-cron)    CRON=0 ;;
+        -logs|--logs) LOGS_ONLY=1 ;;
+        *)            echo "Unbekanntes Flag: $arg" >&2; exit 1 ;;
     esac
 done
 
@@ -71,6 +114,15 @@ fi
 HOST_SUDO=""
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
     HOST_SUDO="sudo"
+fi
+
+# ── -logs: nichts neu starten, nur die Logs ALLER Container folgen ──
+if [ "$LOGS_ONLY" = "1" ]; then
+    echo
+    echo -e "${B}── Live-Logs aller Container (Ctrl+C zum beenden) ──${X}"
+    echo
+    follow_all_logs
+    exit 0
 fi
 
 # ── Host-Ports aus der Compose-Datei lesen ("8080:8080" → 8080) ─────
@@ -244,8 +296,8 @@ $SUDO docker compose -f "$COMPOSE" ps
 # laeuft nichts mehr.
 ensure_daily_restart_cron
 
-# ── Logs (live, Ctrl+C zum verlassen) ───────────────────────────────
+# ── Logs (live, Ctrl+C zum verlassen) — ALLE Container ──────────────
 echo
-echo -e "${B}── Live-Logs (Ctrl+C zum beenden) ──${X}"
+echo -e "${B}── Live-Logs aller Container (Ctrl+C zum beenden) ──${X}"
 echo
-exec $SUDO docker compose -f "$COMPOSE" logs -f --tail 30
+follow_all_logs
