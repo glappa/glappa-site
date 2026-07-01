@@ -11,9 +11,15 @@
 #   bash restart.sh --vps     (forciere docker-compose.vps.yml)
 #   bash restart.sh --no-build (nur restart, kein rebuild — schneller)
 #   bash restart.sh --pull     (vorher 'git pull' — neuesten Code holen)
+#   bash restart.sh --no-cron  (den taeglichen Auto-Restart-Cron nicht setzen)
+#
+# Auf dem VPS richtet das Skript ausserdem einen cron ein, der den Container
+# jede Nacht um 00:00 neu startet (idempotent — legt nichts doppelt an).
 
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
+PROJECT="$(pwd)"
+LOG_FILE="$HOME/glappa-restart.log"
 
 # ── Farben + Helpers ────────────────────────────────────────────────
 G='\033[1;32m'; Y='\033[1;33m'; R='\033[1;31m'; C='\033[1;36m'; B='\033[1m'; X='\033[0m'
@@ -26,12 +32,14 @@ err()  { echo -e "${R}✗${X} $*" >&2; }
 COMPOSE=""
 BUILD="--build"
 PULL=0
+CRON=1
 for arg in "$@"; do
     case "$arg" in
         --local)    COMPOSE="docker-compose.yml" ;;
         --vps)      COMPOSE="docker-compose.vps.yml" ;;
         --no-build) BUILD="" ;;
         --pull)     PULL=1 ;;
+        --no-cron)  CRON=0 ;;
         *)          echo "Unbekanntes Flag: $arg" >&2; exit 1 ;;
     esac
 done
@@ -76,6 +84,9 @@ echo "Location:   ${LOC:-auto}"
 echo "Compose:    $COMPOSE"
 echo "Build:      ${BUILD:-(nein, nur restart)}"
 echo "Ports:      ${HOST_PORTS[*]}"
+if [ "$COMPOSE" = "docker-compose.vps.yml" ] && [ "$CRON" = "1" ]; then
+    echo "Auto-Neust: taeglich 00:00 via cron (--no-cron schaltet ab)"
+fi
 echo
 
 # ── Optional: Code aktualisieren ────────────────────────────────────
@@ -143,6 +154,31 @@ free_ports() {
     done
 }
 
+# Stellt sicher, dass ein cron-Eintrag den Container jede Nacht 00:00 neu
+# startet — damit der taegliche Restart auch ohne vps-deploy.sh existiert.
+# Idempotent (legt nichts doppelt an), nur auf dem VPS sinnvoll.
+ensure_daily_restart_cron() {
+    [ "$CRON" = "1" ] || return 0
+    [ "$COMPOSE" = "docker-compose.vps.yml" ] || return 0
+    command -v crontab >/dev/null 2>&1 || return 0
+    local tag="# glappa-site daily restart"
+    local line="0 0 * * * cd $PROJECT && ${SUDO:+sudo }docker compose -f $COMPOSE restart >> $LOG_FILE 2>&1  $tag"
+    # Bestehendes crontab ZUERST komplett einlesen, dann schreiben — so gibt
+    # es kein gleichzeitiges Lesen/Schreiben und keine fremden Eintraege gehen
+    # verloren.
+    local existing
+    existing="$(crontab -l 2>/dev/null || true)"
+    if printf '%s\n' "$existing" | grep -qF "$tag"; then
+        return 0   # existiert schon → nichts tun
+    fi
+    if { [ -n "$existing" ] && printf '%s\n' "$existing"; printf '%s\n' "$line"; } | crontab - 2>/dev/null; then
+        $HOST_SUDO systemctl enable --now cron >/dev/null 2>&1 || true
+        ok "taeglicher Auto-Restart 00:00 eingerichtet (cron). Log: $LOG_FILE"
+    else
+        warn "cron nicht setzbar (crontab fehlt/kein Zugriff) — daily restart uebersprungen."
+    fi
+}
+
 # ── Alles stoppen: Compose-Stack runter ─────────────────────────────
 say "stoppe & entferne Compose-Stack (glappa, searxng, …)..."
 $SUDO docker compose -f "$COMPOSE" down --remove-orphans || true
@@ -202,6 +238,11 @@ ok "Status: $STATUS"
 
 echo
 $SUDO docker compose -f "$COMPOSE" ps
+
+# ── Taeglichen Auto-Restart (cron) sicherstellen ────────────────────
+# Muss VOR dem 'exec logs' passieren — exec ersetzt den Prozess, danach
+# laeuft nichts mehr.
+ensure_daily_restart_cron
 
 # ── Logs (live, Ctrl+C zum verlassen) ───────────────────────────────
 echo
