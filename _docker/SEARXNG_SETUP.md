@@ -54,6 +54,35 @@ Klont Repo + ruft `setup-search-apache.sh`.
 
 ---
 
+## Lokal testen (andere Maschine, kein VPS/Domain/TLS)
+
+Um Aenderungen an `glappa-style.css` / `glappa-search.js` zu pruefen, ohne
+sie auf den VPS zu deployen: ein separates Docker-Compose-Setup startet
+SearXNG + einen kleinen nginx-Proxy, der dieselbe Style-Injection macht wie
+Apache/mod_substitute auf dem VPS (nur ohne Apache/TLS/Domain).
+
+Voraussetzung: Docker + `docker compose` (v2) auf der Maschine, sonst nichts.
+
+```bash
+cd _docker
+bash run-search-local.sh
+```
+
+Danach ist die Suche unter **http://localhost:8890/** erreichbar, optisch
+identisch zu `search.glappa.de` (gleiches CSS/JS aus `searxng-static/`).
+
+```bash
+bash run-search-local.sh --logs     # Logs streamen
+bash run-search-local.sh --status   # Container-Status
+bash run-search-local.sh --stop     # wieder runterfahren
+```
+
+Betrifft NICHT den VPS oder die echte Domain — komplett isolierte, lokale
+Instanz mit eigenem `secret_key` (wird beim ersten Start automatisch
+generiert, siehe `searxng-local/settings.yml`).
+
+---
+
 ## Voraussetzung
 
 Vor dem `install-searxng.sh`-Lauf muss beim DNS-Provider für `glappa.de` ein A-Record existieren:
@@ -110,8 +139,16 @@ _docker/
 ├── vps-search-setup.sh        # Eigentlicher Setup-Workflow
 ├── caddy/
 │   └── Caddyfile              # TLS + reverse_proxy für search.glappa.de
-└── searxng/
-    └── settings.yml           # SearXNG-Config (secret_key wird automatisch gesetzt)
+├── searxng/
+│   └── settings.yml           # SearXNG-Config (secret_key wird automatisch gesetzt)
+├── searxng-static/
+│   ├── glappa-style.css       # 90er-Style-Override (wird injiziert)
+│   └── glappa-search.js       # Dateiformat-Filter fuer Bilder-Suche
+├── run-search-local.sh              # LOKALES Testen (kein VPS/Domain/TLS)
+├── docker-compose.search-local.yml  # searxng + nginx-Proxy nur lokal
+├── nginx-search-local.conf          # nginx-Pendant zu apache/search.glappa.de.conf
+└── searxng-local/
+    └── settings.yml           # SearXNG-Config nur fuer die lokale Instanz
 
 home/
 ├── search.html                # Such-Portal-Seite (statisch, lädt auf FTP)
