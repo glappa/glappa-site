@@ -8,6 +8,33 @@
   <meta name="description" content="Bouncy Balls Forever">
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css?v=17">
+  <style>
+    /* ---------- Bounce: unendlich viele Baelle mit Zufalls-Variationen ---------- */
+    /* Jeder Ball bekommt per JS eigene Farb-/Form-Werte; hier nur der Huepf-Takt. */
+    .bx-ball {
+      animation: bx-bob 2.4s ease-in-out infinite;
+      will-change: translate;
+    }
+    @keyframes bx-bob {
+      0%, 100% { translate: 0 0; }
+      50%      { translate: 0 -12px; }
+    }
+    .bounce-hint {
+      text-align: center;
+      font-family: 'Comic Sans MS', cursive, sans-serif;
+      font-weight: bold;
+      color: #ff00ff;
+      text-shadow: 1px 1px 0 #00ffff;
+      padding: 6px 12px 28px;
+      margin: 0;
+      animation: bx-blink 1s steps(2, start) infinite;
+    }
+    @keyframes bx-blink { 50% { opacity: .35; } }
+    #bounceSentinel { height: 1px; }
+    @media (prefers-reduced-motion: reduce) {
+      .bx-ball, .bounce-hint { animation: none; }
+    }
+  </style>
 </head>
 <body>
 
@@ -47,149 +74,32 @@
     <img class="rocket rocket--flip" src="img/gif/Rocket.gif" alt="" aria-hidden="true">
   </div>
 
-  <main class="bounce-grid">
-    <!-- Original-Sammlung (17) -->
-    <img src="img/gif/b1.gif" alt="bouncing girl 1">
-    <img src="img/gif/b2.gif" alt="bouncing girl 2">
-    <img src="img/gif/b3.gif" alt="bouncing girl 3">
-    <img src="img/gif/b4.gif" alt="bouncing girl 4">
-    <img src="img/gif/b5.gif" alt="bouncing girl 5">
-    <img src="img/gif/b6.gif" alt="bouncing girl 6">
-    <img src="img/gif/b7.gif" alt="bouncing girl 7">
-    <img src="img/gif/b8.gif" alt="bouncing girl 8">
-    <img src="img/gif/b9.gif" alt="bouncing girl 9">
-    <img src="img/gif/b10.gif" alt="bouncing girl 10">
-    <img src="img/gif/b11.gif" alt="bouncing girl 11">
-    <img src="img/gif/b12.gif" alt="bouncing girl 12">
-    <img src="img/gif/b13.gif" alt="bouncing girl 13">
-    <img src="img/gif/b14.gif" alt="bouncing girl 14">
-    <img src="img/gif/b15.gif" alt="bouncing girl 15">
-    <img src="img/gif/b16.gif" alt="bouncing girl 16">
-    <img src="img/gif/b18.gif" alt="bouncing girl 18">
-
-    <!-- 120 Unique-Variations: jede hat ein neues sichtbares Feature -->
-    <!-- (Krone/Halo/Hoerner/Schleife/Partyhut/Brille/Maske/Aura/Sparkles + Color-Stil) -->
-    <img src="img/gif/bx001.gif" alt="unique variant 001">
-    <img src="img/gif/bx002.gif" alt="unique variant 002">
-    <img src="img/gif/bx003.gif" alt="unique variant 003">
-    <img src="img/gif/bx004.gif" alt="unique variant 004">
-    <img src="img/gif/bx005.gif" alt="unique variant 005">
-    <img src="img/gif/bx006.gif" alt="unique variant 006">
-    <img src="img/gif/bx007.gif" alt="unique variant 007">
-    <img src="img/gif/bx008.gif" alt="unique variant 008">
-    <img src="img/gif/bx009.gif" alt="unique variant 009">
-    <img src="img/gif/bx010.gif" alt="unique variant 010">
-    <img src="img/gif/bx011.gif" alt="unique variant 011">
-    <img src="img/gif/bx012.gif" alt="unique variant 012">
-    <img src="img/gif/bx013.gif" alt="unique variant 013">
-    <img src="img/gif/bx014.gif" alt="unique variant 014">
-    <img src="img/gif/bx015.gif" alt="unique variant 015">
-    <img src="img/gif/bx016.gif" alt="unique variant 016">
-    <img src="img/gif/bx017.gif" alt="unique variant 017">
-    <img src="img/gif/bx018.gif" alt="unique variant 018">
-    <img src="img/gif/bx019.gif" alt="unique variant 019">
-    <img src="img/gif/bx020.gif" alt="unique variant 020">
-    <img src="img/gif/bx021.gif" alt="unique variant 021">
-    <img src="img/gif/bx022.gif" alt="unique variant 022">
-    <img src="img/gif/bx023.gif" alt="unique variant 023">
-    <img src="img/gif/bx024.gif" alt="unique variant 024">
-    <img src="img/gif/bx025.gif" alt="unique variant 025">
-    <img src="img/gif/bx026.gif" alt="unique variant 026">
-    <img src="img/gif/bx027.gif" alt="unique variant 027">
-    <img src="img/gif/bx028.gif" alt="unique variant 028">
-    <img src="img/gif/bx029.gif" alt="unique variant 029">
-    <img src="img/gif/bx030.gif" alt="unique variant 030">
-    <img src="img/gif/bx031.gif" alt="unique variant 031">
-    <img src="img/gif/bx032.gif" alt="unique variant 032">
-    <img src="img/gif/bx033.gif" alt="unique variant 033">
-    <img src="img/gif/bx034.gif" alt="unique variant 034">
-    <img src="img/gif/bx035.gif" alt="unique variant 035">
-    <img src="img/gif/bx036.gif" alt="unique variant 036">
-    <img src="img/gif/bx037.gif" alt="unique variant 037">
-    <img src="img/gif/bx038.gif" alt="unique variant 038">
-    <img src="img/gif/bx039.gif" alt="unique variant 039">
-    <img src="img/gif/bx040.gif" alt="unique variant 040">
-    <img src="img/gif/bx041.gif" alt="unique variant 041">
-    <img src="img/gif/bx042.gif" alt="unique variant 042">
-    <img src="img/gif/bx043.gif" alt="unique variant 043">
-    <img src="img/gif/bx044.gif" alt="unique variant 044">
-    <img src="img/gif/bx045.gif" alt="unique variant 045">
-    <img src="img/gif/bx046.gif" alt="unique variant 046">
-    <img src="img/gif/bx047.gif" alt="unique variant 047">
-    <img src="img/gif/bx048.gif" alt="unique variant 048">
-    <img src="img/gif/bx049.gif" alt="unique variant 049">
-    <img src="img/gif/bx050.gif" alt="unique variant 050">
-    <img src="img/gif/bx051.gif" alt="unique variant 051">
-    <img src="img/gif/bx052.gif" alt="unique variant 052">
-    <img src="img/gif/bx053.gif" alt="unique variant 053">
-    <img src="img/gif/bx054.gif" alt="unique variant 054">
-    <img src="img/gif/bx055.gif" alt="unique variant 055">
-    <img src="img/gif/bx056.gif" alt="unique variant 056">
-    <img src="img/gif/bx057.gif" alt="unique variant 057">
-    <img src="img/gif/bx058.gif" alt="unique variant 058">
-    <img src="img/gif/bx059.gif" alt="unique variant 059">
-    <img src="img/gif/bx060.gif" alt="unique variant 060">
-    <img src="img/gif/bx061.gif" alt="unique variant 061">
-    <img src="img/gif/bx062.gif" alt="unique variant 062">
-    <img src="img/gif/bx063.gif" alt="unique variant 063">
-    <img src="img/gif/bx064.gif" alt="unique variant 064">
-    <img src="img/gif/bx065.gif" alt="unique variant 065">
-    <img src="img/gif/bx066.gif" alt="unique variant 066">
-    <img src="img/gif/bx067.gif" alt="unique variant 067">
-    <img src="img/gif/bx068.gif" alt="unique variant 068">
-    <img src="img/gif/bx069.gif" alt="unique variant 069">
-    <img src="img/gif/bx070.gif" alt="unique variant 070">
-    <img src="img/gif/bx071.gif" alt="unique variant 071">
-    <img src="img/gif/bx072.gif" alt="unique variant 072">
-    <img src="img/gif/bx073.gif" alt="unique variant 073">
-    <img src="img/gif/bx074.gif" alt="unique variant 074">
-    <img src="img/gif/bx075.gif" alt="unique variant 075">
-    <img src="img/gif/bx076.gif" alt="unique variant 076">
-    <img src="img/gif/bx077.gif" alt="unique variant 077">
-    <img src="img/gif/bx078.gif" alt="unique variant 078">
-    <img src="img/gif/bx079.gif" alt="unique variant 079">
-    <img src="img/gif/bx080.gif" alt="unique variant 080">
-    <img src="img/gif/bx081.gif" alt="unique variant 081">
-    <img src="img/gif/bx082.gif" alt="unique variant 082">
-    <img src="img/gif/bx083.gif" alt="unique variant 083">
-    <img src="img/gif/bx084.gif" alt="unique variant 084">
-    <img src="img/gif/bx085.gif" alt="unique variant 085">
-    <img src="img/gif/bx086.gif" alt="unique variant 086">
-    <img src="img/gif/bx087.gif" alt="unique variant 087">
-    <img src="img/gif/bx088.gif" alt="unique variant 088">
-    <img src="img/gif/bx089.gif" alt="unique variant 089">
-    <img src="img/gif/bx090.gif" alt="unique variant 090">
-    <img src="img/gif/bx091.gif" alt="unique variant 091">
-    <img src="img/gif/bx092.gif" alt="unique variant 092">
-    <img src="img/gif/bx093.gif" alt="unique variant 093">
-    <img src="img/gif/bx094.gif" alt="unique variant 094">
-    <img src="img/gif/bx095.gif" alt="unique variant 095">
-    <img src="img/gif/bx096.gif" alt="unique variant 096">
-    <img src="img/gif/bx097.gif" alt="unique variant 097">
-    <img src="img/gif/bx098.gif" alt="unique variant 098">
-    <img src="img/gif/bx099.gif" alt="unique variant 099">
-    <img src="img/gif/bx100.gif" alt="unique variant 100">
-    <img src="img/gif/bx101.gif" alt="unique variant 101">
-    <img src="img/gif/bx102.gif" alt="unique variant 102">
-    <img src="img/gif/bx103.gif" alt="unique variant 103">
-    <img src="img/gif/bx104.gif" alt="unique variant 104">
-    <img src="img/gif/bx105.gif" alt="unique variant 105">
-    <img src="img/gif/bx106.gif" alt="unique variant 106">
-    <img src="img/gif/bx107.gif" alt="unique variant 107">
-    <img src="img/gif/bx108.gif" alt="unique variant 108">
-    <img src="img/gif/bx109.gif" alt="unique variant 109">
-    <img src="img/gif/bx110.gif" alt="unique variant 110">
-    <img src="img/gif/bx111.gif" alt="unique variant 111">
-    <img src="img/gif/bx112.gif" alt="unique variant 112">
-    <img src="img/gif/bx113.gif" alt="unique variant 113">
-    <img src="img/gif/bx114.gif" alt="unique variant 114">
-    <img src="img/gif/bx115.gif" alt="unique variant 115">
-    <img src="img/gif/bx116.gif" alt="unique variant 116">
-    <img src="img/gif/bx117.gif" alt="unique variant 117">
-    <img src="img/gif/bx118.gif" alt="unique variant 118">
-    <img src="img/gif/bx119.gif" alt="unique variant 119">
-    <img src="img/gif/bx120.gif" alt="unique variant 120">
+  <!-- Die Baelle werden per JS unendlich nachgeladen (siehe Script unten). -->
+  <main class="bounce-grid" id="bounceGrid" aria-label="unendlich viele huepfende Baelle">
+    <noscript>
+      <!-- Fallback ohne JavaScript: statische Grund-Sammlung -->
+      <img src="img/gif/b1.gif" alt="bouncing girl 1">
+      <img src="img/gif/b2.gif" alt="bouncing girl 2">
+      <img src="img/gif/b3.gif" alt="bouncing girl 3">
+      <img src="img/gif/b4.gif" alt="bouncing girl 4">
+      <img src="img/gif/b5.gif" alt="bouncing girl 5">
+      <img src="img/gif/b6.gif" alt="bouncing girl 6">
+      <img src="img/gif/b7.gif" alt="bouncing girl 7">
+      <img src="img/gif/b8.gif" alt="bouncing girl 8">
+      <img src="img/gif/b9.gif" alt="bouncing girl 9">
+      <img src="img/gif/b10.gif" alt="bouncing girl 10">
+      <img src="img/gif/b11.gif" alt="bouncing girl 11">
+      <img src="img/gif/b12.gif" alt="bouncing girl 12">
+      <img src="img/gif/b13.gif" alt="bouncing girl 13">
+      <img src="img/gif/b14.gif" alt="bouncing girl 14">
+      <img src="img/gif/b15.gif" alt="bouncing girl 15">
+      <img src="img/gif/b16.gif" alt="bouncing girl 16">
+      <img src="img/gif/b18.gif" alt="bouncing girl 18">
+    </noscript>
   </main>
+
+  <p class="bounce-hint" id="bounceHint">&#9660; einfach weiter scrollen &hellip; es kommen immer neue B&auml;lle &#9660;</p>
+  <div id="bounceSentinel" aria-hidden="true"></div>
 
   <footer class="footer">
     <div class="construction">
@@ -230,6 +140,105 @@
       <span>&#9733; KEEP BOUNCING &#9733; 100% PURE BOUNCE &#9733; </span>
     </div>
   </footer>
+
+  <!-- ---------- Unendlicher Bounce-Nachschub ---------- -->
+  <script>
+  (function () {
+    const grid = document.getElementById('bounceGrid');
+    const sentinel = document.getElementById('bounceSentinel');
+    if (!grid || !sentinel) return;
+
+    // Alle real existierenden Bounce-GIFs: b1..b16, b18 und bx001..bx120.
+    const pool = [];
+    for (let i = 1; i <= 18; i++) { if (i === 17) continue; pool.push('b' + i); }
+    for (let i = 1; i <= 120; i++) { pool.push('bx' + String(i).padStart(3, '0')); }
+
+    // Gemischte Warteschlange -> nie zweimal dasselbe GIF direkt hintereinander.
+    let queue = [];
+    function refill() {
+      queue = pool.slice();
+      for (let i = queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j], queue[i]];
+      }
+    }
+    function nextName() {
+      if (!queue.length) refill();
+      return queue.pop();
+    }
+
+    const rnd = (a, b) => a + Math.random() * (b - a);
+
+    // Jeder Ball bekommt eine quasi-einzigartige Optik: Farbdrehung, Saettigung,
+    // Helligkeit, Spiegelung, Skalierung, Drehung + ab und zu einen Spezial-
+    // Effekt (Negativ / Sepia / Kontrast) und einen eigenen Huepf-Rhythmus.
+    function makeBall() {
+      const img = document.createElement('img');
+      img.src = 'img/gif/' + nextName() + '.gif';
+      img.alt = 'huepfender Ball';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.className = 'bx-ball';
+
+      const hue = Math.floor(rnd(0, 360));
+      const sat = rnd(0.7, 2.4).toFixed(2);
+      const bri = rnd(0.85, 1.35).toFixed(2);
+      let extra = '';
+      const r = Math.random();
+      if      (r < 0.07) extra = ' invert(1)';
+      else if (r < 0.15) extra = ' sepia(' + rnd(0.4, 1).toFixed(2) + ')';
+      else if (r < 0.20) extra = ' contrast(1.7)';
+      img.style.filter = 'hue-rotate(' + hue + 'deg) saturate(' + sat + ') brightness(' + bri + ')' + extra;
+
+      const flip  = Math.random() < 0.5 ? -1 : 1;
+      const scale = rnd(0.82, 1.18).toFixed(2);
+      const rot   = rnd(-8, 8).toFixed(1);
+      img.style.transform = 'scaleX(' + flip + ') scale(' + scale + ') rotate(' + rot + 'deg)';
+
+      img.style.animationDuration = rnd(1.4, 3.6).toFixed(2) + 's';
+      img.style.animationDelay    = (-rnd(0, 3)).toFixed(2) + 's';
+      return img;
+    }
+
+    const BATCH = 24;
+    const MAX = 6000;    // Sicherheitslimit, damit der Tab nie den RAM sprengt.
+    const TRIGGER = 900; // ab so vielen px unter dem Viewport wird nachgeladen
+    let count = 0;
+
+    function addBatch(n) {
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < n && count < MAX; i++, count++) frag.appendChild(makeBall());
+      grid.appendChild(frag);
+      if (count >= MAX) {
+        const hint = document.getElementById('bounceHint');
+        if (hint) hint.textContent = '★ das waren ' + MAX + ' Bälle — genug gehüpft? ★';
+      }
+    }
+
+    // Solange der Sentinel nah genug am Viewport ist, immer weiter Baelle
+    // nachschieben. (Ein IntersectionObserver feuert bei durchgehendem
+    // Sichtkontakt nur einmal — deshalb hier scroll-gesteuert.)
+    let ticking = false;
+    function fill() {
+      ticking = false;
+      let guard = 0; // begrenzt, wie viel pro Frame nachgeladen wird
+      while (count < MAX && guard < 60 &&
+             sentinel.getBoundingClientRect().top < window.innerHeight + TRIGGER) {
+        addBatch(BATCH);
+        guard++;
+      }
+    }
+    function schedule() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(fill);
+    }
+
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule, { passive: true });
+    fill(); // Erstbefuellung (fuellt mindestens den ersten Viewport)
+  })();
+  </script>
 
   <script src="script.js?v=17"></script>
 </body>
