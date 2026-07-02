@@ -224,6 +224,11 @@ else
     $DOCKER_SUDO docker compose version >/dev/null 2>&1 || COMPOSE_BIN="docker-compose"
 
     say "Baue + starte Container neu (glappa rebuild aus aktuellem Code)..."
+    # Alten glappa-Container gezielt entfernen: laeuft er noch unter diesem
+    # Namen aus einem frueheren Start / anderen Compose-Projekt, scheitert
+    # 'up' sonst am Name-Konflikt und der veraltete Container laeuft einfach
+    # weiter. Gleiches Muster wie in setup-search-apache.sh.
+    $DOCKER_SUDO docker rm -f glappa >/dev/null 2>&1 || true
     if $DOCKER_SUDO $COMPOSE_BIN -f "$COMPOSE_FILE" up -d --build; then
         ok "Container gebaut + gestartet (Downloader :$DL_PORT)"
         # SearXNG explizit neu starten, damit es eine evtl. neue settings.yml
