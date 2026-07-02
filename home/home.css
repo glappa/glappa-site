@@ -352,6 +352,57 @@ a:visited { color: var(--neon-yellow); }
 }
 .player-vis[hidden] { display: none; }
 
+/* ── Immersive-Modus (tunes.html): Fraktal uebernimmt den Bildschirm ──
+   Wird per JS gesetzt, wenn Musik + Fraktal-Vis laufen und laenger keine
+   Eingabe kommt. Jede Bewegung beendet den Modus wieder. */
+.player-vis--immersive {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  border: none;
+  z-index: 9998;
+  background: #000;
+  /* Backing-Store ist aus Performance-Gruenden gedeckelt ->
+     weich hochskalieren statt harter Pixel */
+  image-rendering: auto;
+  resize: none;
+  cursor: none;
+}
+body.immersive-active { overflow: hidden; }
+
+.immersive-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 7vh;
+  transform: translateX(-50%);
+  z-index: 9999;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px var(--neon-cyan);
+  pointer-events: none;
+  animation: immersive-hint-fade 4s ease forwards;
+}
+.immersive-hint[hidden] { display: none; }
+.immersive-hint-track {
+  font-size: 1.05em;
+  font-weight: bold;
+  color: var(--neon-pink);
+  text-shadow: 0 0 10px var(--neon-pink);
+  margin-bottom: 4px;
+}
+.immersive-hint-sub { font-size: 0.8em; opacity: 0.9; }
+@keyframes immersive-hint-fade {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* Playlist-Filter */
 .player-playlist-search-row {
   display: flex;

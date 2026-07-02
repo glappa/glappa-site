@@ -7,7 +7,7 @@
   <meta name="keywords" content="Glappa Home Music Player Tunes MP3 FLAC OGG">
   <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
   <link rel="icon" href="../favicon.ico">
-  <link rel="stylesheet" href="home.css?v=9">
+  <link rel="stylesheet" href="home.css?v=10">
 </head>
 <body>
 
@@ -147,6 +147,12 @@
     </div>
   </footer>
 
+  <!-- Immersive-Modus: kurzer Einblend-Hinweis beim Umschalten in Vollbild -->
+  <div id="immersiveHint" class="immersive-hint" hidden>
+    <div class="immersive-hint-track" id="immersiveTrack"></div>
+    <div class="immersive-hint-sub">Maus bewegen oder Taste dr&uuml;cken zum Beenden</div>
+  </div>
+
   <script src="../script.js?v=17"></script>
   <script>
     // ── Music-Player ──────────────────────────────────────────
@@ -278,10 +284,14 @@
       //   farbigen Randstruktur startet statt auf der grossen schwarzen
       //   Hauptfigur ("nicht so viel Schwarz am Anfang").
       const POIS = [
-        { re: -0.743643887037151,  im:  0.131825904205330, s: 0.70 }, // Seahorse Valley
-        { re: -0.77568377,         im:  0.13646737,        s: 0.55 }, // Misiurewicz-Spirale
-        { re: -0.10109636384562,   im:  0.95628651080914,  s: 0.85 }, // Triple-Spiral / Tendril
-        { re:  0.3245046418932,    im:  0.04855101129,     s: 0.28 }, // Elephant Valley / Deep Spiral
+        { re: -0.743643887037151,   im:  0.131825904205330,  s: 0.55 }, // Seahorse Valley Deep-Spirale
+        { re: -0.77568377,          im:  0.13646737,         s: 0.50 }, // Misiurewicz-Spirale
+        { re: -0.10109636384562,    im:  0.95628651080914,   s: 0.60 }, // Triple-Spiral / Tendril
+        { re:  0.3245046418932,     im:  0.04855101129,      s: 0.28 }, // Elephant Valley Spirale
+        { re: -0.235125,            im:  0.827215,           s: 0.45 }, // Doppel-Spirale (oberer Bulb)
+        { re:  0.2549870375144766,  im: -0.0005679790528465, s: 0.30 }, // Elephant Valley Deep
+        { re: -1.25066,             im:  0.02012,            s: 0.35 }, // Nadel / Periode-2-Uebergang
+        { re: -0.7453,              im:  0.1127,             s: 0.50 }, // Seepferdchen-Tal West
       ];
       let mPoiIdx = -1;            // -1 = noch keiner gewaehlt -> pickRandomPoi setzt
       let mScale  = 1.0;           // wird beim ersten Frame von pickRandomPoi gesetzt
@@ -291,6 +301,12 @@
       let mBoringStreak = 0;       // Frames in Folge ohne Detail (eine Farbe/Schwarz)
       let mCamX   = 0, mCamY = 0;  // geglaettete Kamera-Mitte (sanftes Gleiten)
       let mBassSmooth = 0;         // stark geglaetteter Bass nur fuer die Bewegung
+      let mMidSmooth  = 0;         // geglaettete Mitten (Rotation + Streifendichte)
+      let mAngle  = 0;             // Blickwinkel: die Ansicht dreht sich langsam mit
+      let mRotDir = 1;             // Drehrichtung, pro POI zufaellig gewaehlt
+      let mHueScale = 8;           // Streifendichte der Faerbung, "atmet" mit den Mitten
+      let mDriftX = 0, mDriftY = 0;// Detail-Drift: zieht die Kamera zur strukturreichen
+                                   // Bildhaelfte -> steuert aus schwarzen Flaechen raus
 
       function pickRandomPoi() {
         let n;
@@ -302,6 +318,8 @@
         mImg = null;
         mCamX = POIS[n].re;         // Kamera sofort auf neuen POI -> kein Quer-Glide
         mCamY = POIS[n].im;
+        mDriftX = 0; mDriftY = 0;   // Drift neu lernen lassen
+        mRotDir = Math.random() < 0.5 ? -1 : 1;
       }
 
       audio.volume = 0.8;
@@ -309,8 +327,14 @@
       // --- Visualizer-Lifecycle ----------------------------------
       function fitCanvas() {
         const r = canvas.getBoundingClientRect();
-        const w = Math.max(64, Math.floor(r.width));
-        const h = Math.max(40, Math.floor(r.height));
+        let w = Math.max(64, Math.floor(r.width));
+        let h = Math.max(40, Math.floor(r.height));
+        // Immersive-Vollbild: das Mandelbrot ist pro Pixel teuer -> Backing-Store
+        // deckeln und per CSS weich hochskalieren, sonst bricht die Framerate ein.
+        if (immersive && visMode === 'mandelbrot' && w > 480) {
+          h = Math.max(40, Math.round(h * (480 / w)));
+          w = 480;
+        }
         if (canvas.width !== w || canvas.height !== h) {
           canvas.width = w;
           canvas.height = h;
@@ -409,40 +433,53 @@
         if (!mImg || mImg.width !== W || mImg.height !== H) {
           mImg = cctx.createImageData(W, H);
         }
-        // Audio-Bands -> Bass treibt Zoom, Treble treibt Farbe, Volume tweakt Detail.
-        // Bass-Huellkurve + Beat kommen aus der geteilten Analyse (updateBass).
+        // Audio-Bands: Bass treibt Zoom-Puls, Mitten drehen die Kamera und die
+        // Streifendichte, Treble treibt die Farbrotation, Gesamtenergie steuert
+        // Saettigung + Detail. Bass-Huellkurve/Beat aus der geteilten Analyse.
         updateBass();
         // Fuer die *Bewegung* einen stark geglaetteten Bass nehmen, damit die
         // Kamera nicht bei jedem Beat seitlich ruckt. Der punchige bassEnv bleibt
         // nur fuer Farbe/Flash.
         mBassSmooth += (bassEnv - mBassSmooth) * 0.05;
         const n = visData.length;
-        let treb = 0, total = 0;
+        const midStart  = Math.max(2, Math.floor(n * 0.06));
         const trebStart = Math.floor(n * 0.55);
-        for (let i = trebStart; i < n; i++) treb += visData[i];
-        for (let i = 0; i < n; i++)         total += visData[i];
+        let mid = 0, treb = 0, total = 0;
+        for (let i = midStart;  i < trebStart; i++) mid   += visData[i];
+        for (let i = trebStart; i < n;         i++) treb  += visData[i];
+        for (let i = 0;         i < n;         i++) total += visData[i];
+        mid   /= ((trebStart - midStart) * 255);
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
+        mMidSmooth += (mid - mMidSmooth) * 0.10;
 
         // Immer ins Set HINEINzoomen (mScale wird kleiner). Tempo folgt dem
         // BPM der Musik: ein KONSTANTER Zoom-Faktor pro Beat -> schnellere Songs
-        // zoomen schneller, langsamere langsamer. ~120 BPM entspricht der
-        // bisherigen ruhigen Geschwindigkeit. Es wird NIE rausgezoomt.
+        // zoomen schneller, langsamere langsamer. Faktor bewusst moderat (7% je
+        // Beat statt frueher 10%) -> eine Zoomfahrt traegt DEUTLICH laenger
+        // (~3+ Minuten bei 120 BPM), bevor die float64-Grenze erreicht ist.
+        // Es wird NIE rausgezoomt.
         bpm += (bpmTarget - bpm) * 0.08;        // Tempo sanft nachfuehren
         const bps = bpm / 60;                   // Beats pro Sekunde
-        // 10% kleinere Skala je Beat, anteilig pro Frame (~60fps) angewandt.
-        let zoomRate = Math.pow(0.90, bps / 60);
-        // Bass/Beat geben einen kleinen Extra-Schub auf den Beat, damit's "atmet".
-        zoomRate *= 1 - (mBassSmooth * 0.006 + beatFlash * 0.006);
+        // 7% kleinere Skala je Beat, anteilig pro Frame (~60fps) angewandt.
+        let zoomRate = Math.pow(0.93, bps / 60);
+        // Bass/Beat geben einen Extra-Schub auf den Beat, damit's hoerbar "atmet".
+        zoomRate *= 1 - (mBassSmooth * 0.005 + beatFlash * 0.010);
         mScale *= zoomRate;
+        // Sanfte Rotation der Ansicht: die Mitten (Melodie/Snare) drehen die
+        // Kamera, der Beat gibt einen kleinen Extra-Dreh. Richtung pro POI random.
+        mAngle += mRotDir * (0.0008 + mMidSmooth * 0.005 + beatFlash * 0.002);
         // Iterationen mit Zoomtiefe + Lautstaerke, aber bewusst GEDECKELT: tief
         // drin ist fast alles "im Set" (schwarz) und durchlaeuft die volle
         // Schleife -> zu viele Iterationen pro Frame lassen die Seite haengen.
         const depth = Math.log(3.0 / mScale);   // ~1-2 am Start, ~28 am Reset
         mIter   = Math.min(340, 80 + Math.floor(total * 180) + Math.floor(depth * 4));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
-        // der Farbsprung sitzt jetzt klar auf dem Beat.
-        mPhase += 0.2 + treb * 10 + total * 4 + beatFlash * 22;
+        // der Farbsprung sitzt klar auf dem Beat.
+        mPhase += 0.2 + treb * 12 + total * 4 + beatFlash * 22;
+        // Streifendichte "atmet" traege mit den Mitten: ruhige Passagen -> breite
+        // Farbbaender, energische -> feine Streifen. Stark geglaettet (kein Flimmern).
+        mHueScale += ((6 + mMidSmooth * 9) - mHueScale) * 0.02;
 
         // DAUERSCHLEIFE: rechtzeitig neu starten, BEVOR die float64-Genauigkeit
         // am Limit (~1e-13) bricht und die Ansicht zu einer schweren, flimmernden
@@ -451,58 +488,84 @@
         if (mScale < 1e-12) pickRandomPoi();
         if (mPoiIdx < 0)    pickRandomPoi();   // erstes Frame
 
-        // Sanfter Orbit: langsame Frequenzen + kleiner Radius. Kamera-Mitte wird
-        // per Tiefpass an's Ziel herangezogen -> fluessiges Gleiten statt Wackeln.
-        const tnow    = performance.now() / 1000;
-        const orbR    = mScale * (0.10 + mBassSmooth * 0.14);
-        const poi     = POIS[mPoiIdx];
-        const targetX = poi.re + Math.sin(tnow * 0.13) * orbR;
-        const targetY = poi.im + Math.cos(tnow * 0.17) * orbR;
+        // Sanfter Orbit + Detail-Drift: die Kamera haengt am POI, kreist mit
+        // kleinem Radius (bleibt in der Randstruktur) und wird zusaetzlich in
+        // Richtung der detailreichsten Bildhaelfte gezogen (mDriftX/Y, im
+        // letzten Frame gemessen) -> steuert aktiv aus schwarzen Flaechen raus.
+        // Kamera-Mitte per Tiefpass ans Ziel -> fluessiges Gleiten statt Wackeln.
+        const tnow  = performance.now() / 1000;
+        const poi   = POIS[mPoiIdx];
+        const ca    = Math.cos(mAngle), sa = Math.sin(mAngle);
+        const orbR  = mScale * (0.05 + mBassSmooth * 0.08);
+        const drift = mScale * 0.30;
+        const targetX = poi.re + Math.sin(tnow * 0.13) * orbR
+                      + (mDriftX * ca - mDriftY * sa) * drift;
+        const targetY = poi.im + Math.cos(tnow * 0.17) * orbR
+                      + (mDriftX * sa + mDriftY * ca) * drift;
         mCamX += (targetX - mCamX) * 0.05;
         mCamY += (targetY - mCamY) * 0.05;
-        const cx     = mCamX;
-        const cy     = mCamY;
-        const px     = mImg.data;
-        const stepX  = mScale / W;
-        const stepY  = mScale / W;       // gleicher Step fuer aspect-correct
-        const x0Base = cx - (W / 2) * stepX;
-        const y0Base = cy - (H / 2) * stepY;
+        const cx    = mCamX;
+        const cy    = mCamY;
+        const px    = mImg.data;
+        const step  = mScale / W;        // gleicher Step X/Y fuer aspect-correct
+        const stepC = ca * step;         // gedrehte Pixel-Schritte (Rotation)
+        const stepS = sa * step;
         const maxIt = mIter;
         const phase = mPhase;
-        // Helligkeit pulsiert auf den Beat + Treble -> das ganze Fraktal "blitzt"
-        // hoerbar im Takt, ohne dafuer das Zoom-Tempo anzuheben.
+        const hueSc = mHueScale;
+        // Helligkeit pulsiert auf Beat + Treble, Saettigung folgt der Gesamt-
+        // energie -> laute Stellen leuchten satt, leise werden pastelliger.
         const lBase = 0.55 + Math.min(0.20, beatFlash * 0.20 + treb * 0.08);
+        const sat   = Math.min(0.95, 0.72 + total * 0.45 + beatFlash * 0.10);
+        // Innenseite des Sets NICHT tot-schwarz, sondern dunkles Violett, das
+        // mit Bass/Beat pulsiert -> auch "Seen" reagieren sichtbar auf die Musik.
+        const inPulse = Math.min(1, bassEnv * 0.6 + beatFlash * 0.6);
+        const inR = (8  + inPulse * 34) | 0;
+        const inG = (3  + inPulse * 10) | 0;
+        const inB = (18 + inPulse * 62) | 0;
 
+        const W2 = W >> 1, H2 = H >> 1;
         let idx = 0;
-        let detailCount = 0;     // Pixel die sich vom linken Nachbarn abheben
+        let detailCount = 0;   // Pixel die sich vom linken Nachbarn abheben
+        let blackCount  = 0;   // Pixel im Set (Innenflaeche)
+        let detL = 0, detR = 0, detT = 0, detB = 0; // Detail je Bildhaelfte
         for (let py2 = 0; py2 < H; py2++) {
-          const y0 = y0Base + py2 * stepY;
+          const dy    = py2 - H * 0.5;
+          const rowRe = cx - (W * 0.5) * stepC - dy * stepS;
+          const rowIm = cy - (W * 0.5) * stepS + dy * stepC;
           let prevIt = -999;
           for (let px2 = 0; px2 < W; px2++) {
-            const x0 = x0Base + px2 * stepX;
+            const cr = rowRe + px2 * stepC;
+            const ci = rowIm + px2 * stepS;
             let x = 0, y = 0, x2 = 0, y2 = 0;
             let it = 0;
             while (x2 + y2 <= 4 && it < maxIt) {
-              y = 2 * x * y + y0;
-              x = x2 - y2 + x0;
+              y = 2 * x * y + ci;
+              x = x2 - y2 + cr;
               x2 = x * x;
               y2 = y * y;
               it++;
             }
             // Detail-Metrik: aendert sich die Iterationszahl spuerbar zum
             // Nachbarn, ist hier "Struktur". Glatte Flaeche/eine Farbe -> 0.
-            if (px2 > 0 && Math.abs(it - prevIt) >= 2) detailCount++;
+            // Zusaetzlich je Bildhaelfte gezaehlt -> Richtung fuer den Drift.
+            if (px2 > 0 && Math.abs(it - prevIt) >= 2) {
+              detailCount++;
+              if (px2 < W2) detL++; else detR++;
+              if (py2 < H2) detT++; else detB++;
+            }
             prevIt = it;
             if (it === maxIt) {
-              px[idx] = 0; px[idx+1] = 0; px[idx+2] = 0;
+              blackCount++;
+              px[idx] = inR; px[idx+1] = inG; px[idx+2] = inB;
             } else {
               // Smooth color: it + 1 - log(log|z|)/log2
               const log_zn = Math.log(x2 + y2) / 2;
               const nu = Math.log(log_zn / Math.LN2) / Math.LN2;
               const smooth = it + 1 - nu;
-              const hue = (smooth * 8 + phase) % 360;
+              const hue = (smooth * hueSc + phase) % 360;
               // HSL -> RGB inline (Helligkeit pulsiert auf den Beat)
-              const s = 0.92, l = lBase;
+              const s = sat, l = lBase;
               const c = (1 - Math.abs(2 * l - 1)) * s;
               const hp = hue / 60;
               const xc = c * (1 - Math.abs((hp % 2) - 1));
@@ -524,22 +587,82 @@
         }
         cctx.putImageData(mImg, 0, 0);
 
+        // Detail-Drift fuers NAECHSTE Frame: normierte Links/Rechts- bzw.
+        // Oben/Unten-Balance (-1..1), traege geglaettet -> die Kamera gleitet
+        // Richtung Struktur, statt in schwarze Innenflaechen zu laufen.
+        if (detailCount > 64) {
+          mDriftX += ((detR - detL) / detailCount - mDriftX) * 0.05;
+          mDriftY += ((detB - detT) / detailCount - mDriftY) * 0.05;
+        } else {
+          mDriftX *= 0.98; mDriftY *= 0.98;
+        }
+
         // Boring-Streak: ist zu lange (~2.5s) nur EINE Farbe / kaum Struktur zu
-        // sehen (z.B. in einen schwarzen "See" reingezoomt), wird das Fraktal
-        // NEU GESTARTET: pickRandomPoi() setzt mScale auf die Startansicht eines
-        // neuen zufaelligen POI und zoomt dort wieder rein.
-        // Schwelle bewusst hoch -> kurze flache Stellen loesen KEINEN Reset aus.
-        const detailRatio = detailCount / (W * H);
-        if (detailRatio < 0.05) mBoringStreak++;
-        else                    mBoringStreak = 0;
+        // sehen, wird das Fraktal NEU GESTARTET: pickRandomPoi() setzt mScale
+        // auf die Startansicht eines neuen zufaelligen POI.
+        // Dominiert die schwarze Innenflaeche das Bild, zaehlt der Streak
+        // schneller hoch -> fruehzeitiger Neustart statt lange im "See" haengen.
+        // Schwelle sonst bewusst hoch -> kurze flache Stellen loesen KEINEN Reset aus.
+        const area = W * H;
+        if (detailCount / area < 0.05) mBoringStreak++;
+        else                           mBoringStreak = 0;
+        if (blackCount / area > 0.60)  mBoringStreak += 3;
         if (mBoringStreak > 150) pickRandomPoi();
 
         pumpDisplay();
       }
 
+      // --- Immersive-Modus ----------------------------------------
+      // Laeuft Musik mit aktivem Fraktal-Visualizer und der Nutzer ruehrt sich
+      // laenger (IMMERSIVE_AFTER) nicht, nimmt das Fraktal den ganzen Bildschirm
+      // ein. Musik + Audio-Reaktion laufen dabei einfach weiter. JEDE Eingabe
+      // (Maus/Taste/Touch/Scroll) beendet den Modus sofort wieder.
+      const IMMERSIVE_AFTER = 15000;  // ms ohne Eingabe bis zum Vollbild
+      let immersive = false;
+      let lastActivity = performance.now();
+      let immersiveHintT = 0;
+      const immersiveHint  = document.getElementById('immersiveHint');
+      const immersiveTrack = document.getElementById('immersiveTrack');
+
+      function enterImmersive() {
+        immersive = true;
+        document.body.classList.add('immersive-active');
+        canvas.classList.add('player-vis--immersive');
+        fitCanvas();
+        // Kurzer Einblend-Hinweis: Trackname + wie man wieder rauskommt
+        immersiveTrack.textContent = (current >= 0 && tracks[current]) ? tracks[current].name : '';
+        immersiveHint.hidden = false;
+        clearTimeout(immersiveHintT);
+        immersiveHintT = setTimeout(() => { immersiveHint.hidden = true; }, 4000);
+      }
+
+      function exitImmersive() {
+        if (!immersive) return;
+        immersive = false;
+        document.body.classList.remove('immersive-active');
+        canvas.classList.remove('player-vis--immersive');
+        immersiveHint.hidden = true;
+        clearTimeout(immersiveHintT);
+        fitCanvas();
+      }
+
+      function noteActivity() {
+        lastActivity = performance.now();
+        if (immersive) exitImmersive();
+      }
+      ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev =>
+        window.addEventListener(ev, noteActivity, { passive: true })
+      );
+
       // --- Dispatcher ---------------------------------------------
       function drawVis() {
         if (!analyser || visMode === 'off' || audio.paused) { visRaf = 0; return; }
+        // Immersive-Check: Fraktal an + Musik laeuft + lange keine Eingabe
+        // -> ab in den Vollbildmodus.
+        if (!immersive && visMode === 'mandelbrot' &&
+            performance.now() - lastActivity > IMMERSIVE_AFTER) {
+          enterImmersive();
+        }
         // Naechsten Frame ZUERST einplanen, dann erst zeichnen. Wirft ein
         // einzelner Frame eine Exception, stirbt dadurch NICHT die ganze
         // Schleife (sonst bleibt der Visualizer stehen, waehrend die Musik
@@ -565,6 +688,7 @@
 
       function setVisMode(mode) {
         if (!VIS_MODES.includes(mode)) mode = 'off';
+        exitImmersive();               // Mode-Wechsel beendet Vollbild immer
         visMode = mode;
         try { localStorage.setItem(VIS_PREF_KEY, mode); } catch (e) {}
 
@@ -752,12 +876,16 @@
         playBtn.innerHTML = '&#9654;';
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
         clearPump();
+        // Ohne Musik kein Vollbild-Fraktal. ABER: beim automatischen Track-
+        // Wechsel feuert 'pause' via 'ended' auch -> dann drinbleiben, die
+        // Musik geht ja sofort weiter (das regelt der 'ended'-Handler).
+        if (!audio.ended) exitImmersive();
       });
       audio.addEventListener('ended', () => {
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
         if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
         const isLast = current === tracks.length - 1;
-        if (isLast && repeat !== 'all' && !shuffle) { stop(); return; }
+        if (isLast && repeat !== 'all' && !shuffle) { stop(); exitImmersive(); return; }
         next();
       });
       audio.addEventListener('error', () => {
