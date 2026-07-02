@@ -959,10 +959,44 @@
         if (!immersiveEnabled) exitImmersive();
       });
 
+      // Screen Wake Lock: haelt Bildschirm/PC im Immersive-Modus wach (wie
+      // beim Video-Schauen). Ohne API-Support oder bei Ablehnung passiert
+      // einfach nichts weiter.
+      let wakeLock = null;
+
+      async function acquireWakeLock() {
+        if (!('wakeLock' in navigator) || wakeLock) return;
+        try {
+          const lock = await navigator.wakeLock.request('screen');
+          if (!immersive) {           // Immersive wurde waehrend des await beendet
+            lock.release().catch(() => {});
+            return;
+          }
+          wakeLock = lock;
+          lock.addEventListener('release', () => {
+            if (wakeLock === lock) wakeLock = null;
+          });
+        } catch (e) { /* z.B. Energiespar-Modus des Systems -> ok */ }
+      }
+
+      function releaseWakeLock() {
+        if (wakeLock) {
+          wakeLock.release().catch(() => {});
+          wakeLock = null;
+        }
+      }
+
+      // Der Browser gibt Wake Locks beim Tab-Wechsel automatisch frei ->
+      // beim Zurueckkommen neu anfordern, solange der Immersive-Modus laeuft.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && immersive) acquireWakeLock();
+      });
+
       function enterImmersive() {
         immersive = true;
         document.body.classList.add('immersive-active');
         canvas.classList.add('player-vis--immersive');
+        acquireWakeLock();
         fitCanvas();
         // Kurzer Einblend-Hinweis: Trackname + wie man wieder rauskommt
         immersiveTrack.textContent = (current >= 0 && tracks[current]) ? tracks[current].name : '';
@@ -974,6 +1008,7 @@
       function exitImmersive() {
         if (!immersive) return;
         immersive = false;
+        releaseWakeLock();
         document.body.classList.remove('immersive-active');
         canvas.classList.remove('player-vis--immersive');
         immersiveHint.hidden = true;
