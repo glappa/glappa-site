@@ -307,6 +307,136 @@
       let mHueScale = 8;           // Streifendichte der Faerbung, "atmet" mit den Mitten
       let mDriftX = 0, mDriftY = 0;// Detail-Drift: zieht die Kamera zur strukturreichen
                                    // Bildhaelfte -> steuert aus schwarzen Flaechen raus
+      let mProbeTick = 0;          // Frame-Zaehler fuer die Steering-Probe
+
+      // --- WebGL-Renderer (GPU) ------------------------------------
+      // Das Mandelbrot wird wenn moeglich per WebGL2-Fragment-Shader auf der
+      // GPU gerechnet: volle Bildschirmaufloesung + mehr Iterationen bei
+      // fluessiger Framerate (die alte CPU-Schleife bleibt als Fallback).
+      // Tiefe Zooms brauchen mehr Genauigkeit als float32 hergibt, deshalb
+      // PERTURBATION: ein Referenz-Orbit am POI wird in JS mit float64
+      // gerechnet und als Textur hochgeladen; der Shader iteriert pro Pixel
+      // nur das kleine Delta dazu (float32 reicht dafuer in JEDER Zoomtiefe).
+      // "Rebasing" (Zhuoran) haelt die Deltas klein und verhindert Glitches.
+      let mGL = null;              // {gl, canvas, prog, u, tex, refPoi} | null -> CPU
+      let mGLTried = false;        // Init nur einmal versuchen
+      let mGLScale = 1;            // dynamische Render-Aufloesung (0.5..1)
+      let mFrameEMA = 16;          // geglaettete Frame-Zeit (ms) fuer die Anpassung
+      let mLastFrameT = 0;
+      let mAdaptTick = 0;
+      const REF_MAX = 700;         // Laenge des Referenz-Orbits (> max. Iterationen)
+      let mRef = { data: new Float32Array(REF_MAX * 2), len: 1 };
+
+      // Referenz-Orbit in float64: Z_0=0, Z_{n+1}=Z_n^2+c am POI. Entkommt der
+      // Orbit numerisch doch, bricht er ab -> der Shader "rebased" dann einfach.
+      function computeRefOrbit(re, im) {
+        const data = new Float32Array(REF_MAX * 2);
+        let x = 0, y = 0, i = 0;
+        for (; i < REF_MAX; i++) {
+          data[i * 2] = x; data[i * 2 + 1] = y;
+          const x2 = x * x, y2 = y * y;
+          if (x2 + y2 > 1e6) { i++; break; }
+          y = 2 * x * y + im;
+          x = x2 - y2 + re;
+        }
+        return { data, len: i };
+      }
+
+      function initGL() {
+        try {
+          const c = document.createElement('canvas');
+          const gl = c.getContext('webgl2', {
+            alpha: false, depth: false, stencil: false, antialias: false,
+            powerPreference: 'high-performance'
+          });
+          if (!gl) return null;
+          const vs = '#version 300 es\n' +
+            'void main(){' +
+            'vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));' +
+            'gl_Position=vec4(p*2.0-1.0,0.0,1.0);}';
+          const fsrc = '#version 300 es\n' +
+            'precision highp float; precision highp int;\n' +
+            'uniform sampler2D uRef;\n' +
+            'uniform int uRefLen; uniform int uMaxIter;\n' +
+            'uniform vec2 uDC;      // Kamera-Mitte minus Referenzpunkt\n' +
+            'uniform vec2 uRotStep; // (cos*step, sin*step) der Pixel-Rotation\n' +
+            'uniform vec2 uRes;\n' +
+            'uniform float uHueSc; uniform float uPhase; uniform float uSat; uniform float uLum;\n' +
+            'uniform vec3 uInCol;   // Innenflaeche (pulsiert mit dem Bass)\n' +
+            'out vec4 fragColor;\n' +
+            'void main(){\n' +
+            '  float dx = gl_FragCoord.x - uRes.x*0.5;\n' +
+            '  float dy = uRes.y*0.5 - gl_FragCoord.y; // Y-Flip wie CPU-Pfad (Zeile 0 = oben)\n' +
+            '  vec2 dc = uDC + vec2(dx*uRotStep.x - dy*uRotStep.y, dx*uRotStep.y + dy*uRotStep.x);\n' +
+            '  vec2 dz = vec2(0.0);\n' +
+            '  int m = 0; float esc = -1.0; float zz = 0.0;\n' +
+            '  for (int i = 0; i < 2000; i++) {\n' +
+            '    if (i >= uMaxIter) break;\n' +
+            '    vec2 Z = texelFetch(uRef, ivec2(m,0), 0).xy;\n' +
+            '    vec2 t = 2.0*Z + dz;\n' +
+            '    dz = vec2(t.x*dz.x - t.y*dz.y, t.x*dz.y + t.y*dz.x) + dc;\n' +
+            '    m++;\n' +
+            '    vec2 z = texelFetch(uRef, ivec2(m,0), 0).xy + dz;\n' +
+            '    zz = dot(z,z);\n' +
+            '    if (zz > 4.0) { esc = float(i+1); break; }\n' +
+            '    // Rebase: volles z kleiner als Delta ODER Referenz am Ende\n' +
+            '    if (zz < dot(dz,dz) || m >= uRefLen-1) { dz = z; m = 0; }\n' +
+            '  }\n' +
+            '  if (esc < 0.0) { fragColor = vec4(uInCol, 1.0); return; }\n' +
+            '  // Smooth-Coloring + HSL->RGB, identisch zum CPU-Pfad\n' +
+            '  float nu = log2(log2(zz)*0.5);\n' +
+            '  float sm = esc + 1.0 - nu;\n' +
+            '  float h = mod(sm*uHueSc + uPhase, 360.0)/60.0;\n' +
+            '  float cc = (1.0-abs(2.0*uLum-1.0))*uSat;\n' +
+            '  float xx = cc*(1.0-abs(mod(h,2.0)-1.0));\n' +
+            '  vec3 rgb = h<1.0?vec3(cc,xx,0.0): h<2.0?vec3(xx,cc,0.0): h<3.0?vec3(0.0,cc,xx):\n' +
+            '             h<4.0?vec3(0.0,xx,cc): h<5.0?vec3(xx,0.0,cc): vec3(cc,0.0,xx);\n' +
+            '  fragColor = vec4(rgb + (uLum - cc*0.5), 1.0);\n' +
+            '}';
+          function sh(type, src) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, src);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+              throw new Error(gl.getShaderInfoLog(s));
+            }
+            return s;
+          }
+          const prog = gl.createProgram();
+          gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+          gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fsrc));
+          gl.linkProgram(prog);
+          if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+            throw new Error(gl.getProgramInfoLog(prog));
+          }
+          gl.useProgram(prog);
+          const u = {};
+          ['uRef','uRefLen','uMaxIter','uDC','uRotStep','uRes',
+           'uHueSc','uPhase','uSat','uLum','uInCol'].forEach(name => {
+            u[name] = gl.getUniformLocation(prog, name);
+          });
+          gl.uniform1i(u.uRef, 0);
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          // Geht der Kontext verloren (Treiber/Tab-Druck), still auf CPU wechseln
+          c.addEventListener('webglcontextlost', e => {
+            e.preventDefault();
+            mGL = null;
+            fitCanvas();
+          });
+          return { canvas: c, gl, prog, u, tex, refPoi: -1 };
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function ensureGL() {
+        if (!mGLTried) { mGLTried = true; mGL = initGL(); }
+      }
 
       function pickRandomPoi() {
         let n;
@@ -320,6 +450,7 @@
         mCamY = POIS[n].im;
         mDriftX = 0; mDriftY = 0;   // Drift neu lernen lassen
         mRotDir = Math.random() < 0.5 ? -1 : 1;
+        mRef = computeRefOrbit(POIS[n].re, POIS[n].im); // fuer den GPU-Shader
       }
 
       audio.volume = 0.8;
@@ -329,9 +460,10 @@
         const r = canvas.getBoundingClientRect();
         let w = Math.max(64, Math.floor(r.width));
         let h = Math.max(40, Math.floor(r.height));
-        // Immersive-Vollbild: das Mandelbrot ist pro Pixel teuer -> Backing-Store
-        // deckeln und per CSS weich hochskalieren, sonst bricht die Framerate ein.
-        if (immersive && visMode === 'mandelbrot' && w > 480) {
+        // Immersive-Vollbild OHNE GPU: die CPU-Schleife ist pro Pixel teuer ->
+        // Backing-Store deckeln und per CSS weich hochskalieren, sonst bricht
+        // die Framerate ein. Mit WebGL rendert die GPU die volle Aufloesung.
+        if (immersive && visMode === 'mandelbrot' && !mGL && w > 480) {
           h = Math.max(40, Math.round(h * (480 / w)));
           w = 480;
         }
@@ -430,9 +562,6 @@
       // --- Mandelbrot-Vis (Auto-Zoom + Audio-Reactive) ------------
       function drawMandelbrot() {
         const W = canvas.width, H = canvas.height;
-        if (!mImg || mImg.width !== W || mImg.height !== H) {
-          mImg = cctx.createImageData(W, H);
-        }
         // Audio-Bands: Bass treibt Zoom-Puls, Mitten drehen die Kamera und die
         // Streifendichte, Treble treibt die Farbrotation, Gesamtenergie steuert
         // Saettigung + Detail. Bass-Huellkurve/Beat aus der geteilten Analyse.
@@ -469,14 +598,17 @@
         // Sanfte Rotation der Ansicht: die Mitten (Melodie/Snare) drehen die
         // Kamera, der Beat gibt einen kleinen Extra-Dreh. Richtung pro POI random.
         mAngle += mRotDir * (0.0008 + mMidSmooth * 0.005 + beatFlash * 0.002);
-        // Iterationen mit Zoomtiefe + Lautstaerke, aber bewusst GEDECKELT: tief
-        // drin ist fast alles "im Set" (schwarz) und durchlaeuft die volle
-        // Schleife -> zu viele Iterationen pro Frame lassen die Seite haengen.
+        // Iterationen mit Zoomtiefe + Lautstaerke. Auf der GPU sind Iterationen
+        // billig -> deutlich hoeheres Budget = mehr Detail, gerade tief im Zoom.
+        // Der CPU-Fallback bleibt GEDECKELT, sonst haengt die Seite.
         const depth = Math.log(3.0 / mScale);   // ~1-2 am Start, ~28 am Reset
-        mIter   = Math.min(340, 80 + Math.floor(total * 180) + Math.floor(depth * 4));
+        mIter = mGL
+          ? Math.min(650, 100 + Math.floor(total * 160) + Math.floor(depth * 16))
+          : Math.min(340,  80 + Math.floor(total * 180) + Math.floor(depth * 4));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt klar auf dem Beat.
         mPhase += 0.2 + treb * 12 + total * 4 + beatFlash * 22;
+        if (mPhase >= 36000) mPhase -= 36000; // Vielfaches von 360 -> float32-sicher
         // Streifendichte "atmet" traege mit den Mitten: ruhige Passagen -> breite
         // Farbbaender, energische -> feine Streifen. Stark geglaettet (kein Flimmern).
         mHueScale += ((6 + mMidSmooth * 9) - mHueScale) * 0.02;
@@ -504,15 +636,6 @@
                       + (mDriftX * sa + mDriftY * ca) * drift;
         mCamX += (targetX - mCamX) * 0.05;
         mCamY += (targetY - mCamY) * 0.05;
-        const cx    = mCamX;
-        const cy    = mCamY;
-        const px    = mImg.data;
-        const step  = mScale / W;        // gleicher Step X/Y fuer aspect-correct
-        const stepC = ca * step;         // gedrehte Pixel-Schritte (Rotation)
-        const stepS = sa * step;
-        const maxIt = mIter;
-        const phase = mPhase;
-        const hueSc = mHueScale;
         // Helligkeit pulsiert auf Beat + Treble, Saettigung folgt der Gesamt-
         // energie -> laute Stellen leuchten satt, leise werden pastelliger.
         const lBase = 0.55 + Math.min(0.20, beatFlash * 0.20 + treb * 0.08);
@@ -524,16 +647,84 @@
         const inG = (3  + inPulse * 10) | 0;
         const inB = (18 + inPulse * 62) | 0;
 
-        const W2 = W >> 1, H2 = H >> 1;
+        if (mGL) renderMandelGL(W, H, ca, sa, lBase, sat, inR, inG, inB);
+        else     renderMandelCPU(W, H, ca, sa, lBase, sat, inR, inG, inB);
+
+        // Steuer-Logik (Detail-Drift + Boring-Reset) laeuft unabhaengig vom
+        // Renderer auf einem kleinen float64-Proberaster, jedes 3. Frame.
+        if (mProbeTick++ % 3 === 0) probeSteering(ca, sa);
+
+        pumpDisplay();
+      }
+
+      // GPU-Pfad: Perturbation-Shader in voller Aufloesung. Die Render-
+      // Aufloesung passt sich der gemessenen Frame-Zeit an (mGLScale), damit
+      // es auch auf schwacher Grafik fluessig bleibt; skaliert wird weich
+      // per drawImage auf das sichtbare Canvas.
+      function renderMandelGL(W, H, ca, sa, lBase, sat, inR, inG, inB) {
+        const g = mGL, gl = g.gl;
+        const nowMs = performance.now();
+        if (mLastFrameT > 0) {
+          const dt = Math.min(200, nowMs - mLastFrameT);
+          mFrameEMA += (dt - mFrameEMA) * 0.15;
+        }
+        mLastFrameT = nowMs;
+        if (++mAdaptTick >= 20) {
+          mAdaptTick = 0;
+          if      (mFrameEMA > 40 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.7);
+          else if (mFrameEMA > 26 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.85);
+          else if (mFrameEMA < 18 && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.15);
+        }
+        const rw = Math.max(64, Math.round(W * mGLScale));
+        const rh = Math.max(40, Math.round(H * mGLScale));
+        if (g.canvas.width !== rw || g.canvas.height !== rh) {
+          g.canvas.width = rw; g.canvas.height = rh;
+        }
+        gl.viewport(0, 0, rw, rh);
+        gl.useProgram(g.prog);
+        if (g.refPoi !== mPoiIdx) {  // Referenz-Orbit des aktuellen POI hochladen
+          gl.bindTexture(gl.TEXTURE_2D, g.tex);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, REF_MAX, 1, 0, gl.RG, gl.FLOAT, mRef.data);
+          g.refPoi = mPoiIdx;
+        }
+        const poi  = POIS[mPoiIdx];
+        const step = mScale / rw;
+        gl.uniform2f(g.u.uRes, rw, rh);
+        // Nur die (kleine) Differenz Kamera-Referenz geht als float32 zur GPU,
+        // die Genauigkeit haengt damit NICHT an der absoluten Position.
+        gl.uniform2f(g.u.uDC, mCamX - poi.re, mCamY - poi.im);
+        gl.uniform2f(g.u.uRotStep, ca * step, sa * step);
+        gl.uniform1i(g.u.uRefLen, mRef.len);
+        gl.uniform1i(g.u.uMaxIter, mIter);
+        gl.uniform1f(g.u.uHueSc, mHueScale);
+        gl.uniform1f(g.u.uPhase, mPhase % 360);
+        gl.uniform1f(g.u.uSat, sat);
+        gl.uniform1f(g.u.uLum, lBase);
+        gl.uniform3f(g.u.uInCol, inR / 255, inG / 255, inB / 255);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        cctx.drawImage(g.canvas, 0, 0, W, H);
+      }
+
+      // CPU-Fallback: die bisherige float64-Pixelschleife (nur Rendering,
+      // die Steuer-Metriken macht probeSteering).
+      function renderMandelCPU(W, H, ca, sa, lBase, sat, inR, inG, inB) {
+        if (!mImg || mImg.width !== W || mImg.height !== H) {
+          mImg = cctx.createImageData(W, H);
+        }
+        const cx    = mCamX;
+        const cy    = mCamY;
+        const px    = mImg.data;
+        const step  = mScale / W;        // gleicher Step X/Y fuer aspect-correct
+        const stepC = ca * step;         // gedrehte Pixel-Schritte (Rotation)
+        const stepS = sa * step;
+        const maxIt = mIter;
+        const phase = mPhase;
+        const hueSc = mHueScale;
         let idx = 0;
-        let detailCount = 0;   // Pixel die sich vom linken Nachbarn abheben
-        let blackCount  = 0;   // Pixel im Set (Innenflaeche)
-        let detL = 0, detR = 0, detT = 0, detB = 0; // Detail je Bildhaelfte
         for (let py2 = 0; py2 < H; py2++) {
           const dy    = py2 - H * 0.5;
           const rowRe = cx - (W * 0.5) * stepC - dy * stepS;
           const rowIm = cy - (W * 0.5) * stepS + dy * stepC;
-          let prevIt = -999;
           for (let px2 = 0; px2 < W; px2++) {
             const cr = rowRe + px2 * stepC;
             const ci = rowIm + px2 * stepS;
@@ -546,17 +737,7 @@
               y2 = y * y;
               it++;
             }
-            // Detail-Metrik: aendert sich die Iterationszahl spuerbar zum
-            // Nachbarn, ist hier "Struktur". Glatte Flaeche/eine Farbe -> 0.
-            // Zusaetzlich je Bildhaelfte gezaehlt -> Richtung fuer den Drift.
-            if (px2 > 0 && Math.abs(it - prevIt) >= 2) {
-              detailCount++;
-              if (px2 < W2) detL++; else detR++;
-              if (py2 < H2) detT++; else detB++;
-            }
-            prevIt = it;
             if (it === maxIt) {
-              blackCount++;
               px[idx] = inR; px[idx+1] = inG; px[idx+2] = inB;
             } else {
               // Smooth color: it + 1 - log(log|z|)/log2
@@ -586,30 +767,68 @@
           }
         }
         cctx.putImageData(mImg, 0, 0);
+      }
 
-        // Detail-Drift fuers NAECHSTE Frame: normierte Links/Rechts- bzw.
-        // Oben/Unten-Balance (-1..1), traege geglaettet -> die Kamera gleitet
-        // Richtung Struktur, statt in schwarze Innenflaechen zu laufen.
-        if (detailCount > 64) {
-          mDriftX += ((detR - detL) / detailCount - mDriftX) * 0.05;
-          mDriftY += ((detB - detT) / detailCount - mDriftY) * 0.05;
-        } else {
-          mDriftX *= 0.98; mDriftY *= 0.98;
+      // Steering-Probe: kleines float64-Raster mit derselben Geometrie wie das
+      // Bild. Liefert Detail-Balance (-> Drift Richtung Struktur) und erkennt
+      // "langweilige" Ansichten (eine Farbe / schwarze Innenflaeche) fuer den
+      // Neustart an einem frischen POI. Laeuft jedes 3. Frame, kostet ~1-3ms.
+      function probeSteering(ca, sa) {
+        const PW = 64;
+        const PH = Math.max(8, Math.round(PW * canvas.height / Math.max(1, canvas.width)));
+        const maxIt = mIter;
+        const step  = mScale / PW;
+        const stepC = ca * step, stepS = sa * step;
+        const cx = mCamX, cy = mCamY;
+        const W2 = PW >> 1, H2 = PH >> 1;
+        let detail = 0, black = 0;
+        let detL = 0, detR = 0, detT = 0, detB = 0;
+        for (let r = 0; r < PH; r++) {
+          const dy    = r - PH * 0.5;
+          const rowRe = cx - (PW * 0.5) * stepC - dy * stepS;
+          const rowIm = cy - (PW * 0.5) * stepS + dy * stepC;
+          let prevIt = -999;
+          for (let q = 0; q < PW; q++) {
+            const cr = rowRe + q * stepC;
+            const ci = rowIm + q * stepS;
+            let x = 0, y = 0, x2 = 0, y2 = 0;
+            let it = 0;
+            while (x2 + y2 <= 4 && it < maxIt) {
+              y = 2 * x * y + ci;
+              x = x2 - y2 + cr;
+              x2 = x * x;
+              y2 = y * y;
+              it++;
+            }
+            // Detail-Metrik: Iterationssprung zum Nachbarn = Struktur.
+            // Je Bildhaelfte gezaehlt -> Richtung fuer den Drift.
+            if (q > 0 && Math.abs(it - prevIt) >= 2) {
+              detail++;
+              if (q < W2) detL++; else detR++;
+              if (r < H2) detT++; else detB++;
+            }
+            prevIt = it;
+            if (it === maxIt) black++;
+          }
         }
-
-        // Boring-Streak: ist zu lange (~2.5s) nur EINE Farbe / kaum Struktur zu
-        // sehen, wird das Fraktal NEU GESTARTET: pickRandomPoi() setzt mScale
-        // auf die Startansicht eines neuen zufaelligen POI.
-        // Dominiert die schwarze Innenflaeche das Bild, zaehlt der Streak
-        // schneller hoch -> fruehzeitiger Neustart statt lange im "See" haengen.
+        const area = PW * PH;
+        // Detail-Drift: normierte Links/Rechts- bzw. Oben/Unten-Balance (-1..1),
+        // traege geglaettet -> die Kamera gleitet Richtung Struktur, statt in
+        // schwarze Innenflaechen zu laufen.
+        if (detail > 12) {
+          mDriftX += ((detR - detL) / detail - mDriftX) * 0.12;
+          mDriftY += ((detB - detT) / detail - mDriftY) * 0.12;
+        } else {
+          mDriftX *= 0.9; mDriftY *= 0.9;
+        }
+        // Boring-Streak (zaehlt in Probe-Frames, also 1/3-Frame-Takt): zu lange
+        // (~2.5s) kaum Struktur -> Neustart an neuem POI. Dominiert die schwarze
+        // Innenflaeche, zaehlt der Streak schneller hoch -> frueher Neustart.
         // Schwelle sonst bewusst hoch -> kurze flache Stellen loesen KEINEN Reset aus.
-        const area = W * H;
-        if (detailCount / area < 0.05) mBoringStreak++;
-        else                           mBoringStreak = 0;
-        if (blackCount / area > 0.60)  mBoringStreak += 3;
-        if (mBoringStreak > 150) pickRandomPoi();
-
-        pumpDisplay();
+        if (detail / area < 0.08) mBoringStreak++;
+        else                      mBoringStreak = 0;
+        if (black / area > 0.60)  mBoringStreak += 3;
+        if (mBoringStreak > 50) pickRandomPoi();
       }
 
       // --- Immersive-Modus ----------------------------------------
@@ -672,7 +891,11 @@
           analyser.getByteFrequencyData(visData);
           if (visMode === 'spectrum')        drawSpectrum();
           else if (visMode === 'mandelbrot') drawMandelbrot();
-        } catch (e) { /* Frame ueberspringen, Schleife laeuft weiter */ }
+        } catch (e) {
+          // Frame ueberspringen, Schleife laeuft weiter. Einmalig loggen,
+          // damit ein systematischer Fehler beim Debuggen sichtbar ist.
+          if (!drawVis.warned) { drawVis.warned = true; console.warn('Visualizer-Frame-Fehler:', e); }
+        }
       }
 
       // Startet die Render-Schleife, falls sie laufen SOLLTE aber gerade nicht
@@ -714,6 +937,9 @@
         }
         if (audioCtx.state === 'suspended') audioCtx.resume();
         canvas.hidden = false;
+        // GPU-Renderer (falls verfuegbar) VOR fitCanvas initialisieren, damit
+        // fitCanvas weiss, ob der CPU-Aufloesungsdeckel noetig ist.
+        if (mode === 'mandelbrot') ensureGL();
         fitCanvas();
         // Reset Mandelbrot wenn neu reingewechselt -> random POI
         if (mode === 'mandelbrot') pickRandomPoi();
@@ -876,6 +1102,7 @@
         playBtn.innerHTML = '&#9654;';
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
         clearPump();
+        mLastFrameT = 0;             // Frame-Zeit-Messung nicht ueber Pausen ziehen
         // Ohne Musik kein Vollbild-Fraktal. ABER: beim automatischen Track-
         // Wechsel feuert 'pause' via 'ended' auch -> dann drinbleiben, die
         // Musik geht ja sofort weiter (das regelt der 'ended'-Handler).
