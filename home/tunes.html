@@ -197,8 +197,12 @@
       let analyser = null;
       let visData  = null;
       let visRaf   = 0;
-      let peaks    = null;
-      let visGrad  = null;
+      let peaks    = null;   // Peak-Cap-Hoehen je Balken
+      let peakVel  = null;   // Fall-Geschwindigkeit der Caps (Gravitation)
+      let scopeData = null;  // Time-Domain-Puffer fuer die Oszilloskop-Linie
+      let specHue  = 0;      // langsame Farb-Drehung der Balken-Palette
+      let specParts = [];    // Funken-Partikel {x,y,vx,vy,life,hue}
+      let lastFlash = 0;     // voriger beatFlash -> frische Beats erkennen
       const displayEl = document.querySelector('.player-display');
 
       // --- Bass-/Beat-Analyse (von beiden Modi geteilt) -----------
@@ -472,7 +476,6 @@
         if (canvas.width !== w || canvas.height !== h) {
           canvas.width = w;
           canvas.height = h;
-          visGrad = null;
           peaks = null;
           mImg = null;
         }
@@ -500,37 +503,64 @@
         }
       }
 
-      // --- Spectrum-Vis (Winamp-Style Bars, log-Frequenz) ---------
+      // --- Spectrum-Vis (Winamp deluxe: Bars + Scope + Funken) -----
+      // Aufbau pro Frame: CRT-Nachleuchten -> Beat-Ring -> Balken (rotierende
+      // Neon-Palette) -> Spiegelung am "Glossy Floor" -> Peak-Caps mit
+      // Gravitation -> Oszilloskop-Welle -> Funken-Partikel auf den Beat.
       function drawSpectrum() {
         const W = canvas.width, H = canvas.height;
-        const bass = updateBass();
+        updateBass();
         const n = visData.length;
         const bars = NUM_BARS;
         if (!bandEdges) buildBands(n, bars);
         if (!barVals || barVals.length !== bars) barVals = new Float32Array(bars);
-        if (!peaks   || peaks.length   !== bars) peaks   = new Float32Array(bars);
+        if (!peaks   || peaks.length   !== bars) {
+          peaks   = new Float32Array(bars);
+          peakVel = new Float32Array(bars);
+        }
+        if (!scopeData) scopeData = new Uint8Array(analyser.fftSize);
 
-        cctx.clearRect(0, 0, W, H);
-        // Beat-Flash: kurzer Magenta-Blitz ueber dem ganzen Display
+        // Treble treibt die Farb-Drehung der Palette mit an
+        let treb = 0;
+        const tS = Math.floor(n * 0.55);
+        for (let i = tS; i < n; i++) treb += visData[i];
+        treb /= ((n - tS) * 255);
+        specHue = (specHue + 0.15 + treb * 2.5 + beatFlash * 1.5) % 360;
+
+        // CRT-Phosphor: statt hartem Clear ein halbtransparentes Abdunkeln ->
+        // alles Bewegte zieht kurze Nachleucht-Schweife wie auf alten Monitoren.
+        cctx.fillStyle = 'rgba(0,0,10,0.45)';
+        cctx.fillRect(0, 0, W, H);
+
+        const yFloor = Math.round(H * 0.76);   // "Boden" mit Spiegelung darunter
+
+        // Beat: kurzer Magenta-Blitz + expandierender Schockwellen-Halbring
         if (beatFlash > 0.01) {
-          cctx.fillStyle = 'rgba(255,0,255,' + (beatFlash * 0.16).toFixed(3) + ')';
+          cctx.fillStyle = 'rgba(255,0,255,' + (beatFlash * 0.10).toFixed(3) + ')';
           cctx.fillRect(0, 0, W, H);
+          cctx.strokeStyle = 'rgba(0,255,255,' + (beatFlash * 0.45).toFixed(3) + ')';
+          cctx.lineWidth = 2;
+          cctx.beginPath();
+          cctx.arc(W / 2, yFloor, (1 - beatFlash) * W * 0.45 + 6, Math.PI, Math.PI * 2);
+          cctx.stroke();
         }
-        if (!visGrad) {
-          visGrad = cctx.createLinearGradient(0, H, 0, 0);
-          visGrad.addColorStop(0.00, '#00ff00');
-          visGrad.addColorStop(0.55, '#ffff00');
-          visGrad.addColorStop(0.85, '#ff8800');
-          visGrad.addColorStop(1.00, '#ff00ff');
-        }
+
+        // Balken-Gradient: Gruen->Gelb->Orange->Magenta, aber die ganze Palette
+        // dreht langsam durchs Farbrad (Treble/Beat beschleunigen die Drehung).
+        const h0 = specHue;
+        const grad = cctx.createLinearGradient(0, yFloor, 0, 0);
+        grad.addColorStop(0.00, 'hsl(' + (120 + h0) % 360 + ',100%,50%)');
+        grad.addColorStop(0.55, 'hsl(' + (60  + h0) % 360 + ',100%,50%)');
+        grad.addColorStop(0.85, 'hsl(' + (30  + h0) % 360 + ',100%,55%)');
+        grad.addColorStop(1.00, 'hsl(' + (300 + h0) % 360 + ',100%,60%)');
 
         const barW  = W / bars;
         const gap   = Math.max(1, barW * 0.16);
         const bw    = Math.max(1, barW - gap * 2);
         const boost = 1 + bassEnv * 0.55;   // Bass drueckt alle Balken hoch
-        cctx.fillStyle = visGrad;
+        cctx.fillStyle = grad;
         cctx.shadowColor = '#ff00ff';
-        cctx.shadowBlur  = beatFlash * 12;  // Glow zuckt auf den Beat
+        cctx.shadowBlur  = beatFlash * 14;  // Glow zuckt auf den Beat
 
         for (let b = 0; b < bars; b++) {
           const lo = bandEdges[b];
@@ -543,19 +573,90 @@
           // Fast attack, smooth release: Kicks knallen, fallen weich ab
           if (v > barVals[b]) barVals[b] = v;
           else                barVals[b] += (v - barVals[b]) * 0.22;
-          const h = Math.max(1, barVals[b] * H);
+          const h = Math.max(1, barVals[b] * yFloor);
           const x = b * barW + gap;
-          cctx.fillRect(x, H - h, bw, h);
-          if (barVals[b] > peaks[b]) peaks[b] = barVals[b];
-          else                       peaks[b] = Math.max(0, peaks[b] - 0.012);
+          cctx.fillRect(x, yFloor - h, bw, h);
+          // Peak-Caps mit Gravitation: bleiben oben kurz "kleben" und fallen
+          // dann beschleunigt runter -> viel lebendiger als lineares Sinken.
+          if (barVals[b] >= peaks[b]) {
+            peaks[b] = barVals[b];
+            peakVel[b] = 0;
+          } else {
+            peakVel[b] += 0.0016;
+            peaks[b] = Math.max(barVals[b], peaks[b] - peakVel[b]);
+          }
         }
         cctx.shadowBlur = 0;
 
-        // Peak-Caps
+        // Spiegelung: Balken tauchen unterhalb der Boden-Linie gedimmt und
+        // nach unten auslaufend wieder auf ("glossy floor").
+        const rGrad = cctx.createLinearGradient(0, yFloor, 0, H);
+        rGrad.addColorStop(0, 'hsla(' + (120 + h0) % 360 + ',100%,55%,0.30)');
+        rGrad.addColorStop(1, 'hsla(' + (300 + h0) % 360 + ',100%,55%,0)');
+        cctx.fillStyle = rGrad;
+        const rMax = H - yFloor - 2;
+        for (let b = 0; b < bars; b++) {
+          const rh = Math.min(rMax, barVals[b] * rMax * 1.5);
+          cctx.fillRect(b * barW + gap, yFloor + 2, bw, rh);
+        }
+
+        // Peak-Caps + Boden-Linie
         cctx.fillStyle = '#00ffff';
         for (let b = 0; b < bars; b++) {
-          const py = H - peaks[b] * H;
+          const py = yFloor - peaks[b] * yFloor;
           cctx.fillRect(b * barW + gap, Math.max(0, py - 2), bw, 2);
+        }
+        cctx.fillStyle = 'rgba(0,255,255,0.5)';
+        cctx.fillRect(0, yFloor, W, 1);
+
+        // Oszilloskop-Welle (Time-Domain) schwebt ueber den Balken; Amplitude
+        // atmet mit dem Bass, der Glow zuckt auf den Beat.
+        analyser.getByteTimeDomainData(scopeData);
+        cctx.strokeStyle = 'rgba(0,255,255,0.8)';
+        cctx.lineWidth = 1.5;
+        cctx.shadowColor = '#00ffff';
+        cctx.shadowBlur = 4 + beatFlash * 10;
+        cctx.beginPath();
+        const sN = scopeData.length;
+        const yMid = H * 0.30;
+        const amp  = H * 0.24 * (0.5 + bassEnv * 0.8);
+        const SEG  = 96;
+        for (let i = 0; i <= SEG; i++) {
+          const s = scopeData[Math.floor(i / SEG * (sN - 1))];
+          const y = yMid + ((s - 128) / 128) * amp;
+          if (i === 0) cctx.moveTo(0, y);
+          else         cctx.lineTo(i / SEG * W, y);
+        }
+        cctx.stroke();
+        cctx.shadowBlur = 0;
+
+        // Funken: springen bei jedem frischen Beat aus den lautesten Balken,
+        // steigen auf, fallen im Bogen zurueck und verglimmen (Retro-Pixel).
+        if (beatFlash > lastFlash + 0.5) {
+          let spawned = 0;
+          for (let b = 0; b < bars && spawned < 12; b += 2) {
+            if (barVals[b] < 0.5) continue;
+            specParts.push({
+              x: b * barW + barW / 2,
+              y: yFloor - barVals[b] * yFloor,
+              vx: (Math.random() - 0.5) * 1.4,
+              vy: -(1 + Math.random() * 2),
+              life: 1,
+              hue: (h0 + 280 + Math.random() * 80) % 360
+            });
+            spawned++;
+          }
+          if (specParts.length > 90) specParts.splice(0, specParts.length - 90);
+        }
+        lastFlash = beatFlash;
+        for (let i = specParts.length - 1; i >= 0; i--) {
+          const p = specParts[i];
+          p.x += p.vx; p.y += p.vy;
+          p.vy += 0.05;                       // kleine Gravitation -> Funkenbogen
+          p.life -= 0.022;
+          if (p.life <= 0 || p.y > H) { specParts.splice(i, 1); continue; }
+          cctx.fillStyle = 'hsla(' + p.hue + ',100%,70%,' + p.life.toFixed(2) + ')';
+          cctx.fillRect(p.x, p.y, 2, 2);
         }
 
         pumpDisplay();
