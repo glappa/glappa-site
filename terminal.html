@@ -7,7 +7,7 @@
   <meta name="keywords" content="90's Glappa Terminal, Hacker">
   <meta name="description" content="Retro Terminal Simulator">
   <link rel="icon" href="favicon.ico">
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="style.css?v=18">
   <style>
     body {
       background-color: #000 !important;
@@ -23,7 +23,9 @@
       z-index: 0;
       pointer-events: none;
     }
-    .marquee, header.header, nav.nav, .term-wrap, .marquee--bottom {
+    /* .marquee bewusst NICHT hier: die bleiben fixed (style.css) und liegen
+       mit z-index 900 sowieso ueber dem body::before-Overlay (z-index 0). */
+    header.header, nav.nav, .term-wrap {
       position: relative;
       z-index: 1;
     }
@@ -206,7 +208,7 @@
     </div>
   </div>
 
-  <div class="marquee marquee--bottom" style="margin-top:20px">
+  <div class="marquee marquee--bottom">
     <span>&#9733; HACK THE PLANET &#9733; ROOT ACCESS GRANTED &#9733; DO NOT HACK GLAPPA.DE &#9733; </span>
   </div>
 
@@ -347,7 +349,7 @@
       '/var':         { type: 'dir', children: ['log'] },
       '/var/log':     { type: 'dir', children: ['access.log', 'hack.log'] },
       '/usr':         { type: 'dir', children: ['bin', 'local'] },
-      '/usr/bin':     { type: 'dir', children: ['cat', 'ls', 'rm', 'vim', 'nano', 'python3', 'nmap', 'hydra'] },
+      '/usr/bin':     { type: 'dir', children: ['cat', 'ls', 'rm', 'vim', 'nano', 'python3', 'nmap', 'hydra', 'glappa-chat'] },
       '/secret':      { type: 'dir', children: ['classified.txt', '???'] },
     };
     const FILES = {
@@ -374,6 +376,23 @@
     let cwd = '/home/glappa';
     const cmdHistory = [];
     let histIdx = -1;
+
+    /* ── GLAPPA-CHAT State ── */
+    let chatMode = false;          // true = Eingaben gehen an den Bot
+    let chatBusy = false;          // eine Anfrage laeuft gerade
+    const chatHistory = [];        // {role, content} fuer Kontext
+
+    /* Chat-API: gleiche Endpoint-Logik wie der Visitor-Counter in script.js.
+       home/search.glappa.de -> same-origin ueber den Apache /api-Proxy,
+       glappa.de (Webhoster ohne Backend) -> cross-origin zur VPS (CORS). */
+    function chatEndpoint() {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return location.protocol + '//' + h + ':8080/chat';
+      if (h === 'home.glappa.de' || h === 'search.glappa.de') return '/api/chat';
+      return 'https://home.glappa.de/api/chat';
+    }
 
     /* ══════════════════════════════════════════════════════════════
        BOOT-SEQUENZ
@@ -403,6 +422,7 @@
       { t: 2600, cls: 'line-sys',  txt: 'Kalibriere Bingus-Detektor ......  [ OK ]' },
       { t: 2750, sound: 'seek' },
       { t: 2800, cls: 'line-sys',  txt: 'Verbinde mit Matrix .............  [ OK ]' },
+      { t: 2900, cls: 'line-sys',  txt: 'Lade GLAPPA-BOT KI ..............  [ OK ]' },
       { t: 2950, sound: 'seek' },
       { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
       { t: 3150, cls: 'line-sys',  txt: 'Starte Haupt-Shell ..............  [ OK ]' },
@@ -419,6 +439,7 @@
       { t: 3610, sound: 'chime' },
       { t: 3650, cls: 'line-pink', txt: '  Tippe  help  für eine Liste aller Befehle.' },
       { t: 3670, cls: 'line-info', txt: '  Tippe  neofetch  für Systeminfo.' },
+      { t: 3685, cls: 'line-pink', txt: '  Tippe  glappa-chat  um mit der Glappa-KI zu reden.' },
       { t: 3690, cls: 'line-ok',   txt: '' },
     ];
 
@@ -486,6 +507,7 @@
           ['echo <text>',    'Text ausgeben'],
           ['clear',          'Terminal leeren'],
           ['history',        'Befehlshistorie'],
+          ['glappa-chat',    'Mit der Glappa-KI reden'],
           ['hack',           'Hack the planet'],
           ['matrix',         'Matrix-Effekt'],
           ['cowsay <text>',  'Kuh sagt etwas'],
@@ -678,6 +700,20 @@
         }, 700);
       },
 
+      'glappa-chat'(args) {
+        if (args.length) { sendChat(args.join(' ')); return; }
+        chatMode = true;
+        blank();
+        appendLine('┌──────────────────────────────────────────────┐', 'line-pink');
+        appendLine('│  GLAPPA-CHAT v1.337 — KI auf Pentium-Power   │', 'line-pink');
+        appendLine('└──────────────────────────────────────────────┘', 'line-pink');
+        appendLine('Verbinde mit GLAPPA-BOT .........  [ OK ]', 'line-sys');
+        appendLine('Schreib einfach los. Mit  exit  beendest du den Chat.', 'line-info');
+        appendLine('(Erste Antwort kann dauern — die KI muss erst aufwachen.)', 'line-sys');
+        blank();
+        updatePrompt();
+      },
+
       reboot() {
         blank(); appendLine('System wird neu gestartet...', 'line-info'); blank();
         setTimeout(function(){ window.location.reload(); }, 1400);
@@ -696,18 +732,87 @@
     /* ══════════════════════════════════════════════════════════════
        INPUT VERARBEITEN
     ══════════════════════════════════════════════════════════════ */
+    function updatePrompt() {
+      document.querySelector('.prompt-label').textContent =
+        chatMode ? 'glappa-chat> ' : ('glappa@web:' + cwd + '$ ');
+    }
+
+    /* ── GLAPPA-CHAT: Nachricht an die VPS-KI schicken ── */
+    function sendChat(msg) {
+      if (chatBusy) { appendLine('GLAPPA-BOT denkt noch... einen Moment!', 'line-sys'); return; }
+      chatBusy = true;
+      const thinking = document.createElement('div');
+      thinking.className = 'line-sys blink-text';
+      thinking.textContent = 'GLAPPA-BOT denkt ...';
+      out.appendChild(thinking);
+      out.scrollTop = out.scrollHeight;
+
+      fetch(chatEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, history: chatHistory.slice(-8) })
+      })
+      .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res) {
+        thinking.remove();
+        if (!res.ok || res.d.error) {
+          appendLine('GLAPPA-BOT: ' + (res.d.error || 'Stoerung im Neon-Subsystem. Nochmal versuchen!'), 'line-err');
+          return;
+        }
+        chatHistory.push({ role: 'user', content: msg },
+                         { role: 'assistant', content: res.d.reply });
+        typeReply('GLAPPA-BOT: ' + res.d.reply);
+        playHDDSeek();
+      })
+      .catch(function() {
+        thinking.remove();
+        appendLine('GLAPPA-BOT ist gerade offline. (VPS nicht erreichbar)', 'line-err');
+      })
+      .finally(function() { chatBusy = false; });
+    }
+
+    /* Typewriter-Ausgabe fuer Bot-Antworten (Streaming-Feeling ohne Streaming) */
+    function typeReply(text) {
+      const div = document.createElement('div');
+      div.className = 'line-pink';
+      out.appendChild(div);
+      let i = 0;
+      const iv = setInterval(function() {
+        i += 2;                                  /* 2 Zeichen pro Tick = fluessig */
+        div.textContent = text.slice(0, i);
+        out.scrollTop = out.scrollHeight;
+        if (i >= text.length) { clearInterval(iv); blank(); }
+      }, 16);
+    }
+
     function runCmd(raw) {
       const trimmed = raw.trim();
       if (!trimmed) return;
       cmdHistory.unshift(trimmed);
       histIdx = -1;
+
+      /* Im Chat-Modus gehen Eingaben an den Bot statt an die Shell */
+      if (chatMode) {
+        appendLine('glappa-chat> ' + trimmed, 'line-cmd');
+        const lower = trimmed.toLowerCase();
+        if (lower === 'exit' || lower === 'quit' || lower === 'bye' || lower === '/exit') {
+          chatMode = false;
+          appendLine('GLAPPA-BOT: Bis bald! Und denk dran: Hack the planet! (◕‿◕)', 'line-pink');
+          blank();
+          updatePrompt();
+          return;
+        }
+        sendChat(trimmed);
+        return;
+      }
+
       appendLine('glappa@web:' + cwd + '$ ' + trimmed, 'line-cmd');
       const parts = trimmed.split(/\s+/);
       const cmd   = parts[0].toLowerCase();
       const args  = parts.slice(1);
       if (COMMANDS[cmd]) COMMANDS[cmd](args);
       else COMMANDS._unknown(cmd);
-      document.querySelector('.prompt-label').textContent = 'glappa@web:' + cwd + '$ ';
+      updatePrompt();
     }
 
     inp.addEventListener('keydown', function(e) {

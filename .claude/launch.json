@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8098"],
       "port": 8098
+    },
+    {
+      "name": "glappa-app",
+      "runtimeExecutable": "C:\\Users\\Prieb\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["home/app.py"],
+      "port": 8080
     }
   ]
 }

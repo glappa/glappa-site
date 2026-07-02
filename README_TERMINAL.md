@@ -39,6 +39,34 @@ Retro Terminal Simulator with Matrix Rain Effects
 | `uptime` | System uptime |
 | `load average` | Load averages |
 | `neofetch` | Retro system info display |
+| `glappa-chat [frage]` | Mit der Glappa-KI (LLM auf der VPS) chatten |
+
+## 🤖 GLAPPA-CHAT (LLM-Chatbot)
+
+`glappa-chat` öffnet einen Chat-Modus mit GLAPPA-BOT — einem kleinen LLM, das
+auf der VPS läuft. `glappa-chat <frage>` stellt eine Einzelfrage ohne den
+Modus zu betreten. Im Chat-Modus beendet `exit` (oder `quit`/`bye`) den Chat.
+
+**Architektur:**
+
+```
+terminal.html ──POST /api/chat──> Apache (home.glappa.de:443)
+                                    └──> Flask app.py /chat (:8080)
+                                           └──> Ollama (Container glappa-ollama, intern :11434)
+```
+
+- Modell: `qwen2.5:1.5b` (Default, ~2 GB RAM, CPU-Inferenz). Änderbar via
+  `GLAPPA_CHAT_MODEL` in `_docker/docker-compose.vps.yml` (winzige VPS:
+  `qwen2.5:0.5b`).
+- Persona/Limits (Rate-Limit 10 Nachrichten/Minute pro IP, max. 500 Zeichen)
+  stecken in `home/app.py`.
+- Deploy: `bash _docker/setup-home-apache.sh` auf der VPS — baut die Container
+  (inkl. `glappa-ollama`), zieht das Modell und lädt den neuen Apache-vhost
+  mit dem `/api/chat`-Proxy. Beim ersten Lauf einmalig
+  `sudo a2ensite home.glappa.de && sudo systemctl reload apache2` falls der
+  vhost neu installiert wurde (macht das Skript selbst).
+- Von glappa.de (Webhoster) aus geht der Chat cross-origin auf
+  `https://home.glappa.de/api/chat` (CORS-Allowlist in app.py).
 
 ## Special Features
 

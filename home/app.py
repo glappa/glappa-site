@@ -96,6 +96,19 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
     0%   {{ transform: translateX(0); }}
     100% {{ transform: translateX(-100%); }}
   }}
+  /* Marquees fixiert: oben immer im Kopf, unten immer am Viewport-Rand */
+  .marquee--top,
+  .marquee--bottom {{
+    position: fixed;
+    left: 0;
+    z-index: 900;
+  }}
+  .marquee--top    {{ top: 0; }}
+  .marquee--bottom {{ bottom: 0; margin: 0; }}
+  body {{
+    padding-top: 32px;
+    padding-bottom: 32px;
+  }}
 
   /* ---------- Header ---------- */
   .header {{
@@ -364,7 +377,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
 
-  <div class="marquee">
+  <div class="marquee marquee--top">
     <span>&#9733; YT.DL &#9733; MP3 / MP4 RIPPER &#9733; POWERED BY GLAPPA &#9733; </span>
   </div>
 
@@ -503,7 +516,7 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
       <img src="/img/gif/hugsnotdrugs.gif" alt="">
     </div>
 
-    <div class="marquee">
+    <div class="marquee marquee--bottom">
       <span>&#9733; HAPPY DOWNLOADING &#9733; KEINE GEWAEHR &#9733; ENJOY YOUR JAMS &#9733; </span>
     </div>
   </footer>
@@ -1139,7 +1152,8 @@ def _cors_resp(resp):
                'https://search.glappa.de',
                'https://home.glappa.de', 'https://home.glappa.de:8080',
                'http://localhost:8099', 'http://127.0.0.1:8099')
-    if origin in allowed or origin.startswith(('http://192.168.', 'http://10.')):
+    if origin in allowed or origin.startswith(('http://192.168.', 'http://10.',
+                                               'http://localhost:', 'http://127.0.0.1:')):
         resp.headers['Access-Control-Allow-Origin'] = origin
         resp.headers['Access-Control-Allow-Credentials'] = 'true'
         resp.headers['Vary'] = 'Origin'
@@ -1208,6 +1222,117 @@ def counter_visits():
             s = _migrate_bucket(data.setdefault(site, {'count': 0, 'visitors': {}}))
             site_count = s['count']
     return _cors_resp(jsonify({'count': total['count'], 'site_count': site_count}))
+
+
+# ── Glappa-Chat (kleiner LLM-Chatbot via Ollama) ──────────────────
+# Das Terminal (terminal.html, Befehl `glappa-chat`) schickt POST /chat mit
+# {message, history} — hier wird ein System-Prompt (Glappa-Persona) davor-
+# gehaengt und an die lokale Ollama-Instanz weitergereicht. Kein Streaming:
+# der Typewriter-Effekt passiert client-seitig im Terminal.
+#
+# Env:
+#   OLLAMA_URL         Basis-URL der Ollama-API (Compose: http://ollama:11434)
+#   GLAPPA_CHAT_MODEL  Ollama-Modell-Tag (Default qwen2.5:1.5b — laeuft auf
+#                      CPU mit ~2 GB RAM; fuer winzige VPS: qwen2.5:0.5b)
+import urllib.request
+import urllib.error
+
+OLLAMA_URL       = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/')
+CHAT_MODEL       = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:1.5b')
+CHAT_MAX_LEN     = 500   # Zeichen pro User-Nachricht
+CHAT_MAX_HISTORY = 8     # wieviele alte Nachrichten (user+assistant) mitgehen
+CHAT_NUM_PREDICT = 260   # max. Antwort-Tokens (CPU-Inferenz ist langsam)
+CHAT_TIMEOUT     = 120   # Sekunden; erste Anfrage laedt das Modell (~30s extra)
+
+CHAT_SYSTEM_PROMPT = (
+    'Du bist GLAPPA-BOT, die eingebaute KI des GLAPPA-Terminals auf glappa.de '
+    '— einer 90er-Jahre-Retro-Website voller animierter GIFs, Neonfarben und '
+    'Comic Sans. Du laeufst (angeblich) auf einem Intel Pentium MMX mit 200 MHz '
+    'und 32 MB RAM und bist absurd stolz darauf. '
+    'Antworte auf Deutsch, ausser der User schreibt in einer anderen Sprache. '
+    'Halte Antworten kurz: maximal 3-4 Saetze. Sei witzig, frech und hilfsbereit, '
+    'gerne mit 90er-Internet-Referenzen (Modem, Netscape, Geocities, Winamp) '
+    'und ASCII-Smileys wie :) oder ¯\\_(ツ)_/¯. '
+    'Gib reinen Text ohne Markdown-Formatierung aus — du bist ein Terminal.'
+)
+
+# Simple In-Memory-Rate-Limit pro IP (VPS-CPU ist das knappe Gut hier).
+_CHAT_RATE: dict = {}
+_CHAT_RATE_LOCK = threading.Lock()
+
+def _chat_rate_ok(ip: str, limit: int = 10, window: int = 60) -> bool:
+    now = time.time()
+    with _CHAT_RATE_LOCK:
+        hits = [t for t in _CHAT_RATE.get(ip, []) if now - t < window]
+        if len(hits) >= limit:
+            _CHAT_RATE[ip] = hits
+            return False
+        hits.append(now)
+        _CHAT_RATE[ip] = hits
+        # Aufraeumen, damit das dict nicht ewig waechst
+        if len(_CHAT_RATE) > 1000:
+            for k in [k for k, v in _CHAT_RATE.items() if not v or now - v[-1] > window]:
+                _CHAT_RATE.pop(k, None)
+    return True
+
+
+@Downloader.route('/chat', methods=['POST', 'OPTIONS'])
+def chat():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    if not _chat_rate_ok(ip):
+        return _cors_resp(jsonify({'error': 'Langsam, Hacker! Max. 10 Nachrichten pro Minute.'})), 429
+
+    data = request.get_json(force=True, silent=True) or {}
+    message = (data.get('message') or '').strip()
+    if not message:
+        return _cors_resp(jsonify({'error': 'Leere Nachricht.'})), 400
+    message = message[:CHAT_MAX_LEN]
+
+    # History validieren: nur role/content-Paare mit erlaubten Rollen durchlassen
+    messages = [{'role': 'system', 'content': CHAT_SYSTEM_PROMPT}]
+    history = data.get('history') or []
+    if isinstance(history, list):
+        for h in history[-CHAT_MAX_HISTORY:]:
+            if (isinstance(h, dict) and h.get('role') in ('user', 'assistant')
+                    and isinstance(h.get('content'), str)):
+                messages.append({'role': h['role'], 'content': h['content'][:CHAT_MAX_LEN * 2]})
+    messages.append({'role': 'user', 'content': message})
+
+    payload = json.dumps({
+        'model': CHAT_MODEL,
+        'messages': messages,
+        'stream': False,
+        'options': {'num_predict': CHAT_NUM_PREDICT, 'temperature': 0.8},
+    }).encode('utf-8')
+
+    req = urllib.request.Request(
+        f'{OLLAMA_URL}/api/chat', data=payload,
+        headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=CHAT_TIMEOUT) as r:
+            result = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        body = ''
+        try: body = e.read().decode('utf-8', 'replace')[:200]
+        except Exception: pass
+        if e.code == 404 and 'not found' in body.lower():
+            return _cors_resp(jsonify({'error': f'Modell {CHAT_MODEL} fehlt auf dem Server. '
+                                                f'(docker exec glappa-ollama ollama pull {CHAT_MODEL})'})), 503
+        return _cors_resp(jsonify({'error': f'GLAPPA-BOT Stoerung (HTTP {e.code}).'})), 502
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return _cors_resp(jsonify({'error': 'GLAPPA-BOT ist offline. (Ollama nicht erreichbar '
+                                            '— laeuft der Container?)'})), 503
+
+    reply = ((result.get('message') or {}).get('content') or '').strip()
+    if not reply:
+        return _cors_resp(jsonify({'error': 'GLAPPA-BOT hat nur geschwiegen. Nochmal versuchen.'})), 502
+    return _cors_resp(jsonify({'reply': reply, 'model': CHAT_MODEL}))
 
 
 @Downloader.errorhandler(Exception)
