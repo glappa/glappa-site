@@ -352,9 +352,9 @@ a:visited { color: var(--neon-yellow); }
 }
 .player-vis[hidden] { display: none; }
 
-/* ── Immersive-Modus (tunes.html): Fraktal uebernimmt den Bildschirm ──
-   Wird per JS gesetzt, wenn Musik + Fraktal-Vis laufen und laenger keine
-   Eingabe kommt. Jede Bewegung beendet den Modus wieder. */
+/* ── Immersive-Modus (tunes.html): Visualizer uebernimmt den Bildschirm ──
+   Wird per JS gesetzt, wenn Musik + Visualizer (Fraktal/Spectrum) laufen
+   und laenger keine Eingabe kommt. Jede Bewegung beendet den Modus. */
 .player-vis--immersive {
   position: fixed;
   inset: 0;
