@@ -82,6 +82,8 @@
           <button class="player-mode-btn" id="shuffleBtn" title="Shuffle">&#128256; Shuffle</button>
           <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
           <button class="player-mode-btn" id="visBtn" title="Visualizer ein/aus">&#9836; Visualizer</button>
+          <button class="player-mode-btn" id="immersiveBtn"
+                  title="Immersive-Vollbild: Fraktal &uuml;bernimmt bei l&auml;ngerer Inaktivit&auml;t den ganzen Bildschirm">&#128421; Immersive</button>
         </div>
 
         <div class="player-load">
@@ -837,11 +839,24 @@
       // ein. Musik + Audio-Reaktion laufen dabei einfach weiter. JEDE Eingabe
       // (Maus/Taste/Touch/Scroll) beendet den Modus sofort wieder.
       const IMMERSIVE_AFTER = 15000;  // ms ohne Eingabe bis zum Vollbild
+      const IMMERSIVE_PREF_KEY = 'glappa-tunes-immersive';
       let immersive = false;
+      let immersiveEnabled = true;    // per Button an/aus, Standard: AN
       let lastActivity = performance.now();
       let immersiveHintT = 0;
       const immersiveHint  = document.getElementById('immersiveHint');
       const immersiveTrack = document.getElementById('immersiveTrack');
+      const immersiveBtn   = document.getElementById('immersiveBtn');
+
+      try { immersiveEnabled = localStorage.getItem(IMMERSIVE_PREF_KEY) !== '0'; } catch (e) {}
+      immersiveBtn.classList.toggle('active', immersiveEnabled);
+
+      immersiveBtn.addEventListener('click', () => {
+        immersiveEnabled = !immersiveEnabled;
+        immersiveBtn.classList.toggle('active', immersiveEnabled);
+        try { localStorage.setItem(IMMERSIVE_PREF_KEY, immersiveEnabled ? '1' : '0'); } catch (e) {}
+        if (!immersiveEnabled) exitImmersive();
+      });
 
       function enterImmersive() {
         immersive = true;
@@ -876,9 +891,9 @@
       // --- Dispatcher ---------------------------------------------
       function drawVis() {
         if (!analyser || visMode === 'off' || audio.paused) { visRaf = 0; return; }
-        // Immersive-Check: Fraktal an + Musik laeuft + lange keine Eingabe
-        // -> ab in den Vollbildmodus.
-        if (!immersive && visMode === 'mandelbrot' &&
+        // Immersive-Check: Feature an + Fraktal an + Musik laeuft + lange
+        // keine Eingabe -> ab in den Vollbildmodus.
+        if (immersiveEnabled && !immersive && visMode === 'mandelbrot' &&
             performance.now() - lastActivity > IMMERSIVE_AFTER) {
           enterImmersive();
         }
