@@ -83,7 +83,7 @@
           <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
           <button class="player-mode-btn" id="visBtn" title="Visualizer ein/aus">&#9836; Visualizer</button>
           <button class="player-mode-btn" id="immersiveBtn"
-                  title="Immersive-Vollbild: Fraktal &uuml;bernimmt bei l&auml;ngerer Inaktivit&auml;t den ganzen Bildschirm">&#128421; Immersive</button>
+                  title="Immersive-Vollbild: Visualizer &uuml;bernimmt bei l&auml;ngerer Inaktivit&auml;t den ganzen Bildschirm">&#128421; Immersive</button>
         </div>
 
         <div class="player-load">
@@ -600,20 +600,22 @@
           cctx.fillRect(b * barW + gap, yFloor + 2, bw, rh);
         }
 
-        // Peak-Caps + Boden-Linie
+        // Peak-Caps + Boden-Linie (Staerken wachsen mit der Canvas-Groesse,
+        // damit es auch im Immersive-Vollbild kraeftig aussieht)
+        const capH = Math.max(2, Math.round(H * 0.008));
         cctx.fillStyle = '#00ffff';
         for (let b = 0; b < bars; b++) {
           const py = yFloor - peaks[b] * yFloor;
-          cctx.fillRect(b * barW + gap, Math.max(0, py - 2), bw, 2);
+          cctx.fillRect(b * barW + gap, Math.max(0, py - capH), bw, capH);
         }
         cctx.fillStyle = 'rgba(0,255,255,0.5)';
-        cctx.fillRect(0, yFloor, W, 1);
+        cctx.fillRect(0, yFloor, W, Math.max(1, Math.round(H * 0.003)));
 
         // Oszilloskop-Welle (Time-Domain) schwebt ueber den Balken; Amplitude
         // atmet mit dem Bass, der Glow zuckt auf den Beat.
         analyser.getByteTimeDomainData(scopeData);
         cctx.strokeStyle = 'rgba(0,255,255,0.8)';
-        cctx.lineWidth = 1.5;
+        cctx.lineWidth = Math.max(1.5, H * 0.004);
         cctx.shadowColor = '#00ffff';
         cctx.shadowBlur = 4 + beatFlash * 10;
         cctx.beginPath();
@@ -649,14 +651,16 @@
           if (specParts.length > 90) specParts.splice(0, specParts.length - 90);
         }
         lastFlash = beatFlash;
+        const psz = Math.max(2, Math.round(W / 300));  // Funkengroesse skaliert mit
+        const pv  = Math.max(1, H / 240);              // ...und ihr Tempo/Bogen auch
         for (let i = specParts.length - 1; i >= 0; i--) {
           const p = specParts[i];
-          p.x += p.vx; p.y += p.vy;
+          p.x += p.vx * pv; p.y += p.vy * pv;
           p.vy += 0.05;                       // kleine Gravitation -> Funkenbogen
           p.life -= 0.022;
           if (p.life <= 0 || p.y > H) { specParts.splice(i, 1); continue; }
           cctx.fillStyle = 'hsla(' + p.hue + ',100%,70%,' + p.life.toFixed(2) + ')';
-          cctx.fillRect(p.x, p.y, 2, 2);
+          cctx.fillRect(p.x, p.y, psz, psz);
         }
 
         pumpDisplay();
@@ -935,10 +939,10 @@
       }
 
       // --- Immersive-Modus ----------------------------------------
-      // Laeuft Musik mit aktivem Fraktal-Visualizer und der Nutzer ruehrt sich
-      // laenger (IMMERSIVE_AFTER) nicht, nimmt das Fraktal den ganzen Bildschirm
-      // ein. Musik + Audio-Reaktion laufen dabei einfach weiter. JEDE Eingabe
-      // (Maus/Taste/Touch/Scroll) beendet den Modus sofort wieder.
+      // Laeuft Musik mit aktivem Visualizer (Fraktal oder Spectrum) und der
+      // Nutzer ruehrt sich laenger (IMMERSIVE_AFTER) nicht, nimmt der Visualizer
+      // den ganzen Bildschirm ein. Musik + Audio-Reaktion laufen dabei einfach
+      // weiter. JEDE Eingabe (Maus/Taste/Touch/Scroll) beendet den Modus sofort.
       const IMMERSIVE_AFTER = 15000;  // ms ohne Eingabe bis zum Vollbild
       const IMMERSIVE_PREF_KEY = 'glappa-tunes-immersive';
       let immersive = false;
@@ -959,10 +963,44 @@
         if (!immersiveEnabled) exitImmersive();
       });
 
+      // Screen Wake Lock: haelt Bildschirm/PC im Immersive-Modus wach (wie
+      // beim Video-Schauen). Ohne API-Support oder bei Ablehnung passiert
+      // einfach nichts weiter.
+      let wakeLock = null;
+
+      async function acquireWakeLock() {
+        if (!('wakeLock' in navigator) || wakeLock) return;
+        try {
+          const lock = await navigator.wakeLock.request('screen');
+          if (!immersive) {           // Immersive wurde waehrend des await beendet
+            lock.release().catch(() => {});
+            return;
+          }
+          wakeLock = lock;
+          lock.addEventListener('release', () => {
+            if (wakeLock === lock) wakeLock = null;
+          });
+        } catch (e) { /* z.B. Energiespar-Modus des Systems -> ok */ }
+      }
+
+      function releaseWakeLock() {
+        if (wakeLock) {
+          wakeLock.release().catch(() => {});
+          wakeLock = null;
+        }
+      }
+
+      // Der Browser gibt Wake Locks beim Tab-Wechsel automatisch frei ->
+      // beim Zurueckkommen neu anfordern, solange der Immersive-Modus laeuft.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && immersive) acquireWakeLock();
+      });
+
       function enterImmersive() {
         immersive = true;
         document.body.classList.add('immersive-active');
         canvas.classList.add('player-vis--immersive');
+        acquireWakeLock();
         fitCanvas();
         // Kurzer Einblend-Hinweis: Trackname + wie man wieder rauskommt
         immersiveTrack.textContent = (current >= 0 && tracks[current]) ? tracks[current].name : '';
@@ -974,6 +1012,7 @@
       function exitImmersive() {
         if (!immersive) return;
         immersive = false;
+        releaseWakeLock();
         document.body.classList.remove('immersive-active');
         canvas.classList.remove('player-vis--immersive');
         immersiveHint.hidden = true;
@@ -992,9 +1031,9 @@
       // --- Dispatcher ---------------------------------------------
       function drawVis() {
         if (!analyser || visMode === 'off' || audio.paused) { visRaf = 0; return; }
-        // Immersive-Check: Feature an + Fraktal an + Musik laeuft + lange
-        // keine Eingabe -> ab in den Vollbildmodus.
-        if (immersiveEnabled && !immersive && visMode === 'mandelbrot' &&
+        // Immersive-Check: Feature an + Visualizer an (Fraktal ODER Spectrum)
+        // + Musik laeuft + lange keine Eingabe -> ab in den Vollbildmodus.
+        if (immersiveEnabled && !immersive && visMode !== 'off' &&
             performance.now() - lastActivity > IMMERSIVE_AFTER) {
           enterImmersive();
         }
