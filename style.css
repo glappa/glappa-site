@@ -49,6 +49,22 @@ a:visited { color: var(--neon-yellow); }
   100% { transform: translateX(-100%); }
 }
 
+/* Marquees fixiert: oben klebt immer im Kopf, unten immer am Viewport-Rand.
+   z-index 900 — unter Overlays wie PIN-Gate (9999) und Sparkles,
+   ueber normalem Seiteninhalt. Body-Padding haelt den Platz frei. */
+.marquee--top,
+.marquee--bottom {
+  position: fixed;
+  left: 0;
+  z-index: 900;
+}
+.marquee--top    { top: 0; }
+.marquee--bottom { bottom: 0; margin: 0; }
+body {
+  padding-top: 32px;
+  padding-bottom: 32px;
+}
+
 /* ---------- Kopfbereich ---------- */
 .header {
   display: flex;
