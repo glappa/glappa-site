@@ -26,8 +26,17 @@
     }
     @keyframes bx-blink { 50% { opacity: .35; } }
     #bounceSentinel { height: 1px; }
+    /* Waehrend ein GIF laedt: kein "bouncing girl"-Alt-Text, keine Luecke --
+       das Bild bleibt unsichtbar und blendet erst ein, wenn es fertig ist. */
+    .bounce-grid img.bx-item {
+      color: transparent;
+      opacity: 0;
+      transition: opacity .18s ease-out;
+    }
+    .bounce-grid img.bx-item.bx-on { opacity: 1; }
     @media (prefers-reduced-motion: reduce) {
       .bounce-hint { animation: none; }
+      .bounce-grid img.bx-item { transition: none; }
     }
   </style>
 </head>
@@ -148,6 +157,37 @@
     for (let i = 1; i <= 18; i++) { if (i === 17) continue; pool.push('b' + i); }
     for (let i = 1; i <= 120; i++) { pool.push('bx' + String(i).padStart(3, '0')); }
 
+    // ---------- Blob-Cache: jedes GIF geht nur EINMAL uebers Netz ----------
+    // Alle weiteren Kopien kommen sofort aus dem Speicher. Jede Kopie bekommt
+    // spaeter eine eigene Objekt-URL, weil der Browser GIFs mit identischer URL
+    // synchron abspielt -- das wuerde die Welle kaputt machen.
+    const blobCache = new Map(); // name -> Promise<Blob>
+    function loadBlob(name) {
+      let p = blobCache.get(name);
+      if (!p) {
+        p = fetch('img/gif/' + name + '.gif').then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.blob();
+        });
+        p.catch(function () { blobCache.delete(name); }); // Fehlschlag -> Retry moeglich
+        blobCache.set(name, p);
+      }
+      return p;
+    }
+
+    // Kompletten Pool (~5.7 MB) im Hintergrund vorladen, ein paar Downloads
+    // parallel -- danach ist beim Scrollen alles sofort da.
+    function prefetchAll() {
+      const names = pool.slice();
+      for (let w = 0; w < 4; w++) {
+        (function next() {
+          const n = names.shift();
+          if (!n) return;
+          loadBlob(n).catch(function () {}).then(next);
+        })();
+      }
+    }
+
     // Gemischte Warteschlange -> nie zweimal dasselbe GIF direkt hintereinander.
     let queue = [];
     function refill() {
@@ -173,14 +213,46 @@
       return cols > 0 ? cols : 1;
     }
 
-    const WAVE_COL_STEP = 90;  // ms Verzoegerung je Spalte nach rechts
-    const WAVE_ROW_STEP = 140; // ms Verzoegerung je Zeile nach unten
-    const WAVE_CYCLE = 1500;   // ms, danach wiederholt sich der Versatz
-    function waveDelayMs(index) {
+    // Alle Bounce-GIFs haben exakt 10 Frames x 100 ms = 1000 ms Loop.
+    // WAVE_CYCLE MUSS ein Vielfaches dieser Loop-Laenge sein! Nur dann bleibt
+    // die Welle dauerhaft bestehen: ein GIF, das k Zyklen spaeter einsteigt,
+    // ist dann um k * WAVE_CYCLE ( = ganze Loops = 0 ) verschoben statt schief.
+    // (Mit dem alten Wert 1500 war ein spaeterer Einstieg um 500 ms versetzt
+    // -- exakt im Gegentakt, deshalb hüpfte Reihe 2 gegen Reihe 1.)
+    const GIF_LOOP = 1000;          // ms, Loop-Laenge der Bounce-GIFs
+    const WAVE_COL_STEP = 100;      // ms je Spalte  = genau 1 GIF-Frame
+    const WAVE_ROW_STEP = 100;      // ms je Zeile   = genau 1 GIF-Frame
+    const WAVE_CYCLE = GIF_LOOP;    // s.o.: Vielfaches der Loop-Laenge
+    function wavePhase(index) {
       const columns = getColumns();
       const col = index % columns;
       const row = Math.floor(index / columns);
       return (col * WAVE_COL_STEP + row * WAVE_ROW_STEP) % WAVE_CYCLE;
+    }
+
+    // Globale Wellen-Uhr: jedes GIF darf nur zu "seinem" Zeitpunkt im Zyklus
+    // starten. Auch wenn das Netz mal langsamer ist, reiht sich das GIF beim
+    // naechsten Zyklus-Durchlauf wieder exakt in die Welle ein.
+    const waveStart = performance.now();
+    function msUntilPhase(phase) {
+      const now = performance.now() - waveStart;
+      const k = Math.max(0, Math.ceil((now - phase) / WAVE_CYCLE));
+      return Math.max(0, phase + k * WAVE_CYCLE - now);
+    }
+
+    // Startet fn moeglichst genau im Phasen-Slot. Feuert der Timer zu spaet
+    // (z.B. Ruckler waehrend des Erstladens), wird NICHT schief gestartet,
+    // sondern der naechste Zyklus abgewartet -- so kann nichts die Welle
+    // verlassen. Toleranz ~1 Frame Verspaetung.
+    function startInWave(phase, fn) {
+      (function arm() {
+        setTimeout(function () {
+          const now = performance.now() - waveStart;
+          const late = ((now - phase) % WAVE_CYCLE + WAVE_CYCLE) % WAVE_CYCLE;
+          if (late <= 120) fn();
+          else arm(); // Slot verpasst -> im naechsten Zyklus versuchen
+        }, msUntilPhase(phase));
+      })();
     }
 
     // Jedes GIF bekommt eine quasi-einzigartige Farboptik (Farbdrehung, Saettigung,
@@ -191,7 +263,6 @@
     function makeItem(index) {
       const img = document.createElement('img');
       img.alt = 'bouncing girl';
-      img.loading = 'lazy';
       img.decoding = 'async';
       img.className = 'bx-item';
       img.dataset.index = index;
@@ -206,10 +277,23 @@
       else if (r < 0.20) extra = ' contrast(1.7)';
       img.style.filter = 'hue-rotate(' + hue + 'deg) saturate(' + sat + ') brightness(' + bri + ')' + extra;
 
-      const src = 'img/gif/' + nextName() + '.gif';
-      const delay = waveDelayMs(index);
-      if (delay > 0) setTimeout(function () { img.src = src; }, delay);
-      else img.src = src;
+      const name = nextName();
+      function show() { img.classList.add('bx-on'); }
+
+      loadBlob(name).then(function (blob) {
+        startInWave(wavePhase(index), function () {
+          // Kein img.decode(): dessen Promise bleibt bei animierten GIFs in
+          // Chrome haengen. Das load-Event ist bei lokalen Blobs sofort da.
+          img.onload = show;
+          img.src = URL.createObjectURL(blob); // eigene URL je Kopie (s.o.)
+        });
+      }).catch(function () {
+        // Fallback (z.B. file:// ohne fetch): klassisch direkt laden.
+        startInWave(wavePhase(index), function () {
+          img.onload = show;
+          img.src = 'img/gif/' + name + '.gif';
+        });
+      });
       return img;
     }
 
@@ -249,7 +333,8 @@
 
     window.addEventListener('scroll', schedule, { passive: true });
     window.addEventListener('resize', schedule, { passive: true });
-    fill(); // Erstbefuellung (fuellt mindestens den ersten Viewport)
+    fill();        // Erstbefuellung (fuellt mindestens den ersten Viewport)
+    prefetchAll(); // Rest des Pools im Hintergrund nachziehen
   })();
   </script>
 
