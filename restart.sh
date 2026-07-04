@@ -3,12 +3,12 @@
 # restart.sh — Container nach Code-Aenderung neu bauen + starten + Logs zeigen.
 #
 # Erkennt selbst ob du auf WSL/lokal oder auf VPS bist und nimmt
-# entsprechend docker-compose.yml bzw. docker-compose.vps.yml.
+# entsprechend docker-compose.yml bzw. _docker/docker-compose.vps.yml.
 #
 # Aufruf:
 #   bash restart.sh           (auto-detect)
 #   bash restart.sh --local   (forciere docker-compose.yml)
-#   bash restart.sh --vps     (forciere docker-compose.vps.yml)
+#   bash restart.sh --vps     (forciere _docker/docker-compose.vps.yml)
 #   bash restart.sh --no-build (nur restart, kein rebuild — schneller)
 #   bash restart.sh --pull     (vorher 'git pull' — neuesten Code holen)
 #   bash restart.sh --no-cron  (den taeglichen Auto-Restart-Cron nicht setzen)
@@ -70,6 +70,13 @@ follow_all_logs() {
 }
 
 # ── Args / Auto-detect ──────────────────────────────────────────────
+# Die VPS-Compose-Datei wird in _docker/ gepflegt (inkl. ollama-Service
+# + OLLAMA_URL fuer den glappa-chat). Die alte Kopie im Projektroot
+# kannte kein Ollama — ein Restart damit stellte glappa in ein eigenes
+# Docker-Netz und der Chat sagte nur noch "GLAPPA-BOT ist offline" (503).
+VPS_COMPOSE="_docker/docker-compose.vps.yml"
+[ -f "$VPS_COMPOSE" ] || VPS_COMPOSE="docker-compose.vps.yml"
+
 COMPOSE=""
 BUILD="--build"
 PULL=0
@@ -78,7 +85,7 @@ LOGS_ONLY=0
 for arg in "$@"; do
     case "$arg" in
         --local)      COMPOSE="docker-compose.yml" ;;
-        --vps)        COMPOSE="docker-compose.vps.yml" ;;
+        --vps)        COMPOSE="$VPS_COMPOSE" ;;
         --no-build)   BUILD="" ;;
         --pull)       PULL=1 ;;
         --no-cron)    CRON=0 ;;
@@ -91,8 +98,8 @@ if [ -z "$COMPOSE" ]; then
     if grep -qi microsoft /proc/version 2>/dev/null && [ -f docker-compose.yml ]; then
         COMPOSE="docker-compose.yml"
         LOC="WSL/lokal"
-    elif [ -f docker-compose.vps.yml ]; then
-        COMPOSE="docker-compose.vps.yml"
+    elif [ -f "$VPS_COMPOSE" ]; then
+        COMPOSE="$VPS_COMPOSE"
         LOC="VPS"
     else
         COMPOSE="docker-compose.yml"
@@ -136,7 +143,7 @@ echo "Location:   ${LOC:-auto}"
 echo "Compose:    $COMPOSE"
 echo "Build:      ${BUILD:-(nein, nur restart)}"
 echo "Ports:      ${HOST_PORTS[*]}"
-if [ "$COMPOSE" = "docker-compose.vps.yml" ] && [ "$CRON" = "1" ]; then
+if [ "$COMPOSE" = "$VPS_COMPOSE" ] && [ "$CRON" = "1" ]; then
     echo "Auto-Neust: taeglich 00:00 via cron (--no-cron schaltet ab)"
 fi
 echo
@@ -211,7 +218,7 @@ free_ports() {
 # Idempotent (legt nichts doppelt an), nur auf dem VPS sinnvoll.
 ensure_daily_restart_cron() {
     [ "$CRON" = "1" ] || return 0
-    [ "$COMPOSE" = "docker-compose.vps.yml" ] || return 0
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
     command -v crontab >/dev/null 2>&1 || return 0
     local tag="# glappa-site daily restart"
     local line="0 0 * * * cd $PROJECT && ${SUDO:+sudo }docker compose -f $COMPOSE restart >> $LOG_FILE 2>&1  $tag"
@@ -220,9 +227,11 @@ ensure_daily_restart_cron() {
     # verloren.
     local existing
     existing="$(crontab -l 2>/dev/null || true)"
-    if printf '%s\n' "$existing" | grep -qF "$tag"; then
-        return 0   # existiert schon → nichts tun
+    if printf '%s\n' "$existing" | grep -qxF "$line"; then
+        return 0   # existiert schon in aktueller Form → nichts tun
     fi
+    # Selber Tag, anderer Inhalt (z. B. alter Compose-Pfad) → ersetzen.
+    existing="$(printf '%s\n' "$existing" | grep -vF "$tag" || true)"
     if { [ -n "$existing" ] && printf '%s\n' "$existing"; printf '%s\n' "$line"; } | crontab - 2>/dev/null; then
         $HOST_SUDO systemctl enable --now cron >/dev/null 2>&1 || true
         ok "taeglicher Auto-Restart 00:00 eingerichtet (cron). Log: $LOG_FILE"
