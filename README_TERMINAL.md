@@ -60,6 +60,11 @@ terminal.html ──POST /api/chat──> Apache (home.glappa.de:443)
   `qwen2.5:0.5b`).
 - Persona/Limits (Rate-Limit 10 Nachrichten/Minute pro IP, max. 500 Zeichen)
   stecken in `home/app.py`.
+- Der System-Prompt wird pro Request gebaut und enthält Datum/Uhrzeit
+  (Europe/Berlin). Datumsfragen („welcher Wochentag ist in 11 Tagen?",
+  „morgen", „am 15.07.?") erkennt der Server per Regex und rechnet die
+  Antwort selbst aus — das Mini-Modell muss sie nur noch im Glappa-Ton
+  formulieren, statt (falsch) zu rechnen.
 - Deploy: `bash _docker/setup-home-apache.sh` auf der VPS — baut die Container
   (inkl. `glappa-ollama`), zieht das Modell und lädt den neuen Apache-vhost
   mit dem `/api/chat`-Proxy. Beim ersten Lauf einmalig

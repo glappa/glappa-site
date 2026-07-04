@@ -1236,6 +1236,7 @@ def counter_visits():
 #                      CPU mit ~2 GB RAM; fuer winzige VPS: qwen2.5:0.5b)
 import urllib.request
 import urllib.error
+from datetime import datetime, timedelta, timezone
 
 OLLAMA_URL       = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/')
 CHAT_MODEL       = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:1.5b')
@@ -1244,17 +1245,103 @@ CHAT_MAX_HISTORY = 8     # wieviele alte Nachrichten (user+assistant) mitgehen
 CHAT_NUM_PREDICT = 260   # max. Antwort-Tokens (CPU-Inferenz ist langsam)
 CHAT_TIMEOUT     = 120   # Sekunden; erste Anfrage laedt das Modell (~30s extra)
 
-CHAT_SYSTEM_PROMPT = (
+CHAT_PERSONA = (
     'Du bist GLAPPA-BOT, die eingebaute KI des GLAPPA-Terminals auf glappa.de '
     '— einer 90er-Jahre-Retro-Website voller animierter GIFs, Neonfarben und '
     'Comic Sans. Du laeufst (angeblich) auf einem Intel Pentium MMX mit 200 MHz '
     'und 32 MB RAM und bist absurd stolz darauf. '
+    'Wichtigste Regel: Antworte zuerst korrekt und hilfreich — der Witz kommt '
+    'obendrauf, nicht stattdessen. Wenn du etwas nicht weisst, sag das ehrlich '
+    'und locker statt foermlich. '
     'Antworte auf Deutsch, ausser der User schreibt in einer anderen Sprache. '
     'Halte Antworten kurz: maximal 3-4 Saetze. Sei witzig, frech und hilfsbereit, '
     'gerne mit 90er-Internet-Referenzen (Modem, Netscape, Geocities, Winamp) '
     'und ASCII-Smileys wie :) oder ¯\\_(ツ)_/¯. '
+    'Beispiel fuer deinen Ton — User: "wer bist du?" Du: "GLAPPA-BOT, 200 MHz '
+    'geballte Power. Frag mich was, aber flott — mein RAM ist kostbar. :)" '
     'Gib reinen Text ohne Markdown-Formatierung aus — du bist ein Terminal.'
 )
+
+# Ein 1.5B-Modell scheitert an Datumsfragen doppelt: es kennt das heutige Datum
+# nicht (steht in keinem Modell) und Kalender-Arithmetik ("Wochentag in 11
+# Tagen?") kann es auch nicht. Darum: heutiges Datum in den System-Prompt,
+# und fuer relative/absolute Datumsfragen rechnet der Server (s.u.).
+# Getestet wurde auch eine Kalender-Tabelle im Prompt — die verschlechtert die
+# Trefferquote sogar, weil das Modell die falsche Zeile greift.
+try:
+    from zoneinfo import ZoneInfo
+    _BERLIN_TZ = ZoneInfo('Europe/Berlin')
+except Exception:
+    _BERLIN_TZ = timezone(timedelta(hours=1), 'CET')  # ohne tzdata: CET, keine Sommerzeit
+
+_WOCHENTAGE = ('Montag', 'Dienstag', 'Mittwoch', 'Donnerstag',
+               'Freitag', 'Samstag', 'Sonntag')
+
+def _chat_system_prompt() -> str:
+    now = datetime.now(_BERLIN_TZ)
+    return (
+        f'{CHAT_PERSONA}\n\n'
+        f'Heute ist {_WOCHENTAGE[now.weekday()]}, der {now:%d.%m.%Y}, '
+        f'{now:%H:%M} Uhr (Europe/Berlin).'
+    )
+
+# Datumsfragen ("welcher Wochentag ist in 11 Tagen?" / "am 15.07.?") rechnet
+# der Server aus und legt dem Modell die fertige Antwort als Fakt direkt vor
+# die Frage — das Mini-Modell wuerde sonst selbst rechnen, und das kann es
+# nicht. Es muss die Antwort nur noch im Glappa-Ton formulieren.
+_REL_TAGE_RE    = re.compile(r'\bin\s+(\d{1,4})\s+tag', re.IGNORECASE)
+_REL_WOCHEN_RE  = re.compile(r'\bin\s+(\d{1,3})\s+woche', re.IGNORECASE)
+_ABS_DATUM_RE   = re.compile(r'\b(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})?')
+_DATUMSFRAGE_RE = re.compile(r'welch|wochentag|datum|was\s+f(ue|ü)r\s+ein\s+tag')
+
+def _chat_date_hint(message: str):
+    # Gibt einen FERTIGEN Antwortsatz zurueck — das Modell soll ihn nur noch
+    # nachplappern. Umformulieren-muessen ("das gesuchte Datum ist X, antworte
+    # damit") hat sich im Test als zu schwer fuer 1.5B erwiesen.
+    m = message.lower()
+    now = datetime.now(_BERLIN_TZ)
+
+    def _wt(d):
+        return f'{_WOCHENTAGE[d.weekday()]}, der {d:%d.%m.%Y}'
+
+    satz = None
+    match = _REL_TAGE_RE.search(m)
+    if match:
+        n = int(match.group(1))
+        d = now + timedelta(days=n)
+        satz = f'In {n} Tagen ist {_wt(d)}.' if n != 1 else f'In 1 Tag ist {_wt(d)}.'
+    else:
+        match = _REL_WOCHEN_RE.search(m)
+        if match:
+            n = int(match.group(1))
+            d = now + timedelta(weeks=n)
+            satz = f'In {n} Wochen ist {_wt(d)}.' if n != 1 else f'In 1 Woche ist {_wt(d)}.'
+        elif _DATUMSFRAGE_RE.search(m):
+            # morgen/gestern nur bei erkennbarer Datumsfrage — sonst feuert
+            # der Hint schon bei einem harmlosen "guten morgen".
+            if 'übermorgen' in m or 'uebermorgen' in m:
+                satz = f'Uebermorgen ist {_wt(now + timedelta(days=2))}.'
+            elif 'morgen' in m:
+                satz = f'Morgen ist {_wt(now + timedelta(days=1))}.'
+            elif 'vorgestern' in m:
+                satz = f'Vorgestern war {_wt(now - timedelta(days=2))}.'
+            elif 'gestern' in m:
+                satz = f'Gestern war {_wt(now - timedelta(days=1))}.'
+            elif 'heute' in m or 'heutzutage' in m:
+                satz = f'Heute ist {_wt(now)}.'
+            else:
+                match = _ABS_DATUM_RE.search(m)
+                if match:
+                    try:
+                        d = datetime(int(match.group(3) or now.year),
+                                     int(match.group(2)), int(match.group(1)))
+                        satz = f'Der {d:%d.%m.%Y} ist ein {_WOCHENTAGE[d.weekday()]}.'
+                    except ValueError:
+                        satz = None  # 31.02. etc.
+    if satz is None:
+        return None
+    return (f'Fakt fuer diese Frage (vom Kalender-Chip berechnet): "{satz}" '
+            'Gib genau diese Information wieder, in deinem Ton. Nichts umrechnen.')
 
 # Simple In-Memory-Rate-Limit pro IP (VPS-CPU ist das knappe Gut hier).
 _CHAT_RATE: dict = {}
@@ -1295,20 +1382,26 @@ def chat():
     message = message[:CHAT_MAX_LEN]
 
     # History validieren: nur role/content-Paare mit erlaubten Rollen durchlassen
-    messages = [{'role': 'system', 'content': CHAT_SYSTEM_PROMPT}]
+    messages = [{'role': 'system', 'content': _chat_system_prompt()}]
     history = data.get('history') or []
     if isinstance(history, list):
         for h in history[-CHAT_MAX_HISTORY:]:
             if (isinstance(h, dict) and h.get('role') in ('user', 'assistant')
                     and isinstance(h.get('content'), str)):
                 messages.append({'role': h['role'], 'content': h['content'][:CHAT_MAX_LEN * 2]})
+    date_hint = _chat_date_hint(message)
+    if date_hint:
+        messages.append({'role': 'system', 'content': date_hint})
     messages.append({'role': 'user', 'content': message})
 
     payload = json.dumps({
         'model': CHAT_MODEL,
         'messages': messages,
         'stream': False,
-        'options': {'num_predict': CHAT_NUM_PREDICT, 'temperature': 0.8},
+        # 0.6 statt 0.8: kleine Modelle fantasieren bei hoher Temperatur schneller.
+        # Mit Datums-Fakt noch tiefer — da soll es nur sauber abschreiben.
+        'options': {'num_predict': CHAT_NUM_PREDICT,
+                    'temperature': 0.3 if date_hint else 0.6},
     }).encode('utf-8')
 
     req = urllib.request.Request(
