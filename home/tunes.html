@@ -1037,6 +1037,16 @@
         fitCanvas();
       }
 
+      // Feature an + Visualizer an + Musik laeuft -> SOFORT rein, ohne auf die
+      // 15s Inaktivitaet zu warten. Greift ueberall dort, wo sich einer der drei
+      // Zustaende aendert (Vis-Modus gewechselt, Wiedergabe gestartet), nicht
+      // nur beim Klick auf den Immersive-Button selbst.
+      function maybeAutoEnterImmersive() {
+        if (immersiveEnabled && !immersive && visMode !== 'off' && !audio.paused) {
+          enterImmersive(true);
+        }
+      }
+
       function noteActivity() {
         lastActivity = performance.now();
         if (immersive && performance.now() >= immersiveGraceUntil) exitImmersive();
@@ -1116,6 +1126,7 @@
         // Reset Mandelbrot wenn neu reingewechselt -> random POI
         if (mode === 'mandelbrot') pickRandomPoi();
         kickVis();
+        maybeAutoEnterImmersive();
       }
 
       // Cycle-Button: off -> spectrum -> mandelbrot -> off
@@ -1266,10 +1277,11 @@
       audio.addEventListener('play',  () => {
         playBtn.innerHTML = '&#10074;&#10074;';
         kickVis();
+        maybeAutoEnterImmersive();
       });
       // 'playing' (echtes Anlaufen nach Buffering/Track-Wechsel) als zusaetzlicher
       // Aufhaenger -> deckt die Faelle ab, in denen 'play' zu frueh feuert.
-      audio.addEventListener('playing', kickVis);
+      audio.addEventListener('playing', () => { kickVis(); maybeAutoEnterImmersive(); });
       audio.addEventListener('pause', () => {
         playBtn.innerHTML = '&#9654;';
         if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
