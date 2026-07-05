@@ -1,4 +1,5 @@
 from flask import Flask, Response, request, send_file, jsonify, send_from_directory
+from werkzeug.exceptions import HTTPException
 import os, re, ssl, sys, json, uuid, threading, queue, time, glob
 
 # Repo-Wurzel (glappa-site/) — eine Ebene ueber home/. Von hier serviert die
@@ -1375,7 +1376,8 @@ _SEARCH_EXPLICIT_RE = re.compile(
     r'(?:mal\s+)?(?:im\s+internet\s+)?(?:nach\s+)?(.+)', re.IGNORECASE)
 _SEARCH_IMPLICIT_RE = re.compile(
     r'\baktuell\w*|neuigkeiten|nachrichten|\bnews\b|'
-    r'was\s+ist\s+(?:gerade\s+)?los|was\s+gibt.?s\s+neues', re.IGNORECASE)
+    r'was\s+ist\s+(?:gerade\s+)?los|was\s+gibt.?s\s+neues|'
+    r'kostet|preis\w*|\bwer\s+(?:ist|war)\b|\bwetter\b', re.IGNORECASE)
 
 def _web_search(query: str, limit: int = SEARCH_RESULTS_N):
     url = f'{SEARXNG_URL}/search?' + urlencode(
@@ -1400,7 +1402,11 @@ def _chat_search_hint(message: str):
     match = _SEARCH_EXPLICIT_RE.search(m)
     query = match.group(1).strip(' ?!.') if match else None
     if not query and _SEARCH_IMPLICIT_RE.search(m):
-        query = m
+        # Oneshot-Modus (glappa -s) schickt die eigentliche Frage in einen
+        # Anleitungstext gepackt ("Beantworte nur diese eine Frage ... Frage:
+        # <echte Frage>") — fuer die Suche nur den echten Frageteil nehmen,
+        # sonst landet der Anleitungstext als Rauschen in der Suchanfrage.
+        query = m.rsplit('Frage: ', 1)[-1].strip()
     if not query:
         return None
     try:
@@ -1512,7 +1518,16 @@ def chat():
 
 @Downloader.errorhandler(Exception)
 def handle_error(e):
-    return jsonify({'error': str(e)}), 500
+    # HTTPException (z.B. 404 fuer unbekannte Routen, ausgeloest von den
+    # ueblichen .env/.git-Scanner-Bots) hat schon den richtigen Code + eine
+    # harmlose Nachricht - die soll auch als solche rausgehen, nicht als 500.
+    # Fuer echte, unerwartete Exceptions: Client bekommt nur eine generische
+    # Meldung, kein str(e) (koennte interne Pfade/Details leaken); Details
+    # landen im Server-Log.
+    if isinstance(e, HTTPException):
+        return jsonify({'error': e.description}), e.code
+    Downloader.logger.exception('Unhandled error')
+    return jsonify({'error': 'Internal Server Error'}), 500
 
 
 if __name__ == '__main__':
