@@ -83,7 +83,7 @@
           <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
           <button class="player-mode-btn" id="visBtn" title="Visualizer ein/aus">&#9836; Visualizer</button>
           <button class="player-mode-btn" id="immersiveBtn"
-                  title="Immersive-Vollbild: Visualizer &uuml;bernimmt bei l&auml;ngerer Inaktivit&auml;t den ganzen Bildschirm">&#128421; Immersive</button>
+                  title="Immersive-Vollbild: Klick startet sofort &mdash; bei l&auml;ngerer Inaktivit&auml;t kommt er auch von selbst">&#128421; Immersive</button>
         </div>
 
         <div class="player-load">
@@ -957,6 +957,17 @@
       immersiveBtn.classList.toggle('active', immersiveEnabled);
 
       immersiveBtn.addEventListener('click', () => {
+        // Klick = SOFORT rein in den Vollbildmodus, ohne die 15 Sekunden
+        // Inaktivitaet abzuwarten. Nur wenn das gerade nicht geht (kein
+        // Visualizer aktiv / Musik pausiert), wirkt der Button wie frueher
+        // als An/Aus-Schalter fuer das Auto-Feature.
+        if (!immersive && visMode !== 'off' && !audio.paused) {
+          immersiveEnabled = true;
+          immersiveBtn.classList.add('active');
+          try { localStorage.setItem(IMMERSIVE_PREF_KEY, '1'); } catch (e) {}
+          enterImmersive(true);
+          return;
+        }
         immersiveEnabled = !immersiveEnabled;
         immersiveBtn.classList.toggle('active', immersiveEnabled);
         try { localStorage.setItem(IMMERSIVE_PREF_KEY, immersiveEnabled ? '1' : '0'); } catch (e) {}
@@ -996,8 +1007,14 @@
         if (document.visibilityState === 'visible' && immersive) acquireWakeLock();
       });
 
-      function enterImmersive() {
+      // Nach manuellem Einschalten per Button duerfen die Restereignisse des
+      // Klicks selbst (pointerup, kleine Mausbewegung) den Modus nicht sofort
+      // wieder beenden -> kurze Schonfrist.
+      let immersiveGraceUntil = 0;
+
+      function enterImmersive(manual) {
         immersive = true;
+        immersiveGraceUntil = performance.now() + (manual ? 1200 : 0);
         document.body.classList.add('immersive-active');
         canvas.classList.add('player-vis--immersive');
         acquireWakeLock();
@@ -1022,7 +1039,7 @@
 
       function noteActivity() {
         lastActivity = performance.now();
-        if (immersive) exitImmersive();
+        if (immersive && performance.now() >= immersiveGraceUntil) exitImmersive();
       }
       ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev =>
         window.addEventListener(ev, noteActivity, { passive: true })

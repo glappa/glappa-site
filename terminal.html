@@ -269,8 +269,59 @@
   (function () {
 
     /* ══════════════════════════════════════════════════════════════
-       AUDIO ENGINE  (Web Audio API — keine externen Dateien)
+       AUDIO ENGINE — Synth (Web Audio) + echte Sounddateien (sfx/)
     ══════════════════════════════════════════════════════════════ */
+    const SFX_KEY = 'glappaTermSfx';
+    let sfxOn = true;
+    try { sfxOn = localStorage.getItem(SFX_KEY) !== '0'; } catch(e) {}
+
+    /* Echte Klassiker aus sfx/terminal/: Half-Life-Konsole + Windows XP */
+    const SFX = {
+      startup:  { src: 'sfx/terminal/xp-startup.mp3',  vol: 0.55 },
+      shutdown: { src: 'sfx/terminal/xp-shutdown.mp3', vol: 0.55 },
+      logoff:   { src: 'sfx/terminal/xp-logoff.mp3',   vol: 0.55 },
+      hardware: { src: 'sfx/terminal/xp-hardware.mp3', vol: 0.45 },
+      balloon:  { src: 'sfx/terminal/xp-balloon.mp3',  vol: 0.45 },
+      ding:     { src: 'sfx/terminal/xp-ding.mp3',     vol: 0.4  },
+      error:    { src: 'sfx/terminal/xp-error.mp3',    vol: 0.4  },
+      blip:     { src: 'sfx/terminal/hl-blip.wav',     vol: 0.25 },
+      menu:     { src: 'sfx/terminal/hl-menu1.wav',    vol: 0.3  },
+      menu2:    { src: 'sfx/terminal/hl-menu2.wav',    vol: 0.3  },
+      denied:   { src: 'sfx/terminal/hl-denied.wav',   vol: 0.4  },
+      deny:     { src: 'sfx/terminal/hl-deny2.wav',    vol: 0.35 },
+      bell:     { src: 'sfx/terminal/hl-bell.wav',     vol: 0.35 },
+      alarm:    { src: 'sfx/terminal/hl-alarm.wav',    vol: 0.3  },
+    };
+    Object.keys(SFX).forEach(function(k) {
+      const a = new Audio(SFX[k].src);
+      a.preload = 'auto';
+      a.volume = SFX[k].vol;
+      SFX[k].audio = a;
+    });
+
+    function playSfx(name) {
+      if (!sfxOn) return;
+      const s = SFX[name];
+      if (!s) return;
+      try {
+        s.audio.currentTime = 0;
+        const p = s.audio.play();
+        if (p && p.catch) p.catch(function() {});
+      } catch(e) {}
+    }
+
+    /* Datei abspielen, bei Fehler (Datei fehlt, Codec) auf Synth ausweichen */
+    function playSfxOr(name, fallback) {
+      if (!sfxOn) return;
+      const s = SFX[name];
+      if (!s) { fallback(); return; }
+      try {
+        s.audio.currentTime = 0;
+        const p = s.audio.play();
+        if (p && p.catch) p.catch(function() { fallback(); });
+      } catch(e) { fallback(); }
+    }
+
     let _actx = null;
     function actx() {
       if (!_actx) _actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -280,6 +331,7 @@
 
     /* Kurzes mechanisches Tastatur-Klick-Geräusch (Windows XP Style) */
     function playClick() {
+      if (!sfxOn) return;
       try {
         const c = actx();
         const len = Math.ceil(c.sampleRate * 0.038);
@@ -299,6 +351,7 @@
 
     /* Festplatten-Hochlaufen: tiefes Rauschen das in der Frequenz steigt */
     function playHDDSpinup() {
+      if (!sfxOn) return;
       try {
         const c = actx();
         const dur = 2.8;
@@ -329,6 +382,7 @@
 
     /* Kopf-Such-Geräusch der Festplatte */
     function playHDDSeek() {
+      if (!sfxOn) return;
       try {
         const c = actx();
         const len = Math.ceil(c.sampleRate * 0.11);
@@ -348,6 +402,7 @@
 
     /* BIOS POST-Piep */
     function playBeep(freq, dur) {
+      if (!sfxOn) return;
       freq = freq || 880; dur = dur || 0.14;
       try {
         const c = actx();
@@ -363,6 +418,7 @@
 
     /* Windows XP-artiger Startup-Chime (aufsteigender Akkord) */
     function playStartupChime() {
+      if (!sfxOn) return;
       try {
         const c = actx();
         [[523.25, 0, 1.9], [659.25, 0.13, 1.7], [783.99, 0.3, 2.1], [1046.5, 0.58, 2.6]]
@@ -408,7 +464,9 @@
     function defaultFS() {
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
-       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat']
+       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat',
+       'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
+       'kill','cal','expr','stat','file','hostname','id','sound']
         .forEach(function(b) {
           bin[b] = fileNode('ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)');
         });
@@ -621,7 +679,7 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
-       TOKENIZER — versteht "..." '...' $VAR ${VAR} $? sowie | > >>
+       TOKENIZER — versteht "..." '...' $VAR ${VAR} $? sowie | > >> ; &&
     ══════════════════════════════════════════════════════════════ */
     function tokenize(str) {
       const tokens = [];
@@ -645,6 +703,8 @@
         if (ch === "'") { inS = true; hasQuote = true; continue; }
         if (ch === '"') { inD = true; hasQuote = true; continue; }
         if (ch === ' ' || ch === '\t') { push(); continue; }
+        if (ch === ';') { push(); tokens.push(';'); continue; }
+        if (ch === '&' && str[i + 1] === '&') { push(); tokens.push('&&'); i++; continue; }
         if (ch === '|') { push(); tokens.push('|'); continue; }
         if (ch === '>') {
           push();
@@ -694,6 +754,19 @@
           : (name === 'head' ? r.lines.slice(0, count) : r.lines.slice(-count));
         return { out: lines, err: r.errs };
       };
+    }
+
+    /* Feldlisten wie "1,3-5,7-" (cut -f / -c) -> Prüffunktion für 1-basierte Indizes */
+    function fieldMatcher(spec) {
+      const ranges = [];
+      for (const part of String(spec).split(',')) {
+        const m = part.match(/^(\d+)?-(\d+)?$/);
+        if (m && (m[1] || m[2])) ranges.push([m[1] ? +m[1] : 1, m[2] ? +m[2] : Infinity]);
+        else if (/^\d+$/.test(part)) ranges.push([+part, +part]);
+        else return null;
+      }
+      if (!ranges.length) return null;
+      return function(i) { return ranges.some(function(r) { return i >= r[0] && i <= r[1]; }); };
     }
 
     const BIN = {
@@ -1137,6 +1210,286 @@
           { text: '  🚂 CHOO CHOO!', cls: 'line-info' },
         ]);
       },
+
+      /* ── Text-Werkzeuge ── */
+
+      cut(args, stdin) {
+        let delim = '\t', fields = null, chars = null;
+        const files = [];
+        for (let i = 0; i < args.length; i++) {
+          const a = args[i];
+          if (a === '-d')                              delim = args[++i] || '\t';
+          else if (a.startsWith('-d') && a.length > 2) delim = a.slice(2);
+          else if (a === '-f')                         fields = args[++i];
+          else if (a.startsWith('-f') && a.length > 2) fields = a.slice(2);
+          else if (a === '-c')                         chars = args[++i];
+          else if (a.startsWith('-c') && a.length > 2) chars = a.slice(2);
+          else files.push(a);
+        }
+        if (!fields && !chars) return fail('cut: Benutzung: cut -d <zeichen> -f <felder> [datei]  oder  cut -c <bereiche>');
+        const match = fieldMatcher(fields || chars);
+        if (!match) return fail('cut: ungültige Liste: ' + (fields || chars) + '  (z.B. 1  oder  1,3  oder  2-4)');
+        const r = readInput(files, stdin, 'cut');
+        const outl = r.lines.map(function(l) {
+          if (chars) return l.split('').filter(function(_, i) { return match(i + 1); }).join('');
+          if (!l.includes(delim)) return l;   /* wie GNU cut: ohne Trenner ganze Zeile */
+          return l.split(delim).filter(function(_, i) { return match(i + 1); }).join(delim);
+        });
+        return { out: outl, err: r.errs };
+      },
+
+      tr(args, stdin) {
+        /* Zeichenbereiche wie a-z zu vollen Zeichenlisten ausrollen */
+        function expand(s) {
+          let res = '';
+          for (let i = 0; i < s.length; i++) {
+            if (s[i + 1] === '-' && s[i + 2] !== undefined && s.charCodeAt(i) <= s.charCodeAt(i + 2)) {
+              for (let c = s.charCodeAt(i); c <= s.charCodeAt(i + 2); c++) res += String.fromCharCode(c);
+              i += 2;
+            } else res += s[i];
+          }
+          return res;
+        }
+        const del = args[0] === '-d';
+        if (del) args = args.slice(1);
+        if (!args.length || (!del && args.length < 2))
+          return fail('tr: Benutzung: tr <set1> <set2>  oder  tr -d <set1>   (mit Pipe: echo hallo | tr a-z A-Z)');
+        const s1 = expand(args[0]), s2 = del ? '' : expand(args[1]);
+        const outl = (stdin || []).map(function(l) {
+          return l.split('').map(function(ch) {
+            const i = s1.indexOf(ch);
+            if (i < 0) return ch;
+            if (del) return '';
+            return s2[Math.min(i, s2.length - 1)] || '';
+          }).join('');
+        });
+        return { out: outl, err: [] };
+      },
+
+      sed(args, stdin) {
+        if (!args.length) return fail('sed: Benutzung: sed "s/suchen/ersetzen/g" [datei]');
+        const expr = args[0];
+        const files = args.slice(1);
+        if (expr[0] !== 's' || !expr[1]) return fail('sed: kann hier nur ersetzen — Muster: s/alt/neu/g');
+        const d = expr[1];
+        const parts = expr.slice(2).split(d);
+        if (parts.length < 2) return fail('sed: ungültiger Ausdruck: ' + expr + '  (Muster: s/alt/neu/g)');
+        const mods = parts[2] || '';
+        const reFlags = (mods.includes('g') ? 'g' : '') + (mods.includes('i') ? 'i' : '');
+        let re;
+        try { re = new RegExp(parts[0], reFlags); }
+        catch(e) { re = new RegExp(parts[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), reFlags); }
+        const r = readInput(files, stdin, 'sed');
+        return { out: r.lines.map(function(l) { return l.replace(re, parts[1]); }), err: r.errs };
+      },
+
+      tac(args, stdin) {
+        const r = readInput(args, stdin, 'tac');
+        return { out: r.lines.slice().reverse(), err: r.errs };
+      },
+
+      nl(args, stdin) { return BIN.cat(['-n'].concat(args), stdin); },
+
+      seq(args) {
+        const n = args.map(Number);
+        if (!args.length || n.some(isNaN))
+          return fail('seq: Benutzung: seq <ende> | seq <start> <ende> | seq <start> <schritt> <ende>');
+        let from = 1, step = 1, to;
+        if (n.length === 1)      to = n[0];
+        else if (n.length === 2) { from = n[0]; to = n[1]; }
+        else                     { from = n[0]; step = n[1]; to = n[2]; }
+        if (step === 0) return fail('seq: Schritt darf nicht 0 sein');
+        const outl = [];
+        if (step > 0) for (let i = from; i <= to && outl.length < 10000; i += step) outl.push(String(i));
+        else          for (let i = from; i >= to && outl.length < 10000; i += step) outl.push(String(i));
+        return ok(outl);
+      },
+
+      diff(args) {
+        if (args.length < 2) return fail('diff: Benutzung: diff <datei1> <datei2>');
+        const n1 = getNode(resolvePath(args[0])), n2 = getNode(resolvePath(args[1]));
+        if (!n1 || n1.type !== 'file') return fail('diff: ' + args[0] + ': Datei nicht gefunden');
+        if (!n2 || n2.type !== 'file') return fail('diff: ' + args[1] + ': Datei nicht gefunden');
+        const a = contentLines(n1.content), b = contentLines(n2.content);
+        /* Kleines LCS — die Dateien hier sind winzig */
+        const dp = [];
+        for (let i = a.length; i >= 0; i--) {
+          dp[i] = [];
+          for (let j = b.length; j >= 0; j--) {
+            if (i === a.length || j === b.length) dp[i][j] = 0;
+            else if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+            else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+          }
+        }
+        const outl = [];
+        let i = 0, j = 0;
+        while (i < a.length || j < b.length) {
+          if (i < a.length && j < b.length && a[i] === b[j]) { i++; j++; }
+          else if (j === b.length || (i < a.length && dp[i + 1][j] >= dp[i][j + 1]))
+            outl.push({ text: '< ' + a[i++], cls: 'line-err' });
+          else
+            outl.push({ text: '> ' + b[j++], cls: 'line-info' });
+        }
+        if (!outl.length) return ok([{ text: 'Dateien sind identisch', cls: 'line-sys' }]);
+        return ok(outl);
+      },
+
+      /* ── Datei-Infos ── */
+
+      stat(args) {
+        if (!args.length) return fail('stat: Benutzung: stat <datei...>');
+        const outl = [], errs = [];
+        args.forEach(function(f) {
+          const p = resolvePath(f);
+          const n = getNode(p);
+          if (!n) { errs.push('stat: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+          const isD = n.type === 'dir';
+          outl.push({ text: '  Datei: ' + p, cls: 'line-info' });
+          outl.push('  Größe: ' + (isD
+            ? Object.keys(n.children).length + ' Einträge'
+            : n.content.length + ' Bytes, ' + contentLines(n.content).length + ' Zeilen'));
+          outl.push('    Typ: ' + (isD ? 'Verzeichnis' : 'reguläre Datei'));
+          outl.push(' Rechte: ' + (isD ? 'drwxr-xr-x' : '-rw-r--r--') + '   Besitzer: glappa (1337)');
+        });
+        return { out: outl, err: errs };
+      },
+
+      file(args) {
+        if (!args.length) return fail('file: Benutzung: file <datei...>');
+        const outl = [], errs = [];
+        args.forEach(function(f) {
+          const n = getNode(resolvePath(f));
+          if (!n) { errs.push('file: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+          let desc;
+          if (n.type === 'dir')                 desc = 'Verzeichnis';
+          else if (n.content === '')            desc = 'leer';
+          else if (n.content.startsWith('ELF')) desc = 'ELF 32-bit Programm (GlappaOS)';
+          else desc = 'ASCII-Text, ' + contentLines(n.content).length + ' Zeilen';
+          outl.push(f + ': ' + desc);
+        });
+        return { out: outl, err: errs };
+      },
+
+      du(args) {
+        const pf = parseFlags(args);
+        const human = pf.flags.has('h');
+        const p = pf.rest[0] ? resolvePath(pf.rest[0]) : cwd;
+        const node = getNode(p);
+        if (!node) return fail('du: ' + (pf.rest[0] || p) + ': Datei oder Verzeichnis nicht gefunden');
+        function fmtSize(n) {
+          if (!human) return String(n);
+          if (n >= 1048576) return (n / 1048576).toFixed(1) + 'M';
+          if (n >= 1024)    return (n / 1024).toFixed(1) + 'K';
+          return n + 'B';
+        }
+        const outl = [];
+        (function walk(n, label) {
+          if (n.type === 'file') return n.content.length;
+          let sum = 0;
+          Object.keys(n.children).sort().forEach(function(name) {
+            sum += walk(n.children[name], label + '/' + name);
+          });
+          outl.push(fmtSize(sum).padEnd(8) + (label || '/'));
+          return sum;
+        })(node, pf.rest[0] ? pf.rest[0].replace(/\/+$/, '') : '.');
+        return ok(outl);
+      },
+
+      /* ── System (liebevoll retro-simuliert) ── */
+
+      df(args) {
+        const h = args.includes('-h');
+        return ok([
+          { text: 'Dateisystem      Größe  Benutzt   Verf.  Verw%  Eingehängt auf', cls: 'line-info' },
+          '/dev/hda1        ' + (h ? ' 2,0G' : '2097152') + '  ' + (h ? ' 666M' : ' 681984') + '  ' + (h ? ' 1,3G' : '1415168') + '    33%  /',
+          '/dev/cdrom       ' + (h ? ' 650M' : ' 665600') + '  ' + (h ? ' 650M' : ' 665600') + '  ' + (h ? '   0K' : '      0') + '   100%  /mnt/cdrom',
+          'glappafs         ' + (h ? '   ∞ ' : '      ∞') + '  ' + (h ? '  42K' : '  43008') + '  ' + (h ? '   ∞ ' : '      ∞') + '     0%  /home/glappa',
+        ]);
+      },
+
+      free(args) {
+        const mb = args.includes('-m') || args.includes('-h');
+        if (mb) return ok([
+          { text: '            gesamt   benutzt      frei', cls: 'line-info' },
+          'Speicher:       32        30         2',
+          'Swap:           64         0        64',
+        ]);
+        return ok([
+          { text: '            gesamt   benutzt      frei', cls: 'line-info' },
+          'Speicher:    32768     31337      1431',
+          'Swap:        65536       420     65116',
+        ]);
+      },
+
+      ps() {
+        const rows = [
+          ['1',     'root',   'init'],
+          ['42',    'root',   'gif-engine'],
+          ['420',   'glappa', 'neon-daemon'],
+          ['666',   'root',   'scanline-renderer'],
+          ['1337',  'glappa', 'glappa-sh'],
+          ['1990',  'glappa', 'marquee-scroller'],
+          ['9000',  'glappa', 'mp3-jukebox'],
+          ['42069', 'bingus', 'bingus.exe'],
+        ];
+        const outl = [{ text: '  PID USER     BEFEHL', cls: 'line-info' }];
+        rows.forEach(function(r) { outl.push(r[0].padStart(5) + ' ' + r[1].padEnd(8) + ' ' + r[2]); });
+        return ok(outl);
+      },
+
+      kill(args) {
+        const pid = args.filter(function(a) { return !a.startsWith('-'); })[0] || '';
+        if (!pid) return fail('kill: Benutzung: kill <pid>   (PIDs verrät dir  ps)');
+        if (pid === '1')     return fail('kill: (1) init: Operation nicht erlaubt — ohne init läuft hier gar nichts!');
+        if (pid === '1337')  return fail('kill: (1337) glappa-sh: Netter Versuch. Das ist die Shell, in der du gerade tippst. 🤨');
+        if (pid === '42069') return ok(['bingus.exe lässt sich nicht beenden. Bingus ist für immer.']);
+        if (['42', '420', '666', '1990', '9000'].includes(pid))
+          return ok(['Prozess ' + pid + ' beendet. (Beim nächsten reboot ist er wieder da.)']);
+        return fail('kill: (' + pid + '): Kein passender Prozess gefunden');
+      },
+
+      cal(args) {
+        const now = new Date();
+        let month = now.getMonth(), year = now.getFullYear();
+        if (args.length === 1) return fail('cal: Benutzung: cal  oder  cal <monat> <jahr>   (z.B. cal 12 1997)');
+        if (args.length >= 2) {
+          month = parseInt(args[0], 10) - 1;
+          year  = parseInt(args[1], 10);
+          if (!(month >= 0 && month <= 11) || !isFinite(year)) return fail('cal: ungültig — Beispiel: cal 12 1997');
+        }
+        const MON = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+        const title = MON[month] + ' ' + year;
+        const outl = [
+          { text: ' '.repeat(Math.max(0, Math.floor((21 - title.length) / 2))) + title, cls: 'line-info' },
+          { text: 'Mo Di Mi Do Fr Sa So', cls: 'line-info' },
+        ];
+        const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;   /* Mo = 0 */
+        const days = new Date(year, month + 1, 0).getDate();
+        let row = '   '.repeat(firstDow);
+        for (let d = 1; d <= days; d++) {
+          row += String(d).padStart(2) + ' ';
+          if ((firstDow + d) % 7 === 0) { outl.push(row.trimEnd()); row = ''; }
+        }
+        if (row.trim()) outl.push(row.trimEnd());
+        if (month === now.getMonth() && year === now.getFullYear())
+          outl.push({ text: '(heute ist der ' + now.getDate() + '.)', cls: 'line-sys' });
+        return ok(outl);
+      },
+
+      expr(args) {
+        const s = args.join(' ');
+        if (!s) return fail('expr: Benutzung: expr <rechnung>   z.B. expr 7 * 6   oder   expr (3 + 4) * 2');
+        if (!/^[\d\s+\-*/%().]+$/.test(s)) return fail('expr: kann nur rechnen — Zahlen und + - * / % ( )');
+        let v;
+        try { v = Function('"use strict"; return (' + s + ')')(); }
+        catch(e) { return fail('expr: Syntaxfehler in: ' + s); }
+        if (typeof v !== 'number' || !isFinite(v)) return fail('expr: das ergibt keine Zahl');
+        return ok([String(v)]);
+      },
+
+      hostname() { return ok([ENV.HOSTNAME]); },
+
+      id() { return ok(['uid=1337(glappa) gid=1337(glappa) Gruppen=1337(l33t),0(root)']); },
     };
     BIN.more = BIN.cat;
     BIN.less = BIN.cat;
@@ -1172,6 +1525,24 @@
       which:  ['which <befehl>', 'Zeigt, wo ein Befehl "installiert" ist.'],
       tutorial:['tutorial', 'Übungsaufgaben zum Terminal-Lernen.'],
       reset:  ['reset', 'Setzt das komplette Dateisystem auf den Anfangszustand zurück.'],
+      cut:    ['cut -d <zeichen> -f <felder> [datei]', 'Schneidet Spalten aus Zeilen.', '  -c 1-5  nimmt Zeichen statt Felder', 'Beispiel: cut -d : -f 1 /etc/passwd'],
+      tr:     ['tr <set1> <set2>  |  tr -d <set1>', 'Ersetzt oder löscht Zeichen (nur mit Pipe).', 'Beispiel: echo hallo | tr a-z A-Z'],
+      sed:    ['sed "s/alt/neu/g" [datei]', 'Suchen & Ersetzen zeilenweise (Stream-Editor).', '  g = alle Treffer pro Zeile,  i = Groß/klein egal', 'Beispiel: sed "s/red/blau/" uebung/gedicht.txt'],
+      tac:    ['tac [datei]', 'Wie cat, aber die Zeilen rückwärts (letzte zuerst).'],
+      nl:     ['nl [datei]', 'Nummeriert alle Zeilen (Kurzform für cat -n).'],
+      seq:    ['seq [start] [schritt] <ende>', 'Gibt eine Zahlenfolge aus.', 'Beispiel: seq 5   |   seq 10 -2 0'],
+      diff:   ['diff <datei1> <datei2>', 'Zeigt Unterschiede: < nur in Datei 1, > nur in Datei 2.'],
+      du:     ['du [-h] [pfad]', 'Speicherverbrauch von Ordnern. -h = menschenlesbar (K/M).'],
+      df:     ['df [-h]', 'Zeigt die (Retro-)Festplattenbelegung.'],
+      free:   ['free [-m]', 'Zeigt den (Retro-)Arbeitsspeicher. -m = in Megabyte.'],
+      ps:     ['ps', 'Zeigt die laufenden (simulierten) Prozesse mit PIDs.'],
+      top:    ['top', 'Prozess-Übersicht mit CPU und Speicher (Schnappschuss).'],
+      kill:   ['kill <pid>', 'Beendet einen Prozess. Die PIDs verrät dir  ps.'],
+      cal:    ['cal [monat jahr]', 'Zeigt einen Kalender.', 'Beispiel: cal 12 1997'],
+      expr:   ['expr <rechnung>', 'Taschenrechner: + - * / % und Klammern.', 'Beispiel: expr (3 + 4) * 2'],
+      stat:   ['stat <datei>', 'Zeigt Details zu einer Datei: Größe, Typ, Rechte.'],
+      file:   ['file <datei>', 'Rät, was für eine Art Datei das ist.'],
+      sound:  ['sound on|off', 'Terminal-Soundeffekte an- oder ausschalten.'],
     };
 
     /* ══════════════════════════════════════════════════════════════
@@ -1210,13 +1581,19 @@
         appendLine('  echo <text>             Text ausgeben ($USER usw. wird ersetzt)');
         appendLine('  grep [-invcr] <muster>  Zeilen filtern');
         appendLine('  sort / uniq / rev / wc  Sortieren / Duplikate / Umdrehen / Zählen');
+        appendLine('  cut / sed / tr          Spalten schneiden / Ersetzen / Zeichen tauschen');
+        appendLine('  tac / nl / seq / diff   Rückwärts / Nummerieren / Zahlenfolge / Vergleich');
         appendLine('  befehl | befehl         Pipe: Ausgabe weiterreichen');
         appendLine('  befehl > datei          Ausgabe in Datei schreiben (>> hängt an)');
+        appendLine('  befehl && befehl        Nur bei Erfolg weiter ( ; macht immer weiter)');
         blank();
         appendLine('SYSTEM', 'line-info');
         appendLine('  man <befehl>            Kurzhilfe            which / env / export');
-        appendLine('  history                 Verlauf (↑/↓)        clear = Strg+L');
-        appendLine('  whoami / uname -a / date / uptime');
+        appendLine('  history                 Verlauf (↑/↓)        !! / !3  wiederholen');
+        appendLine('  ps / top / kill <pid>   Prozesse             df / free / du   Platz & RAM');
+        appendLine('  stat / file <datei>     Datei-Infos          cal / expr   Kalender/Rechner');
+        appendLine('  whoami / id / hostname / uname -a / date / uptime');
+        appendLine('  sound on|off            Soundeffekte         clear = Strg+L');
         appendLine('  tutorial                Übungsaufgaben zum Lernen', 'line-pink');
         appendLine('  reset                   Dateisystem auf Anfang zurücksetzen');
         blank();
@@ -1226,14 +1603,17 @@
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
-        appendLine('Tab vervollständigt Befehle und Pfade. Deine Dateien bleiben im Browser gespeichert.', 'line-sys');
+        appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
+        appendLine('Strg+A/E = Zeilenanfang/-ende, Strg+U/K = bis Anfang/Ende löschen.', 'line-sys');
+        appendLine('Deine Dateien bleiben im Browser gespeichert.', 'line-sys');
         blank();
       },
 
       tutorial() {
+        playSfx('bell');
         blank();
         appendLine('╔══════════════════════════════════════════════════╗', 'line-pink');
-        appendLine('║   GLAPPA TERMINAL-SCHULE — 10 ÜBUNGEN             ║', 'line-pink');
+        appendLine('║   GLAPPA TERMINAL-SCHULE — 12 ÜBUNGEN             ║', 'line-pink');
         appendLine('╚══════════════════════════════════════════════════╝', 'line-pink');
         blank();
         appendLine('Übung 1 — Orientierung', 'line-info');
@@ -1276,7 +1656,17 @@
         appendLine('Übung 10 — Dateien finden', 'line-info');
         appendLine('  find / -name "*.log"       find ~ -type d');
         blank();
-        appendLine('Bonus:  man ls   |   fortune | cowsay   |   history', 'line-pink');
+        appendLine('Übung 11 — Spalten schneiden & ersetzen (Profi-Pipes)', 'line-info');
+        appendLine('  cut -d : -f 1 /etc/passwd            → nur die Benutzernamen');
+        appendLine('  echo hallo | tr a-z A-Z              → HALLO');
+        appendLine('  sed "s/red/blau/" ~/uebung/gedicht.txt');
+        blank();
+        appendLine('Übung 12 — System erkunden & verketten', 'line-info');
+        appendLine('  ps  →  kill 42069  →  top  →  df -h  →  free  →  cal');
+        appendLine('  mkdir test && cd test        (&& = nur bei Erfolg weiter)');
+        appendLine('  seq 5 | tac                  expr (3 + 4) * 2');
+        blank();
+        appendLine('Bonus:  man ls   |   fortune | cowsay   |   history  und  !!', 'line-pink');
         appendLine('Alles bleibt in DEINEM Browser gespeichert —  reset  setzt alles zurück.', 'line-sys');
         blank();
       },
@@ -1287,6 +1677,7 @@
         ROOT = defaultFS();
         cwd = HOME; prevCwd = HOME; ENV.PWD = HOME;
         try { localStorage.removeItem(FS_KEY); } catch(e) {}
+        playSfx('ding');
         blank();
         appendLine('Dateisystem zurückgesetzt — alles wieder wie am ersten Tag. ✨', 'line-info');
         blank();
@@ -1342,6 +1733,7 @@
           if (i >= lines.length) { clearInterval(iv); return; }
           appendLine(lines[i], i < 6 ? 'line-sys' : (i === 7 ? 'line-err' : 'line-ok'));
           if (i < 6) playHDDSeek();
+          if (i === 7) playSfx('alarm');
           i++;
         }, 180);
       },
@@ -1378,6 +1770,7 @@
       sudo(args) {
         if (!args.length) { appendLine('sudo: Befehl fehlt', 'line-err'); return; }
         if (args[0] === 'rm' && args.includes('-rf')) {
+          playSfx('alarm');
           appendLine('sudo: rm -rf: NEIN. Nur nicht.', 'line-err');
           appendLine('     (Bitte nicht die Produktion zerstören.)', 'line-sys'); return;
         }
@@ -1387,6 +1780,7 @@
         }
         appendLine('[sudo] Passwort für glappa: ');
         setTimeout(function(){
+          playSfx('denied');
           appendLine('Sorry, try again.', 'line-err');
           appendLine('Sorry, try again.', 'line-err');
           appendLine('sudo: 3 incorrect password attempts', 'line-err');
@@ -1395,6 +1789,27 @@
 
       python3() {
         appendLine('python3: Diskette 3 von 12 nicht gefunden. Installation abgebrochen.', 'line-err');
+      },
+
+      top() {
+        blank();
+        appendLine('top — ' + new Date().toLocaleTimeString('de-DE') + '  up seit 1997,  1 Benutzer,  Load: 1.33 0.73 0.37', 'line-info');
+        appendLine('Speicher: 32768K gesamt, 31337K benutzt — CPU: 4.2% us, 1.3% sy, 94.5% gif', 'line-sys');
+        blank();
+        appendLine('  PID USER      %CPU %MEM BEFEHL', 'line-info');
+        [['42069', 'bingus', '66.6', '13.4', 'bingus.exe'],
+         ['42',    'root',   '23.1', ' 8.2', 'gif-engine'],
+         ['9000',  'glappa', ' 5.5', '12.1', 'mp3-jukebox'],
+         ['1337',  'glappa', ' 2.5', ' 4.0', 'glappa-sh'],
+         ['666',   'root',   ' 1.5', ' 2.2', 'scanline-renderer'],
+         ['420',   'glappa', ' 0.7', ' 1.1', 'neon-daemon'],
+         ['1990',  'glappa', ' 0.4', ' 0.8', 'marquee-scroller'],
+         ['1',     'root',   ' 0.0', ' 0.4', 'init']].forEach(function(r) {
+          appendLine(r[0].padStart(5) + ' ' + r[1].padEnd(9) + r[2] + ' ' + r[3] + ' ' + r[4]);
+        });
+        blank();
+        appendLine('(Schnappschuss — das echte top aktualisiert sich live und q beendet es)', 'line-sys');
+        blank();
       },
 
       glappa(args) {
@@ -1428,12 +1843,32 @@
 
       reboot() {
         blank(); appendLine('System wird neu gestartet...', 'line-info'); blank();
-        setTimeout(function(){ window.location.reload(); }, 1400);
+        playSfx('shutdown');
+        setTimeout(function(){ window.location.reload(); }, 2400);
       },
 
       exit() {
         blank(); appendLine('Session beendet. Auf Wiedersehen! 👋', 'line-pink'); blank();
-        setTimeout(function(){ window.location.href = 'index.html'; }, 1200);
+        playSfx('logoff');
+        setTimeout(function(){ window.location.href = 'index.html'; }, 1800);
+      },
+
+      sound(args) {
+        const a = (args[0] || '').toLowerCase();
+        if (a === 'on' || a === 'an') {
+          sfxOn = true;
+          try { localStorage.setItem(SFX_KEY, '1'); } catch(e) {}
+          playSfx('ding');
+          appendLine('Sound: AN 🔊', 'line-info');
+          return;
+        }
+        if (a === 'off' || a === 'aus') {
+          sfxOn = false;
+          try { localStorage.setItem(SFX_KEY, '0'); } catch(e) {}
+          appendLine('Sound: AUS 🔇', 'line-info');
+          return;
+        }
+        appendLine('Sound ist gerade: ' + (sfxOn ? 'AN 🔊' : 'AUS 🔇') + '  —  Umschalten: sound on | sound off', 'line-info');
       },
     };
     ['curl','wget','ssh','ftp','telnet','nmap','apt','apt-get'].forEach(function(c) {
@@ -1441,12 +1876,36 @@
     });
 
     /* ══════════════════════════════════════════════════════════════
-       SHELL — Pipeline-Ausführung  (cmd | cmd > datei)
+       SHELL — Ketten (cmd ; cmd / cmd && cmd) aus Pipelines (cmd | cmd > datei)
     ══════════════════════════════════════════════════════════════ */
     function execLine(line) {
       const tokens = tokenize(line);
       if (!tokens.length) return;
 
+      /* In Befehls-Ketten zerlegen:  a ; b  läuft immer weiter,
+         a && b  führt b nur aus, wenn a Erfolg hatte (Status 0). */
+      const chains = [[]];
+      const ops = [];
+      for (const t of tokens) {
+        if (t === ';' || t === '&&') { ops.push(t); chains.push([]); }
+        else chains[chains.length - 1].push(t);
+      }
+      /* Ein ';' am Zeilenende ist ok (wie in bash) */
+      if (chains.length > 1 && !chains[chains.length - 1].length && ops[ops.length - 1] === ';') {
+        chains.pop(); ops.pop();
+      }
+      for (let i = 0; i < chains.length; i++) {
+        if (!chains[i].length) {
+          appendLine('Syntaxfehler bei ' + (i > 0 ? ops[i - 1] : ops[0] || ';'), 'line-err');
+          lastStatus = 2;
+          return;
+        }
+        if (i > 0 && ops[i - 1] === '&&' && lastStatus !== 0) continue;
+        execPipeline(chains[i]);
+      }
+    }
+
+    function execPipeline(tokens) {
       const stages = [[]];
       let redir = null, syntaxErr = null;
       for (let i = 0; i < tokens.length; i++) {
@@ -1480,7 +1939,10 @@
         const fn = BIN[cmd];
         if (!fn) {
           if (SPECIAL[cmd]) appendLine(cmd + ': funktioniert nicht mit Pipes oder Umleitungen', 'line-err');
-          else appendLine('glappa-sh: ' + cmd + ': Kommando nicht gefunden. Tippe  help', 'line-err');
+          else {
+            playSfx('deny');
+            appendLine('glappa-sh: ' + cmd + ': Kommando nicht gefunden. Tippe  help', 'line-err');
+          }
           lastStatus = 127;
           return;
         }
@@ -1549,10 +2011,11 @@
                            { role: 'assistant', content: reply });
         }
         typeReply('GLAPPA-BOT: ' + reply);
-        playHDDSeek();
+        playSfx('balloon');
       })
       .catch(function() {
         thinking.remove();
+        playSfx('error');
         appendLine('GLAPPA-BOT ist gerade offline. (VPS nicht erreichbar)', 'line-err');
       })
       .finally(function() { chatBusy = false; });
@@ -1582,8 +2045,28 @@
     }
 
     function runCmd(raw) {
-      const trimmed = raw.trim();
+      let trimmed = raw.trim();
       if (!trimmed) return;
+
+      /* Verlaufs-Wiederholung wie in bash:  !! = letzter Befehl,
+         !3 = Befehl Nr. 3 aus `history`,  !gre = letzter Befehl mit dem Anfang */
+      if (!chatMode && trimmed[0] === '!' && trimmed.length > 1) {
+        let repl = null;
+        if (trimmed === '!!') repl = cmdHistory[0];
+        else if (/^!\d+$/.test(trimmed)) repl = cmdHistory.slice().reverse()[parseInt(trimmed.slice(1), 10) - 1];
+        else {
+          const pre = trimmed.slice(1);
+          repl = cmdHistory.find(function(h) { return h.startsWith(pre); });
+        }
+        if (!repl) {
+          playSfx('deny');
+          appendLine(promptStr() + trimmed, 'line-cmd');
+          appendLine('glappa-sh: ' + trimmed + ': Ereignis nicht gefunden', 'line-err');
+          return;
+        }
+        trimmed = repl;
+      }
+
       cmdHistory.unshift(trimmed);
       histIdx = -1;
 
@@ -1615,9 +2098,15 @@
       const val = inp.value;
       const parts = val.split(/\s+/);
       const last = parts[parts.length - 1] || '';
+      const first = (parts[0] || '').toLowerCase();
       let candidates = [];
 
-      if (parts.length === 1 && !last.includes('/')) {
+      /* Nach diesen Befehlen werden Befehlsnamen statt Pfade vervollständigt */
+      const wantsCmdArg = ['man', 'which', 'sudo', 'whereis'].indexOf(first) >= 0;
+      /* cd/rmdir interessieren sich nur für Verzeichnisse */
+      const dirsOnly = ['cd', 'rmdir'].indexOf(first) >= 0;
+
+      if ((parts.length === 1 || wantsCmdArg) && !last.includes('/')) {
         candidates = allCommands().filter(function(c) { return c.startsWith(last); });
       } else {
         const slash = last.lastIndexOf('/');
@@ -1626,7 +2115,11 @@
         const node = getNode(resolvePath(dirPart || '.'));
         if (node && node.type === 'dir') {
           candidates = Object.keys(node.children)
-            .filter(function(n) { return n.startsWith(base) && (base.startsWith('.') || !n.startsWith('.')); })
+            .filter(function(n) {
+              return n.startsWith(base)
+                  && (base.startsWith('.') || !n.startsWith('.'))
+                  && (!dirsOnly || node.children[n].type === 'dir');
+            })
             .sort()
             .map(function(n) { return dirPart + n + (node.children[n].type === 'dir' ? '/' : ''); });
         }
@@ -1636,6 +2129,7 @@
       if (candidates.length === 1) {
         parts[parts.length - 1] = candidates[0];
         inp.value = parts.join(' ') + (candidates[0].endsWith('/') ? '' : ' ');
+        playSfx('menu');
         return;
       }
       /* Gemeinsamen Anfang so weit wie möglich vervollständigen */
@@ -1646,14 +2140,22 @@
       if (common.length > last.length) {
         parts[parts.length - 1] = common;
         inp.value = parts.join(' ');
+        playSfx('menu');
       } else {
-        appendLine(candidates.join('   '), 'line-sys');
+        /* Alle Möglichkeiten in ordentlichen Spalten zeigen (wie bash) */
+        playSfx('menu2');
+        const width = Math.max.apply(null, candidates.map(function(c) { return c.length; })) + 2;
+        const perRow = Math.max(1, Math.floor(76 / width));
+        for (let i = 0; i < candidates.length; i += perRow) {
+          appendLine(candidates.slice(i, i + perRow).map(function(c) { return c.padEnd(width); }).join('').trimEnd(), 'line-sys');
+        }
       }
     }
 
     inp.addEventListener('keydown', function(e) {
       playClick();
       if (e.key === 'Enter') {
+        playSfx('blip');
         const val = inp.value; inp.value = ''; runCmd(val);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -1676,6 +2178,22 @@
       } else if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
         e.preventDefault();
         out.innerHTML = '';
+      /* Readline-Klassiker: Strg+A/E Anfang/Ende, Strg+U/K Zeile löschen.
+         (Strg+W schließt im Browser den Tab — dafür löscht Strg+Backspace
+         nativ das letzte Wort.) */
+      } else if (e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        inp.setSelectionRange(0, 0);
+      } else if (e.ctrlKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        inp.setSelectionRange(inp.value.length, inp.value.length);
+      } else if (e.ctrlKey && (e.key === 'u' || e.key === 'U')) {
+        e.preventDefault();
+        inp.value = inp.value.slice(inp.selectionStart);
+        inp.setSelectionRange(0, 0);
+      } else if (e.ctrlKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        inp.value = inp.value.slice(0, inp.selectionStart);
       }
     });
 
@@ -1708,6 +2226,7 @@
       if (!pr.parent || pr.parent.type !== 'dir') { flashEdMsg('[ Fehler: Verzeichnis fehlt ]'); return; }
       pr.parent.children[pr.name] = fileNode(edText.value);
       saveFS();
+      playSfx('ding');
       flashEdMsg('[ Gespeichert: ' + contentLines(edText.value).length + ' Zeilen ]');
     }
     function closeEditor() {
@@ -1744,6 +2263,7 @@
       { t: 1000, cls: 'line-bios', txt: 'Detecting IDE drives...' },
       { t: 1100, sound: 'seek' },
       { t: 1200, cls: 'line-bios', txt: 'IDE0 Master: GLAPPA-HDD    2048 MB' },
+      { t: 1280, sound: 'hardware' },
       { t: 1350, sound: 'seek' },
       { t: 1450, cls: 'line-bios', txt: 'IDE1 Master: ATAPI CD-ROM  48X' },
       { t: 1600, cls: 'line-bios', txt: 'Booting from IDE0...' },
@@ -1813,8 +2333,11 @@
 
       BOOT.forEach(function(entry) {
         setTimeout(function() {
-          if (entry.sound === 'seek')  { playHDDSeek(); return; }
-          if (entry.sound === 'chime') { playStartupChime(); return; }
+          if (entry.sound === 'seek')     { playHDDSeek(); return; }
+          /* Der ECHTE Windows-XP-Startsound; klappt das Abspielen nicht,
+             springt der alte Synth-Chime ein */
+          if (entry.sound === 'chime')    { playSfxOr('startup', playStartupChime); return; }
+          if (entry.sound === 'hardware') { playSfx('hardware'); return; }
           if (entry.ram) { animateRAM(); return; }
           appendLine(entry.txt, entry.cls);
         }, entry.t);

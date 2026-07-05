@@ -8,6 +8,12 @@
       "port": 8098
     },
     {
+      "name": "glappa-static-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8099"],
+      "port": 8099
+    },
+    {
       "name": "glappa-app",
       "runtimeExecutable": "C:\\Users\\Prieb\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
       "runtimeArgs": ["home/app.py"],
