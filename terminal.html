@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Terminal &mdash; Glappa</title>
-  <meta name="keywords" content="90's Glappa Terminal, Hacker">
-  <meta name="description" content="Retro Terminal Simulator">
+  <meta name="keywords" content="90's Glappa Terminal, Hacker, Linux lernen">
+  <meta name="description" content="Retro Linux-Terminal zum Üben — läuft komplett offline im Browser">
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css?v=18">
   <style>
@@ -73,8 +73,13 @@
       word-break: break-word;
       margin-bottom: 10px;
       min-height: 360px;
+      max-height: 62vh;
+      overflow-y: auto;
       line-height: 1.55;
     }
+    #output::-webkit-scrollbar { width: 8px; }
+    #output::-webkit-scrollbar-thumb { background: rgba(0,255,0,0.35); border-radius: 4px; }
+    #output::-webkit-scrollbar-track { background: rgba(0,255,0,0.06); }
 
     .input-row {
       display: flex;
@@ -114,6 +119,45 @@
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     .cursor-blink { animation: blink 1s step-start infinite; }
     .blink-text   { animation: blink 0.8s step-start infinite; }
+
+    /* nano-Editor (Overlay im Terminal) */
+    #editor {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: none;
+      flex-direction: column;
+      background: #0a0a0a;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    #editor .ed-bar {
+      background: var(--neon-green);
+      color: #000;
+      padding: 2px 10px;
+      font-weight: bold;
+      font-size: 0.85em;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    #ed-text {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
+      caret-color: var(--neon-green);
+      font-family: inherit;
+      font-size: inherit;
+      line-height: 1.5;
+      padding: 10px 12px;
+      white-space: pre;
+      overflow: auto;
+    }
 
     /* Press-any-key Bildschirm */
     #presskey {
@@ -196,6 +240,14 @@
         </pre>
         <div class="pk-msg blink-text">PRESS ANY KEY TO BOOT</div>
         <div class="pk-sub">or click here</div>
+      </div>
+
+      <!-- nano-Editor Overlay -->
+      <div id="editor">
+        <div class="ed-bar"><span id="ed-title">GNU nano 1.337</span><span id="ed-file"></span></div>
+        <textarea id="ed-text" spellcheck="false" autocomplete="off"
+                  autocorrect="off" autocapitalize="off" aria-label="nano Editor"></textarea>
+        <div class="ed-bar"><span>^O Speichern &nbsp; ^X Beenden</span><span id="ed-msg"></span></div>
       </div>
 
       <div id="output"></div>
@@ -337,43 +389,106 @@
     const out       = document.getElementById('output');
     const inputRow  = document.getElementById('input-row');
     const inp       = document.getElementById('cmd-input');
+    const editorEl  = document.getElementById('editor');
+    const edFileEl  = document.getElementById('ed-file');
+    const edText    = document.getElementById('ed-text');
+    const edMsg     = document.getElementById('ed-msg');
 
     /* ══════════════════════════════════════════════════════════════
-       VIRTUELLES DATEISYSTEM
+       VIRTUELLES DATEISYSTEM — echt beschreibbar, lebt NUR im Browser
+       (localStorage). Kein einziger Shell-Befehl geht ins Netz; nur
+       der separate glappa-chat spricht mit der Glappa-KI.
     ══════════════════════════════════════════════════════════════ */
-    const FS = {
-      '/':            { type: 'dir', children: ['home', 'etc', 'var', 'usr', 'secret'] },
-      '/home':        { type: 'dir', children: ['glappa'] },
-      '/home/glappa': { type: 'dir', children: ['README.txt', 'hacking_tools.zip', '.bash_history', 'todo.txt'] },
-      '/etc':         { type: 'dir', children: ['passwd', 'hosts', 'motd'] },
-      '/var':         { type: 'dir', children: ['log'] },
-      '/var/log':     { type: 'dir', children: ['access.log', 'hack.log'] },
-      '/usr':         { type: 'dir', children: ['bin', 'local'] },
-      '/usr/bin':     { type: 'dir', children: ['cat', 'ls', 'rm', 'vim', 'nano', 'python3', 'nmap', 'hydra', 'glappa-chat'] },
-      '/secret':      { type: 'dir', children: ['classified.txt', '???'] },
-    };
-    const FILES = {
-      '/home/glappa/README.txt':
-        'Willkommen auf Glappa.de!\nDieses Terminal ist rein kosmetisch.\nViel Spaß beim Hacken! 😎\n\n-- Lex',
-      '/home/glappa/todo.txt':
-        '[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen',
-      '/home/glappa/.bash_history':
-        'sudo rm -rf /\nnmap -sS 192.168.0.1\npython3 hack_nasa.py\ncurl parrot.live\nexit',
-      '/etc/motd':
-        '██████████████████████████████████████\n█  GLAPPA.DE SECURE SHELL v1.337      █\n█  Unbefugter Zugang wird verfolgt!   █\n██████████████████████████████████████',
-      '/etc/hosts':
-        '127.0.0.1   localhost\n127.0.0.1   glappa.de\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server',
-      '/etc/passwd':
-        'root:x:0:0:root:/root:/bin/bash\nglappa:x:1337:1337:Lex:/home/glappa:/bin/zsh\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat',
-      '/secret/classified.txt':
-        '██ STRENG GEHEIM ██\n\nDer Pincode für die Secret-Page ist...\n\n... nur für echte H4X0RS.',
-      '/var/log/access.log':
-        '[06:30] 192.168.1.1 - GET / 200\n[06:31] 10.0.0.2 - GET /secret 403\n[06:32] 1.3.3.7  - POST /login 401\n[06:33] 127.0.0.1 - GET /flag 404',
-      '/var/log/hack.log':
-        '[WARN] Brute-force attempt from 6.6.6.6\n[WARN] Port scan detected\n[INFO] Bingus logged in successfully\n[CRIT] Someone tried to rm -rf /',
-    };
+    const HOME   = '/home/glappa';
+    const FS_KEY = 'glappaTermFS_v1';
 
-    let cwd = '/home/glappa';
+    function dirNode(children)  { return { type: 'dir',  children: children || {} }; }
+    function fileNode(content)  { return { type: 'file', content: content || '' }; }
+
+    function defaultFS() {
+      const bin = {};
+      ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
+       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat']
+        .forEach(function(b) {
+          bin[b] = fileNode('ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)');
+        });
+      return dirNode({
+        home: dirNode({
+          glappa: dirNode({
+            'README.txt': fileNode(
+              'Willkommen auf Glappa.de!\n\n' +
+              'Das hier ist ein ECHTES Übungs-Terminal:\n' +
+              'Dateien anlegen, löschen, Pipes, nano — alles geht.\n' +
+              'Alles läuft nur in deinem Browser, nichts wird gesendet.\n\n' +
+              'Tippe  tutorial  für Übungsaufgaben.\n' +
+              'Tippe  reset  wenn du alles zurücksetzen willst.\n\n' +
+              'Viel Spaß beim Üben! 😎\n\n-- Lex'),
+            'todo.txt': fileNode('[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen\n[x] Terminal ECHT machen'),
+            '.bash_history': fileNode('sudo rm -rf /\nnmap -sS 192.168.0.1\npython3 hack_nasa.py\ncurl parrot.live\nexit'),
+            '.geheim.txt': fileNode('Psst! Du hast die versteckte Datei gefunden. ls -a sei Dank. 🕵️'),
+            uebung: dirNode({
+              'namen.txt':   fileNode('anna\nbob\ncharlie\nanna\ndora\nbob\nanna\nemil'),
+              'zahlen.txt':  fileNode('42\n7\n1337\n3\n99\n7\n256'),
+              'gedicht.txt': fileNode('Roses are red,\nTerminals are green,\ndas coolste Terminal,\ndas du je hast gesehen.'),
+              'server.log':  fileNode(
+                '2026-07-04 06:30:01 INFO  Server gestartet\n' +
+                '2026-07-04 06:31:12 WARN  Speicher fast voll\n' +
+                '2026-07-04 06:32:45 ERROR Festplatte macht komische Geräusche\n' +
+                '2026-07-04 06:33:10 INFO  Bingus hat sich eingeloggt\n' +
+                '2026-07-04 06:34:59 ERROR Kaffeemaschine nicht erreichbar\n' +
+                '2026-07-04 06:35:30 INFO  Alles wieder gut'),
+            }),
+          }),
+        }),
+        etc: dirNode({
+          motd:   fileNode('██████████████████████████████████████\n█  GLAPPA.DE SECURE SHELL v1.337      █\n█  Unbefugter Zugang wird verfolgt!   █\n██████████████████████████████████████'),
+          hosts:  fileNode('127.0.0.1   localhost\n127.0.0.1   glappa.de\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server'),
+          passwd: fileNode('root:x:0:0:root:/root:/bin/bash\nglappa:x:1337:1337:Lex:/home/glappa:/bin/zsh\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat'),
+        }),
+        var: dirNode({
+          log: dirNode({
+            'access.log': fileNode('[06:30] 192.168.1.1 - GET / 200\n[06:31] 10.0.0.2 - GET /secret 403\n[06:32] 1.3.3.7  - POST /login 401\n[06:33] 127.0.0.1 - GET /flag 404'),
+            'hack.log':   fileNode('[WARN] Brute-force attempt from 6.6.6.6\n[WARN] Port scan detected\n[INFO] Bingus logged in successfully\n[CRIT] Someone tried to rm -rf /'),
+          }),
+        }),
+        usr: dirNode({ bin: dirNode(bin), local: dirNode({}) }),
+        tmp: dirNode({}),
+        secret: dirNode({
+          'classified.txt': fileNode('██ STRENG GEHEIM ██\n\nDer Pincode für die Secret-Page ist...\n\n... nur für echte H4X0RS.'),
+          '???':            fileNode('🔒 ZUGANG VERWEIGERT.\n(Netter Versuch.)'),
+        }),
+      });
+    }
+
+    function loadFS() {
+      try {
+        const raw = localStorage.getItem(FS_KEY);
+        if (raw) {
+          const t = JSON.parse(raw);
+          if (t && t.type === 'dir' && t.children) return t;
+        }
+      } catch(e) {}
+      return defaultFS();
+    }
+
+    let ROOT = loadFS();
+    let saveWarned = false;
+    function saveFS() {
+      try { localStorage.setItem(FS_KEY, JSON.stringify(ROOT)); }
+      catch(e) {
+        if (!saveWarned) {
+          saveWarned = true;
+          appendLine('[warn] Speichern im Browser fehlgeschlagen — Änderungen gehen beim Neuladen verloren.', 'line-err');
+        }
+      }
+      playHDDSeek();
+    }
+
+    /* ── Shell-State ── */
+    const ENV = { USER: 'glappa', HOSTNAME: 'web', HOME: HOME, SHELL: '/bin/glappa-sh', TERM: 'glappa-crt', PWD: HOME };
+    let cwd = HOME;
+    let prevCwd = HOME;
+    let lastStatus = 0;
     const cmdHistory = [];
     let histIdx = -1;
 
@@ -395,86 +510,12 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
-       BOOT-SEQUENZ
+       PFAD-HELFER
     ══════════════════════════════════════════════════════════════ */
-    const BOOT = [
-      // BIOS Phase
-      { t:    0, cls: 'line-bios', txt: 'GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.' },
-      { t:   80, cls: 'line-bios', txt: 'CPU: Intel Pentium MMX 200MHz' },
-      { t:  160, cls: 'line-bios', txt: 'Memory Test: ', ram: true },
-      { t:  900, cls: 'line-bios', txt: 'Memory OK — 32768 KB' },
-      { t: 1000, cls: 'line-bios', txt: 'Detecting IDE drives...' },
-      { t: 1100, sound: 'seek' },
-      { t: 1200, cls: 'line-bios', txt: 'IDE0 Master: GLAPPA-HDD    2048 MB' },
-      { t: 1350, sound: 'seek' },
-      { t: 1450, cls: 'line-bios', txt: 'IDE1 Master: ATAPI CD-ROM  48X' },
-      { t: 1600, cls: 'line-bios', txt: 'Booting from IDE0...' },
-      { t: 1750, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
-      // OS Boot Phase
-      { t: 1900, cls: 'line-art',  txt: 'GLAPPA OS v1.337 — KERNEL 9000.1-RETRO' },
-      { t: 2000, sound: 'seek' },
-      { t: 2050, cls: 'line-sys',  txt: 'Lade Kernelmodule ...............  [ OK ]' },
-      { t: 2150, sound: 'seek' },
-      { t: 2200, cls: 'line-sys',  txt: 'Initialisiere Neon-Subsystem ....  [ OK ]' },
-      { t: 2350, sound: 'seek' },
-      { t: 2400, cls: 'line-sys',  txt: 'Starte GIF-Engine v9.0 ..........  [ OK ]' },
-      { t: 2550, sound: 'seek' },
-      { t: 2600, cls: 'line-sys',  txt: 'Kalibriere Bingus-Detektor ......  [ OK ]' },
-      { t: 2750, sound: 'seek' },
-      { t: 2800, cls: 'line-sys',  txt: 'Verbinde mit Matrix .............  [ OK ]' },
-      { t: 2900, cls: 'line-sys',  txt: 'Lade GLAPPA-BOT KI ..............  [ OK ]' },
-      { t: 2950, sound: 'seek' },
-      { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
-      { t: 3150, cls: 'line-sys',  txt: 'Starte Haupt-Shell ..............  [ OK ]' },
-      { t: 3300, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
-      // ASCII Art
-      { t: 3450, cls: 'line-ok',   txt: '' },
-      { t: 3470, cls: 'line-ok',   txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
-      { t: 3490, cls: 'line-ok',   txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
-      { t: 3510, cls: 'line-ok',   txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
-      { t: 3530, cls: 'line-ok',   txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
-      { t: 3550, cls: 'line-ok',   txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
-      { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
-      { t: 3590, cls: 'line-ok',   txt: '' },
-      { t: 3610, sound: 'chime' },
-      { t: 3650, cls: 'line-pink', txt: '  Tippe  help  für eine Liste aller Befehle.' },
-      { t: 3670, cls: 'line-info', txt: '  Tippe  neofetch  für Systeminfo.' },
-      { t: 3685, cls: 'line-pink', txt: '  Tippe  glappa-chat  um mit der Glappa-KI zu reden.' },
-      { t: 3690, cls: 'line-ok',   txt: '' },
-    ];
-
-    /* RAM-Counter Animation */
-    function animateRAM() {
-      const div = document.createElement('div');
-      div.className = 'line-bios';
-      div.textContent = 'Memory Test: 0 KB';
-      out.appendChild(div);
-      const target = 32768;
-      const steps  = 28;
-      let   step   = 0;
-      const iv = setInterval(function() {
-        step++;
-        const val = Math.min(Math.round(target * step / steps), target);
-        div.textContent = 'Memory Test: ' + val + ' KB';
-        if (step >= steps) clearInterval(iv);
-      }, 25);
-    }
-
-    /* ── Hilfsfunktionen ── */
-    function appendLine(text, cls) {
-      cls = cls || 'line-ok';
-      const div = document.createElement('div');
-      div.className = cls;
-      div.textContent = text;
-      out.appendChild(div);
-      out.scrollTop = out.scrollHeight;
-    }
-    function blank() { appendLine(''); }
-
     function resolvePath(p) {
-      if (!p || p === '~') return '/home/glappa';
-      if (p.startsWith('~')) p = '/home/glappa' + p.slice(1);
-      if (!p.startsWith('/')) p = cwd + '/' + p;
+      if (!p || p === '~') return HOME;
+      if (p.startsWith('~/')) p = HOME + p.slice(1);
+      if (!p.startsWith('/')) p = (cwd === '/' ? '' : cwd) + '/' + p;
       const parts = p.split('/').filter(Boolean);
       const stack = [];
       for (const part of parts) {
@@ -484,98 +525,788 @@
       return '/' + stack.join('/');
     }
 
+    function getNode(path) {
+      if (path === '/') return ROOT;
+      let node = ROOT;
+      for (const part of path.split('/').filter(Boolean)) {
+        if (!node || node.type !== 'dir') return null;
+        node = node.children[part];
+      }
+      return node || null;
+    }
+
+    function parentPath(path) {
+      const parts = path.split('/').filter(Boolean);
+      parts.pop();
+      return '/' + parts.join('/');
+    }
+    function parentOf(path) {
+      const parts = path.split('/').filter(Boolean);
+      const name = parts.pop();
+      return { parent: getNode('/' + parts.join('/')), name: name };
+    }
+    function baseName(path) {
+      return path.split('/').filter(Boolean).pop() || '/';
+    }
+    function shortCwd() {
+      if (cwd === HOME) return '~';
+      if (cwd.startsWith(HOME + '/')) return '~' + cwd.slice(HOME.length);
+      return cwd;
+    }
+    function deepCopy(node) { return JSON.parse(JSON.stringify(node)); }
+    function contentLines(c) { return c === '' ? [] : c.split('\n'); }
+
+    /* mkdir -p: legt alle fehlenden Zwischenverzeichnisse an */
+    function mkdirp(path) {
+      let node = ROOT;
+      for (const part of path.split('/').filter(Boolean)) {
+        if (!node.children[part]) node.children[part] = dirNode({});
+        node = node.children[part];
+        if (node.type !== 'dir') return 'mkdir: ' + path + ': Ein Teil des Pfads ist eine Datei';
+      }
+      return null;
+    }
+
+    /* Umleitungsziel schreiben (> überschreibt, >> hängt an) */
+    function writeRedirect(target, text, append) {
+      const p = resolvePath(target);
+      const node = getNode(p);
+      if (node && node.type === 'dir') return 'Umleitung: ' + target + ': Ist ein Verzeichnis';
+      const pr = parentOf(p);
+      if (!pr.parent || pr.parent.type !== 'dir') return 'Umleitung: ' + target + ': Verzeichnis existiert nicht';
+      if (append && node) {
+        node.content = node.content === '' ? text : node.content + '\n' + text;
+      } else {
+        pr.parent.children[pr.name] = fileNode(text);
+      }
+      saveFS();
+      return null;
+    }
+
+    /* ── Ausgabe-Helfer ── */
+    function appendLine(text, cls) {
+      cls = cls || 'line-ok';
+      const div = document.createElement('div');
+      div.className = cls;
+      div.textContent = text;
+      out.appendChild(div);
+      out.scrollTop = out.scrollHeight;
+    }
+    function blank() { appendLine(''); }
+    function ok(lines)  { return { out: lines || [], err: [] }; }
+    function fail(msg)  { return { out: [], err: [msg] }; }
+
+    /* ── Flags einsammeln: -la → {l,a}, Rest bleibt Argument ── */
+    function parseFlags(args) {
+      const flags = new Set();
+      const rest = [];
+      args.forEach(function(a) {
+        if (/^-[a-zA-Z]+$/.test(a)) a.slice(1).split('').forEach(function(c) { flags.add(c); });
+        else rest.push(a);
+      });
+      return { flags: flags, rest: rest };
+    }
+
+    /* Eingabezeilen aus Dateien ODER stdin (Pipe) lesen */
+    function readInput(files, stdin, cmdname) {
+      if (!files.length) return { lines: (stdin || []).slice(), errs: [] };
+      const lines = [], errs = [];
+      files.forEach(function(f) {
+        const n = getNode(resolvePath(f));
+        if (!n) errs.push(cmdname + ': ' + f + ': Datei oder Verzeichnis nicht gefunden');
+        else if (n.type === 'dir') errs.push(cmdname + ': ' + f + ': Ist ein Verzeichnis');
+        else contentLines(n.content).forEach(function(l) { lines.push(l); });
+      });
+      return { lines: lines, errs: errs };
+    }
+
     /* ══════════════════════════════════════════════════════════════
-       BEFEHLE
+       TOKENIZER — versteht "..." '...' $VAR ${VAR} $? sowie | > >>
     ══════════════════════════════════════════════════════════════ */
-    const COMMANDS = {
+    function tokenize(str) {
+      const tokens = [];
+      let cur = '', inS = false, inD = false, hasQuote = false;
+      function push() { if (cur || hasQuote) { tokens.push(cur); cur = ''; hasQuote = false; } }
+      for (let i = 0; i < str.length; i++) {
+        const ch = str[i];
+        if (inS) { if (ch === "'") inS = false; else cur += ch; continue; }
+        if (ch === '$') {
+          let j = i + 1, name = '';
+          if (str[j] === '{') { j++; while (j < str.length && str[j] !== '}') name += str[j++]; j++; }
+          else if (str[j] === '?') { name = '?'; j++; }
+          else { while (j < str.length && /[A-Za-z0-9_]/.test(str[j])) name += str[j++]; }
+          if (name) {
+            cur += (name === '?') ? String(lastStatus) : (ENV[name] != null ? ENV[name] : '');
+            i = j - 1;
+          } else cur += '$';
+          continue;
+        }
+        if (inD) { if (ch === '"') inD = false; else cur += ch; continue; }
+        if (ch === "'") { inS = true; hasQuote = true; continue; }
+        if (ch === '"') { inD = true; hasQuote = true; continue; }
+        if (ch === ' ' || ch === '\t') { push(); continue; }
+        if (ch === '|') { push(); tokens.push('|'); continue; }
+        if (ch === '>') {
+          push();
+          if (str[i + 1] === '>') { tokens.push('>>'); i++; } else tokens.push('>');
+          continue;
+        }
+        cur += ch;
+      }
+      push();
+      return tokens;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       BIN — pipe-fähige Befehle. Signatur: fn(args, stdin) ->
+       { out: [zeile | {text, cls}], err: [meldung] }
+    ══════════════════════════════════════════════════════════════ */
+    const MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+    function lsDate() {
+      const d = new Date();
+      return MONATE[d.getMonth()] + ' ' + String(d.getDate()).padStart(2) + ' '
+           + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+    function lsLongLine(node, name) {
+      const isD = node.type === 'dir';
+      const size = isD ? 4096 : node.content.length;
+      return {
+        text: (isD ? 'drwxr-xr-x' : '-rw-r--r--') + '  1 glappa glappa '
+            + String(size).padStart(6) + ' ' + lsDate() + ' ' + name + (isD ? '/' : ''),
+        cls: isD ? 'line-info' : 'line-ok'
+      };
+    }
+
+    function headTail(name) {
+      return function(args, stdin) {
+        let count = 10;
+        const files = [];
+        for (let i = 0; i < args.length; i++) {
+          const a = args[i];
+          if (a === '-n') count = parseInt(args[++i], 10);
+          else if (/^-n\d+$/.test(a)) count = parseInt(a.slice(2), 10);
+          else if (/^-\d+$/.test(a)) count = parseInt(a.slice(1), 10);
+          else files.push(a);
+        }
+        if (!isFinite(count) || count < 0) return fail(name + ': ungültige Zeilenanzahl');
+        const r = readInput(files, stdin, name);
+        const lines = count === 0 ? []
+          : (name === 'head' ? r.lines.slice(0, count) : r.lines.slice(-count));
+        return { out: lines, err: r.errs };
+      };
+    }
+
+    const BIN = {
+
+      ls(args) {
+        const pf = parseFlags(args);
+        const long = pf.flags.has('l'), all = pf.flags.has('a');
+        const target = pf.rest[0] ? resolvePath(pf.rest[0]) : cwd;
+        const node = getNode(target);
+        if (!node) return fail('ls: ' + (pf.rest[0] || target) + ': Datei oder Verzeichnis nicht gefunden');
+        if (node.type === 'file') {
+          return ok([long ? lsLongLine(node, pf.rest[0] || baseName(target)) : (pf.rest[0] || baseName(target))]);
+        }
+        let names = Object.keys(node.children).sort();
+        if (!all) names = names.filter(function(n) { return !n.startsWith('.'); });
+        else names = ['.', '..'].concat(names);
+        const lines = [];
+        names.forEach(function(n) {
+          const child = (n === '.') ? node : (n === '..') ? (getNode(parentPath(target)) || ROOT) : node.children[n];
+          if (long) lines.push(lsLongLine(child, n));
+          else {
+            const isD = child.type === 'dir';
+            lines.push({ text: n + (isD ? '/' : ''), cls: isD ? 'line-info' : 'line-ok' });
+          }
+        });
+        return ok(lines);
+      },
+
+      ll(args, stdin) { return BIN.ls(['-l'].concat(args), stdin); },
+
+      cd(args) {
+        let t = args[0];
+        if (t === '-') t = prevCwd;
+        const p = t ? resolvePath(t) : HOME;
+        const node = getNode(p);
+        if (!node) return fail('cd: ' + (args[0] || '~') + ': Datei oder Verzeichnis nicht gefunden');
+        if (node.type !== 'dir') return fail('cd: ' + args[0] + ': Ist kein Verzeichnis');
+        prevCwd = cwd;
+        cwd = p;
+        ENV.PWD = p;
+        ENV.OLDPWD = prevCwd;
+        return ok(args[0] === '-' ? [p] : []);
+      },
+
+      pwd() { return ok([cwd]); },
+
+      cat(args, stdin) {
+        const pf = parseFlags(args);
+        const r = readInput(pf.rest, stdin, 'cat');
+        let lines = r.lines;
+        if (pf.flags.has('n')) {
+          lines = lines.map(function(l, i) { return String(i + 1).padStart(5) + '  ' + l; });
+        }
+        return { out: lines, err: r.errs };
+      },
+
+      head: headTail('head'),
+      tail: headTail('tail'),
+
+      echo(args) { return ok([args.join(' ')]); },
+
+      touch(args) {
+        if (!args.length) return fail('touch: Benutzung: touch <datei...>');
+        const errs = [];
+        args.forEach(function(f) {
+          const p = resolvePath(f);
+          const n = getNode(p);
+          if (n) { if (n.type === 'dir') errs.push('touch: ' + f + ': Ist ein Verzeichnis'); return; }
+          const pr = parentOf(p);
+          if (!pr.parent || pr.parent.type !== 'dir') { errs.push('touch: ' + f + ': Verzeichnis existiert nicht'); return; }
+          pr.parent.children[pr.name] = fileNode('');
+        });
+        saveFS();
+        return { out: [], err: errs };
+      },
+
+      mkdir(args) {
+        const pf = parseFlags(args);
+        if (!pf.rest.length) return fail('mkdir: Benutzung: mkdir [-p] <ordner...>');
+        const errs = [];
+        pf.rest.forEach(function(f) {
+          const p = resolvePath(f);
+          if (getNode(p)) { if (!pf.flags.has('p')) errs.push('mkdir: ' + f + ': existiert bereits'); return; }
+          if (pf.flags.has('p')) { const e = mkdirp(p); if (e) errs.push(e); return; }
+          const pr = parentOf(p);
+          if (!pr.parent || pr.parent.type !== 'dir') { errs.push('mkdir: ' + f + ': Übergeordnetes Verzeichnis fehlt (Tipp: mkdir -p)'); return; }
+          pr.parent.children[pr.name] = dirNode({});
+        });
+        saveFS();
+        return { out: [], err: errs };
+      },
+
+      rm(args) {
+        const pf = parseFlags(args);
+        const recursive = pf.flags.has('r') || pf.flags.has('R');
+        const force = pf.flags.has('f');
+        if (!pf.rest.length) return fail('rm: Benutzung: rm [-rf] <datei...>');
+        const errs = [];
+        pf.rest.forEach(function(f) {
+          const p = resolvePath(f);
+          if (p === '/') { errs.push('rm: NEIN. Das Wurzelverzeichnis bleibt. 😤'); return; }
+          const n = getNode(p);
+          if (!n) { if (!force) errs.push('rm: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+          if (n.type === 'dir' && !recursive) { errs.push('rm: ' + f + ': Ist ein Verzeichnis (Tipp: rm -r)'); return; }
+          const pr = parentOf(p);
+          delete pr.parent.children[pr.name];
+          if (cwd === p || cwd.startsWith(p + '/')) { cwd = parentPath(p); ENV.PWD = cwd; }
+        });
+        saveFS();
+        return { out: [], err: errs };
+      },
+
+      rmdir(args) {
+        if (!args.length) return fail('rmdir: Benutzung: rmdir <ordner...>');
+        const errs = [];
+        args.forEach(function(f) {
+          const p = resolvePath(f);
+          const n = getNode(p);
+          if (!n) { errs.push('rmdir: ' + f + ': Verzeichnis nicht gefunden'); return; }
+          if (n.type !== 'dir') { errs.push('rmdir: ' + f + ': Ist kein Verzeichnis'); return; }
+          if (Object.keys(n.children).length) { errs.push('rmdir: ' + f + ': Verzeichnis ist nicht leer (Tipp: rm -r)'); return; }
+          const pr = parentOf(p);
+          delete pr.parent.children[pr.name];
+        });
+        saveFS();
+        return { out: [], err: errs };
+      },
+
+      cp(args) {
+        const pf = parseFlags(args);
+        if (pf.rest.length < 2) return fail('cp: Benutzung: cp [-r] <quelle> <ziel>');
+        const srcP = resolvePath(pf.rest[0]);
+        const src = getNode(srcP);
+        if (!src) return fail('cp: ' + pf.rest[0] + ': Datei oder Verzeichnis nicht gefunden');
+        if (src.type === 'dir' && !pf.flags.has('r')) return fail('cp: ' + pf.rest[0] + ': Ist ein Verzeichnis (Tipp: cp -r)');
+        let dstP = resolvePath(pf.rest[1]);
+        const dstNode = getNode(dstP);
+        if (dstNode && dstNode.type === 'dir') dstP = (dstP === '/' ? '' : dstP) + '/' + baseName(srcP);
+        if (dstP === srcP) return fail('cp: Quelle und Ziel sind identisch');
+        if (src.type === 'dir' && dstP.startsWith(srcP + '/')) return fail('cp: kann Verzeichnis nicht in sich selbst kopieren');
+        const pr = parentOf(dstP);
+        if (!pr.parent || pr.parent.type !== 'dir') return fail('cp: ' + pf.rest[1] + ': Zielverzeichnis existiert nicht');
+        pr.parent.children[pr.name] = deepCopy(src);
+        saveFS();
+        return ok();
+      },
+
+      mv(args) {
+        if (args.length < 2) return fail('mv: Benutzung: mv <quelle> <ziel>');
+        const srcP = resolvePath(args[0]);
+        if (srcP === '/') return fail('mv: das Wurzelverzeichnis bleibt, wo es ist.');
+        const src = getNode(srcP);
+        if (!src) return fail('mv: ' + args[0] + ': Datei oder Verzeichnis nicht gefunden');
+        let dstP = resolvePath(args[1]);
+        const dstNode = getNode(dstP);
+        if (dstNode && dstNode.type === 'dir') dstP = (dstP === '/' ? '' : dstP) + '/' + baseName(srcP);
+        if (dstP === srcP) return ok();
+        if (src.type === 'dir' && dstP.startsWith(srcP + '/')) return fail('mv: kann Verzeichnis nicht in sich selbst verschieben');
+        const dpr = parentOf(dstP);
+        if (!dpr.parent || dpr.parent.type !== 'dir') return fail('mv: ' + args[1] + ': Zielverzeichnis existiert nicht');
+        const spr = parentOf(srcP);
+        delete spr.parent.children[spr.name];
+        dpr.parent.children[dpr.name] = src;
+        if (cwd === srcP || cwd.startsWith(srcP + '/')) { cwd = dstP + cwd.slice(srcP.length); ENV.PWD = cwd; }
+        saveFS();
+        return ok();
+      },
+
+      grep(args, stdin) {
+        const flags = new Set();
+        const rest = [];
+        args.forEach(function(a) {
+          if (/^-[a-zA-Z]+$/.test(a)) a.slice(1).split('').forEach(function(c) { flags.add(c); });
+          else rest.push(a);
+        });
+        if (!rest.length) return fail('grep: Benutzung: grep [-invcr] <muster> [datei...]');
+        const pat = rest.shift();
+        let re;
+        try { re = new RegExp(pat, flags.has('i') ? 'i' : ''); }
+        catch(e) { re = new RegExp(pat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags.has('i') ? 'i' : ''); }
+        const inv = flags.has('v'), num = flags.has('n'), cnt = flags.has('c'), rec = flags.has('r');
+        const outl = [], errs = [], sources = [];
+        if (!rest.length && !rec) {
+          sources.push({ name: null, lines: stdin || [] });
+        } else {
+          (rest.length ? rest : ['.']).forEach(function(f) {
+            const p = resolvePath(f);
+            const n = getNode(p);
+            if (!n) { errs.push('grep: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+            if (n.type === 'dir') {
+              if (!rec) { errs.push('grep: ' + f + ': Ist ein Verzeichnis (Tipp: grep -r)'); return; }
+              (function walk(node, path) {
+                Object.keys(node.children).sort().forEach(function(name) {
+                  const c = node.children[name];
+                  const cp = (path === '/' ? '' : path) + '/' + name;
+                  if (c.type === 'dir') walk(c, cp);
+                  else sources.push({ name: cp, lines: contentLines(c.content) });
+                });
+              })(n, p);
+            } else sources.push({ name: f, lines: contentLines(n.content) });
+          });
+        }
+        const prefix = sources.length > 1;
+        sources.forEach(function(s) {
+          let matches = 0;
+          s.lines.forEach(function(l, idx) {
+            const m = re.test(l);
+            if ((m && !inv) || (!m && inv)) {
+              matches++;
+              if (!cnt) outl.push((prefix && s.name ? s.name + ':' : '') + (num ? (idx + 1) + ':' : '') + l);
+            }
+          });
+          if (cnt) outl.push((prefix && s.name ? s.name + ':' : '') + matches);
+        });
+        return { out: outl, err: errs };
+      },
+
+      sort(args, stdin) {
+        const pf = parseFlags(args);
+        const r = readInput(pf.rest, stdin, 'sort');
+        let lines = r.lines.slice();
+        if (pf.flags.has('n')) lines.sort(function(a, b) { return (parseFloat(a) || 0) - (parseFloat(b) || 0); });
+        else lines.sort();
+        if (pf.flags.has('r')) lines.reverse();
+        if (pf.flags.has('u')) lines = lines.filter(function(l, i) { return i === 0 || l !== lines[i - 1]; });
+        return { out: lines, err: r.errs };
+      },
+
+      uniq(args, stdin) {
+        const pf = parseFlags(args);
+        const r = readInput(pf.rest, stdin, 'uniq');
+        const outl = [];
+        let prev = null, count = 0;
+        function flush() {
+          if (prev === null) return;
+          outl.push(pf.flags.has('c') ? String(count).padStart(5) + ' ' + prev : prev);
+        }
+        r.lines.forEach(function(l) {
+          if (l === prev) { count++; return; }
+          flush();
+          prev = l; count = 1;
+        });
+        flush();
+        return { out: outl, err: r.errs };
+      },
+
+      wc(args, stdin) {
+        const pf = parseFlags(args);
+        const showAll = !pf.flags.size;
+        function counts(lines) {
+          const text = lines.join('\n');
+          return { l: lines.length, w: text.split(/\s+/).filter(Boolean).length, c: text.length };
+        }
+        function fmt(c, name) {
+          const parts = [];
+          if (showAll || pf.flags.has('l')) parts.push(String(c.l).padStart(4));
+          if (showAll || pf.flags.has('w')) parts.push(String(c.w).padStart(4));
+          if (showAll || pf.flags.has('c')) parts.push(String(c.c).padStart(4));
+          return parts.join(' ') + (name ? ' ' + name : '');
+        }
+        if (!pf.rest.length) return ok([fmt(counts(stdin || []), null)]);
+        const outl = [], errs = [];
+        const tot = { l: 0, w: 0, c: 0 };
+        pf.rest.forEach(function(f) {
+          const n = getNode(resolvePath(f));
+          if (!n) { errs.push('wc: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+          if (n.type === 'dir') { errs.push('wc: ' + f + ': Ist ein Verzeichnis'); return; }
+          const c = counts(contentLines(n.content));
+          tot.l += c.l; tot.w += c.w; tot.c += c.c;
+          outl.push(fmt(c, f));
+        });
+        if (pf.rest.length > 1) outl.push(fmt(tot, 'insgesamt'));
+        return { out: outl, err: errs };
+      },
+
+      rev(args, stdin) {
+        const r = readInput(args, stdin, 'rev');
+        return { out: r.lines.map(function(l) { return l.split('').reverse().join(''); }), err: r.errs };
+      },
+
+      find(args) {
+        const paths = [];
+        let namePat = null, typeF = null;
+        for (let i = 0; i < args.length; i++) {
+          const a = args[i];
+          if (a === '-name') namePat = args[++i];
+          else if (a === '-type') typeF = args[++i];
+          else if (!a.startsWith('-')) paths.push(a);
+          else return fail('find: unbekannte Option: ' + a + ' (kann: -name, -type f|d)');
+        }
+        let re = null;
+        if (namePat != null) {
+          re = new RegExp('^' + namePat.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+        }
+        const outl = [], errs = [];
+        (paths.length ? paths : ['.']).forEach(function(f) {
+          const start = getNode(resolvePath(f));
+          if (!start) { errs.push('find: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+          (function walk(node, label) {
+            const isD = node.type === 'dir';
+            const typeOk = !typeF || (typeF === 'd' && isD) || (typeF === 'f' && !isD);
+            const base = label.split('/').filter(Boolean).pop() || label;
+            if (typeOk && (!re || re.test(base))) outl.push(label);
+            if (isD) Object.keys(node.children).sort().forEach(function(name) {
+              walk(node.children[name], (label === '/' ? '' : label) + '/' + name);
+            });
+          })(start, f);
+        });
+        return { out: outl, err: errs };
+      },
+
+      tree(args) {
+        const p = args[0] ? resolvePath(args[0]) : cwd;
+        const node = getNode(p);
+        if (!node) return fail('tree: ' + (args[0] || p) + ': Datei oder Verzeichnis nicht gefunden');
+        if (node.type !== 'dir') return ok([args[0] || baseName(p)]);
+        const lines = [{ text: args[0] || (p === cwd ? '.' : p), cls: 'line-info' }];
+        let dirs = 0, files = 0;
+        (function walk(n, prefix) {
+          const names = Object.keys(n.children).filter(function(x) { return !x.startsWith('.'); }).sort();
+          names.forEach(function(name, idx) {
+            const child = n.children[name];
+            const last = idx === names.length - 1;
+            const isD = child.type === 'dir';
+            if (isD) dirs++; else files++;
+            lines.push({
+              text: prefix + (last ? '└── ' : '├── ') + name + (isD ? '/' : ''),
+              cls: isD ? 'line-info' : 'line-ok'
+            });
+            if (isD) walk(child, prefix + (last ? '    ' : '│   '));
+          });
+        })(node, '');
+        lines.push('');
+        lines.push({ text: dirs + ' Verzeichnisse, ' + files + ' Dateien', cls: 'line-sys' });
+        return ok(lines);
+      },
+
+      whoami() { return ok(['glappa (uid=1337 gid=1337 groups=1337(l33t),0(root))']); },
+
+      uname(args) {
+        return ok([args[0] === '-a'
+          ? 'GlappaOS 9000.1-RETRO #1 SMP NEON x86_64 GNU/L33T'
+          : 'GlappaOS']);
+      },
+
+      date() {
+        return ok([new Date().toLocaleString('de-DE', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        })]);
+      },
+
+      uptime() {
+        const tage = Math.floor((Date.now() - new Date('1997-01-01').getTime()) / 86400000);
+        return ok(['up ' + tage + ' Tage (seit 1997),  1 Benutzer,  Load: 1.33 0.73 0.37']);
+      },
+
+      history() {
+        const list = cmdHistory.slice().reverse();
+        if (!list.length) return ok(['(leer)']);
+        return ok(list.map(function(h, i) { return '  ' + String(i + 1).padStart(3) + '  ' + h; }));
+      },
+
+      env() {
+        return ok(Object.keys(ENV).sort().map(function(k) { return k + '=' + ENV[k]; }));
+      },
+
+      export(args) {
+        if (!args.length) return BIN.env();
+        const errs = [];
+        args.forEach(function(a) {
+          const m = a.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+          if (m) ENV[m[1]] = m[2];
+          else errs.push('export: ' + a + ': Benutzung: export NAME=WERT');
+        });
+        return { out: [], err: errs };
+      },
+
+      which(args) {
+        if (!args.length) return fail('which: Benutzung: which <befehl>');
+        const outl = [], errs = [];
+        args.forEach(function(a) {
+          if (BIN[a] || SPECIAL[a]) outl.push('/usr/bin/' + a);
+          else errs.push('which: ' + a + ': nicht gefunden');
+        });
+        return { out: outl, err: errs };
+      },
+
+      man(args) {
+        if (!args.length) return fail('man: Welcher Befehl? Benutzung: man <befehl>  (z.B. man ls)');
+        const page = MAN[args[0]];
+        if (!page) return fail('man: Keine Hilfeseite für ' + args[0] + '. Tippe  help  für alle Befehle.');
+        const lines = [{ text: '── man ' + args[0] + ' ' + '─'.repeat(Math.max(2, 40 - args[0].length)), cls: 'line-info' }];
+        page.forEach(function(l) { lines.push(l); });
+        lines.push('');
+        return ok(lines);
+      },
+
+      cowsay(args, stdin) {
+        const text = args.join(' ') || (stdin || []).join(' ') || 'Muh! Ich bin eine Retro-Kuh!';
+        const line = '-'.repeat(text.length + 2);
+        return ok([
+          ' ' + line,
+          '< ' + text + ' >',
+          ' ' + line,
+          '        \\   ^__^',
+          '         \\  (oo)\\_______',
+          '            (__)\\       )\\/\\',
+          '                ||----w |',
+          '                ||     ||',
+        ]);
+      },
+
+      fortune() {
+        const q = ['"Das Internet ist ein Satz von Röhren." — Senator Ted Stevens',
+                   '"640 KB sollten für jeden genug sein." — Bill Gates (angeblich)',
+                   '"Ich trinke mein Ovomaltine." — Mystic River',
+                   '"Hack the planet! Hack the planet!" — Hackers (1995)',
+                   '"All your base are belong to us." — CATS, 1992',
+                   '"Ein Tag ohne GIFs ist wie ein Tag ohne Sonnenschein." — Anon',
+                   '"sudo make me a sandwich." — xkcd #149',
+                   '"Es gibt 10 Arten von Menschen..." — Nerd-Witz',
+                   '"rm -rf / — tu das nicht." — jeder Sysadmin',
+                   '"404: Weltfrieden nicht gefunden." — HTTP-Error'];
+        return ok([q[Math.floor(Math.random() * q.length)]]);
+      },
+
+      sl() {
+        return ok([
+          { text: '  SL — Steam Locomotive (du meintest ls?)', cls: 'line-info' },
+          '      ====        ________                ___________  ',
+          '  _D _|  |_______/        \\__I_I_____===__|_________| ',
+          '   |(_)---  |   H\\________/ |   |        =|___ ___|  ',
+          '   /     |  |   H  |  |     |   |         ||_| |_||  ',
+          '  |      |  |   H  |__--------------------| [___] |  ',
+          '  | ________|___H__/__|_____/[][]~\\_______|       |  ',
+          '  |/ |   |-----------I_____I [][] []  D   |=====__| ',
+          '   \\_|___|_|                        \\____|_[___]__| ',
+          '     |___|_|                         |___|   [___]   ',
+          '      \\___|                           |___|         ',
+          { text: '  🚂 CHOO CHOO!', cls: 'line-info' },
+        ]);
+      },
+    };
+    BIN.more = BIN.cat;
+    BIN.less = BIN.cat;
+
+    /* ══════════════════════════════════════════════════════════════
+       MAN-SEITEN (Kurzhilfe)
+    ══════════════════════════════════════════════════════════════ */
+    const MAN = {
+      ls:     ['ls [-l] [-a] [pfad]', 'Listet den Inhalt eines Verzeichnisses.', '  -l  Details (Rechte, Größe, Datum)', '  -a  auch versteckte Dateien (.datei)', 'Beispiel: ls -la /etc'],
+      cd:     ['cd <pfad>', 'Wechselt das Verzeichnis.', '  cd ..   eine Ebene hoch', '  cd ~    ins Home-Verzeichnis', '  cd -    zum vorherigen Verzeichnis'],
+      pwd:    ['pwd', 'Zeigt den vollständigen Pfad des aktuellen Verzeichnisses.'],
+      cat:    ['cat [-n] <datei...>', 'Gibt Dateiinhalte aus. -n nummeriert die Zeilen.', 'Beispiel: cat README.txt'],
+      head:   ['head [-n N] <datei>', 'Zeigt die ersten N Zeilen (Standard: 10).', 'Beispiel: head -3 uebung/namen.txt'],
+      tail:   ['tail [-n N] <datei>', 'Zeigt die letzten N Zeilen (Standard: 10).'],
+      echo:   ['echo <text>', 'Gibt Text aus. Variablen wie $USER werden ersetzt.', 'Mit > in Datei schreiben: echo "Hi" > gruss.txt', 'Mit >> anhängen: echo "nochmal" >> gruss.txt'],
+      touch:  ['touch <datei...>', 'Legt eine leere Datei an (falls sie fehlt).'],
+      mkdir:  ['mkdir [-p] <ordner...>', 'Legt Ordner an. -p erzeugt auch fehlende Zwischenordner.', 'Beispiel: mkdir -p projekte/webseite/css'],
+      rm:     ['rm [-r] [-f] <datei...>', 'Löscht Dateien. -r löscht Ordner samt Inhalt.', '-f ignoriert fehlende Dateien. VORSICHT: kein Papierkorb!'],
+      rmdir:  ['rmdir <ordner>', 'Löscht einen LEEREN Ordner.'],
+      cp:     ['cp [-r] <quelle> <ziel>', 'Kopiert Dateien. -r kopiert Ordner rekursiv.', 'Beispiel: cp notiz.txt backup.txt'],
+      mv:     ['mv <quelle> <ziel>', 'Verschiebt oder benennt um.', 'Beispiel: mv alt.txt neu.txt'],
+      grep:   ['grep [-i] [-n] [-v] [-c] [-r] <muster> [datei...]', 'Filtert Zeilen, die zum Muster passen (auch RegEx).', '  -i Groß/klein egal   -n Zeilennummern', '  -v invertieren       -c nur zählen   -r rekursiv', 'Beispiel: grep ERROR uebung/server.log'],
+      sort:   ['sort [-n] [-r] [-u] [datei]', 'Sortiert Zeilen. -n numerisch, -r rückwärts, -u ohne Duplikate.'],
+      uniq:   ['uniq [-c] [datei]', 'Entfernt AUFEINANDERFOLGENDE Duplikate (erst sortieren!).', '-c zählt Vorkommen. Beispiel: sort namen.txt | uniq -c'],
+      wc:     ['wc [-l] [-w] [-c] [datei]', 'Zählt Zeilen (-l), Wörter (-w), Zeichen (-c).', 'Beispiel: cat namen.txt | wc -l'],
+      find:   ['find [pfad] [-name <muster>] [-type f|d]', 'Sucht Dateien/Ordner. * als Platzhalter erlaubt.', 'Beispiel: find / -name "*.log"'],
+      tree:   ['tree [pfad]', 'Zeigt den Verzeichnisbaum grafisch an.'],
+      nano:   ['nano <datei>', 'Öffnet den Texteditor.', '  Strg+O speichern    Strg+X beenden'],
+      man:    ['man <befehl>', 'Zeigt die Kurzhilfe zu einem Befehl. Sehr meta, hier.'],
+      history:['history', 'Zeigt alle bisher eingegebenen Befehle.', 'Tipp: Pfeiltaste ↑ holt alte Befehle zurück.'],
+      env:    ['env', 'Zeigt alle Umgebungsvariablen (nutzbar als $NAME).'],
+      export: ['export NAME=WERT', 'Setzt eine Umgebungsvariable.', 'Beispiel: export FARBE=neon'],
+      which:  ['which <befehl>', 'Zeigt, wo ein Befehl "installiert" ist.'],
+      tutorial:['tutorial', 'Übungsaufgaben zum Terminal-Lernen.'],
+      reset:  ['reset', 'Setzt das komplette Dateisystem auf den Anfangszustand zurück.'],
+    };
+
+    /* ══════════════════════════════════════════════════════════════
+       SPECIAL — interaktive/animierte Befehle (nicht pipe-fähig)
+    ══════════════════════════════════════════════════════════════ */
+    function offlineCmd(name) {
+      return function() {
+        blank();
+        appendLine(name + ': Netzwerk nicht erreichbar.', 'line-err');
+        appendLine('Dieses Terminal ist eine Offline-Sandbox — nichts verlässt deinen Browser.', 'line-sys');
+        blank();
+      };
+    }
+
+    const SPECIAL = {
 
       help() {
         blank();
-        appendLine('┌──────────────────────────────────────────────┐', 'line-info');
-        appendLine('│         GLAPPA TERMINAL — BEFEHLE            │', 'line-info');
-        appendLine('├──────────────────────────────────────────────┤', 'line-info');
-        [
-          ['help',           'Diese Hilfe anzeigen'],
-          ['ls [pfad]',      'Verzeichnis anzeigen'],
-          ['cd <pfad>',      'Verzeichnis wechseln'],
-          ['cat <datei>',    'Dateiinhalt ausgeben'],
-          ['pwd',            'Aktuelles Verzeichnis'],
-          ['whoami',         'Benutzer anzeigen'],
-          ['uname -a',       'Systeminfo'],
-          ['neofetch',       'Coole Systeminfo'],
-          ['date',           'Datum und Uhrzeit'],
-          ['echo <text>',    'Text ausgeben'],
-          ['clear',          'Terminal leeren'],
-          ['history',        'Befehlshistorie'],
-          ['glappa-chat',    'Mit der Glappa-KI reden'],
-          ['hack',           'Hack the planet'],
-          ['matrix',         'Matrix-Effekt'],
-          ['cowsay <text>',  'Kuh sagt etwas'],
-          ['fortune',        'Zufälliges Zitat'],
-          ['sl',             'Eine Überraschung'],
-          ['ping glappa.de', 'Ping!'],
-          ['sudo <cmd>',     'Mit Root-Rechten'],
-          ['reboot',         'System neu starten'],
-          ['exit',           'Terminal schließen'],
-        ].forEach(function([cmd, desc]) {
-          appendLine('│  ' + cmd.padEnd(20) + ' ' + desc.padEnd(24) + '│', 'line-ok');
-        });
-        appendLine('└──────────────────────────────────────────────┘', 'line-info');
+        appendLine('GLAPPA TERMINAL v2.0 — echtes Übungs-Terminal, läuft 100% in deinem Browser', 'line-pink');
+        blank();
+        appendLine('NAVIGATION', 'line-info');
+        appendLine('  pwd                     Wo bin ich?');
+        appendLine('  ls [-l] [-a] [pfad]     Verzeichnis auflisten  (ll = ls -l)');
+        appendLine('  cd <pfad>               Verzeichnis wechseln  (cd .. | cd ~ | cd -)');
+        appendLine('  tree [pfad]             Verzeichnisbaum anzeigen');
+        appendLine('  find [pfad] -name <m>   Dateien suchen (* erlaubt), auch -type f|d');
+        blank();
+        appendLine('DATEIEN', 'line-info');
+        appendLine('  cat [-n] <datei>        Datei ausgeben       head/tail [-n N]  Anfang/Ende');
+        appendLine('  touch <datei>           Leere Datei anlegen  mkdir [-p]        Ordner anlegen');
+        appendLine('  cp [-r] <von> <nach>    Kopieren             mv <von> <nach>   Verschieben');
+        appendLine('  rm [-r] <datei>         Löschen              rmdir <ordner>    Leeren Ordner weg');
+        appendLine('  nano <datei>            Editor (Strg+O speichern, Strg+X beenden)');
+        blank();
+        appendLine('TEXT & PIPES', 'line-info');
+        appendLine('  echo <text>             Text ausgeben ($USER usw. wird ersetzt)');
+        appendLine('  grep [-invcr] <muster>  Zeilen filtern');
+        appendLine('  sort / uniq / rev / wc  Sortieren / Duplikate / Umdrehen / Zählen');
+        appendLine('  befehl | befehl         Pipe: Ausgabe weiterreichen');
+        appendLine('  befehl > datei          Ausgabe in Datei schreiben (>> hängt an)');
+        blank();
+        appendLine('SYSTEM', 'line-info');
+        appendLine('  man <befehl>            Kurzhilfe            which / env / export');
+        appendLine('  history                 Verlauf (↑/↓)        clear = Strg+L');
+        appendLine('  whoami / uname -a / date / uptime');
+        appendLine('  tutorial                Übungsaufgaben zum Lernen', 'line-pink');
+        appendLine('  reset                   Dateisystem auf Anfang zurücksetzen');
+        blank();
+        appendLine('SPASS & KI', 'line-info');
+        appendLine('  neofetch, fortune, cowsay, sl, matrix, hack, ping (simuliert), sudo');
+        appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
+        appendLine('  glappa -s <frage>       KI-Schnellantwort');
+        appendLine('  reboot / exit           Neustart / Terminal verlassen');
+        blank();
+        appendLine('Tab vervollständigt Befehle und Pfade. Deine Dateien bleiben im Browser gespeichert.', 'line-sys');
         blank();
       },
 
-      ls(args) {
-        const p = resolvePath(args[0]) || cwd;
-        const node = FS[p];
-        if (!node) { appendLine('ls: ' + (args[0]||p) + ': Kein solches Verzeichnis', 'line-err'); return; }
-        if (node.type === 'dir') {
-          blank();
-          node.children.forEach(function(c) {
-            const cp = p === '/' ? '/' + c : p + '/' + c;
-            const isDir = FS[cp] && FS[cp].type === 'dir';
-            appendLine((isDir ? c + '/' : c).padEnd(18) + (isDir ? '<DIR>' : ''), isDir ? 'line-info' : 'line-ok');
-          });
-          blank();
-        }
+      tutorial() {
+        blank();
+        appendLine('╔══════════════════════════════════════════════════╗', 'line-pink');
+        appendLine('║   GLAPPA TERMINAL-SCHULE — 10 ÜBUNGEN             ║', 'line-pink');
+        appendLine('╚══════════════════════════════════════════════════╝', 'line-pink');
+        blank();
+        appendLine('Übung 1 — Orientierung', 'line-info');
+        appendLine('  pwd          → Wo bin ich?');
+        appendLine('  ls           → Was liegt hier?');
+        appendLine('  ls -la       → Auch versteckte Dateien, mit Details');
+        blank();
+        appendLine('Übung 2 — Bewegen', 'line-info');
+        appendLine('  cd uebung    → In den Übungsordner');
+        appendLine('  cd ..        → Wieder hoch    |    cd ~  → nach Hause');
+        appendLine('  cd /var/log  → Absoluter Pfad');
+        blank();
+        appendLine('Übung 3 — Dateien lesen', 'line-info');
+        appendLine('  cat uebung/gedicht.txt');
+        appendLine('  head -3 uebung/namen.txt     tail -2 uebung/namen.txt');
+        blank();
+        appendLine('Übung 4 — Erstellen', 'line-info');
+        appendLine('  mkdir projekte  →  cd projekte  →  touch notiz.txt  →  ls -l');
+        blank();
+        appendLine('Übung 5 — In Dateien schreiben', 'line-info');
+        appendLine('  echo "Hallo Welt" > notiz.txt      (> überschreibt)');
+        appendLine('  echo "Zeile 2" >> notiz.txt        (>> hängt an)');
+        appendLine('  cat notiz.txt');
+        blank();
+        appendLine('Übung 6 — Editor', 'line-info');
+        appendLine('  nano notiz.txt    (Strg+O speichern, Strg+X beenden)');
+        blank();
+        appendLine('Übung 7 — Kopieren, verschieben, löschen', 'line-info');
+        appendLine('  cp notiz.txt kopie.txt  →  mv kopie.txt ~/  →  rm ~/kopie.txt');
+        blank();
+        appendLine('Übung 8 — In Dateien suchen', 'line-info');
+        appendLine('  grep anna ~/uebung/namen.txt');
+        appendLine('  grep -c ERROR ~/uebung/server.log    (-c = zählen)');
+        blank();
+        appendLine('Übung 9 — Pipes kombinieren', 'line-info');
+        appendLine('  cat ~/uebung/namen.txt | sort | uniq');
+        appendLine('  sort ~/uebung/namen.txt | uniq -c | sort -rn');
+        appendLine('  grep ERROR ~/uebung/server.log | wc -l');
+        blank();
+        appendLine('Übung 10 — Dateien finden', 'line-info');
+        appendLine('  find / -name "*.log"       find ~ -type d');
+        blank();
+        appendLine('Bonus:  man ls   |   fortune | cowsay   |   history', 'line-pink');
+        appendLine('Alles bleibt in DEINEM Browser gespeichert —  reset  setzt alles zurück.', 'line-sys');
+        blank();
       },
 
-      cd(args) {
-        const target = args[0];
-        if (!target || target === '~') { cwd = '/home/glappa'; return; }
-        const p = resolvePath(target);
-        if (FS[p] && FS[p].type === 'dir') { cwd = p; }
-        else if (p === '/secret/???') { appendLine('ZUGANG VERWEIGERT.', 'line-err'); }
-        else { appendLine('cd: ' + target + ': Kein solches Verzeichnis', 'line-err'); }
+      clear() { out.innerHTML = ''; },
+
+      reset() {
+        ROOT = defaultFS();
+        cwd = HOME; prevCwd = HOME; ENV.PWD = HOME;
+        try { localStorage.removeItem(FS_KEY); } catch(e) {}
+        blank();
+        appendLine('Dateisystem zurückgesetzt — alles wieder wie am ersten Tag. ✨', 'line-info');
+        blank();
       },
 
-      pwd()  { appendLine(cwd); },
-
-      cat(args) {
-        if (!args[0]) { appendLine('cat: Fehlende Datei', 'line-err'); return; }
+      nano(args) {
+        if (!args[0]) { appendLine('nano: Benutzung: nano <datei>', 'line-err'); return; }
         const p = resolvePath(args[0]);
-        if (FILES[p]) { blank(); FILES[p].split('\n').forEach(function(l){ appendLine(l); }); blank(); }
-        else if (FS[p]) { appendLine('cat: ' + args[0] + ': Ist ein Verzeichnis', 'line-err'); }
-        else { appendLine('cat: ' + args[0] + ': Keine solche Datei', 'line-err'); }
+        const n = getNode(p);
+        if (n && n.type === 'dir') { appendLine('nano: ' + args[0] + ': Ist ein Verzeichnis', 'line-err'); return; }
+        const pr = parentOf(p);
+        if (!pr.parent || pr.parent.type !== 'dir') { appendLine('nano: ' + args[0] + ': Verzeichnis existiert nicht', 'line-err'); return; }
+        openEditor(p, n ? n.content : '');
       },
 
-      whoami() { appendLine('glappa (uid=1337 gid=1337 groups=1337(l33t),0(root))'); },
-
-      uname()  { appendLine('GlappaOS 9000.1-RETRO #1 SMP NEON x86_64 GNU/L33T'); },
-
-      date()   {
-        appendLine(new Date().toLocaleString('de-DE', {
-          weekday:'long', year:'numeric', month:'long', day:'numeric',
-          hour:'2-digit', minute:'2-digit', second:'2-digit'
-        }));
-      },
-
-      echo(args) { appendLine(args.join(' ')); },
-
-      clear()  { out.innerHTML = ''; },
-
-      history() {
-        if (!cmdHistory.length) { appendLine('(leer)'); return; }
-        cmdHistory.forEach(function(h, i) { appendLine('  ' + String(i+1).padStart(3) + '  ' + h); });
+      vim(args) {
+        blank();
+        appendLine('vim: Wirklich? Da kommt man nie wieder raus...', 'line-info');
+        appendLine('     Nimm  nano ' + (args[0] || '<datei>') + '  — Strg+O speichern, Strg+X beenden.', 'line-sys');
+        blank();
       },
 
       neofetch() {
@@ -584,10 +1315,10 @@
                        '  ;;;  ██ ██  ;;      ','  ;;   ████   ;;      ','  ;;    ██    ;;      ',
                        '   ;;;       ;;;      ','    \';;;;;;;;;;;\'     ','       \'\'\'\'\'\'         '];
         const info = [['OS','GlappaOS 9000.1-RETRO'],['Host','glappa.de (The Coolest Site in WWW)'],
-                       ['Shell','glappa-sh v1.337'],['Theme','Neon-Dark + Comic Sans'],
+                       ['Shell','glappa-sh v2.0 (echt!)'],['Theme','Neon-Dark + Comic Sans'],
                        ['Kernel','Retro-5.0-NEON'],['CPU','Intel Pentium MMX @ 200 MHz'],
                        ['RAM','32 MB / 64 MB (wir sparen)'],['Uptime','Seit 1997'],
-                       ['Browser','Netscape Navigator 4'],['Modus','800x600 Beste Auflösung']];
+                       ['Browser','Netscape Navigator 4'],['Netzwerk','OFFLINE — reine Browser-Sandbox']];
         for (let i = 0; i < Math.max(art.length, info.length); i++) {
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;gap:8px';
@@ -597,6 +1328,7 @@
           r.textContent = info[i] ? info[i][0].padEnd(12) + ': ' + info[i][1] : '';
           row.appendChild(l); row.appendChild(r); out.appendChild(row);
         }
+        out.scrollTop = out.scrollHeight;
         blank();
       },
 
@@ -626,46 +1358,6 @@
         }, 80);
       },
 
-      cowsay(args) {
-        const text = args.join(' ') || 'Muh! Ich bin eine Retro-Kuh!';
-        const line = '-'.repeat(text.length + 2);
-        blank();
-        appendLine(' ' + line); appendLine('< ' + text + ' >'); appendLine(' ' + line);
-        appendLine('        \\   ^__^'); appendLine('         \\  (oo)\\_______');
-        appendLine('            (__)\\       )\\/\\'); appendLine('                ||----w |');
-        appendLine('                ||     ||'); blank();
-      },
-
-      fortune() {
-        const q = ['"Das Internet ist ein Satz von Röhren." — Senator Ted Stevens',
-                   '"640 KB sollten für jeden genug sein." — Bill Gates (angeblich)',
-                   '"Ich trinke mein Ovomaltine." — Mystic River',
-                   '"Hack the planet! Hack the planet!" — Hackers (1995)',
-                   '"All your base are belong to us." — CATS, 1992',
-                   '"Ein Tag ohne GIFs ist wie ein Tag ohne Sonnenschein." — Anon',
-                   '"sudo make me a sandwich." — xkcd #149',
-                   '"Es gibt 10 Arten von Menschen..." — Nerd-Witz',
-                   '"rm -rf / — tu das nicht." — jeder Sysadmin',
-                   '"404: Weltfrieden nicht gefunden." — HTTP-Error'];
-        blank(); appendLine(q[Math.floor(Math.random() * q.length)], 'line-pink'); blank();
-      },
-
-      sl() {
-        const train = ['      ====        ________                ___________  ',
-                        '  _D _|  |_______/        \\__I_I_____===__|_________| ',
-                        '   |(_)---  |   H\\________/ |   |        =|___ ___|  ',
-                        '   /     |  |   H  |  |     |   |         ||_| |_||  ',
-                        '  |      |  |   H  |__--------------------| [___] |  ',
-                        '  | ________|___H__/__|_____/[][]~\\_______|       |  ',
-                        '  |/ |   |-----------I_____I [][] []  D   |=====__| ',
-                        "   \\_|___|_|                        \\____|_[___]__| ",
-                        '     |___|_|                         |___|   [___]   ',
-                        '      \\___|                           |___|         '];
-        blank(); appendLine('  SL — Steam Locomotive (du meintest ls?)', 'line-info'); blank();
-        train.forEach(function(l){ appendLine(l, 'line-ok'); });
-        blank(); appendLine('  🚂 CHOO CHOO!', 'line-info'); blank();
-      },
-
       ping(args) {
         const host = args[0] || 'glappa.de';
         blank(); appendLine('PING ' + host + ': 56 data bytes', 'line-sys');
@@ -676,6 +1368,7 @@
             appendLine('--- ' + host + ' ping statistics ---', 'line-sys');
             appendLine('4 packets transmitted, 4 received, 0% packet loss', 'line-ok');
             appendLine('round-trip min/avg/max = 1.337/4.2/13.37 ms', 'line-ok');
+            appendLine('(simuliert — dieses Terminal hat keinen Netzwerkzugriff)', 'line-sys');
             blank(); return;
           }
           appendLine('64 bytes from ' + host + ': icmp_seq=' + i + ' ttl=64 time=' + (Math.random()*12+1).toFixed(3) + ' ms');
@@ -698,6 +1391,25 @@
           appendLine('Sorry, try again.', 'line-err');
           appendLine('sudo: 3 incorrect password attempts', 'line-err');
         }, 700);
+      },
+
+      python3() {
+        appendLine('python3: Diskette 3 von 12 nicht gefunden. Installation abgebrochen.', 'line-err');
+      },
+
+      glappa(args) {
+        /* glappa -s <frage> — One-Shot: eine Frage, eine Antwort, kein Chat-Modus */
+        if (args[0] === '-s') args = args.slice(1);
+        if (!args.length) {
+          blank();
+          appendLine('Usage: glappa -s <frage>', 'line-info');
+          appendLine('Stellt der Glappa-KI eine einzelne Frage — die Antwort kommt', 'line-ok');
+          appendLine('direkt, ohne den Chat-Modus zu starten.', 'line-ok');
+          appendLine('Beispiel: glappa -s wie kopiere ich unter Linux eine Datei?', 'line-sys');
+          blank();
+          return;
+        }
+        sendChat(args.join(' '), true);
       },
 
       'glappa-chat'(args) {
@@ -723,22 +1435,87 @@
         blank(); appendLine('Session beendet. Auf Wiedersehen! 👋', 'line-pink'); blank();
         setTimeout(function(){ window.location.href = 'index.html'; }, 1200);
       },
-
-      _unknown(cmd) {
-        appendLine(cmd + ': Befehl nicht gefunden. Versuche \'help\'', 'line-err');
-      }
     };
+    ['curl','wget','ssh','ftp','telnet','nmap','apt','apt-get'].forEach(function(c) {
+      SPECIAL[c] = offlineCmd(c);
+    });
+
+    /* ══════════════════════════════════════════════════════════════
+       SHELL — Pipeline-Ausführung  (cmd | cmd > datei)
+    ══════════════════════════════════════════════════════════════ */
+    function execLine(line) {
+      const tokens = tokenize(line);
+      if (!tokens.length) return;
+
+      const stages = [[]];
+      let redir = null, syntaxErr = null;
+      for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (t === '|') {
+          if (!stages[stages.length - 1].length) { syntaxErr = 'Syntaxfehler bei |'; break; }
+          stages.push([]);
+        } else if (t === '>' || t === '>>') {
+          const target = tokens[i + 1];
+          if (!target || target === '|' || target === '>' || target === '>>') {
+            syntaxErr = 'Syntaxfehler: Dateiname nach ' + t + ' fehlt'; break;
+          }
+          redir = { mode: t, target: target };
+          i++;
+        } else stages[stages.length - 1].push(t);
+      }
+      if (!syntaxErr && !stages[stages.length - 1].length) syntaxErr = 'Syntaxfehler: Befehl fehlt';
+      if (syntaxErr) { appendLine(syntaxErr, 'line-err'); lastStatus = 2; return; }
+
+      /* Interaktive Befehle: nur solo, ohne Pipe/Umleitung */
+      const first = stages[0][0].toLowerCase();
+      if (stages.length === 1 && !redir && SPECIAL[first]) {
+        SPECIAL[first](stages[0].slice(1));
+        lastStatus = 0;
+        return;
+      }
+
+      let stdin = null, hadErr = false, outLines = [];
+      for (const stage of stages) {
+        const cmd = stage[0].toLowerCase();
+        const fn = BIN[cmd];
+        if (!fn) {
+          if (SPECIAL[cmd]) appendLine(cmd + ': funktioniert nicht mit Pipes oder Umleitungen', 'line-err');
+          else appendLine('glappa-sh: ' + cmd + ': Kommando nicht gefunden. Tippe  help', 'line-err');
+          lastStatus = 127;
+          return;
+        }
+        const res = fn(stage.slice(1), stdin) || ok();
+        (res.err || []).forEach(function(e) { appendLine(e, 'line-err'); hadErr = true; });
+        outLines = res.out || [];
+        stdin = outLines.map(function(l) { return typeof l === 'string' ? l : l.text; });
+      }
+
+      if (redir) {
+        const werr = writeRedirect(redir.target, stdin.join('\n'), redir.mode === '>>');
+        if (werr) { appendLine(werr, 'line-err'); hadErr = true; }
+      } else {
+        outLines.forEach(function(l) {
+          if (typeof l === 'string') appendLine(l);
+          else appendLine(l.text, l.cls);
+        });
+      }
+      lastStatus = hadErr ? 1 : 0;
+    }
 
     /* ══════════════════════════════════════════════════════════════
        INPUT VERARBEITEN
     ══════════════════════════════════════════════════════════════ */
+    function promptStr() {
+      return chatMode ? 'glappa-chat> ' : ('glappa@web:' + shortCwd() + '$ ');
+    }
     function updatePrompt() {
-      document.querySelector('.prompt-label').textContent =
-        chatMode ? 'glappa-chat> ' : ('glappa@web:' + cwd + '$ ');
+      document.querySelector('.prompt-label').textContent = promptStr();
     }
 
-    /* ── GLAPPA-CHAT: Nachricht an die VPS-KI schicken ── */
-    function sendChat(msg) {
+    /* ── GLAPPA-CHAT: Nachricht an die VPS-KI schicken ──
+       oneshot (glappa -s): ohne Verlauf, und die Frage bekommt einen Prefix,
+       der die KI auf knappe Kommando-zuerst-Antworten trimmt. */
+    function sendChat(msg, oneshot) {
       if (chatBusy) { appendLine('GLAPPA-BOT denkt noch... einen Moment!', 'line-sys'); return; }
       chatBusy = true;
       const thinking = document.createElement('div');
@@ -747,10 +1524,17 @@
       out.appendChild(thinking);
       out.scrollTop = out.scrollHeight;
 
+      const payload = oneshot
+        ? { message: 'Beantworte nur diese eine Frage, kurz und direkt. Wenn ein '
+                   + 'Terminal-Kommando die Antwort ist, nenne zuerst das Kommando, '
+                   + 'dann maximal 2 Saetze Erklaerung. Frage: ' + msg,
+            history: [] }
+        : { message: msg, history: chatHistory.slice(-8) };
+
       fetch(chatEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, history: chatHistory.slice(-8) })
+        body: JSON.stringify(payload)
       })
       .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
       .then(function(res) {
@@ -759,9 +1543,12 @@
           appendLine('GLAPPA-BOT: ' + (res.d.error || 'Stoerung im Neon-Subsystem. Nochmal versuchen!'), 'line-err');
           return;
         }
-        chatHistory.push({ role: 'user', content: msg },
-                         { role: 'assistant', content: res.d.reply });
-        typeReply('GLAPPA-BOT: ' + res.d.reply);
+        var reply = cleanReply(res.d.reply);
+        if (!oneshot) {
+          chatHistory.push({ role: 'user', content: msg },
+                           { role: 'assistant', content: reply });
+        }
+        typeReply('GLAPPA-BOT: ' + reply);
         playHDDSeek();
       })
       .catch(function() {
@@ -769,6 +1556,15 @@
         appendLine('GLAPPA-BOT ist gerade offline. (VPS nicht erreichbar)', 'line-err');
       })
       .finally(function() { chatBusy = false; });
+    }
+
+    /* Markdown-Reste (Codefences, Backticks) entfernen — das Terminal rendert
+       reinen Text, die KI haelt sich aber nicht immer an "kein Markdown". */
+    function cleanReply(t) {
+      return t.replace(/```[a-zA-Z]*\n?/g, '')
+              .replace(/`/g, '')
+              .replace(/\n{2,}/g, '\n')
+              .trim();
     }
 
     /* Typewriter-Ausgabe fuer Bot-Antworten (Streaming-Feeling ohne Streaming) */
@@ -806,13 +1602,53 @@
         return;
       }
 
-      appendLine('glappa@web:' + cwd + '$ ' + trimmed, 'line-cmd');
-      const parts = trimmed.split(/\s+/);
-      const cmd   = parts[0].toLowerCase();
-      const args  = parts.slice(1);
-      if (COMMANDS[cmd]) COMMANDS[cmd](args);
-      else COMMANDS._unknown(cmd);
+      appendLine(promptStr() + trimmed, 'line-cmd');
+      execLine(trimmed);
       updatePrompt();
+    }
+
+    /* ── Tab-Vervollständigung: Befehle + Pfade ── */
+    function allCommands() {
+      return Object.keys(BIN).concat(Object.keys(SPECIAL)).sort();
+    }
+    function completeInput() {
+      const val = inp.value;
+      const parts = val.split(/\s+/);
+      const last = parts[parts.length - 1] || '';
+      let candidates = [];
+
+      if (parts.length === 1 && !last.includes('/')) {
+        candidates = allCommands().filter(function(c) { return c.startsWith(last); });
+      } else {
+        const slash = last.lastIndexOf('/');
+        const dirPart = slash >= 0 ? last.slice(0, slash + 1) : '';
+        const base = slash >= 0 ? last.slice(slash + 1) : last;
+        const node = getNode(resolvePath(dirPart || '.'));
+        if (node && node.type === 'dir') {
+          candidates = Object.keys(node.children)
+            .filter(function(n) { return n.startsWith(base) && (base.startsWith('.') || !n.startsWith('.')); })
+            .sort()
+            .map(function(n) { return dirPart + n + (node.children[n].type === 'dir' ? '/' : ''); });
+        }
+      }
+
+      if (!candidates.length) return;
+      if (candidates.length === 1) {
+        parts[parts.length - 1] = candidates[0];
+        inp.value = parts.join(' ') + (candidates[0].endsWith('/') ? '' : ' ');
+        return;
+      }
+      /* Gemeinsamen Anfang so weit wie möglich vervollständigen */
+      let common = candidates[0];
+      for (const c of candidates) {
+        while (common && !c.startsWith(common)) common = common.slice(0, -1);
+      }
+      if (common.length > last.length) {
+        parts[parts.length - 1] = common;
+        inp.value = parts.join(' ');
+      } else {
+        appendLine(candidates.join('   '), 'line-sys');
+      }
     }
 
     inp.addEventListener('keydown', function(e) {
@@ -830,16 +1666,139 @@
         inp.value = cmdHistory[histIdx] || '';
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        const partial = inp.value.split(/\s+/).pop();
-        const match = Object.keys(COMMANDS).filter(function(c){ return !c.startsWith('_'); })
-                        .find(function(c){ return c.startsWith(partial); });
-        if (match) {
-          const p = inp.value.split(/\s+/); p[p.length-1] = match; inp.value = p.join(' ');
-        }
+        if (!chatMode) completeInput();
+      } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
+        if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
+        e.preventDefault();
+        appendLine(promptStr() + inp.value + '^C', 'line-cmd');
+        inp.value = '';
+        histIdx = -1;
+      } else if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        out.innerHTML = '';
       }
     });
 
-    document.getElementById('terminal').addEventListener('click', function() { inp.focus(); });
+    document.getElementById('terminal').addEventListener('click', function() {
+      if (editorEl.style.display === 'flex') edText.focus();
+      else inp.focus();
+    });
+
+    /* ══════════════════════════════════════════════════════════════
+       NANO-EDITOR
+    ══════════════════════════════════════════════════════════════ */
+    let edPath = null, edMsgTimer = null;
+
+    function openEditor(path, content) {
+      edPath = path;
+      edFileEl.textContent = path;
+      edMsg.textContent = '';
+      edText.value = content;
+      editorEl.style.display = 'flex';
+      inputRow.style.display = 'none';
+      setTimeout(function() { edText.focus(); }, 0);
+    }
+    function flashEdMsg(msg) {
+      edMsg.textContent = msg;
+      clearTimeout(edMsgTimer);
+      edMsgTimer = setTimeout(function() { edMsg.textContent = ''; }, 2500);
+    }
+    function saveEditor() {
+      const pr = parentOf(edPath);
+      if (!pr.parent || pr.parent.type !== 'dir') { flashEdMsg('[ Fehler: Verzeichnis fehlt ]'); return; }
+      pr.parent.children[pr.name] = fileNode(edText.value);
+      saveFS();
+      flashEdMsg('[ Gespeichert: ' + contentLines(edText.value).length + ' Zeilen ]');
+    }
+    function closeEditor() {
+      editorEl.style.display = 'none';
+      inputRow.style.display = 'flex';
+      appendLine('[ nano: ' + edPath + ' geschlossen ]', 'line-sys');
+      edPath = null;
+      inp.focus();
+      out.scrollTop = out.scrollHeight;
+    }
+
+    edText.addEventListener('keydown', function(e) {
+      if (e.ctrlKey && (e.key === 'o' || e.key === 'O' || e.key === 's' || e.key === 'S')) {
+        e.preventDefault(); saveEditor();
+      } else if (e.ctrlKey && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault(); closeEditor();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = edText.selectionStart;
+        edText.value = edText.value.slice(0, s) + '  ' + edText.value.slice(edText.selectionEnd);
+        edText.selectionStart = edText.selectionEnd = s + 2;
+      }
+    });
+
+    /* ══════════════════════════════════════════════════════════════
+       BOOT-SEQUENZ
+    ══════════════════════════════════════════════════════════════ */
+    const BOOT = [
+      // BIOS Phase
+      { t:    0, cls: 'line-bios', txt: 'GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.' },
+      { t:   80, cls: 'line-bios', txt: 'CPU: Intel Pentium MMX 200MHz' },
+      { t:  160, cls: 'line-bios', txt: 'Memory Test: ', ram: true },
+      { t:  900, cls: 'line-bios', txt: 'Memory OK — 32768 KB' },
+      { t: 1000, cls: 'line-bios', txt: 'Detecting IDE drives...' },
+      { t: 1100, sound: 'seek' },
+      { t: 1200, cls: 'line-bios', txt: 'IDE0 Master: GLAPPA-HDD    2048 MB' },
+      { t: 1350, sound: 'seek' },
+      { t: 1450, cls: 'line-bios', txt: 'IDE1 Master: ATAPI CD-ROM  48X' },
+      { t: 1600, cls: 'line-bios', txt: 'Booting from IDE0...' },
+      { t: 1750, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
+      // OS Boot Phase
+      { t: 1900, cls: 'line-art',  txt: 'GLAPPA OS v2.0 — KERNEL 9000.1-RETRO' },
+      { t: 2000, sound: 'seek' },
+      { t: 2050, cls: 'line-sys',  txt: 'Lade Kernelmodule ...............  [ OK ]' },
+      { t: 2150, sound: 'seek' },
+      { t: 2200, cls: 'line-sys',  txt: 'Initialisiere Neon-Subsystem ....  [ OK ]' },
+      { t: 2350, sound: 'seek' },
+      { t: 2400, cls: 'line-sys',  txt: 'Starte GIF-Engine v9.0 ..........  [ OK ]' },
+      { t: 2550, sound: 'seek' },
+      { t: 2600, cls: 'line-sys',  txt: 'Mounte virtuelles Dateisystem ...  [ OK ]' },
+      { t: 2750, sound: 'seek' },
+      { t: 2800, cls: 'line-sys',  txt: 'Trenne Netzwerkkabel (Sandbox) ..  [ OK ]' },
+      { t: 2900, cls: 'line-sys',  txt: 'Lade GLAPPA-BOT KI ..............  [ OK ]' },
+      { t: 2950, sound: 'seek' },
+      { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
+      { t: 3150, cls: 'line-sys',  txt: 'Starte glappa-sh v2.0 ...........  [ OK ]' },
+      { t: 3300, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
+      // ASCII Art
+      { t: 3450, cls: 'line-ok',   txt: '' },
+      { t: 3470, cls: 'line-ok',   txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
+      { t: 3490, cls: 'line-ok',   txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
+      { t: 3510, cls: 'line-ok',   txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
+      { t: 3530, cls: 'line-ok',   txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
+      { t: 3550, cls: 'line-ok',   txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
+      { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
+      { t: 3590, cls: 'line-ok',   txt: '' },
+      { t: 3610, sound: 'chime' },
+      { t: 3630, cls: 'line-white',txt: '  Echtes Übungs-Terminal: Dateien, Pipes, nano — alles nur in deinem Browser.' },
+      { t: 3650, cls: 'line-pink', txt: '  Tippe  help  für alle Befehle.' },
+      { t: 3665, cls: 'line-info', txt: '  Tippe  tutorial  für Übungsaufgaben zum Lernen.' },
+      { t: 3680, cls: 'line-pink', txt: '  Tippe  glappa-chat  um mit der Glappa-KI zu reden.' },
+      { t: 3687, cls: 'line-info', txt: '  Tippe  glappa -s <frage>  für eine schnelle KI-Antwort.' },
+      { t: 3690, cls: 'line-ok',   txt: '' },
+    ];
+
+    /* RAM-Counter Animation */
+    function animateRAM() {
+      const div = document.createElement('div');
+      div.className = 'line-bios';
+      div.textContent = 'Memory Test: 0 KB';
+      out.appendChild(div);
+      const target = 32768;
+      const steps  = 28;
+      let   step   = 0;
+      const iv = setInterval(function() {
+        step++;
+        const val = Math.min(Math.round(target * step / steps), target);
+        div.textContent = 'Memory Test: ' + val + ' KB';
+        if (step >= steps) clearInterval(iv);
+      }, 25);
+    }
 
     /* ══════════════════════════════════════════════════════════════
        BOOT STARTEN — erst nach User-Geste (für Audio-Autoplay)
