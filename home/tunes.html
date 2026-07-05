@@ -83,7 +83,7 @@
           <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
           <button class="player-mode-btn" id="visBtn" title="Visualizer ein/aus">&#9836; Visualizer</button>
           <button class="player-mode-btn" id="immersiveBtn"
-                  title="Immersive-Vollbild: Klick startet sofort &mdash; bei l&auml;ngerer Inaktivit&auml;t kommt er auch von selbst">&#128421; Immersive</button>
+                  title="Immersive-Vollbild: Klick startet sofort &mdash; nach kurzer Ruhephase kommt er auch von selbst wieder">&#128421; Immersive</button>
         </div>
 
         <div class="player-load">
@@ -939,11 +939,14 @@
       }
 
       // --- Immersive-Modus ----------------------------------------
-      // Laeuft Musik mit aktivem Visualizer (Fraktal oder Spectrum) und der
-      // Nutzer ruehrt sich laenger (IMMERSIVE_AFTER) nicht, nimmt der Visualizer
-      // den ganzen Bildschirm ein. Musik + Audio-Reaktion laufen dabei einfach
-      // weiter. JEDE Eingabe (Maus/Taste/Touch/Scroll) beendet den Modus sofort.
-      const IMMERSIVE_AFTER = 15000;  // ms ohne Eingabe bis zum Vollbild
+      // Laeuft Musik mit aktivem Visualizer (Fraktal oder Spectrum), nimmt der
+      // Visualizer den ganzen Bildschirm ein. Musik + Audio-Reaktion laufen
+      // dabei einfach weiter. JEDE Eingabe (Maus/Taste/Touch/Scroll) beendet
+      // den Modus sofort -> und er kommt kurz danach (IMMERSIVE_AFTER), sobald
+      // wirklich nichts mehr passiert, von selbst wieder. Bewusst KEIN langes
+      // Timeout: die kurze Spanne dient nur als Entprellung gegen die Luecken
+      // zwischen einzelnen Mousemove-Events waehrend echter Mausbewegung.
+      const IMMERSIVE_AFTER = 500;  // ms ohne Eingabe bis zum Vollbild
       const IMMERSIVE_PREF_KEY = 'glappa-tunes-immersive';
       let immersive = false;
       let immersiveEnabled = true;    // per Button an/aus, Standard: AN
@@ -957,8 +960,8 @@
       immersiveBtn.classList.toggle('active', immersiveEnabled);
 
       immersiveBtn.addEventListener('click', () => {
-        // Klick = SOFORT rein in den Vollbildmodus, ohne die 15 Sekunden
-        // Inaktivitaet abzuwarten. Nur wenn das gerade nicht geht (kein
+        // Klick = SOFORT rein in den Vollbildmodus, ohne die kurze
+        // Inaktivitaets-Schwelle abzuwarten. Nur wenn das gerade nicht geht (kein
         // Visualizer aktiv / Musik pausiert), wirkt der Button wie frueher
         // als An/Aus-Schalter fuer das Auto-Feature.
         if (!immersive && visMode !== 'off' && !audio.paused) {
