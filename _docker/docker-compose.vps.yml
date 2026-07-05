@@ -19,7 +19,7 @@ services:
       - DOWNLOADER_PORT=8080
       # Glappa-Chat (terminal.html `glappa-chat`): app.py proxied /chat an Ollama
       - OLLAMA_URL=http://ollama:11434
-      - GLAPPA_CHAT_MODEL=qwen2.5:1.5b
+      - GLAPPA_CHAT_MODEL=qwen2.5:14b
     depends_on:
       - ollama
     volumes:
@@ -64,9 +64,12 @@ services:
   # ── Ollama: kleines LLM fuer den glappa-chat im Terminal ──────────
   # Kein ports:-Mapping — nur intern vom glappa-Container erreichbar
   # (app.py /chat proxied dahin, Apache proxied /api/chat zu app.py).
-  # Modell wird beim Deploy gezogen: docker exec glappa-ollama ollama pull qwen2.5:1.5b
-  # qwen2.5:1.5b braucht ~2 GB RAM (CPU-Inferenz). Zu wenig RAM auf der VPS?
-  # -> GLAPPA_CHAT_MODEL=qwen2.5:0.5b setzen und das pullen.
+  # Modell wird beim Deploy gezogen: docker exec glappa-ollama ollama pull qwen2.5:14b
+  # qwen2.5:14b braucht ~9 GB RAM (CPU-Inferenz, q4_K_M) — passt bei 24 GB VPS-RAM
+  # minus ~5 GB fuer System/glappa.de/SearXNG bequem. Deutlich schlauer als 1.5b
+  # (kohaerentere Antworten, folgt Instruktionen besser), aber langsamer pro Token.
+  # Zu wenig RAM/CPU-Power auf der VPS? -> GLAPPA_CHAT_MODEL=qwen2.5:7b (~5 GB,
+  # schneller) oder qwen2.5:1.5b (~2 GB) setzen und das entsprechend pullen.
   ollama:
     image: ollama/ollama:latest
     container_name: glappa-ollama

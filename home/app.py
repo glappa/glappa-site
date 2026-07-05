@@ -1232,18 +1232,18 @@ def counter_visits():
 #
 # Env:
 #   OLLAMA_URL         Basis-URL der Ollama-API (Compose: http://ollama:11434)
-#   GLAPPA_CHAT_MODEL  Ollama-Modell-Tag (Default qwen2.5:1.5b — laeuft auf
-#                      CPU mit ~2 GB RAM; fuer winzige VPS: qwen2.5:0.5b)
+#   GLAPPA_CHAT_MODEL  Ollama-Modell-Tag (Default qwen2.5:14b — CPU-Inferenz,
+#                      ~9 GB RAM; fuer knappe VPS: qwen2.5:7b oder qwen2.5:1.5b)
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta, timezone
 
 OLLAMA_URL       = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/')
-CHAT_MODEL       = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:1.5b')
+CHAT_MODEL       = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:14b')
 CHAT_MAX_LEN     = 500   # Zeichen pro User-Nachricht
 CHAT_MAX_HISTORY = 8     # wieviele alte Nachrichten (user+assistant) mitgehen
 CHAT_NUM_PREDICT = 260   # max. Antwort-Tokens (CPU-Inferenz ist langsam)
-CHAT_TIMEOUT     = 120   # Sekunden; erste Anfrage laedt das Modell (~30s extra)
+CHAT_TIMEOUT     = 180   # Sekunden; erste Anfrage laedt das (groessere) Modell extra
 
 CHAT_PERSONA = (
     'Du bist GLAPPA-BOT, die eingebaute KI des GLAPPA-Terminals auf glappa.de '
@@ -1282,7 +1282,16 @@ def _chat_system_prompt() -> str:
     return (
         f'{CHAT_PERSONA}\n\n'
         f'Heute ist {_WOCHENTAGE[now.weekday()]}, der {now:%d.%m.%Y}, '
-        f'{now:%H:%M} Uhr (Europe/Berlin).'
+        f'{now:%H:%M} Uhr (Europe/Berlin).\n\n'
+        f'WICHTIGE AUSNAHME von der Pentium-Persona: Sobald jemand fragt, '
+        f'welches Modell/welche KI/welches LLM du bist oder benutzt (in '
+        f'egal welcher Formulierung), lass den Pentium-MMX-Witz komplett '
+        f'weg und antworte nur mit der Wahrheit: du laeufst auf {CHAT_MODEL} '
+        f'via Ollama, self-hosted auf der VPS, keine Cloud-API. Behaupte NIE, '
+        f'kein Modell zu sein oder "einfach ein Computerprogramm" — das ist '
+        f'falsch, du bist ein Sprachmodell. Beispiel: User: "welches Modell '
+        f'bist du?" Du: "{CHAT_MODEL}, laeuft via Ollama selbst-gehostet auf '
+        f'der glappa.de-VPS. Kein Pentium, war nur Show. :)"'
     )
 
 # Datumsfragen ("welcher Wochentag ist in 11 Tagen?" / "am 15.07.?") rechnet

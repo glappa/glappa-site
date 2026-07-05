@@ -241,11 +241,11 @@ else
             warn "SearXNG-Container nicht gefunden — wurde via 'up' gestartet (siehe oben)"
         fi
         # Chat-Modell fuer glappa-chat (Ollama) ziehen — idempotent, laedt
-        # nur beim ersten Mal wirklich runter (~1 GB fuer qwen2.5:1.5b).
+        # nur beim ersten Mal wirklich runter (~9 GB fuer qwen2.5:14b).
         CHAT_MODEL="$(grep -oE 'GLAPPA_CHAT_MODEL=[^ ]+' "$COMPOSE_FILE" | head -1 | cut -d= -f2)"
-        CHAT_MODEL="${CHAT_MODEL:-qwen2.5:1.5b}"
+        CHAT_MODEL="${CHAT_MODEL:-qwen2.5:14b}"
         if $DOCKER_SUDO docker ps --format '{{.Names}}' | grep -q '^glappa-ollama$'; then
-            say "Ziehe Chat-Modell $CHAT_MODEL (erster Lauf laedt ~1 GB)..."
+            say "Ziehe Chat-Modell $CHAT_MODEL (erster Lauf laedt ggf. mehrere GB)..."
             $DOCKER_SUDO docker exec glappa-ollama ollama pull "$CHAT_MODEL" \
                 && ok "Chat-Modell $CHAT_MODEL bereit" \
                 || warn "Modell-Pull fehlgeschlagen — glappa-chat meldet dann 'Modell fehlt'"
