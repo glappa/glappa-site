@@ -1234,12 +1234,19 @@ def counter_visits():
 #   OLLAMA_URL         Basis-URL der Ollama-API (Compose: http://ollama:11434)
 #   GLAPPA_CHAT_MODEL  Ollama-Modell-Tag (Default qwen2.5:14b — CPU-Inferenz,
 #                      ~9 GB RAM; fuer knappe VPS: qwen2.5:7b oder qwen2.5:1.5b)
+#   SEARXNG_URL        Basis-URL der selbst gehosteten SearXNG-Instanz
+#                      (Compose: http://searxng:8080 — intern, nicht der
+#                      oeffentliche search.glappa.de-Weg ueber Apache)
 import urllib.request
 import urllib.error
+from urllib.parse import urlencode
 from datetime import datetime, timedelta, timezone
 
 OLLAMA_URL       = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/')
 CHAT_MODEL       = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:14b')
+SEARXNG_URL      = os.environ.get('SEARXNG_URL', 'http://searxng:8080').rstrip('/')
+SEARCH_TIMEOUT   = 6     # Sekunden; schlaegt die Suche fehl, faellt der Hint einfach weg
+SEARCH_RESULTS_N = 4     # wieviele Treffer als Fakten vor die Frage gelegt werden
 CHAT_MAX_LEN     = 500   # Zeichen pro User-Nachricht
 CHAT_MAX_HISTORY = 8     # wieviele alte Nachrichten (user+assistant) mitgehen
 CHAT_NUM_PREDICT = 260   # max. Antwort-Tokens (CPU-Inferenz ist langsam)
@@ -1291,7 +1298,13 @@ def _chat_system_prompt() -> str:
         f'kein Modell zu sein oder "einfach ein Computerprogramm" — das ist '
         f'falsch, du bist ein Sprachmodell. Beispiel: User: "welches Modell '
         f'bist du?" Du: "{CHAT_MODEL}, laeuft via Ollama selbst-gehostet auf '
-        f'der glappa.de-VPS. Kein Pentium, war nur Show. :)"'
+        f'der glappa.de-VPS. Kein Pentium, war nur Show. :)"\n\n'
+        f'Wenn du zu einer Frage direkt Suchtreffer als Fakt vorgelegt bekommst, '
+        f'hast du gerade wirklich live gesucht — nutze die Treffer ehrlich statt '
+        f'"kein Internet" zu behaupten. Bekommst du KEINE Suchtreffer und weisst '
+        f'etwas Aktuelles/Tagesgeschehen wirklich nicht, sag das ehrlich und weise '
+        f'darauf hin, dass man dich explizit bitten kann: "such nach ..." oder '
+        f'"google ...".'
     )
 
 # Datumsfragen ("welcher Wochentag ist in 11 Tagen?" / "am 15.07.?") rechnet
@@ -1352,6 +1365,63 @@ def _chat_date_hint(message: str):
     return (f'Fakt fuer diese Frage (vom Kalender-Chip berechnet): "{satz}" '
             'Gib genau diese Information wieder, in deinem Ton. Nichts umrechnen.')
 
+# Fuer Fragen nach aktuellen/Internet-Infos ("was ist heute in den News?",
+# "such mal nach ...") fragt der Server die lokale SearXNG-Instanz (selbst
+# gehostet, keine externe API, kein Tracking) und legt die Top-Treffer als
+# Fakten vor die Frage — gleiches Prinzip wie beim Datums-Hint: das Modell
+# soll zusammenfassen, nicht "wissen" oder erfinden.
+_SEARCH_EXPLICIT_RE = re.compile(
+    r'\b(?:suche?|google|recherchier(?:e)?|schau(?:\s+mal)?)\s+'
+    r'(?:mal\s+)?(?:im\s+internet\s+)?(?:nach\s+)?(.+)', re.IGNORECASE)
+_SEARCH_IMPLICIT_RE = re.compile(
+    r'\baktuell\w*|neuigkeiten|nachrichten|\bnews\b|'
+    r'was\s+ist\s+(?:gerade\s+)?los|was\s+gibt.?s\s+neues', re.IGNORECASE)
+
+def _web_search(query: str, limit: int = SEARCH_RESULTS_N):
+    url = f'{SEARXNG_URL}/search?' + urlencode(
+        {'q': query, 'format': 'json', 'language': 'de'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'glappa-bot/1.0'})
+    with urllib.request.urlopen(req, timeout=SEARCH_TIMEOUT) as r:
+        data = json.loads(r.read().decode('utf-8'))
+    results = []
+    for item in (data.get('results') or [])[:limit]:
+        title = (item.get('title') or '').strip()
+        if not title:
+            continue
+        results.append({
+            'title':   title,
+            'snippet': (item.get('content') or '').strip()[:220],
+            'url':     (item.get('url') or '').strip(),
+        })
+    return results
+
+def _chat_search_hint(message: str):
+    m = message.strip()
+    match = _SEARCH_EXPLICIT_RE.search(m)
+    query = match.group(1).strip(' ?!.') if match else None
+    if not query and _SEARCH_IMPLICIT_RE.search(m):
+        query = m
+    if not query:
+        return None
+    try:
+        results = _web_search(query)
+    except Exception:
+        return None  # Suche nicht erreichbar -> kein Hint, Bot faellt auf Persona zurueck
+    if not results:
+        return (f'Du hast gerade live im Internet (eigene Suchmaschine) nach '
+                 f'"{query}" gesucht, aber es gab keine Treffer. Sag ehrlich, '
+                 'dass du dazu nichts gefunden hast — behaupte nichts.')
+    trefferliste = '\n'.join(
+        f'- {r["title"]}: {r["snippet"]} ({r["url"]})' for r in results)
+    return (
+        f'Du hast gerade live im Internet gesucht (eigene selbst gehostete '
+        f'Suchmaschine, kein Fantasiewissen) nach "{query}". Top-Treffer:\n'
+        f'{trefferliste}\n'
+        'Fasse das kurz in deinem Ton zusammen und beantworte die Frage damit. '
+        'Tu NICHT so, als haettest du kein Internet — du hast gerade live '
+        'gesucht. Erfinde keine Details, die nicht in den Treffern stehen.'
+    )
+
 # Simple In-Memory-Rate-Limit pro IP (VPS-CPU ist das knappe Gut hier).
 _CHAT_RATE: dict = {}
 _CHAT_RATE_LOCK = threading.Lock()
@@ -1401,6 +1471,9 @@ def chat():
     date_hint = _chat_date_hint(message)
     if date_hint:
         messages.append({'role': 'system', 'content': date_hint})
+    search_hint = _chat_search_hint(message)
+    if search_hint:
+        messages.append({'role': 'system', 'content': search_hint})
     messages.append({'role': 'user', 'content': message})
 
     payload = json.dumps({
@@ -1408,9 +1481,9 @@ def chat():
         'messages': messages,
         'stream': False,
         # 0.6 statt 0.8: kleine Modelle fantasieren bei hoher Temperatur schneller.
-        # Mit Datums-Fakt noch tiefer — da soll es nur sauber abschreiben.
+        # Mit Datums-/Such-Fakt noch tiefer — da soll es nur sauber abschreiben.
         'options': {'num_predict': CHAT_NUM_PREDICT,
-                    'temperature': 0.3 if date_hint else 0.6},
+                    'temperature': 0.3 if (date_hint or search_hint) else 0.6},
     }).encode('utf-8')
 
     req = urllib.request.Request(
