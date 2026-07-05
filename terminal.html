@@ -466,7 +466,7 @@
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
        'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
-       'kill','cal','expr','stat','file','hostname','id','sound']
+       'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod']
         .forEach(function(b) {
           bin[b] = fileNode('ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)');
         });
@@ -730,8 +730,9 @@
     function lsLongLine(node, name) {
       const isD = node.type === 'dir';
       const size = isD ? 4096 : node.content.length;
+      const perm = isD ? 'drwxr-xr-x' : (node.exec ? '-rwxr-xr-x' : '-rw-r--r--');
       return {
-        text: (isD ? 'drwxr-xr-x' : '-rw-r--r--') + '  1 glappa glappa '
+        text: perm + '  1 glappa glappa '
             + String(size).padStart(6) + ' ' + lsDate() + ' ' + name + (isD ? '/' : ''),
         cls: isD ? 'line-info' : 'line-ok'
       };
@@ -890,6 +891,24 @@
           if (Object.keys(n.children).length) { errs.push('rmdir: ' + f + ': Verzeichnis ist nicht leer (Tipp: rm -r)'); return; }
           const pr = parentOf(p);
           delete pr.parent.children[pr.name];
+        });
+        saveFS();
+        return { out: [], err: errs };
+      },
+
+      /* Nur +x/-x simuliert (reicht für "./skript.sh" vs. "bash skript.sh") —
+         keine echten Unix-Rechte, das Terminal hat ja keine echten Nutzer. */
+      chmod(args) {
+        if (args.length < 2) return fail('chmod: Benutzung: chmod +x <datei...>  (nur +x/-x simuliert)');
+        const mode = args[0];
+        if (mode !== '+x' && mode !== '-x') return fail('chmod: nur +x/-x unterstützt (keine numerischen Modi wie 755)');
+        const errs = [];
+        args.slice(1).forEach(function(f) {
+          const p = resolvePath(f);
+          const n = getNode(p);
+          if (!n) { errs.push('chmod: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
+          if (n.type === 'dir') { errs.push('chmod: ' + f + ': Verzeichnisse werden nicht simuliert'); return; }
+          n.exec = (mode === '+x');
         });
         saveFS();
         return { out: [], err: errs };
@@ -1543,7 +1562,292 @@
       stat:   ['stat <datei>', 'Zeigt Details zu einer Datei: Größe, Typ, Rechte.'],
       file:   ['file <datei>', 'Rät, was für eine Art Datei das ist.'],
       sound:  ['sound on|off', 'Terminal-Soundeffekte an- oder ausschalten.'],
+      chmod:  ['chmod +x|-x <datei...>', 'Setzt/entfernt das Ausführ-Recht (nur +x/-x simuliert).', 'Beispiel: chmod +x script.sh'],
+      bash:   ['bash <datei.sh>', 'Führt ein Bash-Skript aus — kein chmod +x nötig (anders als ./skript.sh).',
+               'Unterstützt: Variablen, $((rechnung)), $RANDOM, if/elif/else/fi,',
+               'while/do/done, read -p "text" var, echo mit $VAR.',
+               'Beispiel: nano test.sh  →  bash test.sh'],
+      sh:     ['sh <datei.sh>', 'Alias für bash <datei.sh> in diesem Terminal.'],
     };
+
+    /* ══════════════════════════════════════════════════════════════
+       BASH-INTERPRETER — läuft 100% im Browser, rührt NICHTS Echtes an.
+       Kein fetch/XHR hier drin, kein eval() auf freiem Skripttext (nur
+       eine streng regex-gefilterte Zahlen-Klammer-Formel für $((...)),
+       exakt wie beim bestehenden "expr"-Befehl). Zwei Sicherheitsnetze
+       gegen kaputte Skripte, die NUR den eigenen Browser-Tab treffen
+       koennten (nie die echte Seite/den echten Server):
+         - SCRIPT_STEP_LIMIT: bricht Endlosschleifen nach N Schritten ab
+         - SCRIPT_OUT_LIMIT:  bricht ab, wenn eine Schleife die Ausgabe
+                              mit tausenden Zeilen zumüllt (DOM-Bremse)
+    ══════════════════════════════════════════════════════════════ */
+    const SCRIPT_STEP_LIMIT = 5000;
+    const SCRIPT_OUT_LIMIT  = 2000;
+    let scriptSteps = 0, scriptOutLines = 0;
+
+    function stepGuard() {
+      scriptSteps++;
+      if (scriptSteps > SCRIPT_STEP_LIMIT)
+        throw new Error('Abgebrochen: zu viele Schritte (Endlosschleife?)');
+    }
+
+    /* Statements aus dem Skripttext holen: nach echten Zeilenumbrüchen UND
+       nach jedem Top-Level-";" aufteilen (Anführungszeichen respektieren,
+       damit "a;b" in Strings nicht mit-splittet). Kommentare/Shebang/Leer-
+       zeilen fallen raus. */
+    function splitStatements(text) {
+      const stmts = [];
+      text.split('\n').forEach(function(rawLine) {
+        const line = rawLine.trim();
+        if (!line || line[0] === '#') return;
+        let cur = '', inS = false, inD = false;
+        const parts = [];
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (inS) { cur += ch; if (ch === "'") inS = false; continue; }
+          if (inD) { cur += ch; if (ch === '"') inD = false; continue; }
+          if (ch === "'") { inS = true; cur += ch; continue; }
+          if (ch === '"') { inD = true; cur += ch; continue; }
+          if (ch === ';') { parts.push(cur); cur = ''; continue; }
+          cur += ch;
+        }
+        parts.push(cur);
+        parts.forEach(function(p) { p = p.trim(); if (p) stmts.push(p); });
+      });
+      /* "then X" / "do X" / "else X" (ohne eigenes ";" davor) in zwei
+         Statements aufteilen, damit der Parser unten nur EIN Schlüsselwort
+         oder EINEN Befehl pro Statement sehen muss. */
+      const out = [];
+      stmts.forEach(function(s) {
+        const m = s.match(/^(then|do|else)\s+(.+)$/);
+        if (m) { out.push(m[1]); out.push(m[2]); } else out.push(s);
+      });
+      return out;
+    }
+
+    function firstWord(s) { return s.split(/\s+/)[0]; }
+
+    /* Rekursiver Abstieg: baut aus der flachen Statement-Liste einen Baum
+       aus {type:'cmd'}, {type:'if', branches, elseBody}, {type:'while'}. */
+    function parseBlock(stmts, pos) {
+      const body = [];
+      while (pos.i < stmts.length) {
+        const s = stmts[pos.i];
+        const kw = firstWord(s);
+        if (kw === 'fi' || kw === 'done' || kw === 'elif' || kw === 'else') break;
+        if (kw === 'then' || kw === 'do') throw new Error('unerwartetes "' + kw + '"');
+        if (kw === 'if') { body.push(parseIf(stmts, pos)); continue; }
+        if (kw === 'while') { body.push(parseWhile(stmts, pos)); continue; }
+        body.push({ type: 'cmd', line: s });
+        pos.i++;
+      }
+      return body;
+    }
+    function expectKeyword(stmts, pos, kw) {
+      const s = stmts[pos.i];
+      if (!s || firstWord(s) !== kw) throw new Error('erwarte "' + kw + '", habe "' + (s || '(Skriptende)') + '"');
+      pos.i++;
+    }
+    function parseIf(stmts, pos) {
+      const branches = [];
+      let elseBody = null;
+      let cond = stmts[pos.i].slice(2).trim();
+      pos.i++;
+      expectKeyword(stmts, pos, 'then');
+      branches.push({ cond: cond, body: parseBlock(stmts, pos) });
+      while (stmts[pos.i] && firstWord(stmts[pos.i]) === 'elif') {
+        cond = stmts[pos.i].slice(4).trim();
+        pos.i++;
+        expectKeyword(stmts, pos, 'then');
+        branches.push({ cond: cond, body: parseBlock(stmts, pos) });
+      }
+      if (stmts[pos.i] && firstWord(stmts[pos.i]) === 'else') {
+        pos.i++;
+        elseBody = parseBlock(stmts, pos);
+      }
+      expectKeyword(stmts, pos, 'fi');
+      return { type: 'if', branches: branches, elseBody: elseBody };
+    }
+    function parseWhile(stmts, pos) {
+      const cond = stmts[pos.i].slice(5).trim();
+      pos.i++;
+      expectKeyword(stmts, pos, 'do');
+      const body = parseBlock(stmts, pos);
+      expectKeyword(stmts, pos, 'done');
+      return { type: 'while', cond: cond, body: body };
+    }
+    function parseScript(content) {
+      const stmts = splitStatements(content);
+      const pos = { i: 0 };
+      const ast = parseBlock(stmts, pos);
+      if (pos.i < stmts.length) throw new Error('unerwartetes "' + stmts[pos.i] + '"');
+      return ast;
+    }
+
+    /* $VAR / ${VAR} / $? ersetzen — gleiche Semantik wie im Tokenizer,
+       aber als eigenständige Funktion (fürs Zuweisen von Variablenwerten
+       ausserhalb der normalen Befehlszeile gebraucht). */
+    function substituteVars(str) {
+      return str.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)|\$\?/g,
+        function(m, braced, bare) {
+          if (m === '$?') return String(lastStatus);
+          const name = braced || bare;
+          return ENV[name] != null ? ENV[name] : '';
+        });
+    }
+
+    /* $((...)) auswerten — GENAU wie "expr": Variablen/$RANDOM erst durch
+       Zahlen ersetzen, DANN gegen ein striktes Zahlen+Operatoren-Whitelist
+       prüfen, bevor Function() drauf läuft. Ohne die Regex-Prüfung davor
+       wäre das ein injizierbares eval() — mit ihr kann da nie etwas außer
+       einer Rechnung ankommen (keine Buchstaben, keine Klammern-Aufrufe). */
+    function evalArith(expr) {
+      const s = expr.replace(/\$?\b([A-Za-z_][A-Za-z0-9_]*)\b/g, function(_, name) {
+        if (name === 'RANDOM') return String(Math.floor(Math.random() * 32768));
+        const v = ENV[name];
+        return (v != null && /^-?\d+$/.test(v)) ? v : '0';
+      });
+      if (!/^[\d\s+\-*/%().]+$/.test(s)) throw new Error('$((' + expr + ')): ungültiger Ausdruck');
+      let v;
+      try { v = Function('"use strict";return(' + s + ')')(); }
+      catch(e) { throw new Error('$((' + expr + ')): Syntaxfehler'); }
+      if (typeof v !== 'number' || !isFinite(v)) throw new Error('$((' + expr + ')): kein Zahlenergebnis');
+      return Math.trunc(v);
+    }
+
+    function expandAssignValue(raw) {
+      let v = raw.replace(/\$\(\(([^)]*)\)\)/g, function(_, inner) { return String(evalArith(inner)); });
+      v = substituteVars(v);
+      if ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'")) {
+        v = v.slice(1, -1);
+      }
+      return v;
+    }
+
+    /* [ ... ] / [[ ... ]] auswerten. Nutzt den bestehenden tokenize() für
+       $VAR-Ersetzung + Anführungszeichen — dieselbe Logik wie in jeder
+       normalen Befehlszeile. */
+    function evalCond(condStr) {
+      let toks = tokenize(condStr);
+      let neg = false;
+      if (toks[0] === '!') { neg = true; toks = toks.slice(1); }
+      if ((toks[0] === '[' && toks[toks.length - 1] === ']')
+       || (toks[0] === '[[' && toks[toks.length - 1] === ']]')) {
+        toks = toks.slice(1, -1);
+      } else {
+        throw new Error('Bedingung braucht [ ... ]: ' + condStr);
+      }
+      if (toks[0] === '!') { neg = !neg; toks = toks.slice(1); }
+      let result;
+      if (toks.length === 2 && (toks[0] === '-z' || toks[0] === '-n')) {
+        const empty = (toks[1] || '') === '';
+        result = toks[0] === '-z' ? empty : !empty;
+      } else if (toks.length === 3) {
+        const lhs = toks[0], op = toks[1], rhs = toks[2];
+        const NUMOPS = {
+          '-eq': function(a,b){return a===b;}, '-ne': function(a,b){return a!==b;},
+          '-lt': function(a,b){return a<b;},   '-le': function(a,b){return a<=b;},
+          '-gt': function(a,b){return a>b;},   '-ge': function(a,b){return a>=b;},
+        };
+        if (NUMOPS[op]) {
+          const a = Number(lhs), b = Number(rhs);
+          if (isNaN(a) || isNaN(b)) throw new Error('Vergleich braucht Zahlen: ' + condStr);
+          result = NUMOPS[op](a, b);
+        } else if (op === '=' || op === '==') result = lhs === rhs;
+        else if (op === '!=') result = lhs !== rhs;
+        else throw new Error('Unbekannter Vergleich: ' + op);
+      } else if (toks.length === 1) {
+        result = toks[0] !== '';
+      } else {
+        throw new Error('Kann Bedingung nicht auswerten: ' + condStr);
+      }
+      return neg ? !result : result;
+    }
+
+    /* Generator-Interpreter: pausiert bei "read" (yield), statt echt zu
+       blockieren — JS kann im Hauptthread nicht auf Tastatur warten.
+       Alles andere (echo, cat, Pipes, Umleitungen...) läuft einfach über
+       das bestehende execLine() — das Skript ist nur eine Schicht Kontroll-
+       fluss (if/while/read/Zuweisung) DRUM HERUM, keine Neuerfindung. */
+    function* runCmdStatement(line) {
+      stepGuard();
+      const asg = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (asg) { ENV[asg[1]] = expandAssignValue(asg[2]); return; }
+      if (/^read\b/.test(line)) {
+        const toks = tokenize(line);
+        let prompt = null, varname;
+        if (toks[1] === '-p') { prompt = toks[2] || ''; varname = toks[3]; }
+        else varname = toks[1];
+        if (!varname || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(varname))
+          throw new Error('read: Variablenname fehlt oder ungültig');
+        const value = yield { needInput: true, prompt: prompt };
+        ENV[varname] = value;
+        return;
+      }
+      const before = out.children.length;
+      execLine(line);
+      scriptOutLines += out.children.length - before;
+      if (scriptOutLines > SCRIPT_OUT_LIMIT) throw new Error('Abgebrochen: zu viel Ausgabe (Endlosschleife?)');
+    }
+    function* runNode(node) {
+      if (node.type === 'cmd') { yield* runCmdStatement(node.line); return; }
+      if (node.type === 'if') {
+        for (const br of node.branches) {
+          stepGuard();
+          if (evalCond(br.cond)) { yield* runBlock(br.body); return; }
+        }
+        if (node.elseBody) yield* runBlock(node.elseBody);
+        return;
+      }
+      if (node.type === 'while') {
+        while (true) {
+          stepGuard();
+          if (!evalCond(node.cond)) break;
+          yield* runBlock(node.body);
+        }
+        return;
+      }
+    }
+    function* runBlock(nodes) {
+      for (const n of nodes) yield* runNode(n);
+    }
+
+    /* activeScript = { gen, name, pendingPrompt } während ein Skript läuft/
+       auf read() wartet. Solange es gesetzt ist, gehen Enter-Eingaben NICHT
+       an die normale Shell, sondern als read-Antwort ans Skript (siehe
+       runCmd unten). */
+    let activeScript = null;
+
+    function stepScript(sendValue) {
+      let res;
+      try { res = activeScript.gen.next(sendValue); }
+      catch (e) {
+        appendLine((activeScript.name || 'bash') + ': ' + (e && e.message ? e.message : String(e)), 'line-err');
+        activeScript = null;
+        updatePrompt();
+        return;
+      }
+      if (res.done) { activeScript = null; updatePrompt(); return; }
+      const sig = res.value;
+      if (sig && sig.needInput) {
+        activeScript.pendingPrompt = sig.prompt || '';
+        document.querySelector('.prompt-label').textContent = activeScript.pendingPrompt;
+        return;
+      }
+    }
+
+    function runScriptFile(path, label) {
+      const p = resolvePath(path);
+      const node = getNode(p);
+      if (!node) { appendLine(label + ': ' + path + ': Datei oder Verzeichnis nicht gefunden', 'line-err'); return; }
+      if (node.type === 'dir') { appendLine(label + ': ' + path + ': Ist ein Verzeichnis', 'line-err'); return; }
+      let ast;
+      try { ast = parseScript(node.content); }
+      catch (e) { appendLine(label + ': Syntaxfehler — ' + e.message, 'line-err'); return; }
+      scriptSteps = 0; scriptOutLines = 0;
+      activeScript = { gen: runBlock(ast), name: label, pendingPrompt: '' };
+      stepScript(undefined);
+    }
 
     /* ══════════════════════════════════════════════════════════════
        SPECIAL — interaktive/animierte Befehle (nicht pipe-fähig)
@@ -1596,6 +1900,13 @@
         appendLine('  sound on|off            Soundeffekte         clear = Strg+L');
         appendLine('  tutorial                Übungsaufgaben zum Lernen', 'line-pink');
         appendLine('  reset                   Dateisystem auf Anfang zurücksetzen');
+        blank();
+        appendLine('SKRIPTE', 'line-info');
+        appendLine('  nano script.sh          Skript schreiben — Variablen, $((rechnung)), $RANDOM,');
+        appendLine('                          if/elif/else/fi, while/do/done, read -p "text" var');
+        appendLine('  chmod +x script.sh      Ausführ-Recht setzen (für ./script.sh)');
+        appendLine('  ./script.sh             Ausführen — braucht +x');
+        appendLine('  bash script.sh          Ausführen — braucht KEIN +x (wie sh script.sh)');
         blank();
         appendLine('SPASS & KI', 'line-info');
         appendLine('  neofetch, fortune, cowsay, sl, matrix, hack, ping (simuliert), sudo');
@@ -1665,6 +1976,18 @@
         appendLine('  ps  →  kill 42069  →  top  →  df -h  →  free  →  cal');
         appendLine('  mkdir test && cd test        (&& = nur bei Erfolg weiter)');
         appendLine('  seq 5 | tac                  expr (3 + 4) * 2');
+        blank();
+        appendLine('Übung 13 — Eigene Skripte schreiben', 'line-info');
+        appendLine('  nano raten.sh    → Inhalt zum Abtippen:', 'line-ok');
+        appendLine('    #!/bin/bash', 'line-sys');
+        appendLine('    zahl=$((RANDOM % 10))', 'line-sys');
+        appendLine('    read -p "Rate 0-9: " raten', 'line-sys');
+        appendLine('    if [ "$raten" -eq "$zahl" ]; then', 'line-sys');
+        appendLine('      echo "Richtig!"', 'line-sys');
+        appendLine('    else', 'line-sys');
+        appendLine('      echo "Falsch, war $zahl"', 'line-sys');
+        appendLine('    fi', 'line-sys');
+        appendLine('  chmod +x raten.sh  →  ./raten.sh     (oder direkt: bash raten.sh)', 'line-ok');
         blank();
         appendLine('Bonus:  man ls   |   fortune | cowsay   |   history  und  !!', 'line-pink');
         appendLine('Alles bleibt in DEINEM Browser gespeichert —  reset  setzt alles zurück.', 'line-sys');
@@ -1870,6 +2193,16 @@
         }
         appendLine('Sound ist gerade: ' + (sfxOn ? 'AN 🔊' : 'AUS 🔇') + '  —  Umschalten: sound on | sound off', 'line-info');
       },
+
+      bash(args) {
+        if (!args[0]) { appendLine('bash: Benutzung: bash <datei.sh>', 'line-err'); return; }
+        runScriptFile(args[0], 'bash');
+      },
+
+      sh(args) {
+        if (!args[0]) { appendLine('sh: Benutzung: sh <datei.sh>', 'line-err'); return; }
+        runScriptFile(args[0], 'sh');
+      },
     };
     ['curl','wget','ssh','ftp','telnet','nmap','apt','apt-get'].forEach(function(c) {
       SPECIAL[c] = offlineCmd(c);
@@ -1938,6 +2271,24 @@
         const cmd = stage[0].toLowerCase();
         const fn = BIN[cmd];
         if (!fn) {
+          /* "./skript.sh" (oder ein Pfad wie uebung/foo.sh): Skript direkt
+             ausführen statt "Kommando nicht gefunden" — braucht +x, anders
+             als "bash skript.sh". Nur solo, kein Sinn mit Pipes/Umleitung. */
+          const rawCmd = stage[0];
+          if (rawCmd.indexOf('/') !== -1) {
+            if (stages.length > 1 || redir) {
+              appendLine(rawCmd + ': Skripte funktionieren nicht mit Pipes oder Umleitungen', 'line-err');
+              lastStatus = 1; return;
+            }
+            const p = resolvePath(rawCmd);
+            const scriptNode = getNode(p);
+            if (!scriptNode) appendLine('glappa-sh: ' + rawCmd + ': Datei oder Verzeichnis nicht gefunden', 'line-err');
+            else if (scriptNode.type === 'dir') appendLine('glappa-sh: ' + rawCmd + ': Ist ein Verzeichnis', 'line-err');
+            else if (!scriptNode.exec) appendLine('glappa-sh: ' + rawCmd + ': Keine Berechtigung — Tipp: chmod +x ' + rawCmd, 'line-err');
+            else runScriptFile(rawCmd, rawCmd);
+            lastStatus = 0;
+            return;
+          }
           if (SPECIAL[cmd]) appendLine(cmd + ': funktioniert nicht mit Pipes oder Umleitungen', 'line-err');
           else {
             playSfx('deny');
@@ -2046,6 +2397,16 @@
 
     function runCmd(raw) {
       let trimmed = raw.trim();
+
+      /* Ein Skript wartet auf "read" — die Eingabe geht an DAS, nicht an
+         die normale Shell (auch eine leere Zeile ist eine gültige Antwort,
+         darum VOR dem "!trimmed → return" prüfen). */
+      if (activeScript) {
+        appendLine(activeScript.pendingPrompt + trimmed, 'line-cmd');
+        stepScript(trimmed);
+        return;
+      }
+
       if (!trimmed) return;
 
       /* Verlaufs-Wiederholung wie in bash:  !! = letzter Befehl,
@@ -2087,7 +2448,11 @@
 
       appendLine(promptStr() + trimmed, 'line-cmd');
       execLine(trimmed);
-      updatePrompt();
+      /* Falls execLine() gerade ein Skript gestartet hat, das SOFORT bei
+         "read" pausiert (z.B. das allererste "bash script.sh"), hat
+         stepScript() das Prompt-Label schon auf den read-Prompt gesetzt —
+         das hier nicht wieder überschreiben. */
+      if (!activeScript) updatePrompt();
     }
 
     /* ── Tab-Vervollständigung: Befehle + Pfade ── */
@@ -2172,9 +2537,14 @@
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
-        appendLine(promptStr() + inp.value + '^C', 'line-cmd');
+        appendLine((activeScript ? activeScript.pendingPrompt : promptStr()) + inp.value + '^C', 'line-cmd');
         inp.value = '';
         histIdx = -1;
+        if (activeScript) {
+          activeScript = null;
+          appendLine('(Skript abgebrochen)', 'line-sys');
+          updatePrompt();
+        }
       } else if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
         e.preventDefault();
         out.innerHTML = '';
