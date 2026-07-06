@@ -55,9 +55,15 @@ terminal.html ──POST /api/chat──> Apache (home.glappa.de:443)
                                            └──> Ollama (Container glappa-ollama, intern :11434)
 ```
 
-- Modell: `qwen2.5:14b` (Default, ~9 GB RAM, CPU-Inferenz). Änderbar via
-  `GLAPPA_CHAT_MODEL` in `_docker/docker-compose.vps.yml` (knappere VPS:
-  `qwen2.5:7b` ~5 GB, oder `qwen2.5:1.5b` ~2 GB).
+- Zwei Modelle, automatisch gewählt je nach Prompt: `qwen3:4b-instruct-2507`
+  (FAST, Default, ~3 GB RAM, bleibt per keep_alive 24h im RAM) für kurze/simple
+  Nachrichten, `qwen2.5:14b` (SMART, Default, ~9 GB RAM) für Code/Erklärungen/
+  lange Nachrichten — Server-Heuristik in `_chat_pick_model` (`home/app.py`),
+  keine Nutzer-Auswahl nötig. Änderbar via `GLAPPA_CHAT_MODEL` (SMART) /
+  `GLAPPA_CHAT_MODEL_FAST` (FAST) in `_docker/docker-compose.vps.yml`.
+- Damit der KV-Cache zwischen den Nachrichten wiederverwendet wird, steht im
+  System-Prompt nur das Datum, keine Uhrzeit (die würde den Prompt-Präfix jede
+  Minute ändern). Uhrzeit-Fragen beantwortet ein Server-Hint, wie Datumsfragen.
 - Persona/Limits (Rate-Limit 10 Nachrichten/Minute pro IP, max. 500 Zeichen)
   stecken in `home/app.py`.
 - Der System-Prompt wird pro Request gebaut und enthält Datum/Uhrzeit

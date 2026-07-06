@@ -464,7 +464,7 @@
     function defaultFS() {
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
-       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat',
+       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
        'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod']
         .forEach(function(b) {
@@ -568,6 +568,229 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
+       GLAPPA-DO — KI-AGENT MIT TERMINAL-ZUGRIFF
+       Die KI bekommt ein ZIEL und gibt echte Shell-Befehle aus ("$ <cmd>"),
+       die das Terminal fuer sie ausfuehrt; die Ausgabe geht ans Modell
+       zurueck, bis es mit "FERTIG:" abschliesst. Laeuft komplett in der
+       Browser-Sandbox — der Agent darf NUR die synchronen BIN-Werkzeuge
+       ausfuehren (Datei-/Textbefehle), niemals interaktive/animierte/Netz-
+       Befehle. Bestaetigungsmodus (glappa-do confirm on|off) entscheidet, ob
+       jeder Befehl vorher abgenickt werden muss. */
+    const AGENT_MAX_STEPS     = 4;      // Denk-Runden (= /chat-Calls) pro Ziel
+    const AGENT_MAX_CMDS      = 8;      // Befehle pro Runde
+    const AGENT_CONFIRM_PROMPT = '[Enter]=ja  n=nein  a=alle  q=quit › ';
+    const AGENT_CONFIRM_KEY   = 'glappaAgentConfirm_v1';
+    let activeAgent = null;             // {goal,convo,steps,auto,queue,batch,awaitingConfirm,pendingCmd}
+    let agentBusy   = false;            // true, waehrend eine /chat-Anfrage laeuft
+    let agentConfirmDefault = true;     // Standard: jeden Befehl bestaetigen
+    try { agentConfirmDefault = (localStorage.getItem(AGENT_CONFIRM_KEY) !== '0'); } catch(e) {}
+    function persistAgentConfirm() {
+      try { localStorage.setItem(AGENT_CONFIRM_KEY, agentConfirmDefault ? '1' : '0'); } catch(e) {}
+    }
+
+    function startAgent(goal, auto) {
+      activeAgent = { goal: goal, convo: [], steps: 0, auto: !!auto,
+                      queue: [], batch: [], awaitingConfirm: false, pendingCmd: '' };
+      blank();
+      appendLine('┌──────────────────────────────────────────────┐', 'line-pink');
+      appendLine('│  GLAPPA-DO — KI-Agent mit Terminal-Zugriff   │', 'line-pink');
+      appendLine('└──────────────────────────────────────────────┘', 'line-pink');
+      appendLine('Ziel: ' + goal, 'line-info');
+      appendLine('Modus: ' + (auto ? 'direkt ausführen (YOLO)' : 'jeder Befehl wird bestätigt')
+                 + '  ·  Strg+C bricht ab', 'line-sys');
+      blank();
+      agentThink(goal);
+    }
+
+    /* Eine Runde: den aktuellen User-Text (Ziel oder Befehls-Ausgabe) ans
+       Modell schicken und die Antwort verarbeiten. */
+    function agentThink(userMsg) {
+      if (!activeAgent) return;
+      agentBusy = true;
+      const thinking = document.createElement('div');
+      thinking.className = 'line-sys blink-text';
+      thinking.textContent = 'GLAPPA-BOT denkt ...';
+      out.appendChild(thinking);
+      out.scrollTop = out.scrollHeight;
+
+      fetch(chatEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'agent', message: userMsg, history: activeAgent.convo.slice(-6) })
+      })
+      .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
+      .then(function(res) {
+        thinking.remove();
+        agentBusy = false;
+        if (!activeAgent) return;               // waehrend des Wartens abgebrochen
+        if (!res.ok || res.d.error) {
+          appendLine('GLAPPA-BOT: ' + (res.d.error || 'Störung im Neon-Subsystem.'), 'line-err');
+          agentFinish(true); return;
+        }
+        const reply = cleanReply(res.d.reply);
+        activeAgent.convo.push({ role: 'user', content: userMsg });
+        activeAgent.convo.push({ role: 'assistant', content: res.d.reply });
+        activeAgent.steps++;
+        agentHandleReply(reply);
+      })
+      .catch(function() {
+        thinking.remove(); agentBusy = false;
+        if (!activeAgent) return;
+        playSfx('error');
+        appendLine('GLAPPA-BOT ist offline. (VPS nicht erreichbar)', 'line-err');
+        agentFinish(true);
+      });
+    }
+
+    /* Zerlegt eine Modell-Antwort in Befehle ("$ ..."), Prosa und ein
+       "FERTIG:"-Signal fuers Ende. */
+    function parseAgentReply(reply) {
+      const lines = String(reply || '').split('\n');
+      const cmds = [], prose = [];
+      let done = false;
+      lines.forEach(function(ln) {
+        const m = ln.match(/^\s*\$\s+(.+)$/);
+        if (m) { cmds.push(m[1].trim()); return; }
+        const t = ln.trim();
+        if (!t) return;
+        if (/^FERTIG\s*:?/i.test(t)) {
+          done = true;
+          const rest = t.replace(/^FERTIG\s*:?/i, '').trim();
+          if (rest) prose.push(rest);
+          return;
+        }
+        prose.push(t);
+      });
+      return { cmds: cmds, prose: prose, done: done };
+    }
+
+    function agentShowProse(lines) {
+      lines.forEach(function(l, i) {
+        appendLine((i === 0 ? 'GLAPPA-BOT: ' : '') + l, 'line-pink');
+      });
+    }
+
+    function agentHandleReply(reply) {
+      const parsed = parseAgentReply(reply);
+      if (parsed.prose.length) agentShowProse(parsed.prose);
+      if (!parsed.cmds.length || parsed.done) { agentFinish(false); return; }
+      activeAgent.queue = parsed.cmds.slice(0, AGENT_MAX_CMDS);
+      activeAgent.batch = [];
+      agentNext();
+    }
+
+    /* Naechsten Befehl der Runde abarbeiten — oder, wenn die Runde leer ist,
+       die gesammelte Ausgabe zurueck ans Modell fuer den naechsten Schritt. */
+    function agentNext() {
+      if (!activeAgent) return;
+      if (!activeAgent.queue.length) {
+        if (activeAgent.steps >= AGENT_MAX_STEPS) {
+          appendLine('(Agent-Limit von ' + AGENT_MAX_STEPS + ' Runden erreicht — Stopp.)', 'line-sys');
+          agentFinish(false); return;
+        }
+        agentThink(agentBuildFeedback(activeAgent.batch));
+        return;
+      }
+      const cmd = activeAgent.queue[0];
+      const bad = agentReject(cmd);
+      if (bad) {
+        appendLine('GLAPPA-BOT wollte ausführen: ' + cmd, 'line-sys');
+        appendLine('⤷ übersprungen: ' + bad, 'line-err');
+        activeAgent.batch.push({ cmd: cmd, out: '[nicht ausgeführt: ' + bad + ']' });
+        activeAgent.queue.shift();
+        agentNext(); return;
+      }
+      if (activeAgent.auto) {
+        agentExec(cmd);
+        activeAgent.queue.shift();
+        agentNext(); return;
+      }
+      /* Bestaetigung anfordern: naechste Eingabe ist die Antwort (s. runCmd). */
+      activeAgent.awaitingConfirm = true;
+      activeAgent.pendingCmd = cmd;
+      blank();
+      appendLine('GLAPPA-BOT möchte ausführen:', 'line-info');
+      appendLine('   $ ' + cmd, 'line-pink');
+      document.querySelector('.prompt-label').textContent = AGENT_CONFIRM_PROMPT;
+      inp.focus();
+    }
+
+    /* Allowlist: nur die synchronen BIN-Werkzeuge (Datei-/Textbefehle) sind
+       erlaubt. Alles andere (SPECIAL = interaktiv/animiert/Netz/Meta) und
+       Pfad-/Skriptaufrufe lehnt der Agent ab. Prueft jede Pipe-/Kettenstufe. */
+    function agentReject(cmd) {
+      const segs = cmd.split(/\||;|&&/);
+      for (let i = 0; i < segs.length; i++) {
+        const seg = segs[i].trim();
+        if (!seg) continue;
+        let first = (seg.split(/\s+/)[0] || '').toLowerCase().replace(/^["']|["']$/g, '');
+        if (!first || first === '>' || first === '>>') continue;
+        if (first.indexOf('/') !== -1) return 'Pfad-/Skriptaufrufe sind im Agent gesperrt';
+        if (!BIN[first]) return '"' + first + '" ist im Agent nicht erlaubt';
+      }
+      return null;
+    }
+
+    /* Fuehrt einen Befehl wie eine echte Eingabe aus und faengt dabei die
+       Ausgabe fuer die Rueckmeldung ans Modell ab. */
+    function agentExec(cmd) {
+      appendLine('glappa@web:' + shortCwd() + '$ ' + cmd, 'line-cmd');
+      captureBuf = [];
+      try { execLine(cmd); }
+      catch (e) { appendLine('(Fehler: ' + (e && e.message ? e.message : e) + ')', 'line-err'); }
+      const captured = (captureBuf || []).join('\n').slice(0, 1200);
+      captureBuf = null;
+      activeAgent.batch.push({ cmd: cmd, out: captured });
+    }
+
+    function agentBuildFeedback(batch) {
+      if (!batch.length) return 'Es gab keine Ausgabe. Mach weiter oder schließe mit FERTIG: ab.';
+      const parts = batch.map(function(b) {
+        return '$ ' + b.cmd + '\n' + (b.out ? b.out : '(keine Ausgabe)');
+      });
+      let txt = 'Ergebnis der Befehle:\n' + parts.join('\n\n');
+      if (txt.length > 3000) txt = txt.slice(0, 3000) + '\n…(gekürzt)';
+      return txt + '\n\nWenn das Ziel erreicht ist, antworte mit "FERTIG:" und einer kurzen '
+                 + 'Zusammenfassung. Sonst gib die nächsten $-Befehle.';
+    }
+
+    /* Antwort auf die Bestaetigungsabfrage. Enter/ja = ausfuehren,
+       n = überspringen, a = ab jetzt alles ohne Nachfrage, q = abbrechen. */
+    function agentAnswerConfirm(ans) {
+      if (!activeAgent) return;
+      const a = ans.trim().toLowerCase();
+      const cmd = activeAgent.pendingCmd;
+      activeAgent.awaitingConfirm = false;
+      if (a === '' || a === 'y' || a === 'j' || a === 'ja' || a === 'yes') {
+        agentExec(cmd); activeAgent.queue.shift(); agentNext();
+      } else if (a === 'a' || a === 'alle' || a === 'all') {
+        activeAgent.auto = true;
+        appendLine('(Rest wird ohne Nachfrage ausgeführt.)', 'line-sys');
+        agentExec(cmd); activeAgent.queue.shift(); agentNext();
+      } else if (a === 'n' || a === 'no' || a === 'nein' || a === 's' || a === 'skip') {
+        appendLine('⤷ übersprungen.', 'line-sys');
+        activeAgent.batch.push({ cmd: cmd, out: '[vom User übersprungen]' });
+        activeAgent.queue.shift(); agentNext();
+      } else if (a === 'q' || a === 'quit' || a === 'exit' || a === 'stop' || a === 'abbruch') {
+        appendLine('(Auftrag abgebrochen.)', 'line-sys');
+        agentFinish(true);
+      } else {
+        appendLine('Bitte: Enter=ja, n=nein, a=alle, q=quit', 'line-sys');
+        activeAgent.awaitingConfirm = true;
+        document.querySelector('.prompt-label').textContent = AGENT_CONFIRM_PROMPT;
+      }
+    }
+
+    function agentFinish(aborted) {
+      activeAgent = null;
+      agentBusy = false;
+      if (!aborted) playSfx('balloon');
+      blank();
+      updatePrompt();
+      inp.focus();
+    }
+
+    /* ══════════════════════════════════════════════════════════════
        PFAD-HELFER
     ══════════════════════════════════════════════════════════════ */
     function resolvePath(p) {
@@ -642,8 +865,13 @@
     }
 
     /* ── Ausgabe-Helfer ── */
+    /* Wenn captureBuf gesetzt ist, landet jede ausgegebene Zeile ZUSAETZLICH
+       darin — so faengt der KI-Agent (glappa-do) die Ausgabe seiner Befehle
+       ab, um sie ans Modell zurueckzuspielen. */
+    let captureBuf = null;
     function appendLine(text, cls) {
       cls = cls || 'line-ok';
+      if (captureBuf) captureBuf.push(text);
       const div = document.createElement('div');
       div.className = cls;
       div.textContent = text;
@@ -1912,6 +2140,7 @@
         appendLine('  neofetch, fortune, cowsay, sl, matrix, hack, ping (simuliert), sudo');
         appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
+        appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
         appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
@@ -2203,6 +2432,50 @@
         if (!args[0]) { appendLine('sh: Benutzung: sh <datei.sh>', 'line-err'); return; }
         runScriptFile(args[0], 'sh');
       },
+
+      'glappa-do'(args) {
+        /* glappa-do confirm on|off — Bestaetigungsmodus dauerhaft umschalten */
+        const sub = (args[0] || '').toLowerCase();
+        if (sub === 'confirm' || sub === 'bestätigen' || sub === 'bestaetigen') {
+          const v = (args[1] || '').toLowerCase();
+          if (v === 'on' || v === 'an' || v === 'ein') {
+            agentConfirmDefault = true; persistAgentConfirm();
+            appendLine('Agent-Bestätigung: AN — jeder Befehl wird vor dem Ausführen gezeigt und muss bestätigt werden.', 'line-info');
+          } else if (v === 'off' || v === 'aus') {
+            agentConfirmDefault = false; persistAgentConfirm();
+            appendLine('Agent-Bestätigung: AUS — die KI führt Befehle direkt aus (YOLO-Modus). 😎', 'line-info');
+          } else {
+            appendLine('Agent-Bestätigung ist gerade: ' + (agentConfirmDefault ? 'AN' : 'AUS')
+                       + '  —  Umschalten: glappa-do confirm on | off', 'line-info');
+          }
+          return;
+        }
+        if (activeAgent) { appendLine('glappa-do: Es läuft schon ein Auftrag. (Strg+C bricht ab)', 'line-err'); return; }
+
+        /* Einmal-Overrides pro Aufruf: -y/--yes/--yolo = direkt,  --ask/--confirm = nachfragen */
+        let auto = !agentConfirmDefault;
+        const rest = [];
+        args.forEach(function(a) {
+          if (a === '-y' || a === '--yes' || a === '--yolo') auto = true;
+          else if (a === '--ask' || a === '--confirm') auto = false;
+          else rest.push(a);
+        });
+        const goal = rest.join(' ').trim();
+        if (!goal) {
+          blank();
+          appendLine('Usage: glappa-do <ziel>', 'line-info');
+          appendLine('Die Glappa-KI erledigt ein Ziel, indem sie selbst Terminal-Befehle ausführt.', 'line-ok');
+          appendLine('Beispiel: glappa-do lege einen ordner projekt an und schreib eine readme rein', 'line-sys');
+          blank();
+          appendLine('Bestätigungsmodus (aktuell ' + (agentConfirmDefault ? 'AN' : 'AUS') + '):', 'line-info');
+          appendLine('  glappa-do confirm on     Jeden Befehl vor dem Ausführen bestätigen', 'line-ok');
+          appendLine('  glappa-do confirm off    KI führt direkt aus (YOLO)', 'line-ok');
+          appendLine('  Einmalig übersteuern:  -y (direkt)  ·  --ask (nachfragen)', 'line-sys');
+          blank();
+          return;
+        }
+        startAgent(goal, auto);
+      },
     };
     ['curl','wget','ssh','ftp','telnet','nmap','apt','apt-get'].forEach(function(c) {
       SPECIAL[c] = offlineCmd(c);
@@ -2407,6 +2680,19 @@
         return;
       }
 
+      /* Der KI-Agent (glappa-do) wartet auf eine Bestätigung — die Eingabe
+         ist die Antwort (Enter=ja), kein Shell-Befehl. VOR dem Leer-Check,
+         denn eine leere Zeile = "ja, ausführen". */
+      if (activeAgent && activeAgent.awaitingConfirm) {
+        appendLine(AGENT_CONFIRM_PROMPT + trimmed, 'line-cmd');
+        agentAnswerConfirm(trimmed);
+        return;
+      }
+      if (activeAgent && agentBusy) {
+        appendLine('GLAPPA-BOT arbeitet noch … (Strg+C bricht ab)', 'line-sys');
+        return;
+      }
+
       if (!trimmed) return;
 
       /* Verlaufs-Wiederholung wie in bash:  !! = letzter Befehl,
@@ -2537,12 +2823,19 @@
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
-        appendLine((activeScript ? activeScript.pendingPrompt : promptStr()) + inp.value + '^C', 'line-cmd');
+        const cprompt = activeScript ? activeScript.pendingPrompt
+                      : (activeAgent && activeAgent.awaitingConfirm ? AGENT_CONFIRM_PROMPT : promptStr());
+        appendLine(cprompt + inp.value + '^C', 'line-cmd');
         inp.value = '';
         histIdx = -1;
         if (activeScript) {
           activeScript = null;
           appendLine('(Skript abgebrochen)', 'line-sys');
+          updatePrompt();
+        } else if (activeAgent) {
+          activeAgent = null;
+          agentBusy = false;
+          appendLine('(Agent abgebrochen)', 'line-sys');
           updatePrompt();
         }
       } else if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {

@@ -240,15 +240,26 @@ else
         else
             warn "SearXNG-Container nicht gefunden — wurde via 'up' gestartet (siehe oben)"
         fi
-        # Chat-Modell fuer glappa-chat (Ollama) ziehen — idempotent, laedt
-        # nur beim ersten Mal wirklich runter (~9 GB fuer qwen2.5:14b).
+        # Chat-Modelle fuer glappa-chat (Ollama) ziehen — idempotent, laedt
+        # nur beim ersten Mal wirklich runter. Zwei Modelle: SMART (grosse,
+        # komplexe Anfragen) + FAST (kurze/simple Anfragen, s. app.py).
         CHAT_MODEL="$(grep -oE 'GLAPPA_CHAT_MODEL=[^ ]+' "$COMPOSE_FILE" | head -1 | cut -d= -f2)"
         CHAT_MODEL="${CHAT_MODEL:-qwen2.5:14b}"
+        CHAT_MODEL_FAST="$(grep -oE 'GLAPPA_CHAT_MODEL_FAST=[^ ]+' "$COMPOSE_FILE" | head -1 | cut -d= -f2)"
+        CHAT_MODEL_FAST="${CHAT_MODEL_FAST:-qwen3:4b-instruct-2507-q4_K_M}"
         if $DOCKER_SUDO docker ps --format '{{.Names}}' | grep -q '^glappa-ollama$'; then
-            say "Ziehe Chat-Modell $CHAT_MODEL (erster Lauf laedt ggf. mehrere GB)..."
-            $DOCKER_SUDO docker exec glappa-ollama ollama pull "$CHAT_MODEL" \
-                && ok "Chat-Modell $CHAT_MODEL bereit" \
-                || warn "Modell-Pull fehlgeschlagen — glappa-chat meldet dann 'Modell fehlt'"
+            for m in "$CHAT_MODEL" "$CHAT_MODEL_FAST"; do
+                say "Ziehe Chat-Modell $m (erster Lauf laedt ggf. mehrere GB)..."
+                $DOCKER_SUDO docker exec glappa-ollama ollama pull "$m" \
+                    && ok "Chat-Modell $m bereit" \
+                    || warn "Modell-Pull fuer $m fehlgeschlagen — glappa-chat meldet dann 'Modell fehlt'"
+            done
+            # FAST-Modell direkt vorwaermen, damit nicht der erste Chat-User
+            # nach dem Deploy den Modell-Ladevorgang (Kaltstart) abwartet.
+            say "Waerme FAST-Modell $CHAT_MODEL_FAST vor..."
+            $DOCKER_SUDO docker exec glappa-ollama ollama run "$CHAT_MODEL_FAST" "Sag nur: OK" >/dev/null 2>&1 \
+                && ok "FAST-Modell vorgewaermt (im RAM)" \
+                || warn "Warmup fehlgeschlagen — erster Chat laedt das Modell selbst"
         else
             warn "glappa-ollama-Container laeuft nicht — glappa-chat bleibt offline"
         fi

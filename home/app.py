@@ -1232,23 +1232,31 @@ def counter_visits():
 # der Typewriter-Effekt passiert client-seitig im Terminal.
 #
 # Env:
-#   OLLAMA_URL         Basis-URL der Ollama-API (Compose: http://ollama:11434)
-#   GLAPPA_CHAT_MODEL  Ollama-Modell-Tag (Default qwen2.5:14b — CPU-Inferenz,
-#                      ~9 GB RAM; fuer knappe VPS: qwen2.5:7b oder qwen2.5:1.5b)
-#   SEARXNG_URL        Basis-URL der selbst gehosteten SearXNG-Instanz
-#                      (Compose: http://searxng:8080 — intern, nicht der
-#                      oeffentliche search.glappa.de-Weg ueber Apache)
+#   OLLAMA_URL              Basis-URL der Ollama-API (Compose: http://ollama:11434)
+#   GLAPPA_CHAT_MODEL       Ollama-Modell-Tag fuers SCHLAUE Modell (Default
+#                           qwen2.5:14b — CPU-Inferenz, ~9 GB RAM). Wird fuer
+#                           komplexe Anfragen benutzt (s. _chat_is_complex).
+#   GLAPPA_CHAT_MODEL_FAST  Ollama-Modell-Tag fuers SCHNELLE Modell (Default
+#                           qwen3:4b-instruct-2507-q4_K_M — ~3 GB RAM, reine
+#                           Instruct-Variante ohne Thinking-Modus). Fuer simple
+#                           Anfragen, damit die Antwort zuegig kommt statt auf
+#                           14b zu warten.
+#   SEARXNG_URL             Basis-URL der selbst gehosteten SearXNG-Instanz
+#                           (Compose: http://searxng:8080 — intern, nicht der
+#                           oeffentliche search.glappa.de-Weg ueber Apache)
 import urllib.request
 import urllib.error
 from urllib.parse import urlencode
 from datetime import datetime, timedelta, timezone
 
 OLLAMA_URL       = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/')
-CHAT_MODEL       = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:14b')
+CHAT_MODEL_SMART = os.environ.get('GLAPPA_CHAT_MODEL', 'qwen2.5:14b')
+CHAT_MODEL_FAST  = os.environ.get('GLAPPA_CHAT_MODEL_FAST', 'qwen3:4b-instruct-2507-q4_K_M')
 SEARXNG_URL      = os.environ.get('SEARXNG_URL', 'http://searxng:8080').rstrip('/')
 SEARCH_TIMEOUT   = 6     # Sekunden; schlaegt die Suche fehl, faellt der Hint einfach weg
 SEARCH_RESULTS_N = 4     # wieviele Treffer als Fakten vor die Frage gelegt werden
 CHAT_MAX_LEN     = 500   # Zeichen pro User-Nachricht
+AGENT_MAX_LEN    = 4000  # Agent-Feedback (Befehlsausgaben) darf laenger sein
 CHAT_MAX_HISTORY = 8     # wieviele alte Nachrichten (user+assistant) mitgehen
 CHAT_NUM_PREDICT = 260   # max. Antwort-Tokens (CPU-Inferenz ist langsam)
 CHAT_TIMEOUT     = 180   # Sekunden; erste Anfrage laedt das (groessere) Modell extra
@@ -1276,6 +1284,11 @@ CHAT_PERSONA = (
 # und fuer relative/absolute Datumsfragen rechnet der Server (s.u.).
 # Getestet wurde auch eine Kalender-Tabelle im Prompt — die verschlechtert die
 # Trefferquote sogar, weil das Modell die falsche Zeile greift.
+# Die Uhrzeit steht absichtlich NICHT im System-Prompt: Ollama kann den
+# KV-Cache nur wiederverwenden, solange der Prompt-Praefix byte-identisch
+# bleibt — eine Uhrzeit im Prompt aendert ihn jede Minute, und die ganze
+# Persona muesste bei fast jeder Nachricht neu durchgerechnet werden (CPU!).
+# Uhrzeit-Fragen beantwortet stattdessen der Datums-Hint (_chat_date_hint).
 try:
     from zoneinfo import ZoneInfo
     _BERLIN_TZ = ZoneInfo('Europe/Berlin')
@@ -1285,20 +1298,21 @@ except Exception:
 _WOCHENTAGE = ('Montag', 'Dienstag', 'Mittwoch', 'Donnerstag',
                'Freitag', 'Samstag', 'Sonntag')
 
-def _chat_system_prompt() -> str:
+def _chat_system_prompt(model: str) -> str:
     now = datetime.now(_BERLIN_TZ)
     return (
         f'{CHAT_PERSONA}\n\n'
-        f'Heute ist {_WOCHENTAGE[now.weekday()]}, der {now:%d.%m.%Y}, '
-        f'{now:%H:%M} Uhr (Europe/Berlin).\n\n'
+        f'Heute ist {_WOCHENTAGE[now.weekday()]}, der {now:%d.%m.%Y} '
+        f'(Europe/Berlin). Die genaue Uhrzeit kennst du nur, wenn sie dir '
+        f'als Fakt vorgelegt wird — rate keine Uhrzeit.\n\n'
         f'WICHTIGE AUSNAHME von der Pentium-Persona: Sobald jemand fragt, '
         f'welches Modell/welche KI/welches LLM du bist oder benutzt (in '
         f'egal welcher Formulierung), lass den Pentium-MMX-Witz komplett '
-        f'weg und antworte nur mit der Wahrheit: du laeufst auf {CHAT_MODEL} '
+        f'weg und antworte nur mit der Wahrheit: du laeufst auf {model} '
         f'via Ollama, self-hosted auf der VPS, keine Cloud-API. Behaupte NIE, '
         f'kein Modell zu sein oder "einfach ein Computerprogramm" — das ist '
         f'falsch, du bist ein Sprachmodell. Beispiel: User: "welches Modell '
-        f'bist du?" Du: "{CHAT_MODEL}, laeuft via Ollama selbst-gehostet auf '
+        f'bist du?" Du: "{model}, laeuft via Ollama selbst-gehostet auf '
         f'der glappa.de-VPS. Kein Pentium, war nur Show. :)"\n\n'
         f'Wenn du zu einer Frage direkt Suchtreffer als Fakt vorgelegt bekommst, '
         f'hast du gerade wirklich live gesucht — nutze die Treffer ehrlich statt '
@@ -1308,10 +1322,50 @@ def _chat_system_prompt() -> str:
         f'"google ...".'
     )
 
+# ── Agenten-Modus (glappa-do) ────────────────────────────────────
+# Das Terminal schickt {mode:'agent', ...} wenn die KI selbst Befehle
+# ausfuehren soll. Sie gibt Shell-Befehle als "$ <cmd>"-Zeilen aus, das
+# Terminal fuehrt sie in der Browser-Sandbox aus und schickt die Ausgabe
+# zurueck; mit "FERTIG:" schliesst die KI ab. Immer das schlaue Modell —
+# das kleine haelt das $-Protokoll nicht zuverlaessig ein.
+AGENT_PERSONA = (
+    'Du bist GLAPPA-BOT im AGENTEN-MODUS des GLAPPA-Terminals auf glappa.de. '
+    'Das Terminal ist eine reine Browser-Sandbox mit einem virtuellen '
+    'Dateisystem — nichts verlaesst den Browser, du kannst nichts kaputt '
+    'machen, was ein reset nicht heilt. Der User gibt dir ein ZIEL. Du '
+    'erreichst es, indem du echte Shell-Befehle ausgibst, die das Terminal '
+    'fuer dich ausfuehrt und dir die Ausgabe zurueckgibt.\n\n'
+    'PROTOKOLL (streng einhalten):\n'
+    '- Jeder Befehl steht in einer EIGENEN Zeile, die mit "$ " beginnt, z.B.:\n'
+    '  $ mkdir projekt\n'
+    '  $ echo "hallo" > projekt/readme.txt\n'
+    '- Optional EIN kurzer Satz Erklaerung VOR den Befehlen. Sonst nichts.\n'
+    '- Keine Markdown-Codebloecke, keine Backticks, keine Nummerierung.\n'
+    '- Du bekommst danach die Ausgabe und darfst weitere $-Befehle schicken.\n'
+    '- Ist das Ziel erreicht, gib KEINEN $-Befehl mehr, sondern eine Zeile '
+    'die mit "FERTIG:" beginnt und kurz zusammenfasst, was du getan hast.\n\n'
+    'ERLAUBTE BEFEHLE (nur diese, alles andere schlaegt fehl): ls cd pwd cat '
+    'echo touch mkdir rm rmdir cp mv chmod grep sort uniq wc rev head tail '
+    'find tree cut tr sed tac nl seq diff stat file du df free ps cal expr '
+    'date whoami id hostname env which — plus Pipes | und Umleitung > >>.\n'
+    'VERBOTEN (niemals vorschlagen): nano top matrix hack ping sudo bash sh '
+    'curl wget ssh nmap apt glappa glappa-chat glappa-do reboot exit clear '
+    'sowie ./skript.sh — interaktive, animierte oder Netz-Befehle.\n\n'
+    'Halte dich kurz und zielgerichtet, wenige Befehle pro Runde. Braucht das '
+    'Ziel gar keine Befehle, antworte direkt mit "FERTIG:".'
+)
+
+def _agent_system_prompt(model: str) -> str:
+    now = datetime.now(_BERLIN_TZ)
+    return (f'{AGENT_PERSONA}\n\n'
+            f'Heute ist {_WOCHENTAGE[now.weekday()]}, der {now:%d.%m.%Y} '
+            f'(Europe/Berlin).')
+
 # Datumsfragen ("welcher Wochentag ist in 11 Tagen?" / "am 15.07.?") rechnet
 # der Server aus und legt dem Modell die fertige Antwort als Fakt direkt vor
 # die Frage — das Mini-Modell wuerde sonst selbst rechnen, und das kann es
 # nicht. Es muss die Antwort nur noch im Glappa-Ton formulieren.
+_UHRZEIT_RE     = re.compile(r'wie\s*sp(?:ae|ä)t|uhrzeit|wie\s?viel\s+uhr', re.IGNORECASE)
 _REL_TAGE_RE    = re.compile(r'\bin\s+(\d{1,4})\s+tag', re.IGNORECASE)
 _REL_WOCHEN_RE  = re.compile(r'\bin\s+(\d{1,3})\s+woche', re.IGNORECASE)
 _ABS_DATUM_RE   = re.compile(r'\b(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4})?')
@@ -1328,12 +1382,18 @@ def _chat_date_hint(message: str):
         return f'{_WOCHENTAGE[d.weekday()]}, der {d:%d.%m.%Y}'
 
     satz = None
-    match = _REL_TAGE_RE.search(m)
+    if _UHRZEIT_RE.search(m):
+        # Die Uhrzeit steht bewusst nicht im System-Prompt (KV-Cache, s.o.) —
+        # bei expliziter Frage kommt sie hier als fertiger Fakt.
+        satz = f'Es ist gerade {now:%H:%M} Uhr, heute ist {_wt(now)}.'
+        match = None
+    else:
+        match = _REL_TAGE_RE.search(m)
     if match:
         n = int(match.group(1))
         d = now + timedelta(days=n)
         satz = f'In {n} Tagen ist {_wt(d)}.' if n != 1 else f'In 1 Tag ist {_wt(d)}.'
-    else:
+    elif satz is None:
         match = _REL_WOCHEN_RE.search(m)
         if match:
             n = int(match.group(1))
@@ -1428,6 +1488,37 @@ def _chat_search_hint(message: str):
         'gesucht. Erfinde keine Details, die nicht in den Treffern stehen.'
     )
 
+# Modell-Wahl: kurze/simple Prompts ("hi", "wie spaet ist es?") gehen ans
+# schnelle 7b-Modell, damit die Antwort auf CPU-Inferenz zuegig kommt. Sobald
+# die Nachricht nach Code, Erklaerung, Kreativ- oder Rechenaufgabe aussieht
+# (oder einfach lang/verschachtelt ist), uebernimmt das schlauere 14b-Modell.
+# Rein heuristisch (Keywords/Laenge) — kein extra LLM-Call fuers Routing, das
+# waere selbst auf CPU-Inferenz teurer als der Nutzen.
+CHAT_COMPLEX_LEN     = 140   # Zeichen; laengere Nachrichten meist komplexere Anliegen
+CHAT_COMPLEX_HISTORY = 6     # ab so vielen Vorgaenger-Nachrichten gilt das Gespraech als vertieft
+
+_COMPLEX_HINT_RE = re.compile(
+    r'\b(warum|wieso|weshalb|erkl(?:ä|ae)r\w*|unterschied\w*|vergleich\w*|'
+    r'analysier\w*|zusammenfass\w*|fasse\b.*\bzusammen|schreib\w*\s+(?:mir\s+)?'
+    r'(?:ein|eine|einen)|gedicht|geschichte|essay|zusammenhang|'
+    r'code\w*|funktion\w*|programm\w*|skript\w*|debugg?\w*|\bbug\b|regex|'
+    r'python|javascript|typescript|html|css|sql|algorithmus\w*|'
+    r'plan\w*|strategie\w*|berechne\w*|beweis\w*|gleichung\w*|integral\w*|'
+    r'philosoph\w*|argument\w*|übersetz\w*|uebersetz\w*)\b',
+    re.IGNORECASE)
+
+def _chat_is_complex(message: str, history_len: int) -> bool:
+    if len(message) > CHAT_COMPLEX_LEN:
+        return True
+    if '```' in message or '\n' in message:
+        return True
+    if history_len > CHAT_COMPLEX_HISTORY:
+        return True
+    return bool(_COMPLEX_HINT_RE.search(message))
+
+def _chat_pick_model(message: str, history_len: int) -> str:
+    return CHAT_MODEL_SMART if _chat_is_complex(message, history_len) else CHAT_MODEL_FAST
+
 # Simple In-Memory-Rate-Limit pro IP (VPS-CPU ist das knappe Gut hier).
 _CHAT_RATE: dict = {}
 _CHAT_RATE_LOCK = threading.Lock()
@@ -1464,33 +1555,52 @@ def chat():
     message = (data.get('message') or '').strip()
     if not message:
         return _cors_resp(jsonify({'error': 'Leere Nachricht.'})), 400
-    message = message[:CHAT_MAX_LEN]
+    # Agenten-Modus (glappa-do): die KI gibt Shell-Befehle aus, die das
+    # Terminal ausfuehrt. Immer das schlaue Modell, eigener System-Prompt,
+    # keine Datums-/Such-Hints — und die Feedback-Nachricht (Befehlsausgabe)
+    # darf laenger sein als eine gewoehnliche Chat-Zeile.
+    agent = (data.get('mode') or '').strip().lower() == 'agent'
+    message = message[:(AGENT_MAX_LEN if agent else CHAT_MAX_LEN)]
+
+    history = data.get('history') or []
+    history_len = len(history) if isinstance(history, list) else 0
+    model = CHAT_MODEL_SMART if agent else _chat_pick_model(message, history_len)
+    hist_cap = AGENT_MAX_LEN if agent else CHAT_MAX_LEN * 2
 
     # History validieren: nur role/content-Paare mit erlaubten Rollen durchlassen
-    messages = [{'role': 'system', 'content': _chat_system_prompt()}]
-    history = data.get('history') or []
+    sys_prompt = _agent_system_prompt(model) if agent else _chat_system_prompt(model)
+    messages = [{'role': 'system', 'content': sys_prompt}]
     if isinstance(history, list):
         for h in history[-CHAT_MAX_HISTORY:]:
             if (isinstance(h, dict) and h.get('role') in ('user', 'assistant')
                     and isinstance(h.get('content'), str)):
-                messages.append({'role': h['role'], 'content': h['content'][:CHAT_MAX_LEN * 2]})
-    date_hint = _chat_date_hint(message)
-    if date_hint:
-        messages.append({'role': 'system', 'content': date_hint})
-    search_hint = _chat_search_hint(message)
-    if search_hint:
-        messages.append({'role': 'system', 'content': search_hint})
+                messages.append({'role': h['role'], 'content': h['content'][:hist_cap]})
+    date_hint = search_hint = None
+    if not agent:
+        date_hint = _chat_date_hint(message)
+        if date_hint:
+            messages.append({'role': 'system', 'content': date_hint})
+        search_hint = _chat_search_hint(message)
+        if search_hint:
+            messages.append({'role': 'system', 'content': search_hint})
     messages.append({'role': 'user', 'content': message})
 
-    payload = json.dumps({
-        'model': CHAT_MODEL,
+    body = {
+        'model': model,
         'messages': messages,
         'stream': False,
         # 0.6 statt 0.8: kleine Modelle fantasieren bei hoher Temperatur schneller.
         # Mit Datums-/Such-Fakt noch tiefer — da soll es nur sauber abschreiben.
-        'options': {'num_predict': CHAT_NUM_PREDICT,
-                    'temperature': 0.3 if (date_hint or search_hint) else 0.6},
-    }).encode('utf-8')
+        # Agent: niedrig fuer striktes $-Protokoll, mehr Tokens fuer mehrere Befehle.
+        'options': {'num_predict': 400 if agent else CHAT_NUM_PREDICT,
+                    'temperature': 0.2 if agent else (0.3 if (date_hint or search_hint) else 0.6)},
+    }
+    if model == CHAT_MODEL_FAST:
+        # Das kleine FAST-Modell (~3 GB) bleibt den ganzen Tag im RAM — kein
+        # Kaltstart bei der haeufigsten Anfrageart. Das SMART-Modell folgt
+        # weiter OLLAMA_KEEP_ALIVE aus dem Compose-File (30m).
+        body['keep_alive'] = '24h'
+    payload = json.dumps(body).encode('utf-8')
 
     req = urllib.request.Request(
         f'{OLLAMA_URL}/api/chat', data=payload,
@@ -1503,8 +1613,8 @@ def chat():
         try: body = e.read().decode('utf-8', 'replace')[:200]
         except Exception: pass
         if e.code == 404 and 'not found' in body.lower():
-            return _cors_resp(jsonify({'error': f'Modell {CHAT_MODEL} fehlt auf dem Server. '
-                                                f'(docker exec glappa-ollama ollama pull {CHAT_MODEL})'})), 503
+            return _cors_resp(jsonify({'error': f'Modell {model} fehlt auf dem Server. '
+                                                f'(docker exec glappa-ollama ollama pull {model})'})), 503
         return _cors_resp(jsonify({'error': f'GLAPPA-BOT Stoerung (HTTP {e.code}).'})), 502
     except (urllib.error.URLError, TimeoutError, OSError):
         return _cors_resp(jsonify({'error': 'GLAPPA-BOT ist offline. (Ollama nicht erreichbar '
@@ -1513,7 +1623,7 @@ def chat():
     reply = ((result.get('message') or {}).get('content') or '').strip()
     if not reply:
         return _cors_resp(jsonify({'error': 'GLAPPA-BOT hat nur geschwiegen. Nochmal versuchen.'})), 502
-    return _cors_resp(jsonify({'reply': reply, 'model': CHAT_MODEL}))
+    return _cors_resp(jsonify({'reply': reply, 'model': model}))
 
 
 @Downloader.errorhandler(Exception)
