@@ -190,6 +190,59 @@
       font-size: 0.75rem;
       margin-top: 6px;
     }
+
+    /* Echtes Linux (v86) — Fullscreen-Overlay ueber der ganzen Seite */
+    #linuxbox {
+      position: fixed;
+      inset: 0;
+      z-index: 950;                 /* ueber den fixierten Marquees (900) */
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    #linuxbox .lx-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      background: #111;
+      border-bottom: 2px solid var(--neon-green);
+      color: var(--neon-green);
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      text-shadow: 0 0 4px var(--neon-green);
+    }
+    #lx-status { color: #888; text-shadow: none; }
+    #lx-quit {
+      background: #000;
+      border: 2px outset var(--neon-pink);
+      color: var(--neon-pink);
+      font-family: inherit;
+      font-weight: bold;
+      padding: 3px 12px;
+      cursor: pointer;
+    }
+    #lx-quit:active { border-style: inset; }
+    /* v86 rendert den VGA-Textmodus in das erste div, Grafik in den canvas */
+    #lx-screen div {
+      white-space: pre;
+      font: 15px 'Courier New', Courier, monospace;
+      line-height: 15px;
+      color: #dcdcdc;
+    }
+    /* 80 Spalten muessen aufs Display passen: schmale Fenster -> kleinere Schrift */
+    @media (max-width: 900px) {
+      #lx-screen div { font-size: 10px; line-height: 10px; }
+    }
+    @media (max-width: 620px) {
+      #lx-screen div { font-size: 7px; line-height: 7px; }
+    }
+    #lx-screen canvas { display: none; image-rendering: pixelated; }
   </style>
 </head>
 <body>
@@ -257,6 +310,19 @@
                autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
         <span class="cursor-blink" style="color:var(--neon-green)">█</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Echtes Linux (v86) — Overlay; Engine+ISO werden erst bei `boot-linux` geladen -->
+  <div id="linuxbox">
+    <div class="lx-bar">
+      <span>GLAPPA LINUX &mdash; ECHTER Kernel im Browser (v86)</span>
+      <span id="lx-status">bereit</span>
+      <button id="lx-quit" type="button">&#10005; zur&uuml;ck zum Terminal</button>
+    </div>
+    <div id="lx-screen">
+      <div></div>
+      <canvas></canvas>
     </div>
   </div>
 
@@ -464,7 +530,7 @@
     function defaultFS() {
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
-       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do',
+       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do','boot-linux',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
        'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod']
         .forEach(function(b) {
@@ -2250,6 +2316,87 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
+       BOOT-LINUX — ein ECHTES Linux (eigener Kernel) im Browser.
+       v86 (BSD-Lizenz, github.com/copy/v86) emuliert einen x86-PC in
+       WebAssembly und bootet das mitgelieferte Mini-Linux-ISO (~7 MB,
+       Kernel 4.x + BusyBox: echtes top, ps, vi, ...). Engine und ISO
+       liegen unter v86/ und werden erst beim ersten `boot-linux`
+       geladen — der normale Seitenbesuch bleibt schlank.
+    ══════════════════════════════════════════════════════════════ */
+    const linuxbox = document.getElementById('linuxbox');
+    const lxStatus = document.getElementById('lx-status');
+    const lxScreen = document.getElementById('lx-screen');
+    let lxEmulator = null;
+    let lxLibLoaded = false;
+
+    function lxSay(msg) { lxStatus.textContent = msg; }
+
+    function bootLinux() {
+      blank();
+      appendLine('Starte ECHTES Linux — eigener Kernel, kein Fake. (v86-Emulator)', 'line-info');
+      appendLine('Erster Start lädt ~10 MB, danach cached der Browser. Moment ...', 'line-sys');
+      blank();
+      linuxbox.style.display = 'flex';
+      /* WICHTIG: Terminal-Input blurren — v86 ignoriert die Tastatur,
+         solange irgendein input-Element fokussiert ist. */
+      inp.blur();
+      if (lxEmulator) {
+        /* VM war nur pausiert -> nahtlos weiterlaufen lassen */
+        try { lxEmulator.run(); } catch(e) {}
+        lxSay('läuft — klicken und lostippen');
+        return;
+      }
+      if (lxLibLoaded) { lxStart(); return; }
+      lxSay('lade v86-Engine ...');
+      const s = document.createElement('script');
+      s.src = 'v86/libv86.js';
+      s.onload = function() { lxLibLoaded = true; lxStart(); };
+      s.onerror = function() { lxSay('FEHLER: v86/libv86.js fehlt auf dem Server'); };
+      document.head.appendChild(s);
+    }
+
+    function lxStart() {
+      lxSay('boote Kernel ...');
+      lxEmulator = new V86({
+        wasm_path: 'v86/v86.wasm',
+        /* Ohne SeaBIOS+VGABIOS bootet NICHTS — die CPU haette kein ROM. */
+        bios:     { url: 'v86/seabios.bin' },
+        vga_bios: { url: 'v86/vgabios.bin' },
+        memory_size: 128 * 1024 * 1024,
+        vga_memory_size: 8 * 1024 * 1024,
+        screen_container: lxScreen,
+        cdrom: { url: 'v86/linux4.iso' },
+        autostart: true,
+      });
+      /* Bewusst global: Power-User koennen die VM aus der Browser-Konsole
+         steuern (z.B. GLAPPA_LINUX.keyboard_send_text('ls\n')). */
+      window.GLAPPA_LINUX = lxEmulator;
+      lxEmulator.add_listener('download-progress', function(e) {
+        if (e && e.total) {
+          lxSay('lade ' + String(e.file_name || 'Image').replace(/^.*\//, '')
+                + ': ' + Math.round(e.loaded / e.total * 100) + '%');
+        }
+      });
+      lxEmulator.add_listener('emulator-ready', function() {
+        lxSay('läuft — klicken und lostippen');
+      });
+    }
+
+    document.getElementById('lx-quit').addEventListener('click', function() {
+      linuxbox.style.display = 'none';
+      if (lxEmulator) {
+        /* pausieren statt zerstören: naechstes boot-linux macht sofort
+           weiter, ohne neu zu booten. stop() loest auch die globalen
+           Tastatur-Listener der VM. */
+        try { lxEmulator.stop(); } catch(e) {}
+      }
+      appendLine('[ Linux pausiert — boot-linux setzt die Session fort ]', 'line-sys');
+      blank();
+      inp.focus();
+      out.scrollTop = out.scrollHeight;
+    });
+
+    /* ══════════════════════════════════════════════════════════════
        SPECIAL — interaktive/animierte Befehle (nicht pipe-fähig)
     ══════════════════════════════════════════════════════════════ */
     function offlineCmd(name) {
@@ -2313,6 +2460,7 @@
         appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
+        appendLine('  boot-linux              ECHTES Linux booten (v86) — echter Kernel, echtes top', 'line-pink');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
         appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
@@ -2639,6 +2787,9 @@
         }
         startAgent(goal, auto);
       },
+
+      'boot-linux'() { bootLinux(); },
+      linux()        { bootLinux(); },
     };
     ['curl','wget','ssh','ftp','telnet','nmap','apt','apt-get'].forEach(function(c) {
       SPECIAL[c] = offlineCmd(c);
