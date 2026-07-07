@@ -533,15 +533,50 @@
     function fileNode(content)  { return { type: 'file', content: content || '' }; }
 
     function defaultFS() {
+      /* Volle Linux-Verzeichnisstruktur (FHS) — damit sich ls / , cd /etc,
+         cat /proc/cpuinfo usw. wie auf einem echten System anfuehlen.
+         Fuer ein KOMPLETT echtes Linux (eigener Kernel): boot-linux. */
+      const ELF = 'ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)';
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
        'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do','boot-linux',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
        'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod']
-        .forEach(function(b) {
-          bin[b] = fileNode('ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)');
-        });
+        .forEach(function(b) { bin[b] = fileNode(ELF); });
+      const sbin = {};
+      ['init','halt','reboot','fsck','mkfs','ifconfig','iptables','insmod'].forEach(function(b) {
+        sbin[b] = fileNode(ELF);
+      });
       return dirNode({
+        bin: dirNode(bin),
+        boot: dirNode({
+          'vmlinuz-9000.1-retro':    fileNode('▓▒░ komprimiertes Kernel-Image ░▒▓\n(bitte nicht mit cat ansehen, piept nur)'),
+          'initrd.img-9000.1-retro': fileNode('▓▒░ Initial-Ramdisk ░▒▓'),
+          grub: dirNode({
+            'grub.cfg': fileNode('set default=0\nset timeout=0\n\nmenuentry "GlappaOS 9000.1-RETRO" {\n  linux /boot/vmlinuz-9000.1-retro root=/dev/sda1 quiet neon=on\n  initrd /boot/initrd.img-9000.1-retro\n}'),
+          }),
+        }),
+        dev: dirNode({
+          'null':   fileNode(''),
+          'zero':   fileNode(''),
+          'random': fileNode('4  (fair gewürfelt, garantiert zufällig)'),
+          'sda':    fileNode('▓▒░ Blockgerät: GLAPPA-HDD 2048 MB ░▒▓'),
+          'sda1':   fileNode('▓▒░ Partition: / (ext4) ░▒▓'),
+          'tty0':   fileNode(''),
+        }),
+        etc: dirNode({
+          motd:   fileNode('██████████████████████████████████████\n█  GLAPPA.DE SECURE SHELL v1.337      █\n█  Unbefugter Zugang wird verfolgt!   █\n██████████████████████████████████████'),
+          hosts:  fileNode('127.0.0.1   localhost\n127.0.0.1   glappa.de\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server'),
+          passwd: fileNode('root:x:0:0:root:/root:/bin/bash\nglappa:x:1337:1337:Lex:/home/glappa:/bin/zsh\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat'),
+          group:  fileNode('root:x:0:\nglappa:x:1337:\nl33t:x:31337:glappa,bingus'),
+          shadow: fileNode('root:$6$NIEMALS$duDenkstDochNichtWirklichDassHierEinEchterHashSteht:19000:0:99999:7:::\nglappa:$6$GEHEIM$schoenWeiterprobieren:19000:0:99999:7:::'),
+          hostname: fileNode('web'),
+          issue:    fileNode('GlappaOS 9000.1-RETRO \\n \\l'),
+          'os-release': fileNode('NAME="GlappaOS"\nVERSION="9000.1-RETRO (Neon)"\nID=glappaos\nPRETTY_NAME="GlappaOS 9000.1-RETRO"\nHOME_URL="https://glappa.de"\nSUPPORT_URL="mailto:lex@glappa.de"\nBUG_REPORT_URL="einfach laut seufzen"'),
+          fstab:    fileNode('# <device>   <mount>  <type>  <options>        <dump> <pass>\n/dev/sda1    /        ext4    defaults,neon    0      1\ntmpfs        /tmp     tmpfs   defaults         0      0\nkaffee       /dev/mug koffein defaults,strong  0      2'),
+          'resolv.conf': fileNode('# Kein Internet — das Netzwerkkabel ist reine Deko (Sandbox!)\nnameserver 127.0.0.1'),
+          crontab:  fileNode('# m h dom mon dow user  command\n0 4 * * *  root  /opt/glappa/gif-engine --defrag\n0 0 1 1 *  root  echo "Frohes neues Jahr 1997!" | wall\n*/5 * * * * bingus /usr/bin/bingus.exe --chaos'),
+        }),
         home: dirNode({
           glappa: dirNode({
             'README.txt': fileNode(
@@ -550,10 +585,13 @@
               'Dateien anlegen, löschen, Pipes, nano — alles geht.\n' +
               'Alles läuft nur in deinem Browser, nichts wird gesendet.\n\n' +
               'Tippe  tutorial  für Übungsaufgaben.\n' +
+              'Tippe  boot-linux  für ein KOMPLETT echtes Linux (eigener Kernel).\n' +
               'Tippe  reset  wenn du alles zurücksetzen willst.\n\n' +
               'Viel Spaß beim Üben! 😎\n\n-- Lex'),
             'todo.txt': fileNode('[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen\n[x] Terminal ECHT machen'),
             '.bash_history': fileNode('sudo rm -rf /\nnmap -sS 192.168.0.1\npython3 hack_nasa.py\ncurl parrot.live\nexit'),
+            '.bashrc':  fileNode('# ~/.bashrc von glappa\nexport PS1="glappa@web:\\w\\$ "\nalias ll="ls -l"\nalias bitte="sudo"\nalias yolo="glappa-do confirm off"'),
+            '.profile': fileNode('# ~/.profile\nexport PATH=/usr/local/bin:/usr/bin:/bin\nexport EDITOR=nano\necho "Willkommen zurück, $USER!"'),
             '.geheim.txt': fileNode('Psst! Du hast die versteckte Datei gefunden. ls -a sei Dank. 🕵️'),
             uebung: dirNode({
               'namen.txt':   fileNode('anna\nbob\ncharlie\nanna\ndora\nbob\nanna\nemil'),
@@ -569,19 +607,53 @@
             }),
           }),
         }),
-        etc: dirNode({
-          motd:   fileNode('██████████████████████████████████████\n█  GLAPPA.DE SECURE SHELL v1.337      █\n█  Unbefugter Zugang wird verfolgt!   █\n██████████████████████████████████████'),
-          hosts:  fileNode('127.0.0.1   localhost\n127.0.0.1   glappa.de\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server'),
-          passwd: fileNode('root:x:0:0:root:/root:/bin/bash\nglappa:x:1337:1337:Lex:/home/glappa:/bin/zsh\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat'),
+        lib: dirNode({
+          'libc.so.6':      fileNode(ELF),
+          'libneon.so.9':   fileNode(ELF),
+          modules: dirNode({ '9000.1-retro': dirNode({ 'gif-engine.ko': fileNode(ELF) }) }),
+        }),
+        media: dirNode({ floppy: dirNode({}), cdrom: dirNode({}) }),
+        mnt: dirNode({}),
+        opt: dirNode({
+          glappa: dirNode({ 'gif-engine': fileNode(ELF), 'neon-daemon': fileNode(ELF) }),
+        }),
+        proc: dirNode({
+          /* uptime/loadavg/meminfo werden beim Lesen LIVE erzeugt (s. PROC_DYNAMIC) */
+          version:  fileNode('Linux version 9000.1-RETRO (glappa@web) (gcc version 2.95.3) #1 SMP Fri Aug 15 1997'),
+          cpuinfo:  fileNode('processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: Intel(R) Pentium(R) MMX 200 MHz\ncache size\t: 512 KB\nbogomips\t: 79.87\nflags\t\t: fpu mmx neon gif'),
+          uptime:   fileNode('(wird live berechnet)'),
+          loadavg:  fileNode('(wird live berechnet)'),
+          meminfo:  fileNode('(wird live berechnet)'),
+          filesystems: fileNode('\text4\n\ttmpfs\nnodev\tproc\nnodev\tsysfs\nnodev\tneonfs'),
+        }),
+        root: dirNode({
+          'wie-bist-du-hier-reingekommen.txt': fileNode('Respekt. Aber hier gibt es nichts zu sehen.\nAusser... na gut: Der Admin trinkt seinen Kaffee schwarz. ☕'),
+        }),
+        run: dirNode({}),
+        sbin: dirNode(sbin),
+        srv: dirNode({}),
+        sys: dirNode({ kernel: dirNode({ hostname: fileNode('web'), osrelease: fileNode('9000.1-RETRO') }) }),
+        tmp: dirNode({}),
+        usr: dirNode({
+          bin: dirNode(bin),
+          sbin: dirNode(sbin),
+          lib: dirNode({}),
+          local: dirNode({ bin: dirNode({}) }),
+          share: dirNode({
+            doc: dirNode({ 'glappa': dirNode({ 'copyright': fileNode('GlappaOS — Copyright 1997-2026 Glappa Corp.\nLizenz: Sei cool zueinander.') }) }),
+          }),
         }),
         var: dirNode({
           log: dirNode({
             'access.log': fileNode('[06:30] 192.168.1.1 - GET / 200\n[06:31] 10.0.0.2 - GET /secret 403\n[06:32] 1.3.3.7  - POST /login 401\n[06:33] 127.0.0.1 - GET /flag 404'),
             'hack.log':   fileNode('[WARN] Brute-force attempt from 6.6.6.6\n[WARN] Port scan detected\n[INFO] Bingus logged in successfully\n[CRIT] Someone tried to rm -rf /'),
+            'syslog':     fileNode('Aug 15 03:14 web kernel: NEON subsystem initialized\nAug 15 03:15 web gif-engine[42]: 9000 GIFs preloaded\nAug 15 03:16 web bingus[42069]: segfault (wie immer)\nAug 15 03:17 web kernel: bingus.exe respawned'),
+            'dmesg':      fileNode('[ 0.000000] GlappaOS 9000.1-RETRO booting...\n[ 0.133700] CPU: Intel Pentium MMX 200 MHz\n[ 0.421337] RAM: 32 MB OK (wir sparen)\n[ 1.000000] NEON: glow aktiviert\n[ 2.000000] Netzwerkkabel: absichtlich nicht eingesteckt (Sandbox)'),
           }),
+          www: dirNode({ html: dirNode({ 'index.html': fileNode('<html>\n<marquee>GLAPPA WAS HERE</marquee>\n<blink>BEST VIEWED IN NETSCAPE 4</blink>\n</html>') }) }),
+          spool: dirNode({ mail: dirNode({ glappa: fileNode('From: bill@microsoft.com\nSubject: Ihr Windows 95 Upgrade wartet!\n\nNein danke, wir haben GlappaOS. -- gelöscht') }) }),
+          cache: dirNode({}),
         }),
-        usr: dirNode({ bin: dirNode(bin), local: dirNode({}) }),
-        tmp: dirNode({}),
         secret: dirNode({
           'classified.txt': fileNode('██ STRENG GEHEIM ██\n\nDer Pincode für die Secret-Page ist...\n\n... nur für echte H4X0RS.'),
           '???':            fileNode('🔒 ZUGANG VERWEIGERT.\n(Netter Versuch.)'),
@@ -594,7 +666,24 @@
         const raw = localStorage.getItem(FS_KEY);
         if (raw) {
           const t = JSON.parse(raw);
-          if (t && t.type === 'dir' && t.children) return t;
+          if (t && t.type === 'dir' && t.children) {
+            /* Aeltere gespeicherte Staende (vor der vollen Linux-Struktur)
+               einmalig anheben: fehlende Verzeichnisse/Dateien aus dem neuen
+               Default ergaenzen — eigene Dateien des Users bleiben unberuehrt.
+               /proc dient als Marker, ob der Stand schon migriert ist. */
+            if (!t.children.proc) {
+              const fresh = defaultFS().children;
+              for (const k in fresh) {
+                if (!t.children[k]) t.children[k] = fresh[k];
+                else if (t.children[k].type === 'dir' && fresh[k].type === 'dir') {
+                  for (const k2 in fresh[k].children) {
+                    if (!t.children[k].children[k2]) t.children[k].children[k2] = fresh[k].children[k2];
+                  }
+                }
+              }
+            }
+            return t;
+          }
         }
       } catch(e) {}
       return defaultFS();
@@ -1044,11 +1133,41 @@
     }
 
     /* Eingabezeilen aus Dateien ODER stdin (Pipe) lesen */
+    /* /proc lebt: diese Dateien werden beim Lesen LIVE erzeugt statt aus dem
+       gespeicherten Baum zu kommen — wie beim echten Kernel. (TOP_START und
+       topLoad kommen aus dem live-top weiter unten.) */
+    const PROC_DYNAMIC = {
+      '/proc/uptime': function() {
+        const s = (Date.now() - TOP_START) / 1000;
+        return [s.toFixed(2) + ' ' + (s * 0.97).toFixed(2)];
+      },
+      '/proc/loadavg': function() {
+        return [topLoad.map(function(l) { return l.toFixed(2); }).join(' ')
+                + ' 1/47 ' + (1000 + Math.floor(Math.random() * 8000))];
+      },
+      '/proc/meminfo': function() {
+        const used = 12044 + Math.floor(Math.random() * 4000);
+        const free = 32768 - used;
+        return ['MemTotal:          32768 kB',
+                'MemFree:           ' + String(free).padStart(5) + ' kB',
+                'MemAvailable:      ' + String(free + 2792).padStart(5) + ' kB',
+                'Buffers:               0 kB',
+                'Cached:             2792 kB',
+                'SwapTotal:             0 kB',
+                'SwapFree:              0 kB'];
+      },
+    };
+
     function readInput(files, stdin, cmdname) {
       if (!files.length) return { lines: (stdin || []).slice(), errs: [] };
       const lines = [], errs = [];
       files.forEach(function(f) {
-        const n = getNode(resolvePath(f));
+        const p = resolvePath(f);
+        if (PROC_DYNAMIC[p]) {
+          PROC_DYNAMIC[p]().forEach(function(l) { lines.push(l); });
+          return;
+        }
+        const n = getNode(p);
         if (!n) errs.push(cmdname + ': ' + f + ': Datei oder Verzeichnis nicht gefunden');
         else if (n.type === 'dir') errs.push(cmdname + ': ' + f + ': Ist ein Verzeichnis');
         else contentLines(n.content).forEach(function(l) { lines.push(l); });
@@ -1351,6 +1470,7 @@
         } else {
           (rest.length ? rest : ['.']).forEach(function(f) {
             const p = resolvePath(f);
+            if (PROC_DYNAMIC[p]) { sources.push({ name: f, lines: PROC_DYNAMIC[p]() }); return; }
             const n = getNode(p);
             if (!n) { errs.push('grep: ' + f + ': Datei oder Verzeichnis nicht gefunden'); return; }
             if (n.type === 'dir') {
@@ -3332,7 +3452,8 @@
       { t: 3665, cls: 'line-info', txt: '  Tippe  tutorial  für Übungsaufgaben zum Lernen.' },
       { t: 3680, cls: 'line-pink', txt: '  Tippe  glappa-chat  um mit der Glappa-KI zu reden.' },
       { t: 3687, cls: 'line-info', txt: '  Tippe  glappa -s <frage>  für eine schnelle KI-Antwort.' },
-      { t: 3690, cls: 'line-ok',   txt: '' },
+      { t: 3694, cls: 'line-pink', txt: '  Tippe  boot-linux  für ein ECHTES Linux — eigener Kernel, kein Fake.' },
+      { t: 3698, cls: 'line-ok',   txt: '' },
     ];
 
     /* RAM-Counter Animation */
