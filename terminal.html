@@ -191,66 +191,6 @@
       margin-top: 6px;
     }
 
-    /* Echtes Linux (v86) — Overlay IM Terminal-Fenster, gleicher Look wie
-       der Rest (wie der nano-Editor): gruener Phosphor im CRT-Rahmen, die
-       Scanlines (z-index 10) liegen sogar ueber dem Linux. */
-    #linuxbox {
-      position: absolute;
-      inset: 0;
-      z-index: 6;                   /* ueber Editor (5), unter Scanlines (10) */
-      display: none;
-      flex-direction: column;
-      background: #0a0a0a;
-      font-family: 'Courier New', Courier, monospace;
-    }
-    #linuxbox .lx-bar {
-      background: var(--neon-green);
-      color: #000;
-      padding: 2px 10px;
-      font-weight: bold;
-      font-size: 0.85em;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-    #lx-status { font-weight: normal; }
-    #lx-quit {
-      background: transparent;
-      border: none;
-      color: #000;
-      font-family: inherit;
-      font-size: inherit;
-      font-weight: bold;
-      text-decoration: underline;
-      cursor: pointer;
-      padding: 0;
-    }
-    #lx-screen {
-      flex: 1;
-      overflow: auto;
-      padding: 8px 10px;
-      font: 14px 'Courier New', Courier, monospace;
-      line-height: 14px;
-    }
-    #lx-screen div { white-space: pre; font: inherit; line-height: inherit; }
-    /* v86 malt VGA-Farben als Inline-Styles auf die Spans — wir zwingen
-       alles in den gruenen Glappa-Phosphor ... */
-    #lx-screen span {
-      background-color: transparent !important;
-      color: var(--neon-green) !important;
-      text-shadow: 0 0 3px var(--neon-green);
-    }
-    /* ... ausser invertierte Zellen (z.B. die top-Kopfzeile): die werden
-       zum gruenen Block mit schwarzer Schrift, wie beim echten CRT. */
-    #lx-screen span:not([style*="background-color: rgb(0, 0, 0)"]) {
-      background-color: var(--neon-green) !important;
-      color: #000 !important;
-      text-shadow: none;
-    }
-    #lx-screen canvas { display: none; image-rendering: pixelated; }
   </style>
 </head>
 <body>
@@ -309,16 +249,6 @@
         <textarea id="ed-text" spellcheck="false" autocomplete="off"
                   autocorrect="off" autocapitalize="off" aria-label="nano Editor"></textarea>
         <div class="ed-bar"><span>^O Speichern &nbsp; ^X Beenden</span><span id="ed-msg"></span></div>
-      </div>
-
-      <!-- Echtes-Linux Overlay (v86) — Engine+ISO laden erst bei `boot-linux` -->
-      <div id="linuxbox">
-        <div class="lx-bar"><span>GLAPPA LINUX &mdash; ECHTER KERNEL (v86)</span><span id="lx-status">bereit</span></div>
-        <div id="lx-screen">
-          <div></div>
-          <canvas></canvas>
-        </div>
-        <div class="lx-bar"><span>Strg+Alt+Q Beenden &nbsp;&middot;&nbsp; klicken &amp; lostippen</span><button id="lx-quit" type="button">[ X BEENDEN ]</button></div>
       </div>
 
       <div id="output"></div>
@@ -2441,112 +2371,137 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
-       BOOT-LINUX — ein ECHTES Linux (eigener Kernel) im Browser.
+       BOOT-LINUX — ein ECHTES Linux (eigener Kernel) DIREKT im Terminal.
        v86 (BSD-Lizenz, github.com/copy/v86) emuliert einen x86-PC in
-       WebAssembly und bootet das mitgelieferte Mini-Linux-ISO (~7 MB,
-       Kernel 4.x + BusyBox: echtes top, ps, vi, ...). Engine und ISO
-       liegen unter v86/ und werden erst beim ersten `boot-linux`
-       geladen — der normale Seitenbesuch bleibt schlank.
+       WebAssembly und bootet v86/bzimage.bin (Kernel 4.16 + eingebautes
+       BusyBox-initramfs, extrahiert aus linux4.iso). Die Konsole laeuft
+       SERIELL (console=ttyS0): Kernel-Log und Shell kommen als Zeilen-
+       strom und erscheinen im NORMALEN Terminal-Output — getippt wird
+       in der normalen Eingabezeile, kein eigener Bildschirm/Overlay.
+       Kein Netzwerk konfiguriert, alles client-seitig — reine Sandbox.
     ══════════════════════════════════════════════════════════════ */
-    const linuxbox = document.getElementById('linuxbox');
-    const lxStatus = document.getElementById('lx-status');
-    const lxScreen = document.getElementById('lx-screen');
     let lxEmulator = null;
-    let lxLibLoaded = false;
+    let linuxMode = false;     /* true = Eingaben gehen an die Gast-Shell */
+    let lxLive = null;         /* div fuer die angefangene Zeile (Prompt ~%) */
+    let lxBuf = '';            /* Zeilenpuffer fuer den seriellen Strom */
+    let lxGotBytes = false;    /* kam ueberhaupt etwas ueber seriell? */
 
-    function lxSay(msg) { lxStatus.textContent = msg; }
-
-    /* 80 VGA-Spalten in die Terminal-Breite einpassen (Courier ist ~0.6em
-       breit pro Zeichen -> Schriftgroesse = Breite/48). */
-    function lxFitFont() {
-      const w = lxScreen.clientWidth - 20;
-      if (w <= 0) return;
-      const fs = Math.max(7, Math.min(16, Math.floor(w / 48)));
-      lxScreen.style.fontSize = fs + 'px';
-      lxScreen.style.lineHeight = fs + 'px';
+    /* ANSI-Escapes und Steuerzeichen aus dem seriellen Strom entfernen —
+       das Terminal rendert reinen Text (top & Co. malen mit Escapes). */
+    function lxClean(s) {
+      return s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
+              .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+              .replace(/\x1b[()][0-9A-B]/g, '')
+              .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
     }
-    window.addEventListener('resize', function() {
-      if (linuxbox.style.display === 'flex') lxFitFont();
-    });
+
+    function lxFlushLive() {
+      if (lxLive) { lxLive.remove(); lxLive = null; }
+    }
+
+    /* Seriellen Output zeilenweise ins normale Terminal schreiben. Die
+       angefangene letzte Zeile (z.B. der ~%-Prompt, kommt ohne \n) wird
+       als Live-Zeile angezeigt und beim naechsten \n festgeschrieben. */
+    function lxWrite(chunk) {
+      lxBuf += chunk;
+      let idx;
+      while ((idx = lxBuf.indexOf('\n')) !== -1) {
+        const line = lxClean(lxBuf.slice(0, idx).replace(/\r+$/, ''));
+        lxBuf = lxBuf.slice(idx + 1);
+        lxFlushLive();
+        appendLine(line, 'line-ok');
+      }
+      const partial = lxClean(lxBuf.replace(/\r/g, ''));
+      if (partial) {
+        if (!lxLive) {
+          lxLive = document.createElement('div');
+          lxLive.className = 'line-ok';
+          out.appendChild(lxLive);
+        }
+        lxLive.textContent = partial;
+        out.scrollTop = out.scrollHeight;
+      } else lxFlushLive();
+    }
 
     function bootLinux() {
-      blank();
-      appendLine('Starte ECHTES Linux — eigener Kernel, kein Fake. (v86-Emulator)', 'line-info');
-      appendLine('Erster Start lädt ~10 MB, danach cached der Browser. Moment ...', 'line-sys');
-      blank();
-      linuxbox.style.display = 'flex';
-      inputRow.style.display = 'none';
-      lxFitFont();
-      /* WICHTIG: Terminal-Input blurren — v86 ignoriert die Tastatur,
-         solange irgendein input-Element fokussiert ist. */
-      inp.blur();
+      if (linuxMode) return;
       if (lxEmulator) {
         /* VM war nur pausiert -> nahtlos weiterlaufen lassen */
+        linuxMode = true;
+        updatePrompt();
+        blank();
+        appendLine('[ Linux läuft weiter — exit-linux (oder Strg+C) kehrt zurück ]', 'line-sys');
         try { lxEmulator.run(); } catch(e) {}
-        lxSay('läuft — einfach lostippen');
+        try { lxEmulator.serial0_send('\n'); } catch(e) {}   /* Prompt neu zeichnen */
         return;
       }
-      if (lxLibLoaded) { lxStart(); return; }
-      lxSay('lade v86-Engine ...');
+      blank();
+      appendLine('Boote ECHTES Linux (Kernel 4.16 + BusyBox) — direkt hier im Terminal.', 'line-info');
+      appendLine('Erster Start lädt ~7 MB, danach cached der Browser.', 'line-sys');
+      appendLine('Zurück zum GLAPPA-Terminal:  exit-linux  (oder Strg+C)', 'line-sys');
+      blank();
+      linuxMode = true;
+      updatePrompt();
+      if (typeof window.V86 === 'function') { lxStart(); return; }
       const s = document.createElement('script');
       s.src = 'v86/libv86.js';
-      s.onload = function() { lxLibLoaded = true; lxStart(); };
-      s.onerror = function() { lxSay('FEHLER: v86/libv86.js fehlt auf dem Server'); };
+      s.onload = lxStart;
+      s.onerror = function() {
+        appendLine('FEHLER: v86/libv86.js fehlt auf dem Server.', 'line-err');
+        linuxMode = false;
+        updatePrompt();
+      };
       document.head.appendChild(s);
     }
 
     function lxStart() {
-      lxSay('boote Kernel ...');
       lxEmulator = new V86({
         wasm_path: 'v86/v86.wasm',
         /* Ohne SeaBIOS+VGABIOS bootet NICHTS — die CPU haette kein ROM. */
         bios:     { url: 'v86/seabios.bin' },
         vga_bios: { url: 'v86/vgabios.bin' },
         memory_size: 128 * 1024 * 1024,
-        vga_memory_size: 8 * 1024 * 1024,
-        screen_container: lxScreen,
-        cdrom: { url: 'v86/linux4.iso' },
+        /* Kernel direkt booten (statt ueber das ISO): so bestimmen WIR
+           die Kernel-Parameter — console=ttyS0 legt Konsole UND Shell
+           auf die serielle Schnittstelle, deren Strom hier im Terminal
+           landet. Tastatur/Maus der VM bleiben aus: die Eingabe laeuft
+           komplett ueber die normale Terminal-Zeile + serial0_send. */
+        bzimage: { url: 'v86/bzimage.bin' },
+        cmdline: 'console=ttyS0 tsc=reliable mitigations=off random.trust_cpu=on',
+        disable_keyboard: true,
+        disable_mouse: true,
         autostart: true,
       });
       /* Bewusst global: Power-User koennen die VM aus der Browser-Konsole
-         steuern (z.B. GLAPPA_LINUX.keyboard_send_text('ls\n')). */
+         steuern (z.B. GLAPPA_LINUX.serial0_send('ls\n')). */
       window.GLAPPA_LINUX = lxEmulator;
-      lxEmulator.add_listener('download-progress', function(e) {
-        if (e && e.total) {
-          lxSay('lade ' + String(e.file_name || 'Image').replace(/^.*\//, '')
-                + ': ' + Math.round(e.loaded / e.total * 100) + '%');
+      lxEmulator.add_listener('serial0-output-byte', function(b) {
+        lxGotBytes = true;
+        lxWrite(String.fromCharCode(b));
+      });
+      /* Fallschirm: kommt nach 90s gar nichts ueber seriell, stimmt was
+         mit dem Kernel-Boot nicht — ehrlich sagen statt ewig warten. */
+      setTimeout(function() {
+        if (linuxMode && !lxGotBytes) {
+          appendLine('(Hmm — der Kernel meldet sich nicht. Tab sichtbar? Sonst: exit-linux und nochmal.)', 'line-sys');
         }
-      });
-      lxEmulator.add_listener('emulator-ready', function() {
-        lxSay('läuft — einfach lostippen');
-      });
+      }, 90000);
     }
 
-    function quitLinux() {
-      linuxbox.style.display = 'none';
-      inputRow.style.display = 'flex';
-      if (lxEmulator) {
-        /* pausieren statt zerstören: naechstes boot-linux macht sofort
-           weiter, ohne neu zu booten. stop() loest auch die globalen
-           Tastatur-Listener der VM. */
-        try { lxEmulator.stop(); } catch(e) {}
-      }
+    /* Zurueck zum GLAPPA-Terminal. Die VM wird nur PAUSIERT — das
+       naechste boot-linux setzt die Session nahtlos fort. */
+    function exitLinuxMode() {
+      linuxMode = false;
+      lxFlushLive();
+      lxBuf = '';
+      if (lxEmulator) { try { lxEmulator.stop(); } catch(e) {} }
+      blank();
       appendLine('[ Linux pausiert — boot-linux setzt die Session fort ]', 'line-sys');
       blank();
+      updatePrompt();
       inp.focus();
       out.scrollTop = out.scrollHeight;
     }
-    document.getElementById('lx-quit').addEventListener('click', quitLinux);
-    /* Strg+Alt+Q beendet das Linux auch ohne Maus. Capture-Phase, damit
-       die Kombi nicht erst bei der VM landet. */
-    window.addEventListener('keydown', function(e) {
-      if (linuxbox.style.display === 'flex' && e.ctrlKey && e.altKey
-          && (e.key === 'q' || e.key === 'Q')) {
-        e.preventDefault();
-        e.stopPropagation();
-        quitLinux();
-      }
-    }, true);
 
     /* ══════════════════════════════════════════════════════════════
        SPECIAL — interaktive/animierte Befehle (nicht pipe-fähig)
@@ -2612,7 +2567,8 @@
         appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
-        appendLine('  boot-linux              ECHTES Linux booten (v86) — echter Kernel, echtes top', 'line-pink');
+        appendLine('  boot-linux              ECHTES Linux (eigener Kernel) direkt hier im Terminal', 'line-pink');
+        appendLine('  exit-linux              ... und zurück zum GLAPPA-Terminal (VM pausiert nur)', 'line-pink');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
         appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
@@ -3061,8 +3017,10 @@
       return chatMode ? 'glappa-chat> ' : ('glappa@web:' + shortCwd() + '$ ');
     }
     function updatePrompt() {
-      /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top. */
-      document.querySelector('.prompt-label').textContent = topMode ? '' : promptStr();
+      /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top.
+         Im Linux-Modus zeichnet die Gast-Shell ihren eigenen Prompt (~%)
+         in den Output-Strom, unser Label bleibt leer. */
+      document.querySelector('.prompt-label').textContent = (topMode || linuxMode) ? '' : promptStr();
     }
 
     /* ── GLAPPA-CHAT: Nachricht an die VPS-KI schicken ──
@@ -3168,6 +3126,17 @@
       }
       if (activeAgent && agentBusy) {
         appendLine('GLAPPA-BOT arbeitet noch … (Strg+C bricht ab)', 'line-sys');
+        return;
+      }
+
+      /* Linux-Modus: Eingaben gehen 1:1 an die Gast-Shell (seriell).
+         Die Shell echot die Zeile selbst zurueck (inkl. Prompt) — darum
+         hier KEIN eigenes appendLine. Leere Zeile = Enter (neuer Prompt).
+         exit-linux verlaesst den Modus. */
+      if (linuxMode) {
+        if (trimmed.toLowerCase() === 'exit-linux') { exitLinuxMode(); return; }
+        if (trimmed) { cmdHistory.unshift(trimmed); histIdx = -1; }
+        try { if (lxEmulator) lxEmulator.serial0_send(trimmed + '\n'); } catch(e) {}
         return;
       }
 
@@ -3305,7 +3274,7 @@
         inp.value = cmdHistory[histIdx] || '';
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        if (!chatMode) completeInput();
+        if (!chatMode && !linuxMode) completeInput();
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
@@ -3318,6 +3287,8 @@
           activeScript = null;
           appendLine('(Skript abgebrochen)', 'line-sys');
           updatePrompt();
+        } else if (linuxMode) {
+          exitLinuxMode();
         } else if (activeAgent) {
           activeAgent = null;
           agentBusy = false;
@@ -3348,9 +3319,6 @@
 
     document.getElementById('terminal').addEventListener('click', function() {
       if (editorEl.style.display === 'flex') edText.focus();
-      /* Linux offen: NICHT inp fokussieren — v86 ignoriert die Tastatur,
-         sobald ein Input-Element den Fokus hat. */
-      else if (linuxbox.style.display === 'flex') inp.blur();
       else inp.focus();
     });
 

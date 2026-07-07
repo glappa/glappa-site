@@ -21,7 +21,7 @@ glappa-site/
 ├── mp3/             hoch
 ├── mp4/             hoch
 ├── secret/          hoch (nur pilzskip.html — GIFs liegen jetzt in img/gif/)
-├── v86/             hoch (echtes Linux im Terminal: libv86.js, v86.wasm, linux4.iso ~10 MB)
+├── v86/             hoch (echtes Linux im Terminal: libv86.js, v86.wasm, bzimage.bin ~9 MB)
 ├── bounce.html      hoch
 ├── favicon.ico      hoch (Browser-Konvention bleibt im Root)
 ├── index.html       hoch
