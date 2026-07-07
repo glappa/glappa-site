@@ -191,56 +191,64 @@
       margin-top: 6px;
     }
 
-    /* Echtes Linux (v86) — Fullscreen-Overlay ueber der ganzen Seite */
+    /* Echtes Linux (v86) — Overlay IM Terminal-Fenster, gleicher Look wie
+       der Rest (wie der nano-Editor): gruener Phosphor im CRT-Rahmen, die
+       Scanlines (z-index 10) liegen sogar ueber dem Linux. */
     #linuxbox {
-      position: fixed;
+      position: absolute;
       inset: 0;
-      z-index: 950;                 /* ueber den fixierten Marquees (900) */
+      z-index: 6;                   /* ueber Editor (5), unter Scanlines (10) */
       display: none;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: #000;
+      background: #0a0a0a;
+      font-family: 'Courier New', Courier, monospace;
     }
     #linuxbox .lx-bar {
-      position: absolute;
-      top: 0; left: 0; right: 0;
+      background: var(--neon-green);
+      color: #000;
+      padding: 2px 10px;
+      font-weight: bold;
+      font-size: 0.85em;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 10px;
-      padding: 6px 12px;
-      background: #111;
-      border-bottom: 2px solid var(--neon-green);
-      color: var(--neon-green);
-      font-family: 'Courier New', monospace;
-      font-size: 0.85rem;
-      text-shadow: 0 0 4px var(--neon-green);
+      white-space: nowrap;
+      overflow: hidden;
     }
-    #lx-status { color: #888; text-shadow: none; }
+    #lx-status { font-weight: normal; }
     #lx-quit {
-      background: #000;
-      border: 2px outset var(--neon-pink);
-      color: var(--neon-pink);
+      background: transparent;
+      border: none;
+      color: #000;
       font-family: inherit;
+      font-size: inherit;
       font-weight: bold;
-      padding: 3px 12px;
+      text-decoration: underline;
       cursor: pointer;
+      padding: 0;
     }
-    #lx-quit:active { border-style: inset; }
-    /* v86 rendert den VGA-Textmodus in das erste div, Grafik in den canvas */
-    #lx-screen div {
-      white-space: pre;
-      font: 15px 'Courier New', Courier, monospace;
-      line-height: 15px;
-      color: #dcdcdc;
+    #lx-screen {
+      flex: 1;
+      overflow: auto;
+      padding: 8px 10px;
+      font: 14px 'Courier New', Courier, monospace;
+      line-height: 14px;
     }
-    /* 80 Spalten muessen aufs Display passen: schmale Fenster -> kleinere Schrift */
-    @media (max-width: 900px) {
-      #lx-screen div { font-size: 10px; line-height: 10px; }
+    #lx-screen div { white-space: pre; font: inherit; line-height: inherit; }
+    /* v86 malt VGA-Farben als Inline-Styles auf die Spans — wir zwingen
+       alles in den gruenen Glappa-Phosphor ... */
+    #lx-screen span {
+      background-color: transparent !important;
+      color: var(--neon-green) !important;
+      text-shadow: 0 0 3px var(--neon-green);
     }
-    @media (max-width: 620px) {
-      #lx-screen div { font-size: 7px; line-height: 7px; }
+    /* ... ausser invertierte Zellen (z.B. die top-Kopfzeile): die werden
+       zum gruenen Block mit schwarzer Schrift, wie beim echten CRT. */
+    #lx-screen span:not([style*="background-color: rgb(0, 0, 0)"]) {
+      background-color: var(--neon-green) !important;
+      color: #000 !important;
+      text-shadow: none;
     }
     #lx-screen canvas { display: none; image-rendering: pixelated; }
   </style>
@@ -303,6 +311,16 @@
         <div class="ed-bar"><span>^O Speichern &nbsp; ^X Beenden</span><span id="ed-msg"></span></div>
       </div>
 
+      <!-- Echtes-Linux Overlay (v86) — Engine+ISO laden erst bei `boot-linux` -->
+      <div id="linuxbox">
+        <div class="lx-bar"><span>GLAPPA LINUX &mdash; ECHTER KERNEL (v86)</span><span id="lx-status">bereit</span></div>
+        <div id="lx-screen">
+          <div></div>
+          <canvas></canvas>
+        </div>
+        <div class="lx-bar"><span>Strg+Alt+Q Beenden &nbsp;&middot;&nbsp; klicken &amp; lostippen</span><button id="lx-quit" type="button">[ X BEENDEN ]</button></div>
+      </div>
+
       <div id="output"></div>
       <div class="input-row" id="input-row" style="display:none">
         <span class="prompt-label">glappa@web:~$&nbsp;</span>
@@ -310,19 +328,6 @@
                autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
         <span class="cursor-blink" style="color:var(--neon-green)">█</span>
       </div>
-    </div>
-  </div>
-
-  <!-- Echtes Linux (v86) — Overlay; Engine+ISO werden erst bei `boot-linux` geladen -->
-  <div id="linuxbox">
-    <div class="lx-bar">
-      <span>GLAPPA LINUX &mdash; ECHTER Kernel im Browser (v86)</span>
-      <span id="lx-status">bereit</span>
-      <button id="lx-quit" type="button">&#10005; zur&uuml;ck zum Terminal</button>
-    </div>
-    <div id="lx-screen">
-      <div></div>
-      <canvas></canvas>
     </div>
   </div>
 
@@ -2331,19 +2336,34 @@
 
     function lxSay(msg) { lxStatus.textContent = msg; }
 
+    /* 80 VGA-Spalten in die Terminal-Breite einpassen (Courier ist ~0.6em
+       breit pro Zeichen -> Schriftgroesse = Breite/48). */
+    function lxFitFont() {
+      const w = lxScreen.clientWidth - 20;
+      if (w <= 0) return;
+      const fs = Math.max(7, Math.min(16, Math.floor(w / 48)));
+      lxScreen.style.fontSize = fs + 'px';
+      lxScreen.style.lineHeight = fs + 'px';
+    }
+    window.addEventListener('resize', function() {
+      if (linuxbox.style.display === 'flex') lxFitFont();
+    });
+
     function bootLinux() {
       blank();
       appendLine('Starte ECHTES Linux — eigener Kernel, kein Fake. (v86-Emulator)', 'line-info');
       appendLine('Erster Start lädt ~10 MB, danach cached der Browser. Moment ...', 'line-sys');
       blank();
       linuxbox.style.display = 'flex';
+      inputRow.style.display = 'none';
+      lxFitFont();
       /* WICHTIG: Terminal-Input blurren — v86 ignoriert die Tastatur,
          solange irgendein input-Element fokussiert ist. */
       inp.blur();
       if (lxEmulator) {
         /* VM war nur pausiert -> nahtlos weiterlaufen lassen */
         try { lxEmulator.run(); } catch(e) {}
-        lxSay('läuft — klicken und lostippen');
+        lxSay('läuft — einfach lostippen');
         return;
       }
       if (lxLibLoaded) { lxStart(); return; }
@@ -2378,12 +2398,13 @@
         }
       });
       lxEmulator.add_listener('emulator-ready', function() {
-        lxSay('läuft — klicken und lostippen');
+        lxSay('läuft — einfach lostippen');
       });
     }
 
-    document.getElementById('lx-quit').addEventListener('click', function() {
+    function quitLinux() {
       linuxbox.style.display = 'none';
+      inputRow.style.display = 'flex';
       if (lxEmulator) {
         /* pausieren statt zerstören: naechstes boot-linux macht sofort
            weiter, ohne neu zu booten. stop() loest auch die globalen
@@ -2394,7 +2415,18 @@
       blank();
       inp.focus();
       out.scrollTop = out.scrollHeight;
-    });
+    }
+    document.getElementById('lx-quit').addEventListener('click', quitLinux);
+    /* Strg+Alt+Q beendet das Linux auch ohne Maus. Capture-Phase, damit
+       die Kombi nicht erst bei der VM landet. */
+    window.addEventListener('keydown', function(e) {
+      if (linuxbox.style.display === 'flex' && e.ctrlKey && e.altKey
+          && (e.key === 'q' || e.key === 'Q')) {
+        e.preventDefault();
+        e.stopPropagation();
+        quitLinux();
+      }
+    }, true);
 
     /* ══════════════════════════════════════════════════════════════
        SPECIAL — interaktive/animierte Befehle (nicht pipe-fähig)
@@ -3196,6 +3228,9 @@
 
     document.getElementById('terminal').addEventListener('click', function() {
       if (editorEl.style.display === 'flex') edText.focus();
+      /* Linux offen: NICHT inp fokussieren — v86 ignoriert die Tastatur,
+         sobald ein Input-Element den Fokus hat. */
+      else if (linuxbox.style.display === 'flex') inp.blur();
       else inp.focus();
     });
 
