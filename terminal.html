@@ -567,6 +567,53 @@
       return 'https://home.glappa.de/api/chat';
     }
 
+    /* ── Chat-Request mit Streaming ──
+       Der Server proxied Ollamas Tokens als SSE-Events — onDelta bekommt
+       bei jedem Häppchen den bisherigen Gesamttext (echtes "Live-Tippen"
+       statt lange Stille + Typewriter am Ende). Antwortet der Server mit
+       JSON (alter Server / Fehler vor dem Stream), greift der Fallback.
+       Fehler kommen als reject mit {userMsg} (Server-Meldung) oder als
+       nackter Netzwerk-Error. */
+    function chatRequest(payload, onDelta) {
+      payload.stream = true;
+      return fetch(chatEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r) {
+        const ct = r.headers.get('Content-Type') || '';
+        if (ct.indexOf('text/event-stream') === -1) {
+          /* Alter Server oder Fehler (Rate-Limit, leere Nachricht, ...) */
+          return r.json().then(function(d) {
+            if (!r.ok || d.error) throw { userMsg: d.error || 'Stoerung im Neon-Subsystem. Nochmal versuchen!' };
+            return d.reply;
+          });
+        }
+        const reader = r.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', acc = '';
+        function pump() {
+          return reader.read().then(function(res) {
+            if (res.done) return acc;
+            buf += dec.decode(res.value, { stream: true });
+            const events = buf.split('\n\n');
+            buf = events.pop();                        /* letztes Fragment aufheben */
+            for (const ev of events) {
+              const line = ev.split('\n').find(function(l) { return l.indexOf('data: ') === 0; });
+              if (!line) continue;
+              let d;
+              try { d = JSON.parse(line.slice(6)); } catch(e) { continue; }
+              if (d.err) throw { userMsg: d.err };
+              if (d.t) { acc += d.t; if (onDelta) onDelta(acc); }
+              if (d.done) return acc;
+            }
+            return pump();
+          });
+        }
+        return pump();
+      });
+    }
+
     /* ══════════════════════════════════════════════════════════════
        GLAPPA-DO — KI-AGENT MIT TERMINAL-ZUGRIFF
        Die KI bekommt ein ZIEL und gibt echte Shell-Befehle aus ("$ <cmd>"),
@@ -589,7 +636,7 @@
     }
 
     function startAgent(goal, auto) {
-      activeAgent = { goal: goal, convo: [], steps: 0, auto: !!auto,
+      activeAgent = { goal: goal, convo: [], steps: 0, auto: !!auto, nudged: false,
                       queue: [], batch: [], awaitingConfirm: false, pendingCmd: '' };
       blank();
       appendLine('┌──────────────────────────────────────────────┐', 'line-pink');
@@ -613,31 +660,40 @@
       out.appendChild(thinking);
       out.scrollTop = out.scrollHeight;
 
-      fetch(chatEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'agent', message: userMsg, history: activeAgent.convo.slice(-6) })
-      })
-      .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
-      .then(function(res) {
+      /* Streamt den Plan live als "Denk-Zeile" mit — nach Abschluss wird
+         sie entfernt und die Antwort sauber verarbeitet (Prosa + Befehle,
+         die beim Ausführen ohnehin einzeln geechot werden). */
+      let live = null;
+      chatRequest({ mode: 'agent', message: userMsg, history: activeAgent.convo.slice(-6) },
+        function(txt) {
+          if (!activeAgent) { if (live) live.remove(); return; }  /* Strg+C waehrenddessen */
+          if (!live) {
+            thinking.remove();
+            live = document.createElement('div');
+            live.className = 'line-sys';
+            out.appendChild(live);
+          }
+          live.textContent = '… ' + txt;
+          out.scrollTop = out.scrollHeight;
+        })
+      .then(function(raw) {
         thinking.remove();
+        if (live) live.remove();
         agentBusy = false;
         if (!activeAgent) return;               // waehrend des Wartens abgebrochen
-        if (!res.ok || res.d.error) {
-          appendLine('GLAPPA-BOT: ' + (res.d.error || 'Störung im Neon-Subsystem.'), 'line-err');
-          agentFinish(true); return;
-        }
-        const reply = cleanReply(res.d.reply);
         activeAgent.convo.push({ role: 'user', content: userMsg });
-        activeAgent.convo.push({ role: 'assistant', content: res.d.reply });
+        activeAgent.convo.push({ role: 'assistant', content: raw });
         activeAgent.steps++;
-        agentHandleReply(reply);
+        agentHandleReply(cleanReply(raw));
       })
-      .catch(function() {
-        thinking.remove(); agentBusy = false;
+      .catch(function(e) {
+        thinking.remove();
+        if (live) live.remove();
+        agentBusy = false;
         if (!activeAgent) return;
         playSfx('error');
-        appendLine('GLAPPA-BOT ist offline. (VPS nicht erreichbar)', 'line-err');
+        appendLine((e && e.userMsg) ? 'GLAPPA-BOT: ' + e.userMsg
+                                    : 'GLAPPA-BOT ist offline. (VPS nicht erreichbar)', 'line-err');
         agentFinish(true);
       });
     }
@@ -659,6 +715,12 @@
           if (rest) prose.push(rest);
           return;
         }
+        /* Toleranz: Modelle vergessen das "$ " gerne — eine nackte Zeile,
+           deren erstes Wort ein erlaubtes Kommando ist, zaehlt trotzdem als
+           Befehl (agentReject prueft spaeter sowieso nochmal, und im
+           Bestaetigungsmodus sieht der User jeden Befehl vor dem Lauf). */
+        const first = (t.split(/\s+/)[0] || '').toLowerCase();
+        if (BIN[first]) { cmds.push(t); return; }
         prose.push(t);
       });
       return { cmds: cmds, prose: prose, done: done };
@@ -673,7 +735,24 @@
     function agentHandleReply(reply) {
       const parsed = parseAgentReply(reply);
       if (parsed.prose.length) agentShowProse(parsed.prose);
-      if (!parsed.cmds.length || parsed.done) { agentFinish(false); return; }
+      if (parsed.done) { agentFinish(false); return; }
+      if (!parsed.cmds.length) {
+        /* Haeufigster Protokollbruch: das Modell behauptet in Prosa, etwas
+           getan zu haben — ohne einen einzigen $-Befehl. EINMAL nachfassen
+           (mehr nicht, sonst drehen wir uns im Kreis). */
+        if (activeAgent.nudged || activeAgent.steps >= AGENT_MAX_STEPS) {
+          appendLine('(Keine ausführbaren Befehle in der Antwort — Stopp. '
+                     + 'Es wurde NICHTS ausgeführt.)', 'line-err');
+          agentFinish(false); return;
+        }
+        activeAgent.nudged = true;
+        agentThink('Protokollfehler: Deine Antwort enthielt weder $-Befehle noch '
+                 + '"FERTIG:". Es wurde NICHTS ausgeführt — du kannst nur über '
+                 + '$-Befehlszeilen handeln. Schicke jetzt die $-Befehle für das '
+                 + 'Ziel, oder brich ehrlich mit "FERTIG:" ab.');
+        return;
+      }
+      activeAgent.nudged = false;
       activeAgent.queue = parsed.cmds.slice(0, AGENT_MAX_CMDS);
       activeAgent.batch = [];
       agentNext();
@@ -2078,6 +2157,99 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
+       TOP (live) — verhaelt sich wie das echte top: aktualisiert sich
+       alle 2s, q (oder Strg+C) beendet es. Die Prozesse sind weiterhin
+       GlappaOS-Spass, aber sie LEBEN: CPU/MEM zappeln, bingus.exe spikt,
+       Load-Average driftet, Uhrzeit und Uptime sind echt.
+    ══════════════════════════════════════════════════════════════ */
+    let topMode = false, topTimer = null, topBox = null;
+    const TOP_START = Date.now();
+    const TOP_PROCS = [
+      { pid: 42069, user: 'bingus', cmd: 'bingus.exe',        cpu: 66.6, mem: 13.4 },
+      { pid: 42,    user: 'root',   cmd: 'gif-engine',        cpu: 23.1, mem:  8.2 },
+      { pid: 9000,  user: 'glappa', cmd: 'mp3-jukebox',       cpu:  5.5, mem: 12.1 },
+      { pid: 1337,  user: 'glappa', cmd: 'glappa-sh',         cpu:  2.5, mem:  4.0 },
+      { pid: 666,   user: 'root',   cmd: 'scanline-renderer', cpu:  1.5, mem:  2.2 },
+      { pid: 420,   user: 'glappa', cmd: 'neon-daemon',       cpu:  0.7, mem:  1.1 },
+      { pid: 1990,  user: 'glappa', cmd: 'marquee-scroller',  cpu:  0.4, mem:  0.8 },
+      { pid: 2600,  user: 'glappa', cmd: 'sparkle-trail',     cpu:  0.3, mem:  0.5 },
+      { pid: 8086,  user: 'root',   cmd: 'crt-flicker',       cpu:  0.2, mem:  0.3 },
+      { pid: 1,     user: 'root',   cmd: 'init',              cpu:  0.0, mem:  0.4 },
+    ];
+    let topLoad = [1.33, 0.73, 0.37];
+
+    function topJitter(v, amt, lo, hi) {
+      return Math.min(hi, Math.max(lo, v + (Math.random() - 0.5) * amt));
+    }
+
+    function renderTop() {
+      if (!topBox) return;
+      TOP_PROCS.forEach(function(p) {
+        /* bingus.exe darf wild spiken — der Rest zappelt nur leicht */
+        p.cpu = topJitter(p.cpu, p.cmd === 'bingus.exe' ? 25 : 5, 0.0, 99.9);
+        p.mem = topJitter(p.mem, 0.4, 0.1, 30.0);
+      });
+      topLoad = [topJitter(topLoad[0], 0.30, 0.05, 4.0),
+                 topJitter(topLoad[1], 0.15, 0.05, 3.0),
+                 topJitter(topLoad[2], 0.08, 0.05, 2.0)];
+      const procs = TOP_PROCS.slice().sort(function(a, b) { return b.cpu - a.cpu; });
+
+      const upSec = Math.floor((Date.now() - TOP_START) / 1000);
+      const upStr = upSec < 3600
+        ? Math.max(1, Math.round(upSec / 60)) + ' min'
+        : Math.floor(upSec / 3600) + ':' + String(Math.floor((upSec % 3600) / 60)).padStart(2, '0');
+
+      const us  = Math.min(70, procs.reduce(function(s, p) { return s + p.cpu; }, 0) * 0.4);
+      const sy  = topJitter(1.3, 1.5, 0.1, 9.9);
+      const gif = topJitter(55, 15, 20, 94.5);          /* GIF-Engine frisst am meisten */
+      const id  = Math.max(0, 100 - us - sy - gif);
+      const memUsed = Math.min(31.9, 32 * procs.reduce(function(s, p) { return s + p.mem; }, 0) / 100 + 18);
+
+      const uhr = new Date().toLocaleTimeString('de-DE');
+      const lines = [
+        { t: 'top - ' + uhr + ' up ' + upStr + ',  1 user,  load average: '
+             + topLoad.map(function(l) { return l.toFixed(2); }).join(', '), c: 'line-info' },
+        { t: 'Tasks: ' + procs.length + ' total,   1 running,  ' + (procs.length - 2)
+             + ' sleeping,   0 stopped,   1 zombie', c: 'line-sys' },
+        { t: '%CPU(s): ' + us.toFixed(1) + ' us, ' + sy.toFixed(1) + ' sy, '
+             + gif.toFixed(1) + ' gif, ' + id.toFixed(1) + ' id', c: 'line-sys' },
+        { t: 'MiB Spch:     32.0 gesamt,     ' + (32 - memUsed).toFixed(1) + ' frei,     '
+             + memUsed.toFixed(1) + ' benutzt', c: 'line-sys' },
+        { t: '', c: '' },
+        { t: '  PID BENUTZER   %CPU  %MEM     ZEIT+  BEFEHL', c: 'line-info' },
+      ];
+      procs.forEach(function(p) {
+        const zeit = Math.floor(upSec * (p.cpu / 100));
+        const zstr = Math.floor(zeit / 60) + ':' + String(zeit % 60).padStart(2, '0') + '.'
+                     + String(p.pid % 100).padStart(2, '0');
+        lines.push({ t: String(p.pid).padStart(5) + ' ' + p.user.padEnd(9)
+                     + p.cpu.toFixed(1).padStart(6) + p.mem.toFixed(1).padStart(6)
+                     + zstr.padStart(10) + '  ' + p.cmd, c: '' });
+      });
+      lines.push({ t: '', c: '' });
+      lines.push({ t: 'q beendet top', c: 'line-sys' });
+
+      topBox.innerHTML = '';
+      lines.forEach(function(l) {
+        const div = document.createElement('div');
+        div.className = l.c || 'line-ok';
+        div.textContent = l.t;
+        topBox.appendChild(div);
+      });
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function exitTop() {
+      clearInterval(topTimer);
+      topTimer = null;
+      topMode = false;
+      appendLine('(top beendet)', 'line-sys');
+      blank();
+      updatePrompt();
+      out.scrollTop = out.scrollHeight;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
        SPECIAL — interaktive/animierte Befehle (nicht pipe-fähig)
     ══════════════════════════════════════════════════════════════ */
     function offlineCmd(name) {
@@ -2344,24 +2516,14 @@
       },
 
       top() {
+        if (topMode) return;
         blank();
-        appendLine('top — ' + new Date().toLocaleTimeString('de-DE') + '  up seit 1997,  1 Benutzer,  Load: 1.33 0.73 0.37', 'line-info');
-        appendLine('Speicher: 32768K gesamt, 31337K benutzt — CPU: 4.2% us, 1.3% sy, 94.5% gif', 'line-sys');
-        blank();
-        appendLine('  PID USER      %CPU %MEM BEFEHL', 'line-info');
-        [['42069', 'bingus', '66.6', '13.4', 'bingus.exe'],
-         ['42',    'root',   '23.1', ' 8.2', 'gif-engine'],
-         ['9000',  'glappa', ' 5.5', '12.1', 'mp3-jukebox'],
-         ['1337',  'glappa', ' 2.5', ' 4.0', 'glappa-sh'],
-         ['666',   'root',   ' 1.5', ' 2.2', 'scanline-renderer'],
-         ['420',   'glappa', ' 0.7', ' 1.1', 'neon-daemon'],
-         ['1990',  'glappa', ' 0.4', ' 0.8', 'marquee-scroller'],
-         ['1',     'root',   ' 0.0', ' 0.4', 'init']].forEach(function(r) {
-          appendLine(r[0].padStart(5) + ' ' + r[1].padEnd(9) + r[2] + ' ' + r[3] + ' ' + r[4]);
-        });
-        blank();
-        appendLine('(Schnappschuss — das echte top aktualisiert sich live und q beendet es)', 'line-sys');
-        blank();
+        topBox = document.createElement('div');
+        out.appendChild(topBox);
+        topMode = true;
+        updatePrompt();                       /* Prompt ausblenden, wie beim echten top */
+        renderTop();
+        topTimer = setInterval(renderTop, 2000);
       },
 
       glappa(args) {
@@ -2453,15 +2615,16 @@
         if (activeAgent) { appendLine('glappa-do: Es läuft schon ein Auftrag. (Strg+C bricht ab)', 'line-err'); return; }
 
         /* Einmal-Overrides pro Aufruf: -y/--yes/--yolo = direkt,  --ask/--confirm = nachfragen */
-        let auto = !agentConfirmDefault;
+        let auto = !agentConfirmDefault, wantHelp = false;
         const rest = [];
         args.forEach(function(a) {
           if (a === '-y' || a === '--yes' || a === '--yolo') auto = true;
           else if (a === '--ask' || a === '--confirm') auto = false;
+          else if (a === '-h' || a === '--help' || a === 'help') wantHelp = true;
           else rest.push(a);
         });
         const goal = rest.join(' ').trim();
-        if (!goal) {
+        if (!goal || wantHelp) {
           blank();
           appendLine('Usage: glappa-do <ziel>', 'line-info');
           appendLine('Die Glappa-KI erledigt ein Ziel, indem sie selbst Terminal-Befehle ausführt.', 'line-ok');
@@ -2595,7 +2758,8 @@
       return chatMode ? 'glappa-chat> ' : ('glappa@web:' + shortCwd() + '$ ');
     }
     function updatePrompt() {
-      document.querySelector('.prompt-label').textContent = promptStr();
+      /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top. */
+      document.querySelector('.prompt-label').textContent = topMode ? '' : promptStr();
     }
 
     /* ── GLAPPA-CHAT: Nachricht an die VPS-KI schicken ──
@@ -2617,30 +2781,41 @@
             history: [] }
         : { message: msg, history: chatHistory.slice(-8) };
 
-      fetch(chatEndpoint(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      .then(function(r) { return r.json().then(function(d){ return { ok: r.ok, d: d }; }); })
-      .then(function(res) {
-        thinking.remove();
-        if (!res.ok || res.d.error) {
-          appendLine('GLAPPA-BOT: ' + (res.d.error || 'Stoerung im Neon-Subsystem. Nochmal versuchen!'), 'line-err');
-          return;
+      /* Streaming: Tokens erscheinen live in einer wachsenden Zeile —
+         "GLAPPA-BOT denkt ..." verschwindet mit dem ersten Token. */
+      let live = null;
+      chatRequest(payload, function(txt) {
+        if (!live) {
+          thinking.remove();
+          live = document.createElement('div');
+          live.className = 'line-pink';
+          out.appendChild(live);
         }
-        var reply = cleanReply(res.d.reply);
+        live.textContent = 'GLAPPA-BOT: ' + txt;
+        out.scrollTop = out.scrollHeight;
+      })
+      .then(function(raw) {
+        thinking.remove();
+        var reply = cleanReply(raw);
         if (!oneshot) {
           chatHistory.push({ role: 'user', content: msg },
                            { role: 'assistant', content: reply });
         }
-        typeReply('GLAPPA-BOT: ' + reply);
+        if (live) {
+          live.textContent = 'GLAPPA-BOT: ' + reply;   /* Markdown-Reste raus */
+          out.scrollTop = out.scrollHeight;
+          blank();
+        } else {
+          typeReply('GLAPPA-BOT: ' + reply);           /* JSON-Fallback: Typewriter */
+        }
         playSfx('balloon');
       })
-      .catch(function() {
+      .catch(function(e) {
         thinking.remove();
         playSfx('error');
-        appendLine('GLAPPA-BOT ist gerade offline. (VPS nicht erreichbar)', 'line-err');
+        /* Bei Abbruch mitten im Stream bleibt der Teiltext ehrlich stehen. */
+        appendLine((e && e.userMsg) ? 'GLAPPA-BOT: ' + e.userMsg
+                                    : 'GLAPPA-BOT ist gerade offline. (VPS nicht erreichbar)', 'line-err');
       })
       .finally(function() { chatBusy = false; });
     }
@@ -2805,6 +2980,14 @@
 
     inp.addEventListener('keydown', function(e) {
       playClick();
+      /* top laeuft: q oder Strg+C beendet es, alle anderen Tasten werden
+         geschluckt (das echte top nimmt die Eingabe ja auch nicht als Shell). */
+      if (topMode) {
+        e.preventDefault();
+        if (e.key === 'q' || e.key === 'Q'
+            || (e.ctrlKey && (e.key === 'c' || e.key === 'C'))) exitTop();
+        return;
+      }
       if (e.key === 'Enter') {
         playSfx('blip');
         const val = inp.value; inp.value = ''; runCmd(val);

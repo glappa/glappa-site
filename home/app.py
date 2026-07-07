@@ -1228,8 +1228,10 @@ def counter_visits():
 # ── Glappa-Chat (kleiner LLM-Chatbot via Ollama) ──────────────────
 # Das Terminal (terminal.html, Befehl `glappa-chat`) schickt POST /chat mit
 # {message, history} — hier wird ein System-Prompt (Glappa-Persona) davor-
-# gehaengt und an die lokale Ollama-Instanz weitergereicht. Kein Streaming:
-# der Typewriter-Effekt passiert client-seitig im Terminal.
+# gehaengt und an die lokale Ollama-Instanz weitergereicht. Mit {stream:true}
+# proxied der Server Ollamas Token-Stream als SSE weiter (Tokens erscheinen
+# sofort im Terminal); ohne das Flag kommt wie frueher ein JSON-Block
+# (Fallback fuer alte Clients, Typewriter dann client-seitig).
 #
 # Env:
 #   OLLAMA_URL              Basis-URL der Ollama-API (Compose: http://ollama:11434)
@@ -1336,14 +1338,25 @@ AGENT_PERSONA = (
     'erreichst es, indem du echte Shell-Befehle ausgibst, die das Terminal '
     'fuer dich ausfuehrt und dir die Ausgabe zurueckgibt.\n\n'
     'PROTOKOLL (streng einhalten):\n'
-    '- Jeder Befehl steht in einer EIGENEN Zeile, die mit "$ " beginnt, z.B.:\n'
-    '  $ mkdir projekt\n'
-    '  $ echo "hallo" > projekt/readme.txt\n'
+    '- Jeder Befehl steht in einer EIGENEN Zeile, die mit "$ " beginnt.\n'
     '- Optional EIN kurzer Satz Erklaerung VOR den Befehlen. Sonst nichts.\n'
     '- Keine Markdown-Codebloecke, keine Backticks, keine Nummerierung.\n'
     '- Du bekommst danach die Ausgabe und darfst weitere $-Befehle schicken.\n'
     '- Ist das Ziel erreicht, gib KEINEN $-Befehl mehr, sondern eine Zeile '
     'die mit "FERTIG:" beginnt und kurz zusammenfasst, was du getan hast.\n\n'
+    'BEISPIEL-DIALOG (genau dieses Format):\n'
+    'User: lege einen ordner fotos an mit einer notiz darin\n'
+    'Du:\n'
+    'Ich lege das an.\n'
+    '$ mkdir fotos\n'
+    '$ echo "meine notiz" > fotos/notiz.txt\n'
+    'User: Ergebnis der Befehle: $ mkdir fotos (keine Ausgabe) ...\n'
+    'Du:\n'
+    'FERTIG: Ordner fotos mit notiz.txt angelegt.\n\n'
+    'WICHTIGSTE REGEL: Du kannst NICHTS selbst tun — nur $-Zeilen werden '
+    'ausgefuehrt. Behaupte NIEMALS in Prosa, etwas erstellt/geloescht/erledigt '
+    'zu haben, ohne dass die $-Befehle dafuer gelaufen und bestaetigt sind. '
+    'Eine Antwort ohne $-Zeile und ohne FERTIG: ist ein Protokollfehler.\n\n'
     'ERLAUBTE BEFEHLE (nur diese, alles andere schlaegt fehl): ls cd pwd cat '
     'echo touch mkdir rm rmdir cp mv chmod grep sort uniq wc rev head tail '
     'find tree cut tr sed tac nl seq diff stat file du df free ps cal expr '
@@ -1351,8 +1364,21 @@ AGENT_PERSONA = (
     'VERBOTEN (niemals vorschlagen): nano top matrix hack ping sudo bash sh '
     'curl wget ssh nmap apt glappa glappa-chat glappa-do reboot exit clear '
     'sowie ./skript.sh — interaktive, animierte oder Netz-Befehle.\n\n'
+    'Datei- und Ordnernamen sind Sache des Users — es ist SEINE private '
+    'Wegwerf-Sandbox, benenne Dinge exakt wie gewuenscht, ohne zu moralisieren. '
     'Halte dich kurz und zielgerichtet, wenige Befehle pro Runde. Braucht das '
     'Ziel gar keine Befehle, antworte direkt mit "FERTIG:".'
+)
+
+# Wird im Agent-Modus als System-Hint DIREKT vor jede User-Nachricht gelegt —
+# Instruktionen unmittelbar vor der Frage wirken bei kleinen Modellen deutlich
+# staerker als Regeln weit oben im System-Prompt (gleiche Erfahrung wie bei
+# den Datums-/Such-Hints im normalen Chat).
+AGENT_NUDGE = (
+    'Antworte JETZT nur nach Protokoll: entweder $-Befehlszeilen ("$ befehl", '
+    'eine pro Zeile, hoechstens 1 kurzer Satz davor) ODER eine Zeile '
+    '"FERTIG: <zusammenfassung>". Ohne $-Zeile wird NICHTS ausgefuehrt — '
+    'behaupte also nie, etwas getan zu haben, das nicht als Befehl lief.'
 )
 
 def _agent_system_prompt(model: str) -> str:
@@ -1539,6 +1565,61 @@ def _chat_rate_ok(ip: str, limit: int = 10, window: int = 60) -> bool:
     return True
 
 
+def _chat_stream_response(req, model: str):
+    """
+    Proxyt Ollamas NDJSON-Stream als SSE ans Terminal weiter — Tokens
+    erscheinen sofort statt erst nach der kompletten Antwort ("GLAPPA-BOT
+    denkt zu lange" war vor allem gefuehlte Latenz: CPU-Inferenz braucht
+    fuer 260 Tokens gerne 30-60s, in denen der User nur den Blink-Text sah).
+    Events:  {"t": "<textstueck>"}  |  {"done": true, "model": ...}  |
+             {"err": "<meldung>"}   (Fehler VOR/IN dem Stream)
+    Schlimmster Fall (Proxy puffert doch): alles kommt am Ende auf einmal
+    an — dasselbe Verhalten wie der alte JSON-Weg, nie schlechter.
+    """
+    def gen():
+        try:
+            with urllib.request.urlopen(req, timeout=CHAT_TIMEOUT) as r:
+                got_any = False
+                for raw in r:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        chunk = json.loads(raw.decode('utf-8'))
+                    except ValueError:
+                        continue
+                    piece = ((chunk.get('message') or {}).get('content') or '')
+                    if piece:
+                        got_any = True
+                        yield 'data: ' + json.dumps({'t': piece}) + '\n\n'
+                    if chunk.get('done'):
+                        if not got_any:
+                            yield 'data: ' + json.dumps(
+                                {'err': 'GLAPPA-BOT hat nur geschwiegen. Nochmal versuchen.'}) + '\n\n'
+                            return
+                        yield 'data: ' + json.dumps({'done': True, 'model': model}) + '\n\n'
+                        return
+                yield 'data: ' + json.dumps({'done': True, 'model': model}) + '\n\n'
+        except urllib.error.HTTPError as e:
+            msg = f'GLAPPA-BOT Stoerung (HTTP {e.code}).'
+            try:
+                if e.code == 404 and 'not found' in e.read().decode('utf-8', 'replace').lower():
+                    msg = (f'Modell {model} fehlt auf dem Server. '
+                           f'(docker exec glappa-ollama ollama pull {model})')
+            except Exception:
+                pass
+            yield 'data: ' + json.dumps({'err': msg}) + '\n\n'
+        except (urllib.error.URLError, TimeoutError, OSError):
+            yield 'data: ' + json.dumps({'err': 'GLAPPA-BOT ist offline. (Ollama nicht erreichbar '
+                                                '— laeuft der Container?)'}) + '\n\n'
+    resp = Response(gen(), mimetype='text/event-stream',
+                    headers={'X-Accel-Buffering': 'no'})
+    resp = _cors_resp(resp)
+    # no-transform: Proxies sollen den Stream nicht komprimieren/puffern
+    resp.headers['Cache-Control'] = 'no-store, no-transform'
+    return resp
+
+
 @Downloader.route('/chat', methods=['POST', 'OPTIONS'])
 def chat():
     if request.method == 'OPTIONS':
@@ -1576,7 +1657,9 @@ def chat():
                     and isinstance(h.get('content'), str)):
                 messages.append({'role': h['role'], 'content': h['content'][:hist_cap]})
     date_hint = search_hint = None
-    if not agent:
+    if agent:
+        messages.append({'role': 'system', 'content': AGENT_NUDGE})
+    else:
         date_hint = _chat_date_hint(message)
         if date_hint:
             messages.append({'role': 'system', 'content': date_hint})
@@ -1585,26 +1668,31 @@ def chat():
             messages.append({'role': 'system', 'content': search_hint})
     messages.append({'role': 'user', 'content': message})
 
+    want_stream = bool(data.get('stream'))
     body = {
         'model': model,
         'messages': messages,
-        'stream': False,
+        'stream': want_stream,
         # 0.6 statt 0.8: kleine Modelle fantasieren bei hoher Temperatur schneller.
         # Mit Datums-/Such-Fakt noch tiefer — da soll es nur sauber abschreiben.
         # Agent: niedrig fuer striktes $-Protokoll, mehr Tokens fuer mehrere Befehle.
         'options': {'num_predict': 400 if agent else CHAT_NUM_PREDICT,
                     'temperature': 0.2 if agent else (0.3 if (date_hint or search_hint) else 0.6)},
+        # BEIDE Modelle bleiben den ganzen Tag im RAM (zusammen ~12 GB bei
+        # ~19 GB Ollama-Budget, OLLAMA_MAX_LOADED_MODELS=2). Der Kaltstart
+        # des 14b-Modells (~9 GB von Disk laden, 30-60s+) war der groesste
+        # einzelne Latenz-Posten — vorher fiel es nach 30m Idle raus.
+        'keep_alive': '24h',
     }
-    if model == CHAT_MODEL_FAST:
-        # Das kleine FAST-Modell (~3 GB) bleibt den ganzen Tag im RAM — kein
-        # Kaltstart bei der haeufigsten Anfrageart. Das SMART-Modell folgt
-        # weiter OLLAMA_KEEP_ALIVE aus dem Compose-File (30m).
-        body['keep_alive'] = '24h'
     payload = json.dumps(body).encode('utf-8')
 
     req = urllib.request.Request(
         f'{OLLAMA_URL}/api/chat', data=payload,
         headers={'Content-Type': 'application/json'}, method='POST')
+
+    if want_stream:
+        return _chat_stream_response(req, model)
+
     try:
         with urllib.request.urlopen(req, timeout=CHAT_TIMEOUT) as r:
             result = json.loads(r.read().decode('utf-8'))

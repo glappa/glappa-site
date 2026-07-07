@@ -254,12 +254,20 @@ else
                     && ok "Chat-Modell $m bereit" \
                     || warn "Modell-Pull fuer $m fehlgeschlagen — glappa-chat meldet dann 'Modell fehlt'"
             done
-            # FAST-Modell direkt vorwaermen, damit nicht der erste Chat-User
-            # nach dem Deploy den Modell-Ladevorgang (Kaltstart) abwartet.
-            say "Waerme FAST-Modell $CHAT_MODEL_FAST vor..."
-            $DOCKER_SUDO docker exec glappa-ollama ollama run "$CHAT_MODEL_FAST" "Sag nur: OK" >/dev/null 2>&1 \
-                && ok "FAST-Modell vorgewaermt (im RAM)" \
-                || warn "Warmup fehlgeschlagen — erster Chat laedt das Modell selbst"
+            # BEIDE Modelle direkt vorwaermen, damit nicht der erste Chat-/
+            # Agent-User nach dem Deploy den Modell-Ladevorgang (Kaltstart,
+            # beim 14b-Modell 30-60s+) abwartet. app.py pinnt beide Modelle
+            # per Request-keep_alive 24h — der Warmup hier ueberbrueckt die
+            # Zeit bis zur ersten echten Anfrage. --keepalive braucht eine
+            # neuere ollama-CLI; Fallback ohne Flag (dann gilt 30m aus env,
+            # die erste echte Anfrage pinnt danach sowieso auf 24h).
+            for m in "$CHAT_MODEL_FAST" "$CHAT_MODEL"; do
+                say "Waerme Modell $m vor (14b kann 1-2 min dauern)..."
+                { $DOCKER_SUDO docker exec glappa-ollama ollama run --keepalive 24h "$m" "Sag nur: OK" >/dev/null 2>&1 \
+                    || $DOCKER_SUDO docker exec glappa-ollama ollama run "$m" "Sag nur: OK" >/dev/null 2>&1; } \
+                    && ok "Modell $m vorgewaermt (im RAM)" \
+                    || warn "Warmup fuer $m fehlgeschlagen — erster Chat laedt das Modell selbst"
+            done
         else
             warn "glappa-ollama-Container laeuft nicht — glappa-chat bleibt offline"
         fi

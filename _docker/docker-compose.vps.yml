@@ -85,9 +85,10 @@ services:
     image: ollama/ollama:latest
     container_name: glappa-ollama
     environment:
-      - OLLAMA_KEEP_ALIVE=30m        # Modell nach Idle wieder aus dem RAM werfen
-                                     # (nur SMART — das FAST-Modell haelt app.py
-                                     # per Request-keep_alive 24h warm, s. /chat)
+      - OLLAMA_KEEP_ALIVE=30m        # nur Fallback — app.py pinnt BEIDE Modelle
+                                     # per Request-keep_alive 24h im RAM (der
+                                     # 14b-Kaltstart war der groesste Latenz-
+                                     # Posten, s. /chat in home/app.py)
       - OLLAMA_NUM_PARALLEL=1
       - OLLAMA_MAX_LOADED_MODELS=2
       - OLLAMA_CONTEXT_LENGTH=4096
