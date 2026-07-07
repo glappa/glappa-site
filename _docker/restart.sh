@@ -10,6 +10,10 @@
 #   bash restart.sh --local   (forciere docker-compose.yml)
 #   bash restart.sh --vps     (forciere docker-compose.vps.yml)
 #   bash restart.sh --no-build (nur restart, kein rebuild — schneller)
+#   bash restart.sh --pull    (erst `git pull` im Repo, dann rebuild+restart
+#                              — der Ein-Befehl-Deploy auf der VPS: statische
+#                              Seiten sind mit dem Pull sofort live, app.py
+#                              kommt ueber den anschliessenden Image-Build)
 
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
@@ -20,14 +24,30 @@ G='\033[1;32m'; Y='\033[1;33m'; R='\033[1;31m'; C='\033[1;36m'; B='\033[1m'; X='
 # ── Args / Auto-detect ──────────────────────────────────────────────
 COMPOSE=""
 BUILD="--build"
+PULL=""
 for arg in "$@"; do
     case "$arg" in
         --local)    COMPOSE="docker-compose.yml" ;;
         --vps)      COMPOSE="docker-compose.vps.yml" ;;
         --no-build) BUILD="" ;;
+        --pull)     PULL=1 ;;
         *)          echo "Unbekanntes Flag: $arg" >&2; exit 1 ;;
     esac
 done
+
+# ── Git pull (optional) ─────────────────────────────────────────────
+# --ff-only: bricht sauber ab statt einen Merge zu bauen. Haeufigster
+# Stolperer: lokale Aenderungen an home/app.py von einem frueheren
+# scp-Sync (sync-restart-vps.ps1 -OnlyApp) — dann meldet git das hier,
+# und `git -C .. checkout -- home/app.py` raeumt auf (der Git-Stand ist
+# der aktuellere).
+if [ -n "$PULL" ]; then
+    echo -e "${C}→${X} git pull im Repo..."
+    if ! git -C .. pull --ff-only; then
+        echo -e "${R}✗${X} git pull fehlgeschlagen — lokale Aenderungen? Siehe: git -C .. status" >&2
+        exit 1
+    fi
+fi
 
 if [ -z "$COMPOSE" ]; then
     if grep -qi microsoft /proc/version 2>/dev/null && [ -f docker-compose.yml ]; then
