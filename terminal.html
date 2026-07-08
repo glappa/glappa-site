@@ -30,67 +30,61 @@
       z-index: 1;
     }
     .term-wrap {
-      max-width: 860px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 10px 16px 40px;
     }
 
-    /* CRT-Rahmen */
+    /* kitty auf Solus: flaches, dunkles Terminal — kein CRT-Neon mehr */
     #terminal {
-      background: #0a0a0a;
-      border: 2px solid var(--neon-green);
-      border-radius: 4px;
-      box-shadow:
-        0 0 10px var(--neon-green),
-        0 0 30px rgba(0,255,0,0.2),
-        inset 0 0 60px rgba(0,0,0,0.8);
-      padding: 18px 20px;
+      /* Farbschema wie im Solus/kitty-Vorbild */
+      --t-bg:     #191d21;
+      --t-fg:     #d3dae3;
+      --t-dim:    #6d7783;
+      --t-red:    #ec6a6a;
+      --t-green:  #8fc775;
+      --t-yellow: #e2c178;
+      --t-blue:   #64a2e0;
+      --t-pink:   #f272b6;
+      --t-cyan:   #45c6d6;
+      --t-white:  #f2f5f9;
+
+      background: var(--t-bg);
+      border: 1px solid #2c3238;
+      border-radius: 6px;
+      box-shadow: 0 10px 34px rgba(0,0,0,0.6);
+      padding: 16px 18px;
       min-height: 420px;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: clamp(0.82rem, 1.5vw, 1rem);
+      font-family: 'Hack', 'JetBrains Mono', 'Cascadia Mono', Consolas,
+                   'DejaVu Sans Mono', 'Liberation Mono', monospace;
+      font-size: clamp(0.8rem, 1.4vw, 0.95rem);
       position: relative;
       overflow: hidden;
     }
 
-    /* Scanlines */
-    #terminal::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: repeating-linear-gradient(
-        to bottom,
-        transparent 0px, transparent 3px,
-        rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px
-      );
-      pointer-events: none;
-      z-index: 10;
-    }
-
     #output {
-      color: var(--neon-green);
-      text-shadow: 0 0 4px var(--neon-green);
+      color: var(--t-fg);
       white-space: pre-wrap;
       word-break: break-word;
       margin-bottom: 10px;
       min-height: 360px;
       max-height: 62vh;
       overflow-y: auto;
-      line-height: 1.55;
+      line-height: 1.45;
     }
     #output::-webkit-scrollbar { width: 8px; }
-    #output::-webkit-scrollbar-thumb { background: rgba(0,255,0,0.35); border-radius: 4px; }
-    #output::-webkit-scrollbar-track { background: rgba(0,255,0,0.06); }
+    #output::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
+    #output::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
 
     .input-row {
       display: flex;
       align-items: center;
     }
     .prompt-label {
-      color: var(--neon-cyan);
-      text-shadow: 0 0 4px var(--neon-cyan);
-      font-family: 'Courier New', monospace;
+      color: var(--t-fg);
+      font-family: inherit;
       font-size: inherit;
-      white-space: nowrap;
+      white-space: pre;
       user-select: none;
     }
     #cmd-input {
@@ -98,23 +92,45 @@
       background: transparent;
       border: none;
       outline: none;
-      color: var(--neon-green);
-      text-shadow: 0 0 4px var(--neon-green);
-      font-family: 'Courier New', Courier, monospace;
+      color: var(--t-fg);
+      font-family: inherit;
       font-size: inherit;
-      caret-color: var(--neon-green);
+      caret-color: var(--t-fg);
       padding: 0 4px;
     }
+    .cursor-block { color: var(--t-fg); }
 
-    .line-cmd    { color: var(--neon-cyan);   text-shadow: 0 0 4px var(--neon-cyan); }
-    .line-ok     { color: var(--neon-green);  text-shadow: 0 0 3px var(--neon-green); }
-    .line-err    { color: #ff4444;            text-shadow: 0 0 4px #ff4444; }
-    .line-info   { color: var(--neon-yellow); text-shadow: 0 0 3px var(--neon-yellow); }
-    .line-sys    { color: #888; }
-    .line-art    { color: var(--neon-green);  text-shadow: 0 0 5px var(--neon-green); }
-    .line-pink   { color: var(--neon-pink);   text-shadow: 0 0 4px var(--neon-pink); }
-    .line-bios   { color: #aaa; }
-    .line-white  { color: #fff; text-shadow: 0 0 4px #fff; }
+    /* Prompt-Farben wie der Solus-Bash-Prompt: cyan User, pinker Host & $ */
+    .p-u   { color: var(--t-cyan); font-weight: bold; }
+    .p-at  { color: var(--t-fg); }
+    .p-h   { color: var(--t-pink); font-weight: bold; }
+    .p-dir { color: var(--t-fg); }
+    .p-sym { color: var(--t-pink); }
+
+    .line-cmd    { color: var(--t-white); }
+    .line-ok     { color: var(--t-fg); }
+    .line-err    { color: var(--t-red); }
+    .line-info   { color: var(--t-yellow); }
+    .line-sys    { color: var(--t-dim); }
+    .line-art    { color: var(--t-blue); }
+    .line-pink   { color: var(--t-pink); }
+    .line-white  { color: #fff; }
+
+    /* fastfetch: ASCII-Logo links, Infos rechts */
+    .ff-row  { display: flex; white-space: pre; line-height: 1.32; }
+    .ff-art  { flex: none; width: 40ch; }
+    .ff-ad   { color: #71829e; }                       /* Logo: Schraffur */
+    .ff-aw   { color: #e6ecf7; }                       /* Logo: Kernmasse */
+    .ff-ab   { color: var(--t-blue); }                 /* Logo: Schwung unten */
+    .ff-key  { color: var(--t-cyan); font-weight: bold; }
+    .ff-val  { color: var(--t-fg); }
+    .ff-pg   { color: var(--t-green); }
+    .ff-py   { color: var(--t-yellow); }
+    .ff-pr   { color: var(--t-red); }
+    .ff-block { display: inline-block; width: 24px; height: 14px; margin: 1px 0; }
+    @media (max-width: 720px) {
+      .ff-art { display: none; }
+    }
 
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     .cursor-blink { animation: blink 1s step-start infinite; }
@@ -127,12 +143,12 @@
       z-index: 5;
       display: none;
       flex-direction: column;
-      background: #0a0a0a;
-      font-family: 'Courier New', Courier, monospace;
+      background: var(--t-bg, #191d21);
+      font-family: inherit;
     }
     #editor .ed-bar {
-      background: var(--neon-green);
-      color: #000;
+      background: #2f353b;
+      color: #e8ecf1;
       padding: 2px 10px;
       font-weight: bold;
       font-size: 0.85em;
@@ -148,47 +164,14 @@
       border: none;
       outline: none;
       resize: none;
-      color: var(--neon-green);
-      text-shadow: 0 0 4px var(--neon-green);
-      caret-color: var(--neon-green);
+      color: var(--t-fg, #d3dae3);
+      caret-color: var(--t-fg, #d3dae3);
       font-family: inherit;
       font-size: inherit;
       line-height: 1.5;
       padding: 10px 12px;
       white-space: pre;
       overflow: auto;
-    }
-
-    /* Press-any-key Bildschirm */
-    #presskey {
-      position: absolute;
-      inset: 0;
-      background: #000;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 20;
-      cursor: pointer;
-    }
-    #presskey pre {
-      color: #aaa;
-      font-size: clamp(0.55rem, 1.1vw, 0.78rem);
-      line-height: 1.3;
-      margin: 0 0 28px;
-      text-align: center;
-    }
-    #presskey .pk-msg {
-      color: #fff;
-      font-family: 'Courier New', monospace;
-      font-size: 1rem;
-      letter-spacing: 2px;
-    }
-    #presskey .pk-sub {
-      color: #555;
-      font-family: 'Courier New', monospace;
-      font-size: 0.75rem;
-      margin-top: 6px;
     }
 
   </style>
@@ -227,22 +210,6 @@
   <div class="term-wrap">
     <div id="terminal">
 
-      <!-- Press-any-key Overlay -->
-      <div id="presskey">
-        <pre>
-  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗
- ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗
- ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║
- ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║
- ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║
-  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝
-
-     GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.
-        </pre>
-        <div class="pk-msg blink-text">PRESS ANY KEY TO BOOT</div>
-        <div class="pk-sub">or click here</div>
-      </div>
-
       <!-- nano-Editor Overlay -->
       <div id="editor">
         <div class="ed-bar"><span id="ed-title">GNU nano 1.337</span><span id="ed-file"></span></div>
@@ -253,10 +220,10 @@
 
       <div id="output"></div>
       <div class="input-row" id="input-row" style="display:none">
-        <span class="prompt-label">glappa@web:~$&nbsp;</span>
+        <span class="prompt-label"></span>
         <input type="text" id="cmd-input" autocomplete="off" spellcheck="false"
                autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
-        <span class="cursor-blink" style="color:var(--neon-green)">█</span>
+        <span class="cursor-blink cursor-block">█</span>
       </div>
     </div>
   </div>
@@ -442,7 +409,6 @@
     /* ══════════════════════════════════════════════════════════════
        DOM
     ══════════════════════════════════════════════════════════════ */
-    const presskey  = document.getElementById('presskey');
     const out       = document.getElementById('output');
     const inputRow  = document.getElementById('input-row');
     const inp       = document.getElementById('cmd-input');
@@ -456,8 +422,23 @@
        (localStorage). Kein einziger Shell-Befehl geht ins Netz; nur
        der separate glappa-chat spricht mit der Glappa-KI.
     ══════════════════════════════════════════════════════════════ */
-    const HOME   = '/home/glappa';
+    /* Den echten Hostnamen des Besucher-PCs gibt der Browser nicht her
+       (Privacy) — darum fest "user" als Benutzername. */
+    const USER   = 'user';
+    const HOST   = 'glappa.de';
+    const KERNEL = '6.18.20-332.current';
+    const HOME   = '/home/' + USER;
     const FS_KEY = 'glappaTermFS_v1';
+
+    /* "Maschinen-Uptime": der erste Besuch ist der Boot-Zeitpunkt — bleibt
+       ueber Reloads bestehen (wie eine Kiste, die einfach durchlaeuft).
+       reboot setzt sie zurueck. */
+    let BOOT_TS = Date.now();
+    try {
+      const bt = parseInt(localStorage.getItem('glappaBootTs'), 10);
+      if (bt && bt <= Date.now()) BOOT_TS = bt;
+      else localStorage.setItem('glappaBootTs', String(BOOT_TS));
+    } catch(e) {}
 
     function dirNode(children)  { return { type: 'dir',  children: children || {} }; }
     function fileNode(content)  { return { type: 'file', content: content || '' }; }
@@ -467,12 +448,13 @@
          cat /proc/cpuinfo usw. wie auf einem echten System anfuehlen.
          Das KOMPLETT echte Linux (eigener Kernel) bootet beim Start
          automatisch — boot-linux fuehrt jederzeit dorthin zurueck. */
-      const ELF = 'ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)';
+      const ELF = 'ELF 64-bit LSB executable, x86-64\n(nicht lesbar, aber ausführbar 😉)';
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
        'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do','boot-linux',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
-       'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod']
+       'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod',
+       'fastfetch','neofetch','uname','whoami','uptime','date','clear']
         .forEach(function(b) { bin[b] = fileNode(ELF); });
       const sbin = {};
       ['init','halt','reboot','fsck','mkfs','ifconfig','iptables','insmod'].forEach(function(b) {
@@ -481,10 +463,10 @@
       return dirNode({
         bin: dirNode(bin),
         boot: dirNode({
-          'vmlinuz-9000.1-retro':    fileNode('▓▒░ komprimiertes Kernel-Image ░▒▓\n(bitte nicht mit cat ansehen, piept nur)'),
-          'initrd.img-9000.1-retro': fileNode('▓▒░ Initial-Ramdisk ░▒▓'),
+          ['vmlinuz-' + KERNEL]:    fileNode('▓▒░ komprimiertes Kernel-Image ░▒▓\n(bitte nicht mit cat ansehen, piept nur)'),
+          ['initrd.img-' + KERNEL]: fileNode('▓▒░ Initial-Ramdisk ░▒▓'),
           grub: dirNode({
-            'grub.cfg': fileNode('set default=0\nset timeout=0\n\nmenuentry "GlappaOS 9000.1-RETRO" {\n  linux /boot/vmlinuz-9000.1-retro root=/dev/sda1 quiet neon=on\n  initrd /boot/initrd.img-9000.1-retro\n}'),
+            'grub.cfg': fileNode('set default=0\nset timeout=0\n\nmenuentry "Solus 4.8 Opportunity" {\n  linux /boot/vmlinuz-' + KERNEL + ' root=/dev/sda1 quiet splash\n  initrd /boot/initrd.img-' + KERNEL + '\n}'),
           }),
         }),
         dev: dirNode({
@@ -497,32 +479,32 @@
         }),
         etc: dirNode({
           motd:   fileNode('██████████████████████████████████████\n█  GLAPPA.DE SECURE SHELL v1.337      █\n█  Unbefugter Zugang wird verfolgt!   █\n██████████████████████████████████████'),
-          hosts:  fileNode('127.0.0.1   localhost\n127.0.0.1   glappa.de\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server'),
-          passwd: fileNode('root:x:0:0:root:/root:/bin/bash\nglappa:x:1337:1337:Lex:/home/glappa:/bin/zsh\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat'),
-          group:  fileNode('root:x:0:\nglappa:x:1337:\nl33t:x:31337:glappa,bingus'),
-          shadow: fileNode('root:$6$NIEMALS$duDenkstDochNichtWirklichDassHierEinEchterHashSteht:19000:0:99999:7:::\nglappa:$6$GEHEIM$schoenWeiterprobieren:19000:0:99999:7:::'),
-          hostname: fileNode('web'),
-          issue:    fileNode('GlappaOS 9000.1-RETRO \\n \\l'),
-          'os-release': fileNode('NAME="GlappaOS"\nVERSION="9000.1-RETRO (Neon)"\nID=glappaos\nPRETTY_NAME="GlappaOS 9000.1-RETRO"\nHOME_URL="https://glappa.de"\nSUPPORT_URL="mailto:lex@glappa.de"\nBUG_REPORT_URL="einfach laut seufzen"'),
+          hosts:  fileNode('127.0.0.1   localhost\n127.0.0.1   ' + HOST + '\n6.6.6.6     darkweb.onion\n1.3.3.7     leet.server'),
+          passwd: fileNode('root:x:0:0:root:/root:/bin/bash\n' + USER + ':x:1000:1000:Glappa User:/home/' + USER + ':/bin/bash\nbingus:x:42069:42069:Bingus:/dev/null:/bin/cat'),
+          group:  fileNode('root:x:0:\n' + USER + ':x:1000:\nsudo:x:27:' + USER + '\nl33t:x:31337:' + USER + ',bingus'),
+          shadow: fileNode('root:$6$NIEMALS$duDenkstDochNichtWirklichDassHierEinEchterHashSteht:19000:0:99999:7:::\n' + USER + ':$6$GEHEIM$schoenWeiterprobieren:19000:0:99999:7:::'),
+          hostname: fileNode(HOST),
+          issue:    fileNode('Solus 4.8 Opportunity \\n \\l'),
+          'os-release': fileNode('NAME="Solus"\nVERSION="4.8"\nID=solus\nVERSION_CODENAME=opportunity\nPRETTY_NAME="Solus 4.8 Opportunity"\nANSI_COLOR="1;34"\nHOME_URL="https://getsol.us"\nSUPPORT_URL="https://getsol.us/articles/contributing/getting-involved/en/"\nBUG_REPORT_URL="https://github.com/getsolus/packages/issues"'),
           fstab:    fileNode('# <device>   <mount>  <type>  <options>        <dump> <pass>\n/dev/sda1    /        ext4    defaults,neon    0      1\ntmpfs        /tmp     tmpfs   defaults         0      0\nkaffee       /dev/mug koffein defaults,strong  0      2'),
           'resolv.conf': fileNode('# Kein Internet — das Netzwerkkabel ist reine Deko (Sandbox!)\nnameserver 127.0.0.1'),
           crontab:  fileNode('# m h dom mon dow user  command\n0 4 * * *  root  /opt/glappa/gif-engine --defrag\n0 0 1 1 *  root  echo "Frohes neues Jahr 1997!" | wall\n*/5 * * * * bingus /usr/bin/bingus.exe --chaos'),
         }),
         home: dirNode({
-          glappa: dirNode({
+          [USER]: dirNode({
             'README.txt': fileNode(
               'Willkommen auf Glappa.de!\n\n' +
               'Das hier ist ein ECHTES Übungs-Terminal:\n' +
               'Dateien anlegen, löschen, Pipes, nano — alles geht.\n' +
               'Alles läuft nur in deinem Browser, nichts wird gesendet.\n\n' +
               'Tippe  tutorial  für Übungsaufgaben.\n' +
-              'Das ECHTE Linux (eigener Kernel) bootet beim Start automatisch —\n' +
-              'tippe  boot-linux  um jederzeit dorthin zurückzukehren.\n' +
+              'Ein ECHTES Linux (eigener Kernel) bootet beim Start unsichtbar vor —\n' +
+              'tippe  boot-linux  um direkt hineinzuwechseln.\n' +
               'Tippe  reset  wenn du alles zurücksetzen willst.\n\n' +
               'Viel Spaß beim Üben! 😎\n\n-- Lex'),
             'todo.txt': fileNode('[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen\n[x] Terminal ECHT machen'),
-            '.bash_history': fileNode('sudo rm -rf /\nnmap -sS 192.168.0.1\npython3 hack_nasa.py\ncurl parrot.live\nexit'),
-            '.bashrc':  fileNode('# ~/.bashrc von glappa\nexport PS1="glappa@web:\\w\\$ "\nalias ll="ls -l"\nalias bitte="sudo"\nalias yolo="glappa-do confirm off"'),
+            '.bash_history': fileNode('fastfetch\nsudo rm -rf /\nnmap -sS 192.168.0.1\npython3 hack_nasa.py\ncurl parrot.live\nexit'),
+            '.bashrc':  fileNode('# ~/.bashrc von ' + USER + '\nexport PS1="\\u@\\h \\w \\$ "\nalias ll="ls -l"\nalias bitte="sudo"\nalias yolo="glappa-do confirm off"'),
             '.profile': fileNode('# ~/.profile\nexport PATH=/usr/local/bin:/usr/bin:/bin\nexport EDITOR=nano\necho "Willkommen zurück, $USER!"'),
             '.geheim.txt': fileNode('Psst! Du hast die versteckte Datei gefunden. ls -a sei Dank. 🕵️'),
             uebung: dirNode({
@@ -542,7 +524,7 @@
         lib: dirNode({
           'libc.so.6':      fileNode(ELF),
           'libneon.so.9':   fileNode(ELF),
-          modules: dirNode({ '9000.1-retro': dirNode({ 'gif-engine.ko': fileNode(ELF) }) }),
+          modules: dirNode({ [KERNEL]: dirNode({ 'gif-engine.ko': fileNode(ELF) }) }),
         }),
         media: dirNode({ floppy: dirNode({}), cdrom: dirNode({}) }),
         mnt: dirNode({}),
@@ -551,8 +533,8 @@
         }),
         proc: dirNode({
           /* uptime/loadavg/meminfo werden beim Lesen LIVE erzeugt (s. PROC_DYNAMIC) */
-          version:  fileNode('Linux version 9000.1-RETRO (glappa@web) (gcc version 2.95.3) #1 SMP Fri Aug 15 1997'),
-          cpuinfo:  fileNode('processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: Intel(R) Pentium(R) MMX 200 MHz\ncache size\t: 512 KB\nbogomips\t: 79.87\nflags\t\t: fpu mmx neon gif'),
+          version:  fileNode('Linux version ' + KERNEL + ' (build@' + HOST + ') (gcc (Solus) 14.2.1) #1 SMP PREEMPT_DYNAMIC Tue Jul 7 03:14:15 UTC 2026'),
+          cpuinfo:  fileNode('processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: Intel(R) Core(TM) i5-1035G1 CPU @ 1.00GHz\ncache size\t: 6144 KB\nbogomips\t: 2379.98\nflags\t\t: fpu vme de pse tsc msr pae mce sse sse2 avx avx2'),
           uptime:   fileNode('(wird live berechnet)'),
           loadavg:  fileNode('(wird live berechnet)'),
           meminfo:  fileNode('(wird live berechnet)'),
@@ -564,7 +546,7 @@
         run: dirNode({}),
         sbin: dirNode(sbin),
         srv: dirNode({}),
-        sys: dirNode({ kernel: dirNode({ hostname: fileNode('web'), osrelease: fileNode('9000.1-RETRO') }) }),
+        sys: dirNode({ kernel: dirNode({ hostname: fileNode(HOST), osrelease: fileNode(KERNEL) }) }),
         tmp: dirNode({}),
         usr: dirNode({
           bin: dirNode(bin),
@@ -572,18 +554,18 @@
           lib: dirNode({}),
           local: dirNode({ bin: dirNode({}) }),
           share: dirNode({
-            doc: dirNode({ 'glappa': dirNode({ 'copyright': fileNode('GlappaOS — Copyright 1997-2026 Glappa Corp.\nLizenz: Sei cool zueinander.') }) }),
+            doc: dirNode({ 'glappa': dirNode({ 'copyright': fileNode('Glappa-Terminal auf Solus — Copyright 1997-2026 Glappa Corp.\nLizenz: Sei cool zueinander.') }) }),
           }),
         }),
         var: dirNode({
           log: dirNode({
             'access.log': fileNode('[06:30] 192.168.1.1 - GET / 200\n[06:31] 10.0.0.2 - GET /secret 403\n[06:32] 1.3.3.7  - POST /login 401\n[06:33] 127.0.0.1 - GET /flag 404'),
             'hack.log':   fileNode('[WARN] Brute-force attempt from 6.6.6.6\n[WARN] Port scan detected\n[INFO] Bingus logged in successfully\n[CRIT] Someone tried to rm -rf /'),
-            'syslog':     fileNode('Aug 15 03:14 web kernel: NEON subsystem initialized\nAug 15 03:15 web gif-engine[42]: 9000 GIFs preloaded\nAug 15 03:16 web bingus[42069]: segfault (wie immer)\nAug 15 03:17 web kernel: bingus.exe respawned'),
-            'dmesg':      fileNode('[ 0.000000] GlappaOS 9000.1-RETRO booting...\n[ 0.133700] CPU: Intel Pentium MMX 200 MHz\n[ 0.421337] RAM: 32 MB OK (wir sparen)\n[ 1.000000] NEON: glow aktiviert\n[ 2.000000] Netzwerkkabel: absichtlich nicht eingesteckt (Sandbox)'),
+            'syslog':     fileNode('Aug 15 03:14 ' + HOST + ' kernel: NEON subsystem initialized\nAug 15 03:15 ' + HOST + ' gif-engine[42]: 9000 GIFs preloaded\nAug 15 03:16 ' + HOST + ' bingus[42069]: segfault (wie immer)\nAug 15 03:17 ' + HOST + ' kernel: bingus.exe respawned'),
+            'dmesg':      fileNode('[ 0.000000] Linux version ' + KERNEL + ' booting...\n[ 0.133700] CPU: Intel(R) Core(TM) i5-1035G1\n[ 0.421337] Memory: 15.37 GiB available\n[ 1.000000] budgie: Desktop bereit\n[ 2.000000] Netzwerkkabel: absichtlich nicht eingesteckt (Sandbox)'),
           }),
           www: dirNode({ html: dirNode({ 'index.html': fileNode('<html>\n<marquee>GLAPPA WAS HERE</marquee>\n<blink>BEST VIEWED IN NETSCAPE 4</blink>\n</html>') }) }),
-          spool: dirNode({ mail: dirNode({ glappa: fileNode('From: bill@microsoft.com\nSubject: Ihr Windows 95 Upgrade wartet!\n\nNein danke, wir haben GlappaOS. -- gelöscht') }) }),
+          spool: dirNode({ mail: dirNode({ [USER]: fileNode('From: bill@microsoft.com\nSubject: Ihr Windows 95 Upgrade wartet!\n\nNein danke, wir haben Solus. -- gelöscht') }) }),
           cache: dirNode({}),
         }),
         secret: dirNode({
@@ -614,6 +596,28 @@
                 }
               }
             }
+            /* Umzug alter Staende: /home/glappa (GlappaOS-Aera) bzw.
+               /home/sneakysquid (kurzlebig) wird zu /home/user; die System-
+               Identitaetsdateien (hostname, os-release, ...) werden einmalig
+               aufgefrischt — eigene Dateien im Home bleiben unberuehrt. */
+            const hm = t.children.home;
+            ['glappa', 'sneakysquid'].forEach(function(old) {
+              if (hm && hm.children && hm.children[old] && !hm.children[USER]) {
+                hm.children[USER] = hm.children[old];
+                delete hm.children[old];
+              }
+            });
+            const etcH = t.children.etc && t.children.etc.children && t.children.etc.children.hostname;
+            if (etcH && etcH.content !== HOST) {
+              const fresh2 = defaultFS().children;
+              [['etc','hostname'],['etc','os-release'],['etc','issue'],['etc','passwd'],['etc','group'],
+               ['proc','version'],['proc','cpuinfo']].forEach(function(pair) {
+                if (t.children[pair[0]] && t.children[pair[0]].children)
+                  t.children[pair[0]].children[pair[1]] = fresh2[pair[0]].children[pair[1]];
+              });
+              t.children.sys = fresh2.sys;
+              t.children.boot = fresh2.boot;
+            }
             return t;
           }
         }
@@ -635,7 +639,7 @@
     }
 
     /* ── Shell-State ── */
-    const ENV = { USER: 'glappa', HOSTNAME: 'web', HOME: HOME, SHELL: '/bin/glappa-sh', TERM: 'glappa-crt', PWD: HOME };
+    const ENV = { USER: USER, HOSTNAME: HOST, HOME: HOME, SHELL: '/bin/bash', TERM: 'xterm-kitty', PWD: HOME };
     let cwd = HOME;
     let prevCwd = HOME;
     let lastStatus = 0;
@@ -905,7 +909,7 @@
     /* Fuehrt einen Befehl wie eine echte Eingabe aus und faengt dabei die
        Ausgabe fuer die Rueckmeldung ans Modell ab. */
     function agentExec(cmd) {
-      appendLine('glappa@web:' + shortCwd() + '$ ' + cmd, 'line-cmd');
+      echoCmd(cmd);
       captureBuf = [];
       try { execLine(cmd); }
       catch (e) { appendLine('(Fehler: ' + (e && e.message ? e.message : e) + ')', 'line-err'); }
@@ -1053,6 +1057,31 @@
     function ok(lines)  { return { out: lines || [], err: [] }; }
     function fail(msg)  { return { out: [], err: [msg] }; }
 
+    /* ── Farbiger Prompt (Solus-Stil): cyan User, pinker Host & $ ──
+       promptSpans() baut die Spans fuer Label UND Befehls-Echo,
+       echoCmd() schreibt eine getippte Zeile mit farbigem Prompt in den
+       Output (Capture-Puffer bekommt die reine Textform). */
+    function promptSpans() {
+      const frag = document.createDocumentFragment();
+      function s(cls, txt) {
+        const el = document.createElement('span');
+        el.className = cls; el.textContent = txt;
+        frag.appendChild(el);
+      }
+      s('p-u', ENV.USER); s('p-at', '@'); s('p-h', ENV.HOSTNAME);
+      s('p-dir', ' ' + shortCwd() + ' '); s('p-sym', '$'); s('p-dir', ' ');
+      return frag;
+    }
+    function echoCmd(text) {
+      if (captureBuf) captureBuf.push(promptStr() + text);
+      const div = document.createElement('div');
+      div.className = 'line-cmd';
+      div.appendChild(promptSpans());
+      div.appendChild(document.createTextNode(text));
+      out.appendChild(div);
+      out.scrollTop = out.scrollHeight;
+    }
+
     /* ── Flags einsammeln: -la → {l,a}, Rest bleibt Argument ── */
     function parseFlags(args) {
       const flags = new Set();
@@ -1070,7 +1099,7 @@
        topLoad kommen aus dem live-top weiter unten.) */
     const PROC_DYNAMIC = {
       '/proc/uptime': function() {
-        const s = (Date.now() - TOP_START) / 1000;
+        const s = (Date.now() - BOOT_TS) / 1000;
         return [s.toFixed(2) + ' ' + (s * 0.97).toFixed(2)];
       },
       '/proc/loadavg': function() {
@@ -1078,15 +1107,16 @@
                 + ' 1/47 ' + (1000 + Math.floor(Math.random() * 8000))];
       },
       '/proc/meminfo': function() {
-        const used = 12044 + Math.floor(Math.random() * 4000);
-        const free = 32768 - used;
-        return ['MemTotal:          32768 kB',
-                'MemFree:           ' + String(free).padStart(5) + ' kB',
-                'MemAvailable:      ' + String(free + 2792).padStart(5) + ' kB',
-                'Buffers:               0 kB',
-                'Cached:             2792 kB',
-                'SwapTotal:             0 kB',
-                'SwapFree:              0 kB'];
+        const total = 16117148;
+        const used  = 2700000 + Math.floor(Math.random() * 800000);
+        const free  = total - used;
+        return ['MemTotal:       ' + String(total).padStart(8) + ' kB',
+                'MemFree:        ' + String(free).padStart(8) + ' kB',
+                'MemAvailable:   ' + String(free + 900000).padStart(8) + ' kB',
+                'Buffers:          120448 kB',
+                'Cached:          1892352 kB',
+                'SwapTotal:      26109948 kB',
+                'SwapFree:       26109948 kB'];
       },
     };
 
@@ -1161,7 +1191,7 @@
       const size = isD ? 4096 : node.content.length;
       const perm = isD ? 'drwxr-xr-x' : (node.exec ? '-rwxr-xr-x' : '-rw-r--r--');
       return {
-        text: perm + '  1 glappa glappa '
+        text: perm + '  1 ' + USER + ' ' + USER + ' '
             + String(size).padStart(6) + ' ' + lsDate() + ' ' + name + (isD ? '/' : ''),
         cls: isD ? 'line-info' : 'line-ok'
       };
@@ -1553,12 +1583,15 @@
         return ok(lines);
       },
 
-      whoami() { return ok(['glappa (uid=1337 gid=1337 groups=1337(l33t),0(root))']); },
+      whoami() { return ok([USER]); },
 
       uname(args) {
-        return ok([args[0] === '-a'
-          ? 'GlappaOS 9000.1-RETRO #1 SMP NEON x86_64 GNU/L33T'
-          : 'GlappaOS']);
+        const a = args[0] || '';
+        if (a === '-a') return ok(['Linux ' + HOST + ' ' + KERNEL + ' #1 SMP PREEMPT_DYNAMIC Tue Jul 7 03:14:15 UTC 2026 x86_64 GNU/Linux']);
+        if (a === '-r') return ok([KERNEL]);
+        if (a === '-n') return ok([HOST]);
+        if (a === '-m') return ok(['x86_64']);
+        return ok(['Linux']);
       },
 
       date() {
@@ -1569,8 +1602,13 @@
       },
 
       uptime() {
-        const tage = Math.floor((Date.now() - new Date('1997-01-01').getTime()) / 86400000);
-        return ok(['up ' + tage + ' Tage (seit 1997),  1 Benutzer,  Load: 1.33 0.73 0.37']);
+        const s = Math.floor((Date.now() - BOOT_TS) / 1000);
+        const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+        const now = new Date().toTimeString().slice(0, 8);
+        const dur = (d ? d + (d === 1 ? ' day, ' : ' days, ') : '')
+                  + String(h) + ':' + String(m).padStart(2, '0');
+        return ok([' ' + now + ' up ' + dur + ',  1 user,  load average: '
+                   + topLoad.map(function(l) { return l.toFixed(2); }).join(', ')]);
       },
 
       history() {
@@ -1812,7 +1850,7 @@
           let desc;
           if (n.type === 'dir')                 desc = 'Verzeichnis';
           else if (n.content === '')            desc = 'leer';
-          else if (n.content.startsWith('ELF')) desc = 'ELF 32-bit Programm (GlappaOS)';
+          else if (n.content.startsWith('ELF')) desc = 'ELF 64-bit Programm (x86-64)';
           else desc = 'ASCII-Text, ' + contentLines(n.content).length + ' Zeilen';
           outl.push(f + ': ' + desc);
         });
@@ -1852,7 +1890,7 @@
           { text: 'Dateisystem      Größe  Benutzt   Verf.  Verw%  Eingehängt auf', cls: 'line-info' },
           '/dev/hda1        ' + (h ? ' 2,0G' : '2097152') + '  ' + (h ? ' 666M' : ' 681984') + '  ' + (h ? ' 1,3G' : '1415168') + '    33%  /',
           '/dev/cdrom       ' + (h ? ' 650M' : ' 665600') + '  ' + (h ? ' 650M' : ' 665600') + '  ' + (h ? '   0K' : '      0') + '   100%  /mnt/cdrom',
-          'glappafs         ' + (h ? '   ∞ ' : '      ∞') + '  ' + (h ? '  42K' : '  43008') + '  ' + (h ? '   ∞ ' : '      ∞') + '     0%  /home/glappa',
+          'glappafs         ' + (h ? '   ∞ ' : '      ∞') + '  ' + (h ? '  42K' : '  43008') + '  ' + (h ? '   ∞ ' : '      ∞') + '     0%  ' + HOME,
         ]);
       },
 
@@ -1874,11 +1912,11 @@
         const rows = [
           ['1',     'root',   'init'],
           ['42',    'root',   'gif-engine'],
-          ['420',   'glappa', 'neon-daemon'],
+          ['420',   USER, 'neon-daemon'],
           ['666',   'root',   'scanline-renderer'],
-          ['1337',  'glappa', 'glappa-sh'],
-          ['1990',  'glappa', 'marquee-scroller'],
-          ['9000',  'glappa', 'mp3-jukebox'],
+          ['1337',  USER, 'bash'],
+          ['1990',  USER, 'marquee-scroller'],
+          ['9000',  USER, 'mp3-jukebox'],
           ['42069', 'bingus', 'bingus.exe'],
         ];
         const outl = [{ text: '  PID USER     BEFEHL', cls: 'line-info' }];
@@ -1890,7 +1928,7 @@
         const pid = args.filter(function(a) { return !a.startsWith('-'); })[0] || '';
         if (!pid) return fail('kill: Benutzung: kill <pid>   (PIDs verrät dir  ps)');
         if (pid === '1')     return fail('kill: (1) init: Operation nicht erlaubt — ohne init läuft hier gar nichts!');
-        if (pid === '1337')  return fail('kill: (1337) glappa-sh: Netter Versuch. Das ist die Shell, in der du gerade tippst. 🤨');
+        if (pid === '1337')  return fail('kill: (1337) bash: Netter Versuch. Das ist die Shell, in der du gerade tippst. 🤨');
         if (pid === '42069') return ok(['bingus.exe lässt sich nicht beenden. Bingus ist für immer.']);
         if (['42', '420', '666', '1990', '9000'].includes(pid))
           return ok(['Prozess ' + pid + ' beendet. (Beim nächsten reboot ist er wieder da.)']);
@@ -1938,7 +1976,7 @@
 
       hostname() { return ok([ENV.HOSTNAME]); },
 
-      id() { return ok(['uid=1337(glappa) gid=1337(glappa) Gruppen=1337(l33t),0(root)']); },
+      id() { return ok(['uid=1000(' + USER + ') gid=1000(' + USER + ') Gruppen=1000(' + USER + '),27(sudo),31337(l33t)']); },
     };
     BIN.more = BIN.cat;
     BIN.less = BIN.cat;
@@ -2290,12 +2328,12 @@
     const TOP_PROCS = [
       { pid: 42069, user: 'bingus', cmd: 'bingus.exe',        cpu: 66.6, mem: 13.4 },
       { pid: 42,    user: 'root',   cmd: 'gif-engine',        cpu: 23.1, mem:  8.2 },
-      { pid: 9000,  user: 'glappa', cmd: 'mp3-jukebox',       cpu:  5.5, mem: 12.1 },
-      { pid: 1337,  user: 'glappa', cmd: 'glappa-sh',         cpu:  2.5, mem:  4.0 },
+      { pid: 9000,  user: USER, cmd: 'mp3-jukebox',       cpu:  5.5, mem: 12.1 },
+      { pid: 1337,  user: USER, cmd: 'bash',              cpu:  2.5, mem:  4.0 },
       { pid: 666,   user: 'root',   cmd: 'scanline-renderer', cpu:  1.5, mem:  2.2 },
-      { pid: 420,   user: 'glappa', cmd: 'neon-daemon',       cpu:  0.7, mem:  1.1 },
-      { pid: 1990,  user: 'glappa', cmd: 'marquee-scroller',  cpu:  0.4, mem:  0.8 },
-      { pid: 2600,  user: 'glappa', cmd: 'sparkle-trail',     cpu:  0.3, mem:  0.5 },
+      { pid: 420,   user: USER, cmd: 'neon-daemon',       cpu:  0.7, mem:  1.1 },
+      { pid: 1990,  user: USER, cmd: 'marquee-scroller',  cpu:  0.4, mem:  0.8 },
+      { pid: 2600,  user: USER, cmd: 'sparkle-trail',     cpu:  0.3, mem:  0.5 },
       { pid: 8086,  user: 'root',   cmd: 'crt-flicker',       cpu:  0.2, mem:  0.3 },
       { pid: 1,     user: 'root',   cmd: 'init',              cpu:  0.0, mem:  0.4 },
     ];
@@ -2387,11 +2425,11 @@
     let lxLive = null;         /* div fuer die angefangene Zeile (Prompt ~%) */
     let lxBuf = '';            /* Zeilenpuffer fuer den seriellen Strom */
     let lxGotBytes = false;    /* kam ueberhaupt etwas ueber seriell? */
-    let lxReadyShown = false;  /* Einmal-Hinweis beim ersten Shell-Prompt */
-    let lxSilent = false;      /* true = Auto-Boot laeuft UNSICHTBAR im Hintergrund */
-    let lxPromptSeen = false;  /* Prompt kam schon waehrend der BIOS-Show an */
-    let biosDone = false;      /* BIOS-Show fertig — ab jetzt darf Linux uebernehmen */
-    let lxLoader = null;       /* Spinner-Zeile waehrend des unsichtbaren Boots */
+    let lxSilent = false;      /* true = Vor-Boot laeuft UNSICHTBAR im Hintergrund */
+    let lxBooted = false;      /* Gast-Shell hat ihren ersten Prompt gezeigt */
+    let lxWanted = false;      /* boot-linux wurde getippt, waehrend noch gebootet wird */
+    let lxEntered = false;     /* schon mal im Linux-Modus gewesen (Einmal-Tipp) */
+    let lxLoader = null;       /* Spinner-Zeile waehrend des Wartens auf den Boot */
     let lxLoaderTimer = null;
 
     /* ANSI-Escapes und Steuerzeichen aus dem seriellen Strom entfernen —
@@ -2411,17 +2449,13 @@
        angefangene letzte Zeile (z.B. der ~%-Prompt, kommt ohne \n) wird
        als Live-Zeile angezeigt und beim naechsten \n festgeschrieben. */
     function lxWrite(chunk) {
-      /* UNSICHTBARER Auto-Boot: Kernel-Log verschlucken, nur die
-         angefangene letzte Zeile auf den ersten Shell-Prompt abklopfen.
-         Kommt er waehrend der BIOS-Show, merken wir ihn uns nur. */
+      /* UNSICHTBARER Vor-Boot: Kernel-Log verschlucken, nur die
+         angefangene letzte Zeile auf den ersten Shell-Prompt abklopfen. */
       if (lxSilent) {
         lxBuf += chunk;
         const nl = lxBuf.lastIndexOf('\n');
         if (nl !== -1) lxBuf = lxBuf.slice(nl + 1);
-        if (/~[%#$]\s*$/.test(lxClean(lxBuf.replace(/\r/g, '')))) {
-          if (biosDone) lxGoLive();
-          else lxPromptSeen = true;
-        }
+        if (/~[%#$]\s*$/.test(lxClean(lxBuf.replace(/\r/g, '')))) lxBootReady();
         return;
       }
       lxBuf += chunk;
@@ -2440,23 +2474,14 @@
           out.appendChild(lxLive);
         }
         lxLive.textContent = partial;
-        /* Erster Shell-Prompt: einmalige Starthilfe — das Home (~) des
-           initramfs ist LEER, ein "ls" ohne Ausgabe sieht sonst aus wie
-           ein Haenger. Hinweis einschieben, Prompt-Zeile bleibt unten. */
-        if (!lxReadyShown && /~[%#$]\s*$/.test(partial)) {
-          lxReadyShown = true;
-          appendLine('[ Linux bereit! Dein Home (~) ist noch leer — probier:  ls /   '
-                     + 'cat /proc/cpuinfo   top -b -n 1   uname -a ]', 'line-sys');
-          out.appendChild(lxLive);   /* Live-Prompt wieder ans Ende */
-        }
         out.scrollTop = out.scrollHeight;
       } else lxFlushLive();
     }
 
-    /* ── AUTO-BOOT: Linux startet SOFORT beim Terminal-Start ──────────
-       Der Boot laeuft unsichtbar (lxSilent), die BIOS-Show ueberbrueckt
-       die Ladezeit. Danach zeigt ein Spinner den Rest-Boot an; beim
-       ersten Shell-Prompt schaltet lxGoLive() nahtlos in den Linux-Modus. */
+    /* ── VOR-BOOT: Linux bootet SOFORT beim Laden der Seite — unsichtbar
+       im Hintergrund (lxSilent). Beim ersten Shell-Prompt wird die VM
+       pausiert und wartet auf  boot-linux ; wer boot-linux schon vorher
+       tippt (lxWanted), landet direkt drin, sobald der Prompt kommt. */
 
     function lxShowLoader() {
       if (lxLoader) return;
@@ -2466,7 +2491,7 @@
       const frames = ['|', '/', '-', '\\'];
       let i = 0;
       lxLoaderTimer = setInterval(function() {
-        lxLoader.textContent = 'Boote ECHTES Linux (Kernel 4.16 + BusyBox) ... ' +
+        lxLoader.textContent = 'Boote echtes Linux (Kernel 4.16 + BusyBox) ... ' +
           frames[i++ % frames.length] + '   (erster Start lädt ~7 MB)';
         out.scrollTop = out.scrollHeight;
       }, 120);
@@ -2477,40 +2502,64 @@
       if (lxLoader) { lxLoader.remove(); lxLoader = null; }
     }
 
-    /* Erster Shell-Prompt ist da: Spinner weg, Linux-Modus an, Eingabe frei */
-    function lxGoLive() {
+    /* Erster Shell-Prompt der Gast-Shell ist da. Wartet schon jemand
+       (boot-linux waehrend des Boots getippt): direkt hinein. Sonst:
+       VM pausieren und dezent Bescheid sagen — das Terminal bleibt
+       die normale Shell, nichts uebernimmt ungefragt. */
+    function lxBootReady() {
       if (!lxSilent) return;
       lxSilent = false;
+      lxBooted = true;
       lxBuf = '';
-      lxHideLoader();
+      if (lxWanted) {
+        lxWanted = false;
+        lxHideLoader();
+        enterLinux();
+        return;
+      }
+      try { lxEmulator.stop(); } catch(e) {}
+      appendLine('[ echte Linux-VM fertig gebootet —  boot-linux  wechselt hinein ]', 'line-sys');
+      out.scrollTop = out.scrollHeight;
+    }
+
+    /* In den Linux-Modus wechseln: VM (weiter)laufen lassen, Prompt anfordern */
+    function enterLinux() {
       linuxMode = true;
-      lxReadyShown = true;   /* eigener Hinweis hier — den Einmal-Tipp in lxWrite ueberspringen */
-      appendLine('[ Linux bereit! Dein Home (~) ist noch leer — probier:  ls /   '
-                 + 'cat /proc/cpuinfo   top -b -n 1   uname -a ]', 'line-sys');
-      appendLine('[ exit-linux (oder Strg+C) wechselt zum GLAPPA-Übungs-Terminal ]', 'line-sys');
+      lxBuf = '';
       blank();
+      appendLine('[ ECHTES Linux (Kernel 4.16 + BusyBox) — Eingaben gehen direkt an die Gast-Shell ]', 'line-sys');
+      if (!lxEntered) {
+        lxEntered = true;
+        appendLine('[ Dein Home (~) ist noch leer — probier:  ls /   cat /proc/cpuinfo   top -b -n 1   uname -a ]', 'line-sys');
+      }
+      appendLine('[ exit-linux (oder Strg+C) wechselt zurück — die VM pausiert dann nur ]', 'line-sys');
       inputRow.style.display = 'flex';
       updatePrompt();
       inp.focus();
       out.scrollTop = out.scrollHeight;
-      /* frischen Prompt anfordern — der erste ging im Silent-Modus unter */
+      try { lxEmulator.run(); } catch(e) {}
       try { lxEmulator.serial0_send('\n'); } catch(e) {}
     }
 
-    /* Auto-Boot kaputt (Datei fehlt, WASM blockiert, Kernel stumm):
-       ehrlich sagen und die GLAPPA-Shell freigeben statt ewig zu drehen. */
+    /* Vor-Boot kaputt (Datei fehlt, WASM blockiert, Kernel stumm):
+       ehrlich sagen — laut, wenn jemand wartet, sonst nur dezent. */
     function lxAutoFail(msg) {
       if (!lxSilent) return;
       lxSilent = false;
       lxHideLoader();
       if (lxEmulator) { try { lxEmulator.destroy(); } catch(e) {} lxEmulator = null; }
-      lxBuf = ''; lxGotBytes = false; lxReadyShown = false; lxPromptSeen = false;
-      appendLine('Linux-Autostart fehlgeschlagen: ' + msg, 'line-err');
-      appendLine('Du bist im GLAPPA-Übungs-Terminal —  boot-linux  versucht es nochmal.', 'line-sys');
-      blank();
-      inputRow.style.display = 'flex';
-      updatePrompt();
-      inp.focus();
+      lxBuf = ''; lxGotBytes = false; lxBooted = false;
+      if (lxWanted) {
+        lxWanted = false;
+        appendLine('boot-linux: Start fehlgeschlagen — ' + msg, 'line-err');
+        appendLine('boot-linux  versucht es erneut.', 'line-sys');
+        blank();
+        inputRow.style.display = 'flex';
+        updatePrompt();
+        inp.focus();
+      } else {
+        appendLine('[ Linux-VM-Vorboot fehlgeschlagen: ' + msg + ' —  boot-linux  versucht es erneut ]', 'line-sys');
+      }
       out.scrollTop = out.scrollHeight;
     }
 
@@ -2526,33 +2575,22 @@
 
     function bootLinux() {
       if (linuxMode) return;
-      if (lxEmulator) {
-        /* VM war nur pausiert -> nahtlos weiterlaufen lassen */
-        linuxMode = true;
-        updatePrompt();
+      /* Fertig gebootet (oder via exit-linux nur pausiert): sofort hinein */
+      if (lxEmulator && lxBooted) { enterLinux(); return; }
+      /* Bootet noch unsichtbar: vormerken, Spinner zeigen, Eingabe kurz weg */
+      if (lxEmulator && lxSilent) {
+        lxWanted = true;
+        inputRow.style.display = 'none';
         blank();
-        appendLine('[ Linux läuft weiter — exit-linux (oder Strg+C) kehrt zurück ]', 'line-sys');
-        try { lxEmulator.run(); } catch(e) {}
-        try { lxEmulator.serial0_send('\n'); } catch(e) {}   /* Prompt neu zeichnen */
+        lxShowLoader();
         return;
       }
+      /* Kein Emulator (Vorboot fehlgeschlagen): neuer Versuch */
+      lxWanted = true;
+      inputRow.style.display = 'none';
       blank();
-      appendLine('Boote ECHTES Linux (Kernel 4.16 + BusyBox) — direkt hier im Terminal.', 'line-info');
-      appendLine('Erster Start lädt ~7 MB, danach cached der Browser.', 'line-sys');
-      appendLine('Zurück zum GLAPPA-Terminal:  exit-linux  (oder Strg+C)', 'line-sys');
-      blank();
-      linuxMode = true;
-      updatePrompt();
-      if (typeof window.V86 === 'function') { lxStart(); return; }
-      const s = document.createElement('script');
-      s.src = 'v86/libv86.js';
-      s.onload = lxStart;
-      s.onerror = function() {
-        appendLine('FEHLER: v86/libv86.js fehlt auf dem Server.', 'line-err');
-        linuxMode = false;
-        updatePrompt();
-      };
-      document.head.appendChild(s);
+      lxShowLoader();
+      autoBootLinux();
     }
 
     function lxStart() {
@@ -2594,9 +2632,9 @@
         }
       }, 90000);
       /* Fallschirm 2: Kernel redet, aber der Prompt wird nicht erkannt —
-         nach 60s trotzdem live schalten, keiner soll vorm Spinner sitzen. */
+         nach 60s trotzdem als bereit durchwinken. */
       setTimeout(function() {
-        if (lxSilent && lxGotBytes && biosDone) lxGoLive();
+        if (lxSilent && lxGotBytes) lxBootReady();
       }, 60000);
     }
 
@@ -2613,6 +2651,147 @@
       updatePrompt();
       inp.focus();
       out.scrollTop = out.scrollHeight;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       FASTFETCH — Solus-Look wie auf der echten Kiste. Ein paar Werte
+       sind LIVE (Aufloesung, CPU-Kerne, Sprache, Akku, Uptime), der
+       Rest entspricht der Vorbild-Maschine (GWTN141-4).
+    ══════════════════════════════════════════════════════════════ */
+    let ffBattery = null;
+    try {
+      if (navigator.getBattery) navigator.getBattery().then(function(b) { ffBattery = b; });
+    } catch(e) {}
+
+    const FF_ART = [
+      '            -```````````',
+      '          `-+/------------.`',
+      '       .---:mNo---------------.',
+      '     .-----yMMMy:---------------.',
+      '   `------oMMMMMm/----------------`',
+      '  .------/MMMMMMMN+----------------.',
+      ' .------/NMMMMMMMMm-+/--------------.',
+      '`------/NMMMMMMMMMN-:mh/-------------`',
+      '.-----/NMMMMMMMMMMM:-+MMd/------------',
+      '-----/NMMMMMMMMMMMM+--mMMMh/----------',
+      '----+NMMMMMMMMMMMMMo--yMMMMMy/--------',
+      '--:dMMMMMMMMMMMMMMMy--hMMMMMMMy/------',
+      '-odMMMMMMMMMMMMMMMMh--dMMMMMMMMd+:----',
+      '/hdddddddddddddddddd--dddddddddhs+:--`',
+      '`.:/+ossssssssssssss--sssssssso+/:.`',
+      '    `-:/+osssssssss:..ssssso+/:-`',
+      '        `-:/+osssssssssss+/:-`',
+      '            `.-:/++++/:-.`',
+    ];
+
+    /* Logo zweifarbig: Schraffur (-`.,') gedeckt, Kernmasse hell,
+       der Schwung unten (ab Zeile 14) im Solus-Blau. */
+    function ffArtSpans(line, idx) {
+      const frag = document.createDocumentFragment();
+      const solidCls = idx >= 13 ? 'ff-ab' : 'ff-aw';
+      let run = '', runCls = null;
+      function flush() {
+        if (!run) return;
+        const s = document.createElement('span');
+        s.className = runCls; s.textContent = run;
+        frag.appendChild(s); run = '';
+      }
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        const cls = /[-`'.,]/.test(ch) ? 'ff-ad' : solidCls;
+        if (cls !== runCls) { flush(); runCls = cls; }
+        run += ch;
+      }
+      flush();
+      return frag;
+    }
+
+    function renderFastfetch() {
+      const cores = navigator.hardwareConcurrency || 8;
+      const res   = (window.screen && screen.width) ? (screen.width + 'x' + screen.height) : '1920x1080';
+      let lang = (navigator.language || 'en-US').replace('-', '_');
+      /* "de" → "de_DE": nackte Sprachcodes zur vollen Locale ergaenzen */
+      if (lang.indexOf('_') === -1) lang += '_' + (lang === 'en' ? 'US' : lang.toUpperCase());
+      lang += '.utf8';
+
+      function up() {
+        const s = Math.floor((Date.now() - BOOT_TS) / 1000);
+        const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+        const parts = [];
+        if (d) parts.push(d + (d === 1 ? ' day' : ' days'));
+        if (h) parts.push(h + (h === 1 ? ' hour' : ' hours'));
+        parts.push(m + (m === 1 ? ' min' : ' mins'));
+        return parts.join(', ');
+      }
+      function pct(p) {
+        return { t: '(' + p + '%)', cls: p < 70 ? 'ff-pg' : p < 90 ? 'ff-py' : 'ff-pr' };
+      }
+
+      const memTotal = 15.37;
+      const memUsed  = 2.5 + Math.random() * 0.9;
+      const memPct   = Math.round(memUsed / memTotal * 100);
+
+      const rows = [];
+      rows.push([{ t: USER, cls: 'p-u' }, { t: '@', cls: 'p-at' }, { t: HOST, cls: 'p-h' }]);
+      rows.push([{ t: '-'.repeat(USER.length + HOST.length + 1) }]);
+      function kv(k, parts) {
+        rows.push([{ t: k, cls: 'ff-key' }, { t: ': ' }].concat(parts));
+      }
+      kv('OS',       [{ t: 'Solus 4.8 Opportunity x86_64' }]);
+      kv('Host',     [{ t: 'GWTN141-4' }]);
+      kv('Kernel',   [{ t: 'Linux ' + KERNEL }]);
+      kv('Uptime',   [{ t: up() }]);
+      kv('Packages', [{ t: '938 (eopkg)' }]);
+      kv('Shell',    [{ t: 'bash 5.3.9' }]);
+      kv('Display (NCP004A)', [{ t: res + ' in 14", 60 Hz [Built-in]' }]);
+      kv('DE',       [{ t: 'Budgie 10.9.4' }]);
+      kv('WM',       [{ t: 'Mutter (Budgie) (X11)' }]);
+      kv('Theme',    [{ t: 'WhiteSur-Dark [GTK2/3/4]' }]);
+      kv('Icons',    [{ t: 'Papirus-Dark [GTK2/3/4]' }]);
+      kv('Font',     [{ t: 'Noto Sans (9pt) [GTK2/3/4]' }]);
+      kv('Cursor',   [{ t: 'Breeze (24px)' }]);
+      kv('Terminal', [{ t: 'kitty 0.46.2' }]);
+      kv('Terminal Font', [{ t: 'Hack-Regular (11pt)' }]);
+      kv('CPU',      [{ t: 'Intel(R) Core(TM) i5-1035G1 (' + cores + ') @ 3.60 GHz' }]);
+      kv('GPU',      [{ t: 'Intel Iris Plus Graphics G1 (Ice Lake) @ 1.05 GHz [Integrated]' }]);
+      kv('Memory',   [{ t: memUsed.toFixed(2) + ' GiB / ' + memTotal.toFixed(2) + ' GiB ' }, pct(memPct)]);
+      kv('Swap',     [{ t: '0 B / 24.90 GiB ' }, pct(0)]);
+      kv('Disk (/)', [{ t: '12.97 GiB / 220.57 GiB ' }, pct(6), { t: ' - btrfs' }]);
+      kv('Local IP (wlo1)', [{ t: '192.168.178.42/24' }]);
+      if (ffBattery) {
+        const lvl = Math.round(ffBattery.level * 100);
+        kv('Battery (WB Lion Battery)',
+           [{ t: lvl + '% ', cls: lvl >= 60 ? 'ff-pg' : lvl >= 30 ? 'ff-py' : 'ff-pr' },
+            { t: '[' + (ffBattery.charging ? 'AC Connected' : 'Discharging') + ']' }]);
+      } else if (navigator.getBattery) {
+        kv('Battery (WB Lion Battery)', [{ t: '74% ', cls: 'ff-py' }, { t: '[Discharging]' }]);
+      }
+      kv('Locale',   [{ t: lang }]);
+      rows.push([]);
+      const dark   = ['#000000','#cc0403','#19cb00','#cecb00','#0d73cc','#cb1ed1','#0dcdcd','#dddddd'];
+      const bright = ['#767676','#f2201f','#23fd00','#fffd00','#1a8fff','#fd28ff','#14ffff','#ffffff'];
+      rows.push(dark.map(function(c)   { return { bg: c }; }));
+      rows.push(bright.map(function(c) { return { bg: c }; }));
+
+      const n = Math.max(FF_ART.length, rows.length);
+      for (let i = 0; i < n; i++) {
+        const row = document.createElement('div');
+        row.className = 'ff-row';
+        const art = document.createElement('span');
+        art.className = 'ff-art';
+        if (FF_ART[i]) art.appendChild(ffArtSpans(FF_ART[i], i));
+        else art.textContent = ' ';
+        row.appendChild(art);
+        (rows[i] || []).forEach(function(p) {
+          const s = document.createElement('span');
+          if (p.bg) { s.className = 'ff-block'; s.style.background = p.bg; }
+          else { s.className = p.cls || 'ff-val'; s.textContent = p.t || ''; }
+          row.appendChild(s);
+        });
+        out.appendChild(row);
+      }
+      out.scrollTop = out.scrollHeight;
+      blank();
     }
 
     /* ══════════════════════════════════════════════════════════════
@@ -2675,12 +2854,12 @@
         appendLine('  bash script.sh          Ausführen — braucht KEIN +x (wie sh script.sh)');
         blank();
         appendLine('SPASS & KI', 'line-info');
-        appendLine('  neofetch, fortune, cowsay, sl, matrix, hack, ping (simuliert), sudo');
+        appendLine('  fastfetch, fortune, cowsay, sl, matrix, hack, ping (simuliert), sudo');
         appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
-        appendLine('  boot-linux              zurück ins ECHTE Linux (bootet beim Start automatisch)', 'line-pink');
-        appendLine('  exit-linux              ... und zurück zum GLAPPA-Terminal (VM pausiert nur)', 'line-pink');
+        appendLine('  boot-linux              ins ECHTE Linux wechseln (bootet beim Start unsichtbar vor)', 'line-pink');
+        appendLine('  exit-linux              ... und zurück zum Übungs-Terminal (VM pausiert nur)', 'line-pink');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
         appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
@@ -2792,28 +2971,8 @@
         blank();
       },
 
-      neofetch() {
-        blank();
-        const art  = ['       .,,,,,.        ','    ,;;;;;;;;;;,      ','   ;;; ;;    ;;;      ',
-                       '  ;;;  ██ ██  ;;      ','  ;;   ████   ;;      ','  ;;    ██    ;;      ',
-                       '   ;;;       ;;;      ','    \';;;;;;;;;;;\'     ','       \'\'\'\'\'\'         '];
-        const info = [['OS','GlappaOS 9000.1-RETRO'],['Host','glappa.de (The Coolest Site in WWW)'],
-                       ['Shell','glappa-sh v2.0 (echt!)'],['Theme','Neon-Dark + Comic Sans'],
-                       ['Kernel','Retro-5.0-NEON'],['CPU','Intel Pentium MMX @ 200 MHz'],
-                       ['RAM','32 MB / 64 MB (wir sparen)'],['Uptime','Seit 1997'],
-                       ['Browser','Netscape Navigator 4'],['Netzwerk','OFFLINE — reine Browser-Sandbox']];
-        for (let i = 0; i < Math.max(art.length, info.length); i++) {
-          const row = document.createElement('div');
-          row.style.cssText = 'display:flex;gap:8px';
-          const l = document.createElement('span'); l.className = 'line-ok'; l.style.minWidth = '160px';
-          l.textContent = (art[i] || '').padEnd(22);
-          const r = document.createElement('span'); r.className = 'line-info';
-          r.textContent = info[i] ? info[i][0].padEnd(12) + ': ' + info[i][1] : '';
-          row.appendChild(l); row.appendChild(r); out.appendChild(row);
-        }
-        out.scrollTop = out.scrollHeight;
-        blank();
-      },
+      fastfetch() { blank(); renderFastfetch(); },
+      neofetch()  { blank(); renderFastfetch(); },
 
       hack() {
         const lines = ['Verbinde mit Ziel-Server....','Bypass Firewall............. [ OK ]',
@@ -2926,6 +3085,8 @@
       reboot() {
         blank(); appendLine('System wird neu gestartet...', 'line-info'); blank();
         playSfx('shutdown');
+        /* echter Neustart: die Maschinen-Uptime beginnt von vorn */
+        try { localStorage.setItem('glappaBootTs', String(Date.now())); } catch(e) {}
         setTimeout(function(){ window.location.reload(); }, 2400);
       },
 
@@ -3089,9 +3250,9 @@
             }
             const p = resolvePath(rawCmd);
             const scriptNode = getNode(p);
-            if (!scriptNode) appendLine('glappa-sh: ' + rawCmd + ': Datei oder Verzeichnis nicht gefunden', 'line-err');
-            else if (scriptNode.type === 'dir') appendLine('glappa-sh: ' + rawCmd + ': Ist ein Verzeichnis', 'line-err');
-            else if (!scriptNode.exec) appendLine('glappa-sh: ' + rawCmd + ': Keine Berechtigung — Tipp: chmod +x ' + rawCmd, 'line-err');
+            if (!scriptNode) appendLine('bash: ' + rawCmd + ': Datei oder Verzeichnis nicht gefunden', 'line-err');
+            else if (scriptNode.type === 'dir') appendLine('bash: ' + rawCmd + ': Ist ein Verzeichnis', 'line-err');
+            else if (!scriptNode.exec) appendLine('bash: ' + rawCmd + ': Keine Berechtigung — Tipp: chmod +x ' + rawCmd, 'line-err');
             else runScriptFile(rawCmd, rawCmd);
             lastStatus = 0;
             return;
@@ -3099,7 +3260,7 @@
           if (SPECIAL[cmd]) appendLine(cmd + ': funktioniert nicht mit Pipes oder Umleitungen', 'line-err');
           else {
             playSfx('deny');
-            appendLine('glappa-sh: ' + cmd + ': Kommando nicht gefunden. Tippe  help', 'line-err');
+            appendLine('bash: ' + cmd + ': Kommando nicht gefunden. Tippe  help', 'line-err');
           }
           lastStatus = 127;
           return;
@@ -3126,13 +3287,17 @@
        INPUT VERARBEITEN
     ══════════════════════════════════════════════════════════════ */
     function promptStr() {
-      return chatMode ? 'glappa-chat> ' : ('glappa@web:' + shortCwd() + '$ ');
+      return chatMode ? 'glappa-chat> ' : (ENV.USER + '@' + ENV.HOSTNAME + ' ' + shortCwd() + ' $ ');
     }
     function updatePrompt() {
       /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top.
          Im Linux-Modus zeichnet die Gast-Shell ihren eigenen Prompt (~%)
          in den Output-Strom, unser Label bleibt leer. */
-      document.querySelector('.prompt-label').textContent = (topMode || linuxMode) ? '' : promptStr();
+      const label = document.querySelector('.prompt-label');
+      label.textContent = '';
+      if (topMode || linuxMode) return;
+      if (chatMode) { label.textContent = 'glappa-chat> '; return; }
+      label.appendChild(promptSpans());
     }
 
     /* ── GLAPPA-CHAT: Nachricht an die VPS-KI schicken ──
@@ -3267,8 +3432,8 @@
         }
         if (!repl) {
           playSfx('deny');
-          appendLine(promptStr() + trimmed, 'line-cmd');
-          appendLine('glappa-sh: ' + trimmed + ': Ereignis nicht gefunden', 'line-err');
+          echoCmd(trimmed);
+          appendLine('bash: ' + trimmed + ': Ereignis nicht gefunden', 'line-err');
           return;
         }
         trimmed = repl;
@@ -3292,7 +3457,7 @@
         return;
       }
 
-      appendLine(promptStr() + trimmed, 'line-cmd');
+      echoCmd(trimmed);
       execLine(trimmed);
       /* Falls execLine() gerade ein Skript gestartet hat, das SOFORT bei
          "read" pausiert (z.B. das allererste "bash script.sh"), hat
@@ -3391,9 +3556,9 @@
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
-        const cprompt = activeScript ? activeScript.pendingPrompt
-                      : (activeAgent && activeAgent.awaitingConfirm ? AGENT_CONFIRM_PROMPT : promptStr());
-        appendLine(cprompt + inp.value + '^C', 'line-cmd');
+        if (activeScript) appendLine(activeScript.pendingPrompt + inp.value + '^C', 'line-cmd');
+        else if (activeAgent && activeAgent.awaitingConfirm) appendLine(AGENT_CONFIRM_PROMPT + inp.value + '^C', 'line-cmd');
+        else echoCmd(inp.value + '^C');
         inp.value = '';
         histIdx = -1;
         if (activeScript) {
@@ -3485,127 +3650,35 @@
     });
 
     /* ══════════════════════════════════════════════════════════════
-       BOOT-SEQUENZ
+       START — das Terminal ist SOFORT offen, wie ein frisch geoeffnetes
+       kitty auf dem Desktop: fastfetch laeuft (wie aus der .bashrc),
+       darunter steht der Prompt. Keine BIOS-Show, kein Press-any-key.
+       Das echte Linux bootet parallel unsichtbar vor, damit boot-linux
+       spaeter ohne Wartezeit wechseln kann.
     ══════════════════════════════════════════════════════════════ */
-    const BOOT = [
-      // BIOS Phase
-      { t:    0, cls: 'line-bios', txt: 'GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.' },
-      { t:   80, cls: 'line-bios', txt: 'CPU: Intel Pentium MMX 200MHz' },
-      { t:  160, cls: 'line-bios', txt: 'Memory Test: ', ram: true },
-      { t:  900, cls: 'line-bios', txt: 'Memory OK — 32768 KB' },
-      { t: 1000, cls: 'line-bios', txt: 'Detecting IDE drives...' },
-      { t: 1100, sound: 'seek' },
-      { t: 1200, cls: 'line-bios', txt: 'IDE0 Master: GLAPPA-HDD    2048 MB' },
-      { t: 1280, sound: 'hardware' },
-      { t: 1350, sound: 'seek' },
-      { t: 1450, cls: 'line-bios', txt: 'IDE1 Master: ATAPI CD-ROM  48X' },
-      { t: 1600, cls: 'line-bios', txt: 'Booting from IDE0...' },
-      { t: 1750, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
-      // OS Boot Phase
-      { t: 1900, cls: 'line-art',  txt: 'GLAPPA OS v2.0 — KERNEL 9000.1-RETRO' },
-      { t: 2000, sound: 'seek' },
-      { t: 2050, cls: 'line-sys',  txt: 'Lade Kernelmodule ...............  [ OK ]' },
-      { t: 2150, sound: 'seek' },
-      { t: 2200, cls: 'line-sys',  txt: 'Initialisiere Neon-Subsystem ....  [ OK ]' },
-      { t: 2350, sound: 'seek' },
-      { t: 2400, cls: 'line-sys',  txt: 'Starte GIF-Engine v9.0 ..........  [ OK ]' },
-      { t: 2550, sound: 'seek' },
-      { t: 2600, cls: 'line-sys',  txt: 'Mounte virtuelles Dateisystem ...  [ OK ]' },
-      { t: 2750, sound: 'seek' },
-      { t: 2800, cls: 'line-sys',  txt: 'Trenne Netzwerkkabel (Sandbox) ..  [ OK ]' },
-      { t: 2900, cls: 'line-sys',  txt: 'Lade GLAPPA-BOT KI ..............  [ OK ]' },
-      { t: 2950, sound: 'seek' },
-      { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
-      { t: 3150, cls: 'line-sys',  txt: 'Starte glappa-sh v2.0 ...........  [ OK ]' },
-      { t: 3300, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
-      // ASCII Art
-      { t: 3450, cls: 'line-ok',   txt: '' },
-      { t: 3470, cls: 'line-ok',   txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
-      { t: 3490, cls: 'line-ok',   txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
-      { t: 3510, cls: 'line-ok',   txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
-      { t: 3530, cls: 'line-ok',   txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
-      { t: 3550, cls: 'line-ok',   txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
-      { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
-      { t: 3590, cls: 'line-ok',   txt: '' },
-      { t: 3610, sound: 'chime' },
-      { t: 3630, cls: 'line-white',txt: '  ECHTES Linux (eigener Kernel, kein Fake) startet automatisch — direkt hier.' },
-      { t: 3650, cls: 'line-pink', txt: '  exit-linux  (oder Strg+C) wechselt zum GLAPPA-Übungs-Terminal:' },
-      { t: 3665, cls: 'line-info', txt: '  dort warten  help, tutorial, glappa-chat  und  glappa -s <frage>.' },
-      { t: 3680, cls: 'line-info', txt: '  boot-linux  bringt dich von dort jederzeit zurück ins Linux.' },
-      { t: 3698, cls: 'line-ok',   txt: '' },
-    ];
+    autoBootLinux();
 
-    /* RAM-Counter Animation */
-    function animateRAM() {
-      const div = document.createElement('div');
-      div.className = 'line-bios';
-      div.textContent = 'Memory Test: 0 KB';
-      out.appendChild(div);
-      const target = 32768;
-      const steps  = 28;
-      let   step   = 0;
-      const iv = setInterval(function() {
-        step++;
-        const val = Math.min(Math.round(target * step / steps), target);
-        div.textContent = 'Memory Test: ' + val + ' KB';
-        if (step >= steps) clearInterval(iv);
-      }, 25);
+    function initScreen() {
+      echoCmd('fastfetch');
+      renderFastfetch();
+      appendLine('hilfe: help   ·   übungen: tutorial   ·   KI: glappa-chat   ·   echte Linux-VM: boot-linux', 'line-sys');
+      blank();
+      inputRow.style.display = 'flex';
+      updatePrompt();
+      /* Auf Touch-Geraeten nicht fokussieren — sonst klappt sofort die
+         Bildschirmtastatur auf und verdeckt alles. */
+      if (window.matchMedia && matchMedia('(pointer: fine)').matches) inp.focus();
     }
-
-    /* ══════════════════════════════════════════════════════════════
-       BOOT STARTEN — erst nach User-Geste (für Audio-Autoplay)
-    ══════════════════════════════════════════════════════════════ */
-    function startBoot() {
-      presskey.style.display = 'none';
-
-      /* Echtes Linux SOFORT unsichtbar im Hintergrund laden & booten —
-         die BIOS-Show ueberbrueckt die Ladezeit (~7 MB + Kernel-Boot). */
-      autoBootLinux();
-
-      // HDD hochlaufen (sofort)
-      playHDDSpinup();
-      // BIOS-Piep nach 300ms
-      setTimeout(function(){ playBeep(440, 0.18); }, 300);
-
-      BOOT.forEach(function(entry) {
-        setTimeout(function() {
-          if (entry.sound === 'seek')     { playHDDSeek(); return; }
-          /* Der ECHTE Windows-XP-Startsound; klappt das Abspielen nicht,
-             springt der alte Synth-Chime ein */
-          if (entry.sound === 'chime')    { playSfxOr('startup', playStartupChime); return; }
-          if (entry.sound === 'hardware') { playSfx('hardware'); return; }
-          if (entry.ram) { animateRAM(); return; }
-          appendLine(entry.txt, entry.cls);
-        }, entry.t);
-      });
-
-      /* BIOS-Show fertig. Ist Linux schon da: direkt live schalten.
-         Bootet es noch: Spinner zeigen — lxGoLive() blendet spaeter die
-         Eingabezeile ein. Ist der Auto-Boot schon gescheitert, hat
-         lxAutoFail() die GLAPPA-Shell bereits freigegeben. */
-      setTimeout(function() {
-        biosDone = true;
-        if (lxSilent) {
-          if (lxPromptSeen) lxGoLive();
-          else lxShowLoader();
-          return;
-        }
-        inputRow.style.display = 'flex';
-        inp.focus();
-      }, 3800);
+    /* Der Akku-Wert kommt async (getBattery) — kurz darauf warten, damit
+       schon der ERSTE fastfetch echte Werte zeigt; 250 ms sind das Limit. */
+    if (navigator.getBattery) {
+      let shown = false;
+      const show = function() { if (!shown) { shown = true; initScreen(); } };
+      setTimeout(show, 250);
+      try { navigator.getBattery().then(show, show); } catch(e) { show(); }
+    } else {
+      initScreen();
     }
-
-    // Einmalig auf erste Interaktion warten
-    let booted = false;
-    function onFirstInteraction() {
-      if (booted) return;
-      booted = true;
-      document.removeEventListener('keydown', onFirstInteraction);
-      presskey.removeEventListener('click', onFirstInteraction);
-      startBoot();
-    }
-    document.addEventListener('keydown', onFirstInteraction);
-    presskey.addEventListener('click', onFirstInteraction);
 
     document.querySelectorAll('.marquee span').forEach(function(span) {
       span.style.animation = 'scroll-left 28s linear infinite';
