@@ -2385,6 +2385,7 @@
     let lxLive = null;         /* div fuer die angefangene Zeile (Prompt ~%) */
     let lxBuf = '';            /* Zeilenpuffer fuer den seriellen Strom */
     let lxGotBytes = false;    /* kam ueberhaupt etwas ueber seriell? */
+    let lxReadyShown = false;  /* Einmal-Hinweis beim ersten Shell-Prompt */
 
     /* ANSI-Escapes und Steuerzeichen aus dem seriellen Strom entfernen —
        das Terminal rendert reinen Text (top & Co. malen mit Escapes). */
@@ -2419,6 +2420,15 @@
           out.appendChild(lxLive);
         }
         lxLive.textContent = partial;
+        /* Erster Shell-Prompt: einmalige Starthilfe — das Home (~) des
+           initramfs ist LEER, ein "ls" ohne Ausgabe sieht sonst aus wie
+           ein Haenger. Hinweis einschieben, Prompt-Zeile bleibt unten. */
+        if (!lxReadyShown && /~[%#$]\s*$/.test(partial)) {
+          lxReadyShown = true;
+          appendLine('[ Linux bereit! Dein Home (~) ist noch leer — probier:  ls /   '
+                     + 'cat /proc/cpuinfo   top -b -n 1   uname -a ]', 'line-sys');
+          out.appendChild(lxLive);   /* Live-Prompt wieder ans Ende */
+        }
         out.scrollTop = out.scrollHeight;
       } else lxFlushLive();
     }
@@ -2461,13 +2471,17 @@
         bios:     { url: 'v86/seabios.bin' },
         vga_bios: { url: 'v86/vgabios.bin' },
         memory_size: 128 * 1024 * 1024,
-        /* Kernel direkt booten (statt ueber das ISO): so bestimmen WIR
-           die Kernel-Parameter — console=ttyS0 legt Konsole UND Shell
-           auf die serielle Schnittstelle, deren Strom hier im Terminal
-           landet. Tastatur/Maus der VM bleiben aus: die Eingabe laeuft
-           komplett ueber die normale Terminal-Zeile + serial0_send. */
+        /* Kernel direkt booten (statt ueber das ISO): so bestimmen WIR die
+           Kernel-Parameter. WICHTIG, hart erarbeitet: Das initramfs startet
+           ZWEI Shells — eine auf /dev/console und eine explizit auf ttyS0.
+           Mit nur "console=ttyS0" landen BEIDE auf der seriellen Leitung
+           und zerreissen sich die Eingabe-Bytes (Befehle wie "cat /proc/
+           cpuinfo" kamen als "puinfo" an). "console=ttyS0 console=tty1"
+           loggt den Kernel weiter auf seriell (Boot-Meldungen sichtbar),
+           macht aber tty1 zu /dev/console — die zweite Shell wandert auf
+           das unsichtbare VGA und NUR die ttyS0-Shell redet mit uns. */
         bzimage: { url: 'v86/bzimage.bin' },
-        cmdline: 'console=ttyS0 tsc=reliable mitigations=off random.trust_cpu=on',
+        cmdline: 'console=ttyS0 console=tty1 tsc=reliable mitigations=off random.trust_cpu=on',
         disable_keyboard: true,
         disable_mouse: true,
         autostart: true,
@@ -3136,7 +3150,8 @@
       if (linuxMode) {
         if (trimmed.toLowerCase() === 'exit-linux') { exitLinuxMode(); return; }
         if (trimmed) { cmdHistory.unshift(trimmed); histIdx = -1; }
-        try { if (lxEmulator) lxEmulator.serial0_send(trimmed + '\n'); } catch(e) {}
+        /* CR statt LF: so beendet ein echtes serielles Terminal die Zeile */
+        try { if (lxEmulator) lxEmulator.serial0_send(trimmed + '\r'); } catch(e) {}
         return;
       }
 
