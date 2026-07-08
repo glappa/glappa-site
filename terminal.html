@@ -54,12 +54,49 @@
       border-radius: 6px;
       box-shadow: 0 10px 34px rgba(0,0,0,0.6);
       padding: 16px 18px;
-      min-height: 420px;
       font-family: 'Hack', 'JetBrains Mono', 'Cascadia Mono', Consolas,
                    'DejaVu Sans Mono', 'Liberation Mono', monospace;
       font-size: clamp(0.8rem, 1.4vw, 0.95rem);
       position: relative;
       overflow: hidden;
+      /* Fenster-Verhalten: Titelleiste zieht (JS), Ecke unten rechts
+         aendert die Groesse (natives CSS-resize) */
+      display: flex;
+      flex-direction: column;
+      height: 70vh;
+      min-height: 340px;
+      min-width: 300px;
+      resize: both;
+    }
+
+    /* Titelleiste wie ein echtes Fenster — zum Verschieben ziehen */
+    .term-titlebar {
+      flex: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -16px -18px 10px;
+      padding: 8px 14px;
+      background: #22272c;
+      border-bottom: 1px solid #2c3238;
+      border-radius: 6px 6px 0 0;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+    .term-titlebar:active { cursor: grabbing; }
+    .tb-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .tb-dot.r { background: #ff5f57; }
+    .tb-dot.y { background: #febc2e; }
+    .tb-dot.g { background: #28c840; }
+    .tb-title {
+      flex: 1;
+      text-align: center;
+      color: #9aa5b1;
+      font-size: 0.8em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     #output {
@@ -67,9 +104,10 @@
       white-space: pre-wrap;
       word-break: break-word;
       margin-bottom: 10px;
-      min-height: 360px;
-      max-height: 62vh;
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
+      overflow-x: hidden;   /* KEIN horizontaler Scrollbalken */
       line-height: 1.45;
     }
     #output::-webkit-scrollbar { width: 8px; }
@@ -77,6 +115,7 @@
     #output::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
 
     .input-row {
+      flex: none;
       display: flex;
       align-items: center;
     }
@@ -114,11 +153,14 @@
     .line-sys    { color: var(--t-dim); }
     .line-art    { color: var(--t-blue); }
     .line-pink   { color: var(--t-pink); }
+    .line-bios   { color: #8a939e; }
     .line-white  { color: #fff; }
 
-    /* fastfetch: ASCII-Logo links, Infos rechts */
-    .ff-row  { display: flex; white-space: pre; line-height: 1.32; }
-    .ff-art  { flex: none; width: 40ch; }
+    /* fastfetch: ASCII-Logo links, Infos rechts. Werte duerfen intern
+       umbrechen (pre-wrap) — sonst schiebt eine lange GPU-Zeile das
+       Terminal in einen horizontalen Scrollbalken. */
+    .ff-row  { display: flex; white-space: pre-wrap; line-height: 1.32; }
+    .ff-art  { flex: none; width: 40ch; white-space: pre; }
     .ff-ad   { color: #71829e; }                       /* Logo: Schraffur */
     .ff-aw   { color: #e6ecf7; }                       /* Logo: Kernmasse */
     .ff-ab   { color: var(--t-blue); }                 /* Logo: Schwung unten */
@@ -135,6 +177,36 @@
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
     .cursor-blink { animation: blink 1s step-start infinite; }
     .blink-text   { animation: blink 0.8s step-start infinite; }
+
+    /* Press-any-key Bildschirm (der alte GLAPPA-Start) */
+    #presskey {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      cursor: pointer;
+    }
+    #presskey pre {
+      color: #aaa;
+      font-size: clamp(0.55rem, 1.1vw, 0.78rem);
+      line-height: 1.3;
+      margin: 0 0 28px;
+      text-align: center;
+    }
+    #presskey .pk-msg {
+      color: #fff;
+      font-size: 1rem;
+      letter-spacing: 2px;
+    }
+    #presskey .pk-sub {
+      color: #555;
+      font-size: 0.75rem;
+      margin-top: 6px;
+    }
 
     /* nano-Editor (Overlay im Terminal) */
     #editor {
@@ -209,6 +281,28 @@
 
   <div class="term-wrap">
     <div id="terminal">
+
+      <!-- Titelleiste: ziehen = Fenster verschieben, Ecke unten rechts = Groesse -->
+      <div class="term-titlebar" id="term-titlebar">
+        <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
+        <span class="tb-title">user@glappa.de: ~</span>
+      </div>
+
+      <!-- Press-any-key Overlay (der alte GLAPPA-Start) -->
+      <div id="presskey">
+        <pre>
+  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗
+ ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗
+ ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║
+ ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║
+ ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║
+  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝
+
+     GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.
+        </pre>
+        <div class="pk-msg blink-text">PRESS ANY KEY TO BOOT</div>
+        <div class="pk-sub">or click here</div>
+      </div>
 
       <!-- nano-Editor Overlay -->
       <div id="editor">
@@ -409,6 +503,7 @@
     /* ══════════════════════════════════════════════════════════════
        DOM
     ══════════════════════════════════════════════════════════════ */
+    const presskey  = document.getElementById('presskey');
     const out       = document.getElementById('output');
     const inputRow  = document.getElementById('input-row');
     const inp       = document.getElementById('cmd-input');
@@ -2425,10 +2520,11 @@
     let lxLive = null;         /* div fuer die angefangene Zeile (Prompt ~%) */
     let lxBuf = '';            /* Zeilenpuffer fuer den seriellen Strom */
     let lxGotBytes = false;    /* kam ueberhaupt etwas ueber seriell? */
-    let lxSilent = false;      /* true = Vor-Boot laeuft UNSICHTBAR im Hintergrund */
+    let lxSilent = false;      /* true = Boot laeuft UNSICHTBAR im Hintergrund */
     let lxBooted = false;      /* Gast-Shell hat ihren ersten Prompt gezeigt */
-    let lxWanted = false;      /* boot-linux wurde getippt, waehrend noch gebootet wird */
     let lxEntered = false;     /* schon mal im Linux-Modus gewesen (Einmal-Tipp) */
+    let biosDone = false;      /* BIOS-Show fertig — ab jetzt darf Linux uebernehmen */
+    let simIntroShown = false; /* fastfetch-Intro der Uebungs-Shell schon gezeigt */
     let lxLoader = null;       /* Spinner-Zeile waehrend des Wartens auf den Boot */
     let lxLoaderTimer = null;
 
@@ -2478,10 +2574,10 @@
       } else lxFlushLive();
     }
 
-    /* ── VOR-BOOT: Linux bootet SOFORT beim Laden der Seite — unsichtbar
-       im Hintergrund (lxSilent). Beim ersten Shell-Prompt wird die VM
-       pausiert und wartet auf  boot-linux ; wer boot-linux schon vorher
-       tippt (lxWanted), landet direkt drin, sobald der Prompt kommt. */
+    /* ── AUTO-BOOT: Linux startet mit der BIOS-Show — unsichtbar im
+       Hintergrund (lxSilent), die Show ueberbrueckt die Ladezeit.
+       Beim ersten Shell-Prompt (bzw. am Ende der Show) uebernimmt das
+       echte Linux DIREKT — die Seite startet also im boot-linux-Modus. */
 
     function lxShowLoader() {
       if (lxLoader) return;
@@ -2502,24 +2598,18 @@
       if (lxLoader) { lxLoader.remove(); lxLoader = null; }
     }
 
-    /* Erster Shell-Prompt der Gast-Shell ist da. Wartet schon jemand
-       (boot-linux waehrend des Boots getippt): direkt hinein. Sonst:
-       VM pausieren und dezent Bescheid sagen — das Terminal bleibt
-       die normale Shell, nichts uebernimmt ungefragt. */
+    /* Erster Shell-Prompt der Gast-Shell ist da. Laeuft die BIOS-Show
+       noch, merken wir uns das nur — sie schaltet am Ende selbst um.
+       Ist sie vorbei (oder ein Retry via boot-linux): direkt hinein. */
     function lxBootReady() {
       if (!lxSilent) return;
-      lxSilent = false;
       lxBooted = true;
       lxBuf = '';
-      if (lxWanted) {
-        lxWanted = false;
+      if (biosDone) {
+        lxSilent = false;
         lxHideLoader();
         enterLinux();
-        return;
       }
-      try { lxEmulator.stop(); } catch(e) {}
-      appendLine('[ echte Linux-VM fertig gebootet —  boot-linux  wechselt hinein ]', 'line-sys');
-      out.scrollTop = out.scrollHeight;
     }
 
     /* In den Linux-Modus wechseln: VM (weiter)laufen lassen, Prompt anfordern */
@@ -2541,26 +2631,18 @@
       try { lxEmulator.serial0_send('\n'); } catch(e) {}
     }
 
-    /* Vor-Boot kaputt (Datei fehlt, WASM blockiert, Kernel stumm):
-       ehrlich sagen — laut, wenn jemand wartet, sonst nur dezent. */
+    /* Boot kaputt (Datei fehlt, WASM blockiert, Kernel stumm): ehrlich
+       sagen und in die Uebungs-Shell ausweichen statt ewig zu drehen.
+       Laeuft die BIOS-Show noch, uebernimmt deren Ende das Umschalten. */
     function lxAutoFail(msg) {
       if (!lxSilent) return;
       lxSilent = false;
       lxHideLoader();
       if (lxEmulator) { try { lxEmulator.destroy(); } catch(e) {} lxEmulator = null; }
       lxBuf = ''; lxGotBytes = false; lxBooted = false;
-      if (lxWanted) {
-        lxWanted = false;
-        appendLine('boot-linux: Start fehlgeschlagen — ' + msg, 'line-err');
-        appendLine('boot-linux  versucht es erneut.', 'line-sys');
-        blank();
-        inputRow.style.display = 'flex';
-        updatePrompt();
-        inp.focus();
-      } else {
-        appendLine('[ Linux-VM-Vorboot fehlgeschlagen: ' + msg + ' —  boot-linux  versucht es erneut ]', 'line-sys');
-      }
-      out.scrollTop = out.scrollHeight;
+      appendLine('Linux-Start fehlgeschlagen: ' + msg, 'line-err');
+      appendLine('Du bist im Übungs-Terminal —  boot-linux  versucht es erneut.', 'line-sys');
+      if (biosDone) enterSimShell();
     }
 
     function autoBootLinux() {
@@ -2577,20 +2659,36 @@
       if (linuxMode) return;
       /* Fertig gebootet (oder via exit-linux nur pausiert): sofort hinein */
       if (lxEmulator && lxBooted) { enterLinux(); return; }
-      /* Bootet noch unsichtbar: vormerken, Spinner zeigen, Eingabe kurz weg */
+      /* Bootet noch unsichtbar: Spinner zeigen — lxBootReady wechselt selbst */
       if (lxEmulator && lxSilent) {
-        lxWanted = true;
         inputRow.style.display = 'none';
         blank();
         lxShowLoader();
         return;
       }
-      /* Kein Emulator (Vorboot fehlgeschlagen): neuer Versuch */
-      lxWanted = true;
+      /* Kein Emulator (Boot fehlgeschlagen): neuer Versuch */
       inputRow.style.display = 'none';
       blank();
       lxShowLoader();
       autoBootLinux();
+    }
+
+    /* Uebungs-Shell freigeben — beim ersten Mal mit fastfetch-Intro,
+       wie ein frisch geoeffnetes Terminal. */
+    function enterSimShell() {
+      lxHideLoader();
+      if (!simIntroShown) {
+        simIntroShown = true;
+        blank();
+        echoCmd('fastfetch');
+        renderFastfetch();
+        appendLine('hilfe: help   ·   übungen: tutorial   ·   KI: glappa-chat   ·   zurück ins Linux: boot-linux', 'line-sys');
+        blank();
+      }
+      inputRow.style.display = 'flex';
+      updatePrompt();
+      inp.focus();
+      out.scrollTop = out.scrollHeight;
     }
 
     function lxStart() {
@@ -2647,10 +2745,7 @@
       if (lxEmulator) { try { lxEmulator.stop(); } catch(e) {} }
       blank();
       appendLine('[ Linux pausiert — boot-linux setzt die Session fort ]', 'line-sys');
-      blank();
-      updatePrompt();
-      inp.focus();
-      out.scrollTop = out.scrollHeight;
+      enterSimShell();
     }
 
     /* ══════════════════════════════════════════════════════════════
@@ -3650,35 +3745,156 @@
     });
 
     /* ══════════════════════════════════════════════════════════════
-       START — das Terminal ist SOFORT offen, wie ein frisch geoeffnetes
-       kitty auf dem Desktop: fastfetch laeuft (wie aus der .bashrc),
-       darunter steht der Prompt. Keine BIOS-Show, kein Press-any-key.
-       Das echte Linux bootet parallel unsichtbar vor, damit boot-linux
-       spaeter ohne Wartezeit wechseln kann.
+       BOOT-SEQUENZ — der alte GLAPPA-Start: BIOS-Show mit Half-Life-
+       Seeks und XP-Startsound. Waehrend die Show laeuft, bootet das
+       ECHTE Linux unsichtbar im Hintergrund; am Ende der Show ueber-
+       nimmt es direkt (boot-linux-Modus ab Start).
     ══════════════════════════════════════════════════════════════ */
-    autoBootLinux();
+    const BOOT = [
+      // BIOS Phase
+      { t:    0, cls: 'line-bios', txt: 'GLAPPA BIOS v1.337  Copyright (C) 1997-2026 Glappa Corp.' },
+      { t:   80, cls: 'line-bios', txt: 'CPU: Intel Pentium MMX 200MHz' },
+      { t:  160, cls: 'line-bios', txt: 'Memory Test: ', ram: true },
+      { t:  900, cls: 'line-bios', txt: 'Memory OK — 32768 KB' },
+      { t: 1000, cls: 'line-bios', txt: 'Detecting IDE drives...' },
+      { t: 1100, sound: 'seek' },
+      { t: 1200, cls: 'line-bios', txt: 'IDE0 Master: GLAPPA-HDD    2048 MB' },
+      { t: 1280, sound: 'hardware' },
+      { t: 1350, sound: 'seek' },
+      { t: 1450, cls: 'line-bios', txt: 'IDE1 Master: ATAPI CD-ROM  48X' },
+      { t: 1600, cls: 'line-bios', txt: 'Booting from IDE0...' },
+      { t: 1750, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
+      // OS Boot Phase
+      { t: 1900, cls: 'line-art',  txt: 'GLAPPA OS v2.0 — KERNEL 9000.1-RETRO' },
+      { t: 2000, sound: 'seek' },
+      { t: 2050, cls: 'line-sys',  txt: 'Lade Kernelmodule ...............  [ OK ]' },
+      { t: 2150, sound: 'seek' },
+      { t: 2200, cls: 'line-sys',  txt: 'Initialisiere Neon-Subsystem ....  [ OK ]' },
+      { t: 2350, sound: 'seek' },
+      { t: 2400, cls: 'line-sys',  txt: 'Starte GIF-Engine v9.0 ..........  [ OK ]' },
+      { t: 2550, sound: 'seek' },
+      { t: 2600, cls: 'line-sys',  txt: 'Mounte virtuelles Dateisystem ...  [ OK ]' },
+      { t: 2750, sound: 'seek' },
+      { t: 2800, cls: 'line-sys',  txt: 'Trenne Netzwerkkabel (Sandbox) ..  [ OK ]' },
+      { t: 2900, cls: 'line-sys',  txt: 'Lade GLAPPA-BOT KI ..............  [ OK ]' },
+      { t: 2950, sound: 'seek' },
+      { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
+      { t: 3150, cls: 'line-sys',  txt: 'Starte echtes Linux (v86) .......  [ OK ]' },
+      { t: 3300, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
+      // ASCII Art
+      { t: 3450, cls: 'line-ok',   txt: '' },
+      { t: 3470, cls: 'line-ok',   txt: '  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗ ' },
+      { t: 3490, cls: 'line-ok',   txt: ' ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗' },
+      { t: 3510, cls: 'line-ok',   txt: ' ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║' },
+      { t: 3530, cls: 'line-ok',   txt: ' ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║' },
+      { t: 3550, cls: 'line-ok',   txt: ' ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║' },
+      { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
+      { t: 3590, cls: 'line-ok',   txt: '' },
+      { t: 3610, sound: 'chime' },
+      { t: 3630, cls: 'line-white',txt: '  ECHTES Linux (eigener Kernel, kein Fake) startet automatisch — direkt hier.' },
+      { t: 3650, cls: 'line-pink', txt: '  exit-linux  (oder Strg+C) wechselt zum Übungs-Terminal:' },
+      { t: 3665, cls: 'line-info', txt: '  dort warten  help, tutorial, fastfetch, glappa-chat  und  glappa -s <frage>.' },
+      { t: 3680, cls: 'line-info', txt: '  boot-linux  bringt dich von dort jederzeit zurück ins Linux.' },
+      { t: 3698, cls: 'line-ok',   txt: '' },
+    ];
 
-    function initScreen() {
-      echoCmd('fastfetch');
-      renderFastfetch();
-      appendLine('hilfe: help   ·   übungen: tutorial   ·   KI: glappa-chat   ·   echte Linux-VM: boot-linux', 'line-sys');
-      blank();
-      inputRow.style.display = 'flex';
-      updatePrompt();
-      /* Auf Touch-Geraeten nicht fokussieren — sonst klappt sofort die
-         Bildschirmtastatur auf und verdeckt alles. */
-      if (window.matchMedia && matchMedia('(pointer: fine)').matches) inp.focus();
+    /* RAM-Counter Animation */
+    function animateRAM() {
+      const div = document.createElement('div');
+      div.className = 'line-bios';
+      div.textContent = 'Memory Test: 0 KB';
+      out.appendChild(div);
+      const target = 32768;
+      const steps  = 28;
+      let   step   = 0;
+      const iv = setInterval(function() {
+        step++;
+        const val = Math.min(Math.round(target * step / steps), target);
+        div.textContent = 'Memory Test: ' + val + ' KB';
+        if (step >= steps) clearInterval(iv);
+      }, 25);
     }
-    /* Der Akku-Wert kommt async (getBattery) — kurz darauf warten, damit
-       schon der ERSTE fastfetch echte Werte zeigt; 250 ms sind das Limit. */
-    if (navigator.getBattery) {
-      let shown = false;
-      const show = function() { if (!shown) { shown = true; initScreen(); } };
-      setTimeout(show, 250);
-      try { navigator.getBattery().then(show, show); } catch(e) { show(); }
-    } else {
-      initScreen();
+
+    /* ══════════════════════════════════════════════════════════════
+       BOOT STARTEN — erst nach User-Geste (für Audio-Autoplay)
+    ══════════════════════════════════════════════════════════════ */
+    function startBoot() {
+      presskey.style.display = 'none';
+
+      /* Echtes Linux SOFORT unsichtbar im Hintergrund laden & booten —
+         die BIOS-Show ueberbrueckt die Ladezeit (~7 MB + Kernel-Boot). */
+      autoBootLinux();
+
+      // HDD hochlaufen (sofort)
+      playHDDSpinup();
+      // BIOS-Piep nach 300ms
+      setTimeout(function(){ playBeep(440, 0.18); }, 300);
+
+      BOOT.forEach(function(entry) {
+        setTimeout(function() {
+          if (entry.sound === 'seek')     { playHDDSeek(); return; }
+          /* Der ECHTE Windows-XP-Startsound; klappt das Abspielen nicht,
+             springt der alte Synth-Chime ein */
+          if (entry.sound === 'chime')    { playSfxOr('startup', playStartupChime); return; }
+          if (entry.sound === 'hardware') { playSfx('hardware'); return; }
+          if (entry.ram) { animateRAM(); return; }
+          appendLine(entry.txt, entry.cls);
+        }, entry.t);
+      });
+
+      /* BIOS-Show fertig. Ist Linux schon da: direkt uebernehmen.
+         Bootet es noch: Spinner — lxBootReady() schaltet dann um.
+         Ist der Boot schon gescheitert, hat lxAutoFail() die Fehler-
+         zeilen gedruckt: ab in die Uebungs-Shell. */
+      setTimeout(function() {
+        biosDone = true;
+        if (lxSilent) {
+          if (lxBooted) { lxSilent = false; enterLinux(); }
+          else lxShowLoader();
+          return;
+        }
+        enterSimShell();
+      }, 3800);
     }
+
+    // Einmalig auf erste Interaktion warten
+    let booted = false;
+    function onFirstInteraction() {
+      if (booted) return;
+      booted = true;
+      document.removeEventListener('keydown', onFirstInteraction);
+      presskey.removeEventListener('click', onFirstInteraction);
+      startBoot();
+    }
+    document.addEventListener('keydown', onFirstInteraction);
+    presskey.addEventListener('click', onFirstInteraction);
+
+    /* ══════════════════════════════════════════════════════════════
+       FENSTER VERSCHIEBEN — Titelleiste ziehen bewegt das Terminal
+       (transform, bleibt im Layout), Doppelklick setzt zurueck.
+    ══════════════════════════════════════════════════════════════ */
+    (function() {
+      const term = document.getElementById('terminal');
+      const bar  = document.getElementById('term-titlebar');
+      let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+      bar.addEventListener('pointerdown', function(e) {
+        dragging = true;
+        sx = e.clientX - ox; sy = e.clientY - oy;
+        try { bar.setPointerCapture(e.pointerId); } catch(err) {}
+        e.preventDefault();
+      });
+      bar.addEventListener('pointermove', function(e) {
+        if (!dragging) return;
+        ox = e.clientX - sx; oy = e.clientY - sy;
+        term.style.transform = 'translate(' + ox + 'px,' + oy + 'px)';
+      });
+      function stopDrag() { dragging = false; }
+      bar.addEventListener('pointerup', stopDrag);
+      bar.addEventListener('pointercancel', stopDrag);
+      bar.addEventListener('dblclick', function() {
+        ox = 0; oy = 0; term.style.transform = '';
+      });
+    })();
 
     document.querySelectorAll('.marquee span').forEach(function(span) {
       span.style.animation = 'scroll-left 28s linear infinite';
