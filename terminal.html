@@ -465,7 +465,8 @@
     function defaultFS() {
       /* Volle Linux-Verzeichnisstruktur (FHS) — damit sich ls / , cd /etc,
          cat /proc/cpuinfo usw. wie auf einem echten System anfuehlen.
-         Fuer ein KOMPLETT echtes Linux (eigener Kernel): boot-linux. */
+         Das KOMPLETT echte Linux (eigener Kernel) bootet beim Start
+         automatisch — boot-linux fuehrt jederzeit dorthin zurueck. */
       const ELF = 'ELF 32-bit LSB executable — GlappaOS binary\n(nicht lesbar, aber ausführbar 😉)';
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
@@ -515,7 +516,8 @@
               'Dateien anlegen, löschen, Pipes, nano — alles geht.\n' +
               'Alles läuft nur in deinem Browser, nichts wird gesendet.\n\n' +
               'Tippe  tutorial  für Übungsaufgaben.\n' +
-              'Tippe  boot-linux  für ein KOMPLETT echtes Linux (eigener Kernel).\n' +
+              'Das ECHTE Linux (eigener Kernel) bootet beim Start automatisch —\n' +
+              'tippe  boot-linux  um jederzeit dorthin zurückzukehren.\n' +
               'Tippe  reset  wenn du alles zurücksetzen willst.\n\n' +
               'Viel Spaß beim Üben! 😎\n\n-- Lex'),
             'todo.txt': fileNode('[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen\n[x] Terminal ECHT machen'),
@@ -2386,6 +2388,11 @@
     let lxBuf = '';            /* Zeilenpuffer fuer den seriellen Strom */
     let lxGotBytes = false;    /* kam ueberhaupt etwas ueber seriell? */
     let lxReadyShown = false;  /* Einmal-Hinweis beim ersten Shell-Prompt */
+    let lxSilent = false;      /* true = Auto-Boot laeuft UNSICHTBAR im Hintergrund */
+    let lxPromptSeen = false;  /* Prompt kam schon waehrend der BIOS-Show an */
+    let biosDone = false;      /* BIOS-Show fertig — ab jetzt darf Linux uebernehmen */
+    let lxLoader = null;       /* Spinner-Zeile waehrend des unsichtbaren Boots */
+    let lxLoaderTimer = null;
 
     /* ANSI-Escapes und Steuerzeichen aus dem seriellen Strom entfernen —
        das Terminal rendert reinen Text (top & Co. malen mit Escapes). */
@@ -2404,6 +2411,19 @@
        angefangene letzte Zeile (z.B. der ~%-Prompt, kommt ohne \n) wird
        als Live-Zeile angezeigt und beim naechsten \n festgeschrieben. */
     function lxWrite(chunk) {
+      /* UNSICHTBARER Auto-Boot: Kernel-Log verschlucken, nur die
+         angefangene letzte Zeile auf den ersten Shell-Prompt abklopfen.
+         Kommt er waehrend der BIOS-Show, merken wir ihn uns nur. */
+      if (lxSilent) {
+        lxBuf += chunk;
+        const nl = lxBuf.lastIndexOf('\n');
+        if (nl !== -1) lxBuf = lxBuf.slice(nl + 1);
+        if (/~[%#$]\s*$/.test(lxClean(lxBuf.replace(/\r/g, '')))) {
+          if (biosDone) lxGoLive();
+          else lxPromptSeen = true;
+        }
+        return;
+      }
       lxBuf += chunk;
       let idx;
       while ((idx = lxBuf.indexOf('\n')) !== -1) {
@@ -2431,6 +2451,77 @@
         }
         out.scrollTop = out.scrollHeight;
       } else lxFlushLive();
+    }
+
+    /* ── AUTO-BOOT: Linux startet SOFORT beim Terminal-Start ──────────
+       Der Boot laeuft unsichtbar (lxSilent), die BIOS-Show ueberbrueckt
+       die Ladezeit. Danach zeigt ein Spinner den Rest-Boot an; beim
+       ersten Shell-Prompt schaltet lxGoLive() nahtlos in den Linux-Modus. */
+
+    function lxShowLoader() {
+      if (lxLoader) return;
+      lxLoader = document.createElement('div');
+      lxLoader.className = 'line-sys';
+      out.appendChild(lxLoader);
+      const frames = ['|', '/', '-', '\\'];
+      let i = 0;
+      lxLoaderTimer = setInterval(function() {
+        lxLoader.textContent = 'Boote ECHTES Linux (Kernel 4.16 + BusyBox) ... ' +
+          frames[i++ % frames.length] + '   (erster Start lädt ~7 MB)';
+        out.scrollTop = out.scrollHeight;
+      }, 120);
+    }
+
+    function lxHideLoader() {
+      if (lxLoaderTimer) { clearInterval(lxLoaderTimer); lxLoaderTimer = null; }
+      if (lxLoader) { lxLoader.remove(); lxLoader = null; }
+    }
+
+    /* Erster Shell-Prompt ist da: Spinner weg, Linux-Modus an, Eingabe frei */
+    function lxGoLive() {
+      if (!lxSilent) return;
+      lxSilent = false;
+      lxBuf = '';
+      lxHideLoader();
+      linuxMode = true;
+      lxReadyShown = true;   /* eigener Hinweis hier — den Einmal-Tipp in lxWrite ueberspringen */
+      appendLine('[ Linux bereit! Dein Home (~) ist noch leer — probier:  ls /   '
+                 + 'cat /proc/cpuinfo   top -b -n 1   uname -a ]', 'line-sys');
+      appendLine('[ exit-linux (oder Strg+C) wechselt zum GLAPPA-Übungs-Terminal ]', 'line-sys');
+      blank();
+      inputRow.style.display = 'flex';
+      updatePrompt();
+      inp.focus();
+      out.scrollTop = out.scrollHeight;
+      /* frischen Prompt anfordern — der erste ging im Silent-Modus unter */
+      try { lxEmulator.serial0_send('\n'); } catch(e) {}
+    }
+
+    /* Auto-Boot kaputt (Datei fehlt, WASM blockiert, Kernel stumm):
+       ehrlich sagen und die GLAPPA-Shell freigeben statt ewig zu drehen. */
+    function lxAutoFail(msg) {
+      if (!lxSilent) return;
+      lxSilent = false;
+      lxHideLoader();
+      if (lxEmulator) { try { lxEmulator.destroy(); } catch(e) {} lxEmulator = null; }
+      lxBuf = ''; lxGotBytes = false; lxReadyShown = false; lxPromptSeen = false;
+      appendLine('Linux-Autostart fehlgeschlagen: ' + msg, 'line-err');
+      appendLine('Du bist im GLAPPA-Übungs-Terminal —  boot-linux  versucht es nochmal.', 'line-sys');
+      blank();
+      inputRow.style.display = 'flex';
+      updatePrompt();
+      inp.focus();
+      out.scrollTop = out.scrollHeight;
+    }
+
+    function autoBootLinux() {
+      lxSilent = true;
+      if (typeof window.V86 === 'function') { lxStart(); return; }
+      const s = document.createElement('script');
+      s.src = 'v86/libv86.js';
+      s.onload = lxStart;
+      s.onerror = function() { lxAutoFail('v86/libv86.js fehlt auf dem Server.'); };
+      document.head.appendChild(s);
     }
 
     function bootLinux() {
@@ -2496,10 +2587,17 @@
       /* Fallschirm: kommt nach 90s gar nichts ueber seriell, stimmt was
          mit dem Kernel-Boot nicht — ehrlich sagen statt ewig warten. */
       setTimeout(function() {
-        if (linuxMode && !lxGotBytes) {
+        if (lxSilent && !lxGotBytes) {
+          lxAutoFail('der Kernel meldet sich nicht (Tab unsichtbar? Browser drosselt?).');
+        } else if (linuxMode && !lxGotBytes) {
           appendLine('(Hmm — der Kernel meldet sich nicht. Tab sichtbar? Sonst: exit-linux und nochmal.)', 'line-sys');
         }
       }, 90000);
+      /* Fallschirm 2: Kernel redet, aber der Prompt wird nicht erkannt —
+         nach 60s trotzdem live schalten, keiner soll vorm Spinner sitzen. */
+      setTimeout(function() {
+        if (lxSilent && lxGotBytes && biosDone) lxGoLive();
+      }, 60000);
     }
 
     /* Zurueck zum GLAPPA-Terminal. Die VM wird nur PAUSIERT — das
@@ -2581,7 +2679,7 @@
         appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
-        appendLine('  boot-linux              ECHTES Linux (eigener Kernel) direkt hier im Terminal', 'line-pink');
+        appendLine('  boot-linux              zurück ins ECHTE Linux (bootet beim Start automatisch)', 'line-pink');
         appendLine('  exit-linux              ... und zurück zum GLAPPA-Terminal (VM pausiert nur)', 'line-pink');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
@@ -3430,12 +3528,10 @@
       { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
       { t: 3590, cls: 'line-ok',   txt: '' },
       { t: 3610, sound: 'chime' },
-      { t: 3630, cls: 'line-white',txt: '  Echtes Übungs-Terminal: Dateien, Pipes, nano — alles nur in deinem Browser.' },
-      { t: 3650, cls: 'line-pink', txt: '  Tippe  help  für alle Befehle.' },
-      { t: 3665, cls: 'line-info', txt: '  Tippe  tutorial  für Übungsaufgaben zum Lernen.' },
-      { t: 3680, cls: 'line-pink', txt: '  Tippe  glappa-chat  um mit der Glappa-KI zu reden.' },
-      { t: 3687, cls: 'line-info', txt: '  Tippe  glappa -s <frage>  für eine schnelle KI-Antwort.' },
-      { t: 3694, cls: 'line-pink', txt: '  Tippe  boot-linux  für ein ECHTES Linux — eigener Kernel, kein Fake.' },
+      { t: 3630, cls: 'line-white',txt: '  ECHTES Linux (eigener Kernel, kein Fake) startet automatisch — direkt hier.' },
+      { t: 3650, cls: 'line-pink', txt: '  exit-linux  (oder Strg+C) wechselt zum GLAPPA-Übungs-Terminal:' },
+      { t: 3665, cls: 'line-info', txt: '  dort warten  help, tutorial, glappa-chat  und  glappa -s <frage>.' },
+      { t: 3680, cls: 'line-info', txt: '  boot-linux  bringt dich von dort jederzeit zurück ins Linux.' },
       { t: 3698, cls: 'line-ok',   txt: '' },
     ];
 
@@ -3462,6 +3558,10 @@
     function startBoot() {
       presskey.style.display = 'none';
 
+      /* Echtes Linux SOFORT unsichtbar im Hintergrund laden & booten —
+         die BIOS-Show ueberbrueckt die Ladezeit (~7 MB + Kernel-Boot). */
+      autoBootLinux();
+
       // HDD hochlaufen (sofort)
       playHDDSpinup();
       // BIOS-Piep nach 300ms
@@ -3479,8 +3579,17 @@
         }, entry.t);
       });
 
-      // Shell freischalten
+      /* BIOS-Show fertig. Ist Linux schon da: direkt live schalten.
+         Bootet es noch: Spinner zeigen — lxGoLive() blendet spaeter die
+         Eingabezeile ein. Ist der Auto-Boot schon gescheitert, hat
+         lxAutoFail() die GLAPPA-Shell bereits freigegeben. */
       setTimeout(function() {
+        biosDone = true;
+        if (lxSilent) {
+          if (lxPromptSeen) lxGoLive();
+          else lxShowLoader();
+          return;
+        }
         inputRow.style.display = 'flex';
         inp.focus();
       }, 3800);
