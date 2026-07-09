@@ -99,20 +99,24 @@
       text-overflow: ellipsis;
     }
 
-    #output {
-      color: var(--t-fg);
-      white-space: pre-wrap;
-      word-break: break-word;
-      margin-bottom: 10px;
+    /* Scroll-Container: Output UND Eingabezeile scrollen zusammen —
+       so steht die Eingabe direkt unter der letzten Zeile statt
+       festgepinnt am unteren Fensterrand. */
+    #term-body {
       flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;   /* KEIN horizontaler Scrollbalken */
+    }
+    #term-body::-webkit-scrollbar { width: 8px; }
+    #term-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
+    #term-body::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
+    #output {
+      color: var(--t-fg);
+      white-space: pre-wrap;
+      word-break: break-word;
       line-height: 1.45;
     }
-    #output::-webkit-scrollbar { width: 8px; }
-    #output::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
-    #output::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
 
     .input-row {
       flex: none;
@@ -312,12 +316,14 @@
         <div class="ed-bar"><span>^O Speichern &nbsp; ^X Beenden</span><span id="ed-msg"></span></div>
       </div>
 
-      <div id="output"></div>
-      <div class="input-row" id="input-row" style="display:none">
-        <span class="prompt-label"></span>
-        <input type="text" id="cmd-input" autocomplete="off" spellcheck="false"
-               autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
-        <span class="cursor-blink cursor-block">█</span>
+      <div id="term-body">
+        <div id="output"></div>
+        <div class="input-row" id="input-row" style="display:none">
+          <span class="prompt-label"></span>
+          <input type="text" id="cmd-input" autocomplete="off" spellcheck="false"
+                 autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
+          <span class="cursor-blink cursor-block">█</span>
+        </div>
       </div>
     </div>
   </div>
@@ -505,7 +511,12 @@
     ══════════════════════════════════════════════════════════════ */
     const presskey  = document.getElementById('presskey');
     const out       = document.getElementById('output');
+    const termBody  = document.getElementById('term-body');
     const inputRow  = document.getElementById('input-row');
+
+    /* Output und Eingabezeile leben zusammen in #term-body — gescrollt
+       wird der Container, damit die Eingabe der letzten Zeile folgt. */
+    function scrollBottom() { termBody.scrollTop = termBody.scrollHeight; }
     const inp       = document.getElementById('cmd-input');
     const editorEl  = document.getElementById('editor');
     const edFileEl  = document.getElementById('ed-file');
@@ -849,7 +860,7 @@
       thinking.className = 'line-sys blink-text';
       thinking.textContent = 'GLAPPA-BOT denkt ...';
       out.appendChild(thinking);
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
 
       /* Streamt den Plan live als "Denk-Zeile" mit — nach Abschluss wird
          sie entfernt und die Antwort sauber verarbeitet (Prosa + Befehle,
@@ -865,7 +876,7 @@
             out.appendChild(live);
           }
           live.textContent = '… ' + txt;
-          out.scrollTop = out.scrollHeight;
+          scrollBottom();
         })
       .then(function(raw) {
         thinking.remove();
@@ -1146,7 +1157,7 @@
       div.className = cls;
       div.textContent = text;
       out.appendChild(div);
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
     function blank() { appendLine(''); }
     function ok(lines)  { return { out: lines || [], err: [] }; }
@@ -1174,7 +1185,7 @@
       div.appendChild(promptSpans());
       div.appendChild(document.createTextNode(text));
       out.appendChild(div);
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
 
     /* ── Flags einsammeln: -la → {l,a}, Rest bleibt Argument ── */
@@ -2492,7 +2503,7 @@
         div.textContent = l.t;
         topBox.appendChild(div);
       });
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
 
     function exitTop() {
@@ -2502,7 +2513,7 @@
       appendLine('(top beendet)', 'line-sys');
       blank();
       updatePrompt();
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
 
     /* ══════════════════════════════════════════════════════════════
@@ -2598,7 +2609,7 @@
       lxColorNL = lxColor; lxBoldNL = lxBold;
       if (captureBuf) captureBuf.push(lxClean(raw.replace(/\x1b\[[0-9;]*m/g, '')));
       out.appendChild(div);
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
 
     /* ── GAST-IDENTITAET: beim ersten Shell-Prompt bekommt die Gast-Shell
@@ -2611,6 +2622,9 @@
                 + esc('0') + ':\\$PWD ' + esc('35') + '\\$' + esc('0') + ' ';
       const cmds = [
         'hostname glappa.de 2>/dev/null',
+        /* Serielle Konsole kennt keine Terminalgroesse (0x0) — ohne das
+           zerhackt der ash-Zeileneditor lange Eingabezeilen beim Echo. */
+        'stty cols 250 rows 50 2>/dev/null',
         'export HOME="${HOME:-/root}"',
         'export USER=' + LX_USER + ' LOGNAME=' + LX_USER + ' HOSTNAME=glappa.de',
         'ls --color=auto / >/dev/null 2>&1 && alias ls="ls --color=auto"',
@@ -2677,6 +2691,31 @@
         return;
       }
       lxBuf += chunk;
+
+      /* Stille Abfrage (Tab-Vervollstaendigung): Ausgabe einsammeln
+         statt anzeigen, bis die GLQ_END-Markierung kommt. */
+      if (lxQuiet) {
+        let qi;
+        while (lxQuiet && (qi = lxBuf.indexOf('\n')) !== -1) {
+          const qline = lxClean(lxBuf.slice(0, qi).replace(/\r+$/, '').replace(/\x1b\[[0-9;]*m/g, ''));
+          lxBuf = lxBuf.slice(qi + 1);
+          if (qline === 'GLQ_END') { lxQueryFinish(); break; }
+          /* das Kommando-Echo selbst (enthaelt Q_END in Anfuehrungszeichen) ueberspringen */
+          if (qline.indexOf('Q_END') === -1) lxQuiet.lines.push(qline);
+        }
+        if (lxQuiet) return;   /* noch nicht fertig — weiter sammeln */
+        /* fertig: Rest im Puffer (frischer Prompt) normal weiterverarbeiten */
+      }
+
+      /* clear / Strg+L im Gast: Erase-Display-Escape (\e[2J) wirklich
+         ausfuehren — Bildschirm leeren statt die Sequenz wegzufiltern */
+      const ci = lxBuf.search(/\x1b\[[0-3]?J/);
+      if (ci !== -1) {
+        out.innerHTML = '';
+        lxFlushLive();
+        lxBuf = lxBuf.slice(ci).replace(/^\x1b\[[0-3]?J/, '');
+      }
+
       let idx;
       while ((idx = lxBuf.indexOf('\n')) !== -1) {
         const line = lxBuf.slice(0, idx).replace(/\r+$/, '');
@@ -2697,8 +2736,56 @@
         lxColor = lxColorNL; lxBold = lxBoldNL;
         lxLive.textContent = '';
         lxLive.appendChild(lxSpansFrom(raw));
-        out.scrollTop = out.scrollHeight;
+        scrollBottom();
       } else lxFlushLive();
+    }
+
+    /* ── TAB-VERVOLLSTAENDIGUNG IM GAST: eine STILLE Abfrage laeuft in
+       der echten Gast-Shell (ls), die Ausgabe wird abgefangen statt
+       angezeigt — echte Datei- und Befehlsnamen, kein Fake. ── */
+    let lxQuiet = null;   /* { lines, cb, timer } */
+    function lxQueryFinish() {
+      if (!lxQuiet) return;
+      clearTimeout(lxQuiet.timer);
+      const q = lxQuiet;
+      lxQuiet = null;
+      q.cb(q.lines);
+    }
+    function lxQuery(cmd, cb) {
+      if (!lxEmulator || !linuxMode || lxSilent || lxQuiet) { cb(null); return; }
+      lxQuiet = { lines: [], cb: cb, timer: setTimeout(lxQueryFinish, 900) };
+      try { lxEmulator.serial0_send(cmd + '; echo GL"Q_END"\r'); }
+      catch(e) { lxQueryFinish(); }
+    }
+    function lxComplete() {
+      /* letztes Wort der Eingabe — nur harmlose Zeichen zulassen,
+         alles andere geht 1:1 in die Gast-Shell */
+      const m = inp.value.match(/(^|[\s;|&])([A-Za-z0-9._\/~+-]*)$/);
+      if (!m) return;
+      const prefix = m[2];
+      const isCmd = prefix.indexOf('/') === -1 && (m[1] === '' || m[1] === ';' || m[1] === '|' || m[1] === '&');
+      if (!prefix) return;   /* leeres Wort: alles waere Kandidat — lassen */
+      const q = isCmd
+        ? 'ls -1 /bin /sbin /usr/bin /usr/sbin 2>/dev/null | sort -u | grep -- "^' + prefix + '"'
+        : 'ls -1dp -- ' + prefix + '* 2>/dev/null';
+      lxQuery(q, function(lines) {
+        if (!lines) return;
+        const cands = lines.filter(function(l) { return l; });
+        if (!cands.length) { playSfx('deny'); return; }
+        const base = inp.value.slice(0, inp.value.length - prefix.length);
+        if (cands.length === 1) {
+          const c = cands[0];
+          inp.value = base + c + (c.slice(-1) === '/' ? '' : ' ');
+        } else {
+          let common = cands[0];
+          cands.forEach(function(c) {
+            while (common && c.indexOf(common) !== 0) common = common.slice(0, -1);
+          });
+          if (common.length > prefix.length) inp.value = base + common;
+          else { appendLine(cands.join('   '), 'line-sys'); scrollBottom(); }
+        }
+        inp.focus();
+      });
     }
 
     /* ── AUTO-BOOT: Linux startet mit der BIOS-Show — unsichtbar im
@@ -2716,7 +2803,7 @@
       lxLoaderTimer = setInterval(function() {
         lxLoader.textContent = 'Boote echtes Linux (Kernel 4.16 + BusyBox) ... ' +
           frames[i++ % frames.length] + '   (erster Start lädt ~7 MB)';
-        out.scrollTop = out.scrollHeight;
+        scrollBottom();
       }, 120);
     }
 
@@ -2759,7 +2846,7 @@
       inputRow.style.display = 'flex';
       updatePrompt();
       inp.focus();
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
       try { lxEmulator.run(); } catch(e) {}
       try { lxEmulator.serial0_send('\n'); } catch(e) {}
     }
@@ -2819,7 +2906,7 @@
       inputRow.style.display = 'flex';
       updatePrompt();
       inp.focus();
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
 
     function lxStart() {
@@ -3016,7 +3103,7 @@
         });
         out.appendChild(row);
       }
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
       blank();
     }
 
@@ -3538,7 +3625,7 @@
       thinking.className = 'line-sys blink-text';
       thinking.textContent = 'GLAPPA-BOT denkt ...';
       out.appendChild(thinking);
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
 
       const payload = oneshot
         ? { message: 'Beantworte nur diese eine Frage, kurz und direkt. Wenn ein '
@@ -3558,7 +3645,7 @@
           out.appendChild(live);
         }
         live.textContent = 'GLAPPA-BOT: ' + txt;
-        out.scrollTop = out.scrollHeight;
+        scrollBottom();
       })
       .then(function(raw) {
         thinking.remove();
@@ -3569,7 +3656,7 @@
         }
         if (live) {
           live.textContent = 'GLAPPA-BOT: ' + reply;   /* Markdown-Reste raus */
-          out.scrollTop = out.scrollHeight;
+          scrollBottom();
           blank();
         } else {
           typeReply('GLAPPA-BOT: ' + reply);           /* JSON-Fallback: Typewriter */
@@ -3604,7 +3691,7 @@
       const iv = setInterval(function() {
         i += 2;                                  /* 2 Zeichen pro Tick = fluessig */
         div.textContent = text.slice(0, i);
-        out.scrollTop = out.scrollHeight;
+        scrollBottom();
         if (i >= text.length) { clearInterval(iv); blank(); }
       }, 16);
     }
@@ -3780,7 +3867,9 @@
         inp.value = cmdHistory[histIdx] || '';
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        if (!chatMode && !linuxMode) completeInput();
+        if (chatMode) { /* im Chat gibt es nichts zu vervollstaendigen */ }
+        else if (linuxMode) lxComplete();
+        else completeInput();
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
@@ -3861,7 +3950,7 @@
       appendLine('[ nano: ' + edPath + ' geschlossen ]', 'line-sys');
       edPath = null;
       inp.focus();
-      out.scrollTop = out.scrollHeight;
+      scrollBottom();
     }
 
     edText.addEventListener('keydown', function(e) {
