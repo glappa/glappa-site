@@ -549,7 +549,7 @@
        'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do','boot-linux',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
        'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod',
-       'fastfetch','neofetch','uname','whoami','uptime','date','clear']
+       'fastfetch','neofetch','uname','whoami','uptime','date','clear','cmatrix']
         .forEach(function(b) { bin[b] = fileNode(ELF); });
       const sbin = {};
       ['init','halt','reboot','fsck','mkfs','ifconfig','iptables','insmod'].forEach(function(b) {
@@ -2611,8 +2611,53 @@
                 + esc('0') + ':\\$PWD ' + esc('35') + '\\$' + esc('0') + ' ';
       const cmds = [
         'hostname glappa.de 2>/dev/null',
+        'export HOME="${HOME:-/root}"',
         'export USER=' + LX_USER + ' LOGNAME=' + LX_USER + ' HOSTNAME=glappa.de',
         'ls --color=auto / >/dev/null 2>&1 && alias ls="ls --color=auto"',
+        'cd "$HOME"',
+
+        /* Home vorbefuellen — wie im Uebungs-Terminal (nur ASCII: nur
+           Latin-1 uebersteht die serielle Leitung, Emojis nicht) */
+        'mkdir -p "$HOME/uebung"',
+        "cat > \"$HOME/README.txt\" << 'GLEOF'",
+        'Willkommen auf glappa.de - das hier ist ein ECHTES Linux',
+        '(Kernel 4.16 + BusyBox), es laeuft direkt in deinem Browser.',
+        '',
+        'Probier mal:  cmatrix   top -b -n 1   cat /proc/cpuinfo',
+        'exit-linux  wechselt zum Uebungs-Terminal mit Tutorial und KI.',
+        'GLEOF',
+        "cat > \"$HOME/todo.txt\" << 'GLEOF'",
+        '[ ] Mehr GIFs',
+        '[ ] Weltfrieden',
+        '[x] Cool sein',
+        '[x] Terminal bauen',
+        '[x] ECHTES Linux booten',
+        'GLEOF',
+        "cat > \"$HOME/uebung/namen.txt\" << 'GLEOF'",
+        'anna', 'bob', 'charlie', 'anna', 'dora', 'bob', 'anna', 'emil',
+        'GLEOF',
+        "cat > \"$HOME/uebung/zahlen.txt\" << 'GLEOF'",
+        '42', '7', '1337', '3', '99', '7', '256',
+        'GLEOF',
+
+        /* cmatrix "vorinstallieren": Mini-Matrixregen als Shellskript —
+           ein echtes ncurses-cmatrix gibt es in der BusyBox nicht, und
+           Vollbild-Escapes kaeme durch die serielle Leitung eh nicht. */
+        "cat > /bin/cmatrix << 'GLEOF'",
+        '#!/bin/sh',
+        '# cmatrix mini — Matrixregen fuer die serielle Konsole (~5 Sek.)',
+        "awk 'BEGIN{",
+        'srand();',
+        'for(i=0;i<60;i++){',
+        's="";',
+        'for(c=0;c<64;c++){ if(rand()<0.35) s=s" "; else s=s sprintf("%c",33+int(rand()*93)); }',
+        'printf("%s%s\\033[0m\\n",(rand()<0.2)?"\\033[1;32m":"\\033[32m",s);',
+        'system("usleep 70000 2>/dev/null");',
+        '}',
+        "}'",
+        'GLEOF',
+        'chmod +x /bin/cmatrix',
+
         'export PS1="' + ps1 + '"',
       ];
       try { lxEmulator.serial0_send(cmds.join('\r') + '\r'); } catch(e) {}
@@ -2697,7 +2742,7 @@
           lxHideLoader();
           enterLinux();
         }
-      }, 900);
+      }, 1400);
     }
 
     /* In den Linux-Modus wechseln: VM (weiter)laufen lassen, Prompt anfordern */
@@ -2708,7 +2753,7 @@
       appendLine('[ ECHTES Linux (Kernel 4.16 + BusyBox) — Eingaben gehen direkt an die Gast-Shell ]', 'line-sys');
       if (!lxEntered) {
         lxEntered = true;
-        appendLine('[ Dein Home (~) ist noch leer — probier:  ls /   cat /proc/cpuinfo   top -b -n 1   uname -a ]', 'line-sys');
+        appendLine('[ Schau dich um:  ls   cat README.txt   cmatrix   top -b -n 1   uname -a ]', 'line-sys');
       }
       appendLine('[ exit-linux (oder Strg+C) wechselt zurück — die VM pausiert dann nur ]', 'line-sys');
       inputRow.style.display = 'flex';
@@ -3035,7 +3080,7 @@
         appendLine('  bash script.sh          Ausführen — braucht KEIN +x (wie sh script.sh)');
         blank();
         appendLine('SPASS & KI', 'line-info');
-        appendLine('  fastfetch, fortune, cowsay, sl, matrix, hack, ping (simuliert), sudo');
+        appendLine('  fastfetch, fortune, cowsay, sl, matrix/cmatrix, hack, ping (simuliert), sudo');
         appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
         appendLine('  glappa -s <frage>       KI-Schnellantwort');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
@@ -3169,6 +3214,8 @@
           i++;
         }, 180);
       },
+
+      cmatrix() { SPECIAL.matrix(); },
 
       matrix() {
         blank(); appendLine('[ Matrix-Modus für 3 Sekunden ]', 'line-info'); blank();
