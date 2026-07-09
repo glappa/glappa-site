@@ -187,8 +187,11 @@ sudo a2ensite "$VHOST_NAME" >/dev/null
 ok "vhost $VHOST_NAME enabled"
 
 # ── 5) Apache-Module ────────────────────────────────────────────
-say "Aktiviere Module: ssl headers rewrite expires"
-sudo a2enmod ssl headers rewrite expires >/dev/null
+# proxy/proxy_http/proxy_wstunnel: fuer /api/chat, /api/counter/ und
+# /api/shell/ws (real-shell, WebSocket-Upgrade zu shellgate). a2enmod
+# ist idempotent — bereits aktive Module hier erneut zu nennen ist ein No-Op.
+say "Aktiviere Module: ssl headers rewrite expires proxy proxy_http proxy_wstunnel"
+sudo a2enmod ssl headers rewrite expires proxy proxy_http proxy_wstunnel >/dev/null
 ok "Module aktiv"
 
 # ── 5) configtest + reload ──────────────────────────────────────

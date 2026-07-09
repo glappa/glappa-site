@@ -101,6 +101,53 @@ services:
         max-size: "1m"
         max-file: "3"
 
+  # ── shellvm: NUR das Gast-Image bauen, nie selbst laufen ──────────
+  # `profiles:` ausserhalb jedes aktivierten Profils -> `docker compose
+  # up -d` startet diesen Service NIE, aber `docker compose build`
+  # (macht restart.sh vor jedem up -d) baut ihn trotzdem mit — genau
+  # das offizielle Compose-Muster fuer "Image bauen, ohne dass es
+  # dauerhaft laeuft". shellgate (unten) erzeugt daraus bei Bedarf
+  # PRO SITZUNG frische Container.
+  shellvm:
+    build:
+      context: shellvm
+    image: glappa-shellvm:latest
+    profiles: ["build-only"]
+
+  # ── shellgate: passwortgeschuetzte ECHTE Ubuntu-Shell im Browser ──
+  # terminal.html "real-shell" -> Apache /api/shell/ws -> hier. Siehe
+  # shellgate/server.py fuer die volle Architektur-Begruendung (eigener
+  # Dienst, eigenes Docker-Netz, Ressourcen-/Capability-Limits pro
+  # Gast-Container).
+  #
+  # docker.sock ist NUR HIER gemountet — bewusst NICHT im Haupt-
+  # "glappa"-Container, der oeffentliche URLs verarbeitet (yt-dlp).
+  #
+  # SHELL_PASSWORD_HASH kommt aus _docker/.env (siehe .env.example) —
+  # NIEMALS das Klartext-Passwort committen, nur den SHA-256-Hash.
+  shellgate:
+    build:
+      context: shellgate
+    image: glappa-shellgate:latest
+    container_name: glappa-shellgate
+    ports:
+      # NUR localhost — von aussen ausschliesslich ueber Apache (TLS +
+      # Reverse-Proxy), genau wie searxng auf 127.0.0.1:8888.
+      - "127.0.0.1:8765:8765"
+    environment:
+      - SHELL_PASSWORD_HASH=${SHELL_PASSWORD_HASH}
+      - SHELL_IMAGE=glappa-shellvm:latest
+      - SHELL_IDLE_TIMEOUT=1800
+      - SHELL_MAX_SESSIONS=5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "3"
+
 volumes:
   glappa-downloads:
   ollama-models:

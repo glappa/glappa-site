@@ -3,6 +3,11 @@ cookies/*.txt
 **/cookies/*.txt
 _docker/cookies/*.txt
 
+# Passwort-Hash fuer die echte Shell (real-shell) — liegt lokal in
+# _docker/.env, siehe _docker/.env.example fuer das Format.
+.env
+_docker/.env
+
 # Python-Cache
 **/__pycache__/
 *.pyc

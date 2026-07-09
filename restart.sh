@@ -213,6 +213,47 @@ free_ports() {
     done
 }
 
+# Synct den Apache-vhost (_docker/apache/home.glappa.de.conf) + noetige
+# Module, damit ein reines "restart.sh --pull" auch NEUE Proxy-Regeln
+# (z.B. /api/shell/ws fuer real-shell) tatsaechlich live schaltet — sonst
+# haette nur setup-home-apache.sh den vhost synchronisiert, und
+# restart.sh haette den Docker-Stack zwar aktualisiert, aber Apache
+# haette weiter die ALTE Config gefahren. Idempotent, nur auf dem VPS
+# (COMPOSE = VPS_COMPOSE), und bricht den Rest des Deploys NICHT ab,
+# wenn hier was schiefgeht (Container-Restart ist trotzdem wichtiger).
+sync_apache_vhost() {
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
+    command -v apache2 >/dev/null 2>&1 || { warn "Apache nicht installiert — ueberspringe vhost-Sync."; return 0; }
+    local vhost_src="_docker/apache/home.glappa.de.conf"
+    [ -f "$vhost_src" ] || return 0
+
+    say "synce Apache-vhost (home.glappa.de) + Module..."
+    $HOST_SUDO cp "$vhost_src" /etc/apache2/sites-available/home.glappa.de.conf
+    $HOST_SUDO a2ensite home.glappa.de.conf >/dev/null 2>&1 || true
+    # proxy_wstunnel: fuer /api/shell/ws (real-shell). a2enmod ist idempotent
+    # — bereits aktive Module hier nochmal zu nennen ist ein No-Op.
+    $HOST_SUDO a2enmod ssl headers rewrite expires proxy proxy_http proxy_wstunnel >/dev/null 2>&1 || true
+
+    if $HOST_SUDO apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
+        $HOST_SUDO systemctl reload apache2 && ok "Apache-vhost synced + reloaded"
+    else
+        warn "Apache configtest fehlgeschlagen — vhost NICHT reloaded, alte Config laeuft weiter."
+        warn "Pruefen mit:  sudo apache2ctl configtest"
+    fi
+}
+
+# Warnt fruehzeitig, wenn _docker/.env (SHELL_PASSWORD_HASH fuer real-shell)
+# fehlt — sonst crashed der shellgate-Container beim Start mit einer
+# kryptischen Python-Fehlermeldung ohne ersichtlichen Grund.
+check_shell_env() {
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
+    [ -f "_docker/shellgate/server.py" ] || return 0   # Feature noch nicht im Checkout
+    if [ ! -f "_docker/.env" ] || ! grep -q "^SHELL_PASSWORD_HASH=.\+" "_docker/.env" 2>/dev/null; then
+        warn "_docker/.env fehlt oder SHELL_PASSWORD_HASH ist leer — shellgate (real-shell) startet dann NICHT."
+        warn "Einmalig einrichten:  cp _docker/.env.example _docker/.env  &&  Hash eintragen."
+    fi
+}
+
 # Stellt sicher, dass ein cron-Eintrag den Container jede Nacht 00:00 neu
 # startet — damit der taegliche Restart auch ohne vps-deploy.sh existiert.
 # Idempotent (legt nichts doppelt an), nur auf dem VPS sinnvoll.
@@ -239,6 +280,11 @@ ensure_daily_restart_cron() {
         warn "cron nicht setzbar (crontab fehlt/kein Zugriff) — daily restart uebersprungen."
     fi
 }
+
+# ── Apache-vhost synchronisieren (NEUE Proxy-Regeln aus dem Repo live
+#    schalten) + auf fehlenden real-shell-Passwort-Hash hinweisen ──────
+sync_apache_vhost
+check_shell_env
 
 # ── Alles stoppen: Compose-Stack runter ─────────────────────────────
 say "stoppe & entferne Compose-Stack (glappa, searxng, …)..."

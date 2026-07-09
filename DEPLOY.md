@@ -22,11 +22,14 @@ glappa-site/
 ├── mp4/             hoch
 ├── secret/          hoch (nur pilzskip.html — GIFs liegen jetzt in img/gif/)
 ├── v86/             hoch (echtes Linux im Terminal: libv86.js, v86.wasm, bzimage.bin ~9 MB)
+├── xterm/           hoch (Terminal-Emulator fuer shell.html: xterm.js, xterm.css, addon-fit.js)
 ├── bounce.html      hoch
 ├── favicon.ico      hoch (Browser-Konvention bleibt im Root)
 ├── index.html       hoch
 ├── page1.html       hoch
 ├── script.js        hoch
+├── shell.html        hoch (echte Ubuntu-Shell — FUNKTIONIERT nur auf home.glappa.de,
+│                            zeigt auf glappa.de nur einen Hinweis, kein Backend dort)
 ├── style.css        hoch
 └── terminal.html    hoch
 ```
