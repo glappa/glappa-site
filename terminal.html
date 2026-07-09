@@ -130,18 +130,33 @@
       white-space: pre;
       user-select: none;
     }
-    #cmd-input {
+    /* Eingabefeld-Wrapper: positioniert den Block-Cursor exakt an der
+       echten Caret-Stelle (statt fix am Zeilenende) — verfolgt Tippen,
+       Pfeiltasten, Tab-Vervollstaendigung, History, Strg+A/E/U/K usw. */
+    .input-field {
+      position: relative;
       flex: 1;
+      min-width: 0;
+    }
+    #cmd-input {
+      display: block;
+      width: 100%;
       background: transparent;
       border: none;
       outline: none;
       color: var(--t-fg);
       font-family: inherit;
       font-size: inherit;
-      caret-color: var(--t-fg);
+      caret-color: transparent;   /* der Block-Cursor uebernimmt die Anzeige */
       padding: 0 4px;
     }
-    .cursor-block { color: var(--t-fg); }
+    .cursor-block {
+      position: absolute;
+      top: 0;
+      left: 4px;
+      color: var(--t-fg);
+      pointer-events: none;
+    }
 
     /* Prompt-Farben wie der Solus-Bash-Prompt: cyan User, pinker Host & $ */
     .p-u   { color: var(--t-cyan); font-weight: bold; }
@@ -320,9 +335,11 @@
         <div id="output"></div>
         <div class="input-row" id="input-row" style="display:none">
           <span class="prompt-label"></span>
-          <input type="text" id="cmd-input" autocomplete="off" spellcheck="false"
-                 autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
-          <span class="cursor-blink cursor-block">█</span>
+          <span class="input-field">
+            <input type="text" id="cmd-input" autocomplete="off" spellcheck="false"
+                   autocorrect="off" autocapitalize="off" aria-label="Terminal Eingabe">
+            <span class="cursor-blink cursor-block" id="cmd-cursor">█</span>
+          </span>
         </div>
       </div>
     </div>
@@ -513,6 +530,7 @@
     const out       = document.getElementById('output');
     const termBody  = document.getElementById('term-body');
     const inputRow  = document.getElementById('input-row');
+    const cmdCursor = document.getElementById('cmd-cursor');
 
     /* Output und Eingabezeile leben zusammen in #term-body — gescrollt
        wird der Container, damit die Eingabe der letzten Zeile folgt. */
@@ -522,6 +540,32 @@
     const edFileEl  = document.getElementById('ed-file');
     const edText    = document.getElementById('ed-text');
     const edMsg     = document.getElementById('ed-msg');
+
+    /* ── BLOCK-CURSOR AN DER ECHTEN CARET-POSITION ──
+       Der native Text-Caret ist unsichtbar (caret-color:transparent);
+       stattdessen schiebt sich der Block █ per Text-Breitenmessung an
+       die echte selectionStart-Stelle — auch bei Pfeiltasten, Tab-
+       Vervollstaendigung, History, Strg+A/E/U/K. Ein leichtgewichtiges
+       Polling deckt ALLE Stellen ab, die inp.value/selection per JS
+       setzen, ohne jede davon einzeln anfassen zu muessen. */
+    const cursorMirror = document.createElement('span');
+    cursorMirror.style.cssText = 'position:absolute; visibility:hidden; white-space:pre; left:-9999px;';
+    document.body.appendChild(cursorMirror);
+    let cmLastVal = null, cmLastPos = null;
+    function updateCursorPos() {
+      if (!cmdCursor || inputRow.style.display === 'none') return;
+      const pos = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+      if (inp.value === cmLastVal && pos === cmLastPos) return;
+      cmLastVal = inp.value; cmLastPos = pos;
+      cursorMirror.style.font = getComputedStyle(inp).font;
+      cursorMirror.textContent = inp.value.slice(0, pos);
+      cmdCursor.style.left = (4 + cursorMirror.offsetWidth) + 'px';
+    }
+    setInterval(updateCursorPos, 50);
+    inp.addEventListener('input', updateCursorPos);
+    inp.addEventListener('click', updateCursorPos);
+    inp.addEventListener('keyup', updateCursorPos);
+    inp.addEventListener('focus', updateCursorPos);
 
     /* ══════════════════════════════════════════════════════════════
        VIRTUELLES DATEISYSTEM — echt beschreibbar, lebt NUR im Browser
