@@ -2524,7 +2524,20 @@
     let lxBooted = false;      /* Gast-Shell hat ihren ersten Prompt gezeigt */
     let lxEntered = false;     /* schon mal im Linux-Modus gewesen (Einmal-Tipp) */
     let biosDone = false;      /* BIOS-Show fertig — ab jetzt darf Linux uebernehmen */
-    let simIntroShown = false; /* fastfetch-Intro der Uebungs-Shell schon gezeigt */
+    let simIntroShown = false; /* help-Intro der Uebungs-Shell schon gezeigt */
+    let lxSetupSent = false;   /* Identitaets-Setup (User, Prompt, Farben) schon geschickt */
+    let lxColor = null;        /* aktuelle ANSI-Vordergrundfarbe im seriellen Strom */
+    let lxBold = false;
+    let lxColorNL = null;      /* Farb/Bold-Zustand am Zeilenanfang (fuer Re-Renders) */
+    let lxBoldNL = false;
+
+    /* Zufaelliger Gast-User — jedes Booten ein neuer (den echten PC-Namen
+       des Besuchers gibt der Browser nicht her). */
+    const LX_USER = (function() {
+      const n = ['pixel','turbo','neon','retro','modem','floppy','laser',
+                 'cyber','glitch','vector','disk','byte'];
+      return n[Math.floor(Math.random() * n.length)] + (10 + Math.floor(Math.random() * 90));
+    })();
     let lxLoader = null;       /* Spinner-Zeile waehrend des Wartens auf den Boot */
     let lxLoaderTimer = null;
 
@@ -2539,6 +2552,70 @@
 
     function lxFlushLive() {
       if (lxLive) { lxLive.remove(); lxLive = null; }
+    }
+
+    /* ── ANSI-FARBEN: SGR-Codes (\e[..m) aus dem seriellen Strom werden
+       in farbige Spans uebersetzt statt weggeworfen — damit sieht das
+       echte Linux aus wie der Rest des Terminals (Prompt, ls --color).
+       Andere Escapes (Cursor & Co.) filtert weiterhin lxClean. ── */
+    const ANSI_FG = {
+      30:'#3f4954', 31:'#ec6a6a', 32:'#8fc775', 33:'#e2c178',
+      34:'#64a2e0', 35:'#f272b6', 36:'#45c6d6', 37:'#d3dae3',
+      90:'#6d7783', 91:'#f28b82', 92:'#a5d6a7', 93:'#ffe082',
+      94:'#90caf9', 95:'#f48fb1', 96:'#80deea', 97:'#ffffff',
+    };
+    function lxSpansFrom(text) {
+      const frag = document.createDocumentFragment();
+      text.split(/(\x1b\[[0-9;]*m)/).forEach(function(part) {
+        const m = part.match(/^\x1b\[([0-9;]*)m$/);
+        if (m) {
+          (m[1] === '' ? ['0'] : m[1].split(';')).forEach(function(code) {
+            const c = parseInt(code, 10);
+            if (c === 0)       { lxColor = null; lxBold = false; }
+            else if (c === 1)  lxBold = true;
+            else if (c === 22) lxBold = false;
+            else if (c === 39) lxColor = null;
+            else if (ANSI_FG[c]) lxColor = ANSI_FG[c];
+          });
+          return;
+        }
+        const clean = lxClean(part);
+        if (!clean) return;
+        const s = document.createElement('span');
+        if (lxColor) s.style.color = lxColor;
+        if (lxBold)  s.style.fontWeight = 'bold';
+        s.textContent = clean;
+        frag.appendChild(s);
+      });
+      return frag;
+    }
+    /* Fertige Gast-Zeile mit Farben in den Output schreiben */
+    function lxAppendAnsi(raw) {
+      lxColor = lxColorNL; lxBold = lxBoldNL;
+      const div = document.createElement('div');
+      div.className = 'line-ok';
+      div.appendChild(lxSpansFrom(raw));
+      lxColorNL = lxColor; lxBoldNL = lxBold;
+      if (captureBuf) captureBuf.push(lxClean(raw.replace(/\x1b\[[0-9;]*m/g, '')));
+      out.appendChild(div);
+      out.scrollTop = out.scrollHeight;
+    }
+
+    /* ── GAST-IDENTITAET: beim ersten Shell-Prompt bekommt die Gast-Shell
+       unsichtbar einen User + farbigen Prompt verpasst — aus dem nackten
+       "~%" wird "<user>@glappa.de:/pfad $" wie im Uebungs-Terminal.
+       Die Echos der Setup-Befehle verschluckt der Silent-Modus. ── */
+    function lxSendSetup() {
+      const esc = function(c) { return "$(printf '\\033[" + c + "m')"; };
+      const ps1 = esc('1;36') + LX_USER + esc('0') + '@' + esc('1;35') + 'glappa.de'
+                + esc('0') + ':\\$PWD ' + esc('35') + '\\$' + esc('0') + ' ';
+      const cmds = [
+        'hostname glappa.de 2>/dev/null',
+        'export USER=' + LX_USER + ' LOGNAME=' + LX_USER + ' HOSTNAME=glappa.de',
+        'ls --color=auto / >/dev/null 2>&1 && alias ls="ls --color=auto"',
+        'export PS1="' + ps1 + '"',
+      ];
+      try { lxEmulator.serial0_send(cmds.join('\r') + '\r'); } catch(e) {}
     }
 
     /* Seriellen Output zeilenweise ins normale Terminal schreiben. Die
@@ -2557,19 +2634,24 @@
       lxBuf += chunk;
       let idx;
       while ((idx = lxBuf.indexOf('\n')) !== -1) {
-        const line = lxClean(lxBuf.slice(0, idx).replace(/\r+$/, ''));
+        const line = lxBuf.slice(0, idx).replace(/\r+$/, '');
         lxBuf = lxBuf.slice(idx + 1);
         lxFlushLive();
-        appendLine(line, 'line-ok');
+        lxAppendAnsi(line);
       }
-      const partial = lxClean(lxBuf.replace(/\r/g, ''));
-      if (partial) {
+      /* Angefangene Zeile: unfertige Escape-Sequenz am Ende abschneiden
+         (kommt mit dem naechsten Chunk komplett) und mit Farben rendern */
+      const raw = lxBuf.replace(/\r/g, '').replace(/\x1b(\[[0-9;]*)?$/, '');
+      const visible = lxClean(raw.replace(/\x1b\[[0-9;]*m/g, ''));
+      if (visible) {
         if (!lxLive) {
           lxLive = document.createElement('div');
           lxLive.className = 'line-ok';
           out.appendChild(lxLive);
         }
-        lxLive.textContent = partial;
+        lxColor = lxColorNL; lxBold = lxBoldNL;
+        lxLive.textContent = '';
+        lxLive.appendChild(lxSpansFrom(raw));
         out.scrollTop = out.scrollHeight;
       } else lxFlushLive();
     }
@@ -2598,18 +2680,24 @@
       if (lxLoader) { lxLoader.remove(); lxLoader = null; }
     }
 
-    /* Erster Shell-Prompt der Gast-Shell ist da. Laeuft die BIOS-Show
-       noch, merken wir uns das nur — sie schaltet am Ende selbst um.
-       Ist sie vorbei (oder ein Retry via boot-linux): direkt hinein. */
+    /* Erster Shell-Prompt der Gast-Shell ist da: erst unsichtbar die
+       Identitaet einrichten (User, farbiger Prompt), Echos verschlucken,
+       DANN bereit melden. Laeuft die BIOS-Show noch, schaltet sie am
+       Ende selbst um; sonst (Retry via boot-linux) direkt hinein. */
     function lxBootReady() {
-      if (!lxSilent) return;
-      lxBooted = true;
-      lxBuf = '';
-      if (biosDone) {
-        lxSilent = false;
-        lxHideLoader();
-        enterLinux();
-      }
+      if (!lxSilent || lxBooted) return;
+      if (lxSetupSent) return;   /* Setup laeuft schon, Timer meldet gleich */
+      lxSetupSent = true;
+      lxSendSetup();
+      setTimeout(function() {
+        lxBooted = true;
+        lxBuf = '';
+        if (biosDone) {
+          lxSilent = false;
+          lxHideLoader();
+          enterLinux();
+        }
+      }, 900);
     }
 
     /* In den Linux-Modus wechseln: VM (weiter)laufen lassen, Prompt anfordern */
@@ -2639,7 +2727,7 @@
       lxSilent = false;
       lxHideLoader();
       if (lxEmulator) { try { lxEmulator.destroy(); } catch(e) {} lxEmulator = null; }
-      lxBuf = ''; lxGotBytes = false; lxBooted = false;
+      lxBuf = ''; lxGotBytes = false; lxBooted = false; lxSetupSent = false;
       appendLine('Linux-Start fehlgeschlagen: ' + msg, 'line-err');
       appendLine('Du bist im Übungs-Terminal —  boot-linux  versucht es erneut.', 'line-sys');
       if (biosDone) enterSimShell();
@@ -2673,17 +2761,15 @@
       autoBootLinux();
     }
 
-    /* Uebungs-Shell freigeben — beim ersten Mal mit fastfetch-Intro,
-       wie ein frisch geoeffnetes Terminal. */
+    /* Uebungs-Shell freigeben — beim ersten Mal wird help gelistet
+       (kein fastfetch-Intro; das gibt es weiter als Befehl). */
     function enterSimShell() {
       lxHideLoader();
       if (!simIntroShown) {
         simIntroShown = true;
         blank();
-        echoCmd('fastfetch');
-        renderFastfetch();
-        appendLine('hilfe: help   ·   übungen: tutorial   ·   KI: glappa-chat   ·   zurück ins Linux: boot-linux', 'line-sys');
-        blank();
+        echoCmd('help');
+        SPECIAL.help();
       }
       inputRow.style.display = 'flex';
       updatePrompt();
