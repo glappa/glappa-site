@@ -3217,7 +3217,6 @@
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
         appendLine('  boot-linux              ins ECHTE Linux wechseln (bootet beim Start unsichtbar vor)', 'line-pink');
         appendLine('  exit-linux              ... und zurück zum Übungs-Terminal (VM pausiert nur)', 'line-pink');
-        appendLine('  real-shell              ECHTE Ubuntu-VM auf dem Server (Passwort, nur home.glappa.de)', 'line-pink');
         appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
         appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
@@ -3839,9 +3838,16 @@
       if (!activeScript) updatePrompt();
     }
 
+    /* Bewusst NICHT gelistet: weder in help noch in der Tab-Vervoll-
+       staendigung. Wer real-shell nutzen will, muss den Befehl schon
+       kennen — kein Link, keine Erwaehnung, nur wer ihn eintippt kommt hin. */
+    const HIDDEN_COMMANDS = new Set(['real-shell']);
+
     /* ── Tab-Vervollständigung: Befehle + Pfade ── */
     function allCommands() {
-      return Object.keys(BIN).concat(Object.keys(SPECIAL)).sort();
+      return Object.keys(BIN).concat(Object.keys(SPECIAL))
+        .filter(function(c) { return !HIDDEN_COMMANDS.has(c); })
+        .sort();
     }
     function completeInput() {
       const val = inp.value;
