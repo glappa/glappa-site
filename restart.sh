@@ -23,7 +23,8 @@
 # jede Nacht um 00:00 neu startet (idempotent — legt nichts doppelt an).
 
 set -euo pipefail
-cd "$(dirname "$(readlink -f "$0")")"
+SELF="$(readlink -f "$0")"
+cd "$(dirname "$SELF")"
 PROJECT="$(pwd)"
 LOG_FILE="$HOME/glappa-restart.log"
 
@@ -149,9 +150,32 @@ fi
 echo
 
 # ── Optional: Code aktualisieren ────────────────────────────────────
+# WICHTIG: bash hat restart.sh schon vollstaendig eingelesen, BEVOR wir
+# hier ankommen. Ein "git pull" holt zwar neue Datei-INHALTE auf die
+# Platte, aber Aenderungen AM SKRIPT SELBST (z.B. neue Funktionen wie
+# build_shell_guest_image) wuerden in DIESEM Lauf trotzdem ignoriert —
+# bash liest den geaenderten Text erst beim NAECHSTEN Aufruf. Das hat
+# genau einen Deploy kaputt gemacht (Server-Code war schon neu, aber
+# restart.sh lief noch mit der alten Build-Logik). Fix: nach einem
+# Pull, der tatsaechlich was geaendert hat, uns selbst per exec neu
+# starten — GLAPPA_RESTART_NO_PULL verhindert eine Pull-Endlosschleife.
 if [ "$PULL" = "1" ]; then
-    say "git pull..."
-    git pull --ff-only || warn "git pull fehlgeschlagen — fahre mit lokalem Stand fort."
+    if [ -n "${GLAPPA_RESTART_NO_PULL:-}" ]; then
+        say "bereits aktualisiert (Re-Exec) — ueberspringe erneuten git pull"
+    else
+        say "git pull..."
+        BEFORE_PULL="$(git rev-parse HEAD 2>/dev/null || echo none)"
+        if git pull --ff-only; then
+            AFTER_PULL="$(git rev-parse HEAD 2>/dev/null || echo none)"
+            if [ "$BEFORE_PULL" != "$AFTER_PULL" ]; then
+                ok "Neuer Code geholt ($BEFORE_PULL -> $AFTER_PULL) — starte restart.sh neu, um ihn zu nutzen"
+                export GLAPPA_RESTART_NO_PULL=1
+                exec bash "$SELF" "$@"
+            fi
+        else
+            warn "git pull fehlgeschlagen — fahre mit lokalem Stand fort."
+        fi
+    fi
 fi
 
 # ── Hilfsfunktionen: Port-Freigabe ──────────────────────────────────
