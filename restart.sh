@@ -242,6 +242,24 @@ sync_apache_vhost() {
     fi
 }
 
+# Baut das GAST-Image (glappa-shellvm:latest), aus dem shellgate pro
+# Sitzung Container erzeugt. MUSS explizit gebaut werden: im Compose ist
+# shellvm nur als Bauplan (mit profiles:) hinterlegt, aber "docker compose
+# build" ueberspringt Services mit inaktivem Profil — dadurch existierte
+# das Image nie und shellgate scheiterte zur Laufzeit mit ImageNotFound
+# (und versuchte es sinnlos von Docker Hub zu ziehen). Direkt bauen
+# umgeht die Compose-Profil-Eigenheiten komplett. Nur auf dem VPS.
+build_shell_guest_image() {
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
+    [ -f "_docker/shellvm/Dockerfile" ] || return 0
+    say "baue Gast-Image glappa-shellvm:latest (real-shell)..."
+    if $SUDO docker build -t glappa-shellvm:latest _docker/shellvm; then
+        ok "Gast-Image glappa-shellvm:latest gebaut"
+    else
+        warn "Gast-Image-Build fehlgeschlagen — real-shell startet keine Sitzungen (ImageNotFound)."
+    fi
+}
+
 # Warnt fruehzeitig, wenn _docker/.env (SHELL_PASSWORD_HASH fuer real-shell)
 # fehlt — sonst crashed der shellgate-Container beim Start mit einer
 # kryptischen Python-Fehlermeldung ohne ersichtlichen Grund.
@@ -297,6 +315,8 @@ $SUDO docker compose -f "$COMPOSE" down --remove-orphans || true
 if [ -n "$BUILD" ]; then
     say "rebuild image..."
     $SUDO docker compose -f "$COMPOSE" build
+    # Gast-Image separat bauen — compose ueberspringt es (Profil), s.o.
+    build_shell_guest_image
 fi
 
 say "raeume Ports frei (${HOST_PORTS[*]})..."

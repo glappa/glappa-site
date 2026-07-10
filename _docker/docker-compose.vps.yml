@@ -101,18 +101,14 @@ services:
         max-size: "1m"
         max-file: "3"
 
-  # ── shellvm: NUR das Gast-Image bauen, nie selbst laufen ──────────
-  # `profiles:` ausserhalb jedes aktivierten Profils -> `docker compose
-  # up -d` startet diesen Service NIE, aber `docker compose build`
-  # (macht restart.sh vor jedem up -d) baut ihn trotzdem mit — genau
-  # das offizielle Compose-Muster fuer "Image bauen, ohne dass es
-  # dauerhaft laeuft". shellgate (unten) erzeugt daraus bei Bedarf
-  # PRO SITZUNG frische Container.
-  shellvm:
-    build:
-      context: shellvm
-    image: glappa-shellvm:latest
-    profiles: ["build-only"]
+  # ── Gast-Image glappa-shellvm:latest ──────────────────────────────
+  # ABSICHTLICH KEIN Compose-Service: ein Service mit `profiles:` wird von
+  # `docker compose build` UEBERSPRUNGEN (Profil inaktiv), das Image
+  # entstuende also nie und shellgate scheiterte zur Laufzeit mit
+  # ImageNotFound. Deshalb baut restart.sh (build_shell_guest_image) das
+  # Gast-Image direkt per `docker build -t glappa-shellvm:latest
+  # _docker/shellvm`. shellgate (unten) erzeugt daraus PRO SITZUNG
+  # frische, gehaertete Container (siehe shellgate/server.py).
 
   # ── shellgate: passwortgeschuetzte ECHTE Ubuntu-Shell im Browser ──
   # terminal.html "real-shell" -> Apache /api/shell/ws -> hier. Siehe

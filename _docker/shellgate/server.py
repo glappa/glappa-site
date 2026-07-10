@@ -91,6 +91,17 @@ def ensure_network() -> None:
 
 def spawn_guest_container() -> 'docker.models.containers.Container':
     name = f'glappa-shell-{uuid.uuid4().hex[:10]}'
+    # Bewusst VORHER pruefen, ob das Gast-Image lokal existiert: sonst
+    # versucht containers.run() es von Docker Hub zu ziehen (das Repo
+    # gibt es dort nicht -> kryptisches "pull access denied"). Klarer
+    # Hinweis auf den echten Fehler: das Image wurde nicht gebaut.
+    try:
+        client.images.get(GUEST_IMAGE)
+    except docker.errors.ImageNotFound:
+        raise RuntimeError(
+            f'Gast-Image {GUEST_IMAGE} fehlt. Auf der VPS bauen mit:  '
+            f'docker build -t {GUEST_IMAGE} _docker/shellvm   '
+            f'(restart.sh --vps macht das automatisch).')
     return client.containers.run(
         GUEST_IMAGE,
         name=name,
@@ -346,6 +357,12 @@ async def handle(ws) -> None:
                 session.resize(msg.get('cols', 80), msg.get('rows', 24))
     except asyncio.TimeoutError:
         await session.send({'type': 'error', 'msg': 'Gast-Container startet nicht rechtzeitig — bitte später erneut versuchen.'})
+        await ws.close()
+    except RuntimeError as e:
+        # z.B. Gast-Image fehlt (spawn_guest_container) — die Nachricht ist
+        # hier bewusst konkret genug, um das Deploy-Problem zu erkennen.
+        log.error('Gast-Shell-Start fehlgeschlagen: %s', e)
+        await session.send({'type': 'error', 'msg': str(e)})
         await ws.close()
     except (APIError, DockerException) as e:
         log.exception('Container-Start fehlgeschlagen')

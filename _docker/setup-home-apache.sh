@@ -232,6 +232,17 @@ else
     # 'up' sonst am Name-Konflikt und der veraltete Container laeuft einfach
     # weiter. Gleiches Muster wie in setup-search-apache.sh.
     $DOCKER_SUDO docker rm -f glappa >/dev/null 2>&1 || true
+
+    # Gast-Image fuer real-shell DIREKT bauen — compose ueberspringt es
+    # (kein Compose-Service, s. Kommentar in docker-compose.vps.yml).
+    # Ohne dieses Image scheitert shellgate zur Laufzeit mit ImageNotFound.
+    if [ -f "$PROJECT/shellvm/Dockerfile" ]; then
+        say "Baue Gast-Image glappa-shellvm:latest (real-shell)..."
+        $DOCKER_SUDO docker build -t glappa-shellvm:latest "$PROJECT/shellvm" \
+            && ok "Gast-Image glappa-shellvm:latest gebaut" \
+            || warn "Gast-Image-Build fehlgeschlagen — real-shell startet keine Sitzungen"
+    fi
+
     if $DOCKER_SUDO $COMPOSE_BIN -f "$COMPOSE_FILE" up -d --build; then
         ok "Container gebaut + gestartet (Downloader :$DL_PORT)"
         # SearXNG explizit neu starten, damit es eine evtl. neue settings.yml
