@@ -208,6 +208,17 @@
       gateMsg.textContent = 'Diese Funktion gibt es nur auf home.glappa.de — dort läuft der Docker-Host.';
     }
 
+    /* Kam man ueber terminal.html (Befehl "real-shell") hierher, liegt das
+       Passwort kurz in sessionStorage — SOFORT auslesen+loeschen (read-once,
+       ueberlebt keinen Reload/neuen Tab), damit hier gar nicht erst ein
+       Formular gezeigt werden muss. Direkter Aufruf dieser Seite (Bookmark,
+       URL eingetippt) findet nichts vor und zeigt weiterhin das Formular. */
+    let autoPw = null;
+    try {
+      autoPw = sessionStorage.getItem('glappaShellPw');
+      sessionStorage.removeItem('glappaShellPw');
+    } catch (e) {}
+
     let ws = null;
     let term = null;
     let fitAddon = null;
@@ -350,6 +361,14 @@
       if (!pw) return;
       connect(pw);
     });
+
+    /* Auto-Connect mit dem aus terminal.html mitgebrachten Passwort — das
+       manuelle Formular bleibt dabei komplett unsichtbar. */
+    if (autoPw && WS_URL) {
+      gateForm.style.display = 'none';
+      setMsg('Verbinde …', 'info');
+      connect(autoPw);
+    }
 
     document.querySelectorAll('.marquee span').forEach(function (span) {
       span.style.animation = 'scroll-left 28s linear infinite';

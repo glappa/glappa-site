@@ -35,32 +35,36 @@
       padding: 10px 16px 40px;
     }
 
-    /* kitty auf Solus: flaches, dunkles Terminal — kein CRT-Neon mehr */
+    /* Neongruenes CRT-Retro — der urspruengliche Glappa-Terminal-Look,
+       vor dem kurzen Solus/kitty-Zwischenspiel wieder zurueckgeholt.
+       Struktur (Titelleiste, Resize, Cursor-Positionierung) bleibt
+       unveraendert — nur Farben/Glow/Font wechseln zurueck. */
     #terminal {
-      /* Farbschema wie im Solus/kitty-Vorbild */
-      --t-bg:     #191d21;
-      --t-fg:     #d3dae3;
-      --t-dim:    #6d7783;
-      --t-red:    #ec6a6a;
-      --t-green:  #8fc775;
-      --t-yellow: #e2c178;
-      --t-blue:   #64a2e0;
-      --t-pink:   #f272b6;
-      --t-cyan:   #45c6d6;
-      --t-white:  #f2f5f9;
+      --t-bg:     #0a0a0a;
+      --t-fg:     var(--neon-green);
+      --t-dim:    #888;
+      --t-red:    #ff4444;
+      --t-green:  var(--neon-green);
+      --t-yellow: var(--neon-yellow);
+      --t-blue:   var(--neon-green);
+      --t-pink:   var(--neon-pink);
+      --t-cyan:   var(--neon-cyan);
+      --t-white:  #fff;
 
       background: var(--t-bg);
-      border: 1px solid #2c3238;
-      border-radius: 6px;
-      box-shadow: 0 10px 34px rgba(0,0,0,0.6);
-      padding: 16px 18px;
-      font-family: 'Hack', 'JetBrains Mono', 'Cascadia Mono', Consolas,
-                   'DejaVu Sans Mono', 'Liberation Mono', monospace;
-      font-size: clamp(0.8rem, 1.4vw, 0.95rem);
+      border: 2px solid var(--neon-green);
+      border-radius: 4px;
+      box-shadow:
+        0 0 10px var(--neon-green),
+        0 0 30px rgba(0,255,0,0.2),
+        inset 0 0 60px rgba(0,0,0,0.8);
+      padding: 18px 20px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(0.82rem, 1.5vw, 1rem);
       position: relative;
       overflow: hidden;
-      /* Fenster-Verhalten: Titelleiste zieht (JS), Ecke unten rechts
-         aendert die Groesse (natives CSS-resize) */
+      /* Fenster-Verhalten (neu ggue. dem alten Look, bleibt aber): Titel-
+         leiste zieht (JS), Ecke unten rechts aendert die Groesse. */
       display: flex;
       flex-direction: column;
       height: 70vh;
@@ -68,31 +72,43 @@
       min-width: 300px;
       resize: both;
     }
+    /* Scanlines — klassischer CRT-Effekt */
+    #terminal::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 3px,
+        rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 4px
+      );
+      pointer-events: none;
+      z-index: 10;
+    }
 
-    /* Titelleiste wie ein echtes Fenster — zum Verschieben ziehen */
+    /* Titelleiste — im alten Look gab es keine eigene Fensterleiste;
+       hier dezent im CRT-Gruen statt der WhiteSur-Ampel gehalten. */
     .term-titlebar {
       flex: none;
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: -16px -18px 10px;
-      padding: 8px 14px;
-      background: #22272c;
-      border-bottom: 1px solid #2c3238;
-      border-radius: 6px 6px 0 0;
+      margin: -18px -20px 10px;
+      padding: 6px 14px;
+      background: rgba(0,255,0,0.08);
+      border-bottom: 1px solid var(--neon-green);
       cursor: grab;
       user-select: none;
       touch-action: none;
     }
     .term-titlebar:active { cursor: grabbing; }
-    .tb-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-    .tb-dot.r { background: #ff5f57; }
-    .tb-dot.y { background: #febc2e; }
-    .tb-dot.g { background: #28c840; }
+    .tb-dot { width: 10px; height: 10px; border-radius: 50%; flex: none;
+              background: var(--neon-green); box-shadow: 0 0 4px var(--neon-green); opacity: 0.6; }
     .tb-title {
       flex: 1;
       text-align: center;
-      color: #9aa5b1;
+      color: var(--neon-cyan);
+      text-shadow: 0 0 4px var(--neon-cyan);
       font-size: 0.8em;
       white-space: nowrap;
       overflow: hidden;
@@ -109,13 +125,14 @@
       overflow-x: hidden;   /* KEIN horizontaler Scrollbalken */
     }
     #term-body::-webkit-scrollbar { width: 8px; }
-    #term-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.16); border-radius: 4px; }
-    #term-body::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
+    #term-body::-webkit-scrollbar-thumb { background: rgba(0,255,0,0.35); border-radius: 4px; }
+    #term-body::-webkit-scrollbar-track { background: rgba(0,255,0,0.06); }
     #output {
-      color: var(--t-fg);
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
       white-space: pre-wrap;
       word-break: break-word;
-      line-height: 1.45;
+      line-height: 1.55;
     }
 
     .input-row {
@@ -124,7 +141,8 @@
       align-items: center;
     }
     .prompt-label {
-      color: var(--t-fg);
+      color: var(--neon-cyan);
+      text-shadow: 0 0 4px var(--neon-cyan);
       font-family: inherit;
       font-size: inherit;
       white-space: pre;
@@ -144,7 +162,8 @@
       background: transparent;
       border: none;
       outline: none;
-      color: var(--t-fg);
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
       font-family: inherit;
       font-size: inherit;
       caret-color: transparent;   /* der Block-Cursor uebernimmt die Anzeige */
@@ -154,40 +173,40 @@
       position: absolute;
       top: 0;
       left: 4px;
-      color: var(--t-fg);
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
       pointer-events: none;
     }
 
-    /* Prompt-Farben wie der Solus-Bash-Prompt: cyan User, pinker Host & $ */
-    .p-u   { color: var(--t-cyan); font-weight: bold; }
-    .p-at  { color: var(--t-fg); }
-    .p-h   { color: var(--t-pink); font-weight: bold; }
-    .p-dir { color: var(--t-fg); }
-    .p-sym { color: var(--t-pink); }
+    /* Prompt einfarbig cyan, wie im alten Look — die p-*-Spans bleiben
+       (fuer die Cursor-Positionierung im JS gebraucht), bekommen aber
+       alle dieselbe Neon-Farbe statt bunter Segmente. */
+    .p-u, .p-at, .p-h, .p-dir, .p-sym { color: var(--neon-cyan); text-shadow: 0 0 4px var(--neon-cyan); }
+    .p-u, .p-h { font-weight: normal; }
 
-    .line-cmd    { color: var(--t-white); }
-    .line-ok     { color: var(--t-fg); }
-    .line-err    { color: var(--t-red); }
-    .line-info   { color: var(--t-yellow); }
-    .line-sys    { color: var(--t-dim); }
-    .line-art    { color: var(--t-blue); }
-    .line-pink   { color: var(--t-pink); }
-    .line-bios   { color: #8a939e; }
-    .line-white  { color: #fff; }
+    .line-cmd    { color: var(--neon-cyan);   text-shadow: 0 0 4px var(--neon-cyan); }
+    .line-ok     { color: var(--neon-green);  text-shadow: 0 0 3px var(--neon-green); }
+    .line-err    { color: #ff4444;            text-shadow: 0 0 4px #ff4444; }
+    .line-info   { color: var(--neon-yellow); text-shadow: 0 0 3px var(--neon-yellow); }
+    .line-sys    { color: #888; }
+    .line-art    { color: var(--neon-green);  text-shadow: 0 0 5px var(--neon-green); }
+    .line-pink   { color: var(--neon-pink);   text-shadow: 0 0 4px var(--neon-pink); }
+    .line-bios   { color: #aaa; }
+    .line-white  { color: #fff; text-shadow: 0 0 4px #fff; }
 
     /* fastfetch: ASCII-Logo links, Infos rechts. Werte duerfen intern
        umbrechen (pre-wrap) — sonst schiebt eine lange GPU-Zeile das
        Terminal in einen horizontalen Scrollbalken. */
     .ff-row  { display: flex; white-space: pre-wrap; line-height: 1.32; }
     .ff-art  { flex: none; width: 40ch; white-space: pre; }
-    .ff-ad   { color: #71829e; }                       /* Logo: Schraffur */
-    .ff-aw   { color: #e6ecf7; }                       /* Logo: Kernmasse */
-    .ff-ab   { color: var(--t-blue); }                 /* Logo: Schwung unten */
-    .ff-key  { color: var(--t-cyan); font-weight: bold; }
-    .ff-val  { color: var(--t-fg); }
-    .ff-pg   { color: var(--t-green); }
-    .ff-py   { color: var(--t-yellow); }
-    .ff-pr   { color: var(--t-red); }
+    .ff-ad   { color: #2a6b2a; }                                            /* Logo: Schraffur */
+    .ff-aw   { color: var(--neon-green); text-shadow: 0 0 4px var(--neon-green); } /* Logo: Kernmasse */
+    .ff-ab   { color: var(--neon-cyan);  text-shadow: 0 0 4px var(--neon-cyan); }  /* Logo: Schwung unten */
+    .ff-key  { color: var(--neon-cyan); text-shadow: 0 0 3px var(--neon-cyan); font-weight: bold; }
+    .ff-val  { color: var(--neon-green); }
+    .ff-pg   { color: var(--neon-green); }
+    .ff-py   { color: var(--neon-yellow); }
+    .ff-pr   { color: #ff4444; }
     .ff-block { display: inline-block; width: 24px; height: 14px; margin: 1px 0; }
     @media (max-width: 720px) {
       .ff-art { display: none; }
@@ -238,8 +257,8 @@
       font-family: inherit;
     }
     #editor .ed-bar {
-      background: #2f353b;
-      color: #e8ecf1;
+      background: var(--neon-green);
+      color: #000;
       padding: 2px 10px;
       font-weight: bold;
       font-size: 0.85em;
@@ -255,8 +274,9 @@
       border: none;
       outline: none;
       resize: none;
-      color: var(--t-fg, #d3dae3);
-      caret-color: var(--t-fg, #d3dae3);
+      color: var(--neon-green);
+      text-shadow: 0 0 4px var(--neon-green);
+      caret-color: var(--neon-green);
       font-family: inherit;
       font-size: inherit;
       line-height: 1.5;
@@ -800,6 +820,14 @@
     let chatMode = false;          // true = Eingaben gehen an den Bot
     let chatBusy = false;          // eine Anfrage laeuft gerade
     const chatHistory = [];        // {role, content} fuer Kontext
+
+    /* ── real-shell: Passwort wird HIER im Terminal abgefragt (nicht auf
+       shell.html) — die naechste Eingabe ist das Passwort, maskiert wie
+       bei glappa-do/read, dann wird es kurz ueber sessionStorage an
+       shell.html gereicht (siehe startRealShell) und dort SOFORT wieder
+       geloescht, sobald gelesen. ── */
+    let awaitingShellPassword = false;
+    const SHELL_PW_PROMPT = 'Passwort: ';
 
     /* Chat-API: gleiche Endpoint-Logik wie der Visitor-Counter in script.js.
        home/search.glappa.de -> same-origin ueber den Apache /api-Proxy,
@@ -3535,13 +3563,16 @@
          simuliert!) — separate Seite, weil sie einen richtigen Terminal-
          Emulator (xterm.js) braucht: Vollbild-Programme, Cursor-Editing
          in bash usw. gehen im Zeilen-Renderer hier nicht sauber. Nur auf
-         home.glappa.de erreichbar (siehe shell.html: shellWsUrl()). */
+         home.glappa.de erreichbar (siehe shell.html: shellWsUrl()). Das
+         Passwort wird HIER abgefragt (maskiert, s. runCmd) statt auf
+         shell.html selbst — die zeigt ihr eigenes Formular nur noch, wenn
+         man sie direkt aufruft statt ueber diesen Befehl. */
       'real-shell'() {
         blank();
-        appendLine('Öffne echte Ubuntu-Shell (Passwort erforderlich) …', 'line-info');
-        appendLine('Läuft nur auf home.glappa.de — läuft NICHT im Browser wie diese hier.', 'line-sys');
-        blank();
-        setTimeout(function() { window.location.href = 'shell.html'; }, 700);
+        appendLine('Echte Ubuntu-Shell (Docker, nur auf home.glappa.de).', 'line-info');
+        awaitingShellPassword = true;
+        inp.type = 'password';
+        updatePrompt();
       },
     };
     ['curl','wget','ssh','ftp','telnet','nmap','apt','apt-get'].forEach(function(c) {
@@ -3668,6 +3699,7 @@
       const label = document.querySelector('.prompt-label');
       label.textContent = '';
       if (topMode || linuxMode) return;
+      if (awaitingShellPassword) { label.textContent = SHELL_PW_PROMPT; return; }
       if (chatMode) { label.textContent = 'glappa-chat> '; return; }
       label.appendChild(promptSpans());
     }
@@ -3753,8 +3785,35 @@
       }, 16);
     }
 
+    /* Passwort NUR kurz ueber sessionStorage an shell.html reichen (nicht
+       als URL-Parameter — der laendet sonst in Browser-Verlauf, Referrer,
+       Server-Logs). shell.html liest es beim Laden SOFORT aus und loescht
+       es augenblicklich wieder (siehe shell.html), unabhaengig davon ob
+       das Passwort stimmt. sessionStorage ueberlebt keinen Tab-Neustart
+       und wird nie automatisch mitgeschickt (anders als Cookies). */
+    function startRealShell(password) {
+      try { sessionStorage.setItem('glappaShellPw', password); } catch(e) {}
+      appendLine('Verbinde …', 'line-info');
+      blank();
+      setTimeout(function() { window.location.href = 'shell.html'; }, 400);
+    }
+
     function runCmd(raw) {
       let trimmed = raw.trim();
+
+      /* real-shell wartet auf das Passwort — VOR allem anderen, auch vor
+         leeren Eingaben (die waeren ein leeres Passwort, gueltig genug um
+         es zu versuchen und serverseitig abzulehnen). NIEMALS raw/trimmed
+         in appendLine landen lassen — das waere Klartext-Passwort in der
+         sichtbaren Terminal-Historie. */
+      if (awaitingShellPassword) {
+        awaitingShellPassword = false;
+        inp.type = 'text';
+        appendLine(SHELL_PW_PROMPT + '••••••••', 'line-cmd');
+        startRealShell(raw);
+        updatePrompt();
+        return;
+      }
 
       /* Ein Skript wartet auf "read" — die Eingabe geht an DAS, nicht an
          die normale Shell (auch eine leere Zeile ist eine gültige Antwort,
@@ -3937,12 +3996,18 @@
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
-        if (activeScript) appendLine(activeScript.pendingPrompt + inp.value + '^C', 'line-cmd');
+        if (awaitingShellPassword) appendLine(SHELL_PW_PROMPT + '^C', 'line-cmd');   /* NIE inp.value hier — waere Klartext-Passwort */
+        else if (activeScript) appendLine(activeScript.pendingPrompt + inp.value + '^C', 'line-cmd');
         else if (activeAgent && activeAgent.awaitingConfirm) appendLine(AGENT_CONFIRM_PROMPT + inp.value + '^C', 'line-cmd');
         else echoCmd(inp.value + '^C');
         inp.value = '';
         histIdx = -1;
-        if (activeScript) {
+        if (awaitingShellPassword) {
+          awaitingShellPassword = false;
+          inp.type = 'text';
+          appendLine('(abgebrochen)', 'line-sys');
+          updatePrompt();
+        } else if (activeScript) {
           activeScript = null;
           appendLine('(Skript abgebrochen)', 'line-sys');
           updatePrompt();
