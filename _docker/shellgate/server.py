@@ -65,7 +65,15 @@ if not PASSWORD_HASH:
 if len(PASSWORD_HASH) != 64:
     log.warning('SHELL_PASSWORD_HASH ist kein 64-stelliger Hex-String (SHA-256?) - pruef den Wert.')
 
-client = docker.from_env()
+# max_pool_size: docker-py's Default ist nur 10 (DEFAULT_MAX_POOL_SIZE).
+# JEDE gehijackte Exec-Verbindung (spawn_exec -> exec_start(socket=True))
+# haelt fuer die GESAMTE Sitzungsdauer eine Verbindung aus genau diesem
+# Pool fest — die HTTP-Verbindung wird ja fuer den rohen PTY-Bytestream
+# gekapert, kommt also nie in den Pool zurueck. Bei mehreren Sitzungen
+# (MAX_SESSIONS) plus normalen API-Aufrufen (spawn, resize, cleanup)
+# ueber denselben Client reicht der Standard-Pool schnell nicht mehr —
+# weitere Docker-API-Aufrufe blockieren dann, bis der Timeout greift.
+client = docker.from_env(max_pool_size=max(64, MAX_SESSIONS * 4))
 
 _fail_lock = asyncio.Lock()
 _fails: dict[str, tuple[int, float]] = {}   # ip -> (Anzahl, Zeitpunkt des ersten Fehlversuchs)
@@ -228,15 +236,27 @@ class Session:
         except OSError:
             pass
 
-    def resize(self, cols: int, rows: int) -> None:
+    async def resize(self, cols: int, rows: int) -> None:
         if not self.exec_id:
             return
         cols = max(2, min(500, int(cols)))
         rows = max(2, min(200, int(rows)))
-        try:
-            client.api.exec_resize(self.exec_id, height=rows, width=cols)
-        except APIError:
-            pass
+        # WICHTIG: client.api.exec_resize() ist eine BLOCKIERENDE HTTP-
+        # Anfrage (docker-py ist synchron). Direkt aufgerufen wuerde das
+        # die GESAMTE asyncio-Event-Loop einfrieren, bis sie zurueckkommt
+        # — und damit fuer ALLE Sitzungen jede Eingabeverarbeitung
+        # blockieren (die async-for-Schleife in handle() haengt am
+        # selben Loop). Das war ein echter Bug: ein einziger haengender
+        # Resize-Call (z.B. bei erschoepftem Connection-Pool, s.o.)
+        # machte das komplette Terminal fuer JEDEN unbedienbar, nicht
+        # nur fuer diese eine Sitzung. In einem Thread ausfuehren loest
+        # das strukturell, unabhaengig von der Pool-Groesse.
+        def _do():
+            try:
+                client.api.exec_resize(self.exec_id, height=rows, width=cols)
+            except APIError:
+                pass
+        await asyncio.to_thread(_do)
 
     async def cleanup(self) -> None:
         self.closing = True
@@ -369,7 +389,7 @@ async def handle(ws) -> None:
                 session.write(str(msg.get('data', '')))
             elif mtype == 'resize':
                 session.touch()
-                session.resize(msg.get('cols', 80), msg.get('rows', 24))
+                await session.resize(msg.get('cols', 80), msg.get('rows', 24))
     except asyncio.TimeoutError:
         await session.send({'type': 'error', 'msg': 'Gast-Container startet nicht rechtzeitig — bitte später erneut versuchen.'})
         await ws.close()
