@@ -157,11 +157,31 @@ async def spawn_exec(container) -> tuple[str, object]:
 
 def _socket_write(sock, data: bytes) -> None:
     """Gegenstueck zu docker.utils.socket.read() — dieselbe Fallunter-
-    scheidung, nur zum Schreiben (dafuer bietet docker-py keinen Helper)."""
+    scheidung, nur zum Schreiben (dafuer bietet docker-py keinen Helper).
+
+    DER EIGENTLICHE BUG hinter "Terminal reagiert nicht" (Eingabe kam
+    beim Server an, siehe first_input_seen-Log, aber der Container
+    bekam nie etwas): im ueblichen Unix-Socket-Transport-Fall liefert
+    exec_start(socket=True) ein socket.SocketIO, das INTERN aus
+    http.client.HTTPResponse stammt — und das baut seinen Puffer per
+    `sock.makefile("rb")` (siehe CPython socket.py). Das "rb" heisst
+    READ-ONLY; SocketIO._writing wird dabei False gesetzt. Der ECHTE
+    darunterliegende Socket ist trotzdem voll bidirektional (reine
+    Python-Buchhaltung, keine OS-Beschraenkung) — aber sock.write(data)
+    darauf wirft io.UnsupportedOperation, EINE OSError-UNTERKLASSE, die
+    Session.write()s "except OSError: pass" bisher lautlos verschluckt
+    hat. Verifiziert mit einem echten sock.makefile('rb')-Objekt (exakt
+    das, was docker-py intern erzeugt): .write() wirft tatsaechlich
+    UnsupportedOperation; ueber ._sock direkt (der ECHTE Socket) klappt
+    sendall() einwandfrei, am kuenstlichen Flag vorbei."""
     if hasattr(sock, 'send'):
         sock.send(data)
     elif isinstance(sock, pysocket.SocketIO):
-        sock.write(data)
+        real = getattr(sock, '_sock', None)
+        if real is not None:
+            real.sendall(data)
+        else:
+            sock.write(data)   # Fallback, falls ._sock mal nicht existiert
     else:
         os.write(sock.fileno(), data)
 
@@ -176,6 +196,7 @@ class Session:
         self.last_active = time.monotonic()
         self.closing = False
         self.first_input_seen = False
+        self.write_error_logged = False
 
     async def send(self, obj: dict) -> None:
         try:
@@ -233,8 +254,15 @@ class Session:
             return
         try:
             _socket_write(self.sock, text.encode('utf-8', 'replace'))
-        except OSError:
-            pass
+        except OSError as e:
+            # NICHT mehr lautlos verschlucken — genau das hat den echten
+            # Bug (UnsupportedOperation beim Schreiben, s. _socket_write)
+            # tagelang unsichtbar gemacht. Loggt hoechstens einmal pro
+            # Sitzung, nicht pro Tastendruck.
+            if not self.write_error_logged:
+                self.write_error_logged = True
+                log.error('Schreiben zur Gast-Shell fehlgeschlagen (Session %s): %s: %s',
+                          self.ip, e.__class__.__name__, e)
 
     async def resize(self, cols: int, rows: int) -> None:
         if not self.exec_id:
