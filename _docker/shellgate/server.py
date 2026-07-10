@@ -194,6 +194,12 @@ class Session:
                 chunk = docker_sock_read(self.sock, 4096)
             except OSError:
                 break
+            except ValueError:
+                # cleanup() hat self.sock waehrend eines laufenden reads
+                # geschlossen — Pythons io-Schicht meldet das als
+                # ValueError("I/O operation on closed file"), nicht als
+                # OSError. Voellig normaler Shutdown-Fall, kein Fehler.
+                break
             if not chunk:
                 break
             text = chunk.decode('utf-8', 'replace')

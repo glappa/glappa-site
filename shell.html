@@ -237,6 +237,13 @@
       term.loadAddon(fitAddon);
       term.open(termHost);
       fitAddon.fit();
+      /* Ohne das bleibt der Fokus auf dem Passwortfeld/Verbinden-Button —
+         xterm.js faengt Tastatureingaben ueber eine versteckte Textarea
+         ab, die wie jedes andere Eingabeelement explizit fokussiert
+         werden muss. Klick auf den Fenster-Bereich holt den Fokus auch
+         zurueck, falls er mal woanders hin wandert (z.B. Adressleiste). */
+      term.focus();
+      termHost.addEventListener('click', function () { term.focus(); });
 
       term.onData(function (data) {
         if (ws && ws.readyState === WebSocket.OPEN) {
