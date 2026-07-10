@@ -167,6 +167,7 @@ class Session:
         self.sock = None
         self.last_active = time.monotonic()
         self.closing = False
+        self.first_input_seen = False
 
     async def send(self, obj: dict) -> None:
         try:
@@ -357,6 +358,14 @@ async def handle(ws) -> None:
             mtype = msg.get('type')
             if mtype == 'input':
                 session.touch()
+                if not session.first_input_seen:
+                    # EINMAL pro Sitzung: beweist, dass ueberhaupt Tastatur-
+                    # Eingaben ankommen (kein Keystroke-Logging — nur DASS,
+                    # nicht WAS getippt wurde). Hilft zu unterscheiden ob ein
+                    # "Terminal reagiert nicht"-Problem client- oder
+                    # serverseitig sitzt.
+                    session.first_input_seen = True
+                    log.info('erste Eingabe von %s angekommen (Kanal funktioniert)', session.ip)
                 session.write(str(msg.get('data', '')))
             elif mtype == 'resize':
                 session.touch()
