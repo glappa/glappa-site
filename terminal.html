@@ -134,11 +134,46 @@
       word-break: break-word;
       line-height: 1.55;
     }
-    /* cmatrix — Canvas statt Zeilen, fuellt die sichtbare Terminal-Flaeche */
+    /* cmatrix — Canvas statt Zeilen, fuellt die sichtbare Terminal-Flaeche.
+       Bleibt IMMER transparent: der echte Terminal-Hintergrund (samt
+       Scanlines/Vignette) scheint durch, die Zeichen fliessen nur drueber. */
     .matrix-canvas {
       display: block;
       width: 100%;
+      background: transparent;
     }
+    /* Waehrend cmatrix laeuft wird das Terminal-Fenster selbst durchsichtig:
+       das Seiten-Hintergrundbild scheint durch und der Regen verschmilzt
+       mit der Seite. Weicher Uebergang beim Start und beim Beenden (q). */
+    #terminal { transition: background-color 0.9s ease, box-shadow 0.9s ease; }
+    #terminal.matrix-running {
+      background: transparent;
+      box-shadow:
+        0 0 10px var(--neon-green),
+        0 0 30px rgba(0,255,0,0.2);
+    }
+    /* Sternen-Unterlage: exakt der Seitenhintergrund (gleiches GIF, per
+       background-attachment:fixed pixelgenau am Seitenhintergrund aus-
+       gerichtet, gleicher 0.72-Schleier wie body::before). Liegt mit
+       z-index -1 HINTER dem Terminal-Inhalt und blendet per Opacity
+       weich ein/aus — zusammen mit dem background-color-Fade oben
+       ergibt das einen echten Crossfade von Schwarz zu Sternenhimmel. */
+    #terminal::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background-color: #000;
+      background-image:
+        linear-gradient(rgba(0,0,0,0.72), rgba(0,0,0,0.72)),
+        url('img/gif/background.gif');
+      background-repeat: repeat;
+      background-attachment: fixed;
+      opacity: 0;
+      transition: opacity 0.9s ease;
+    }
+    #terminal.matrix-running::after { opacity: 1; }
 
     .input-row {
       flex: none;
@@ -2596,9 +2631,20 @@
        (github.com/abishekvashok/cmatrix): laeuft UNENDLICH, bis q
        oder Strg+C kommt — genau das gleiche Exit-Muster wie bei top.
     ══════════════════════════════════════════════════════════════ */
-    let matrixMode = false, matrixTimer = null, matrixCanvas = null, matrixCtx = null, matrixDrops = [];
-    const MATRIX_COL_PX = 15;
-    const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$+-*/=%&#@?!';
+    let matrixMode = false, matrixTimer = null, matrixCanvas = null, matrixCtx = null, matrixCols = [];
+    const MATRIX_FONT_PX = 15;  // Schriftgroesse der Regen-Zeichen
+    const MATRIX_COL_W   = 18;  // Spaltenraster: Zeichen + Luecke (cmatrix nutzt jede 2. Terminalspalte)
+    const MATRIX_ROW_H   = 16;  // Zeilenraster
+    /* ASCII 33-126 — das Original regnet Buchstaben/Ziffern/Symbole, kein Katakana */
+    const MATRIX_CHARS = (function() {
+      let s = '';
+      for (let c = 33; c < 127; c++) s += String.fromCharCode(c);
+      return s;
+    })();
+
+    function matrixRandChar() {
+      return MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+    }
 
     function matrixCanvasDims() {
       return {
@@ -2607,9 +2653,19 @@
       };
     }
 
-    function resetMatrixDrops(cols) {
-      matrixDrops = new Array(cols);
-      for (let i = 0; i < cols; i++) matrixDrops[i] = Math.floor(Math.random() * -60);
+    function resetMatrixGrid() {
+      const cols = Math.ceil(matrixCanvas.width / MATRIX_COL_W);
+      const rows = Math.ceil(matrixCanvas.height / MATRIX_ROW_H);
+      matrixCols = [];
+      for (let i = 0; i < cols; i++) {
+        matrixCols.push({
+          cells: new Array(rows).fill(null),
+          run: 0,                                   // verbleibende Zeichen des aktuellen Stroms
+          gap: 1 + Math.floor(Math.random() * 40),  // versetzter Start wie beim Original
+          speed: Math.random() < 0.3 ? 2 : 1,       // manche Spalten fallen halb so schnell
+          tick: 0
+        });
+      }
     }
 
     function syncMatrixCanvas() {
@@ -2617,30 +2673,51 @@
       if (matrixCanvas.width === dims.w && matrixCanvas.height === dims.h) return;
       matrixCanvas.width = dims.w;
       matrixCanvas.height = dims.h;
-      matrixCtx.fillStyle = '#0a0a0a';
-      matrixCtx.fillRect(0, 0, dims.w, dims.h);
-      resetMatrixDrops(Math.ceil(dims.w / MATRIX_COL_PX));
+      resetMatrixGrid();
     }
 
     function drawMatrixFrame() {
       syncMatrixCanvas();
       const w = matrixCanvas.width, h = matrixCanvas.height;
-      /* Schwarzer Halbtransparenz-Schleier statt Loeschen — genau der
-         Trick, der die ausklingende gruene Spur entstehen laesst. */
-      matrixCtx.fillStyle = 'rgba(10,10,10,0.08)';
-      matrixCtx.fillRect(0, 0, w, h);
-      matrixCtx.font = MATRIX_COL_PX + 'px "Courier New", monospace';
-      matrixCtx.textBaseline = 'top';
-      for (let i = 0; i < matrixDrops.length; i++) {
-        const rowY = matrixDrops[i];
-        if (rowY >= 0) {
-          const ch = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
-          /* heller Kopf, der Rest der Spur ergibt sich aus dem Verblassen oben */
-          matrixCtx.fillStyle = Math.random() > 0.94 ? '#e8ffe8' : '#00ff00';
-          matrixCtx.fillText(ch, i * MATRIX_COL_PX, rowY * MATRIX_COL_PX);
+      /* Wie das echte cmatrix: ganze Spalten rutschen zellenweise nach
+         unten — Stroeme zufaelliger Laenge, dazwischen Luecken, oben
+         rueckt Neues nach. Kein Alpha-Fade: die Zeichen stehen in vollem
+         Gruen, nur der Kopf (unterstes Zeichen eines Stroms) ist weiss.
+         Der Canvas wird geleert statt schwarz uebermalt, darum bleibt
+         der Sternenhimmel dahinter sichtbar. */
+      for (const col of matrixCols) {
+        col.tick++;
+        if (col.tick % col.speed === 0) {
+          col.cells.pop();
+          let ch = null;
+          if (col.run > 0) {
+            ch = matrixRandChar();
+            col.run--;
+            if (col.run === 0) col.gap = 2 + Math.floor(Math.random() * 12);
+          } else if (col.gap > 0) {
+            col.gap--;
+            if (col.gap === 0) col.run = 3 + Math.floor(Math.random() * 20);
+          }
+          col.cells.unshift(ch);
         }
-        if (rowY * MATRIX_COL_PX > h && Math.random() > 0.975) matrixDrops[i] = 0;
-        matrixDrops[i]++;
+        /* gelegentlich mutiert ein bereits stehendes Zeichen — flimmert wie im Original */
+        if (Math.random() < 0.06) {
+          const r = Math.floor(Math.random() * col.cells.length);
+          if (col.cells[r] !== null) col.cells[r] = matrixRandChar();
+        }
+      }
+      matrixCtx.clearRect(0, 0, w, h);
+      matrixCtx.font = 'bold ' + MATRIX_FONT_PX + 'px "Courier New", monospace';
+      matrixCtx.textBaseline = 'top';
+      for (let i = 0; i < matrixCols.length; i++) {
+        const cells = matrixCols[i].cells;
+        const x = i * MATRIX_COL_W;
+        for (let r = 0; r < cells.length; r++) {
+          const ch = cells[r];
+          if (ch === null) continue;
+          matrixCtx.fillStyle = (r + 1 < cells.length && cells[r + 1] === null) ? '#ffffff' : '#00ff00';
+          matrixCtx.fillText(ch, x, r * MATRIX_ROW_H);
+        }
       }
     }
 
@@ -2654,9 +2731,8 @@
       const dims = matrixCanvasDims();
       matrixCanvas.width = dims.w;
       matrixCanvas.height = dims.h;
-      matrixCtx.fillStyle = '#0a0a0a';
-      matrixCtx.fillRect(0, 0, dims.w, dims.h);
-      resetMatrixDrops(Math.ceil(dims.w / MATRIX_COL_PX));
+      resetMatrixGrid();
+      document.getElementById('terminal').classList.add('matrix-running');
       matrixMode = true;
       updatePrompt();
       scrollBottom();
@@ -2667,6 +2743,7 @@
       clearInterval(matrixTimer);
       matrixTimer = null;
       matrixMode = false;
+      document.getElementById('terminal').classList.remove('matrix-running');
       appendLine('(cmatrix beendet)', 'line-sys');
       blank();
       updatePrompt();
