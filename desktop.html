@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real Desktop &mdash; Glappa</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Passwortgeschuetzter GUI-Desktop der echten Ubuntu-VM im Browser">
+  <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css?v=18">
+  <style>
+    body {
+      background-color: #000 !important;
+      background-image: url('img/gif/background.gif') !important;
+      background-repeat: repeat !important;
+      background-attachment: fixed !important;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      z-index: 0;
+      pointer-events: none;
+    }
+    header.header, nav.nav, .shell-wrap {
+      position: relative;
+      z-index: 1;
+    }
+    .shell-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 10px 16px 40px;
+    }
+
+    /* Gleiches Fenster-Aussehen wie shell.html/terminal.html */
+    #shellwin {
+      background: #191d21;
+      border: 1px solid #2c3238;
+      border-radius: 6px;
+      box-shadow: 0 10px 34px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .shell-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #22272c;
+      border-bottom: 1px solid #2c3238;
+      user-select: none;
+    }
+    .tb-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+    .tb-dot.r { background: #ff5f57; }
+    .tb-dot.y { background: #febc2e; }
+    .tb-dot.g { background: #28c840; }
+    .tb-title { flex: 1; text-align: center; color: #9aa5b1; font-size: 0.8em; }
+
+    /* ── Passwort-Gate ── */
+    #gate {
+      padding: 40px 24px;
+      text-align: center;
+      font-family: 'Hack', 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace;
+      color: #d3dae3;
+    }
+    #gate p { margin: 0 0 18px; color: #9aa5b1; line-height: 1.5; }
+    #gate .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+    #gate input[type=password] {
+      background: #0e1013;
+      border: 1px solid #363c43;
+      color: #d3dae3;
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 10px 12px;
+      border-radius: 4px;
+      width: 240px;
+      outline: none;
+    }
+    #gate input[type=password]:focus { border-color: #64a2e0; }
+    #gate button {
+      background: #2c3238;
+      border: 1px solid #454c54;
+      color: #d3dae3;
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 10px 18px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #gate button:hover { background: #363c43; }
+    #gate button:disabled { opacity: 0.5; cursor: default; }
+    #gateMsg { margin-top: 14px; min-height: 1.4em; color: #ec6a6a; font-size: 0.9rem; }
+    #gateMsg.info { color: #e2c178; }
+
+    /* ── Desktop-Anzeige ── */
+    #screenHost {
+      display: none;
+      width: 100%;
+      height: 72vh;
+      min-height: 380px;
+      background: #000;
+    }
+    /* noVNC haengt seinen eigenen Wrapper + <canvas> hier rein und liest
+       clientWidth/clientHeight dieses Elements fuer scaleViewport — darum
+       muss #screenHost eine echte Groesse per CSS haben (s.o.), nicht nur
+       "display:none" -> "block". */
+
+    .shell-hint {
+      text-align: center;
+      color: #888;
+      font-size: 0.82rem;
+      margin: 10px 0 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="marquee marquee--top">
+    <span>&#9733; ECHTER DESKTOP &#9733; NUR MIT PASSWORT &#9733; SEI NETT ZUR VM &#9733; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <div class="page-banner green">
+      <h2>REAL DESKTOP</h2>
+      <pre>
+  ██████╗ ██╗      █████╗ ██████╗ ██████╗  █████╗
+ ██╔════╝ ██║     ██╔══██╗██╔══██╗██╔══██╗██╔══██╗
+ ██║  ███╗██║     ███████║██████╔╝██████╔╝███████║
+ ██║   ██║██║     ██╔══██║██╔═══╝ ██╔═══╝ ██╔══██║
+ ╚██████╔╝███████╗██║  ██║██║     ██║     ██║  ██║
+  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝</pre>
+    </div>
+    <img class="alien" src="img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="page1.html">Video</a><span class="sep">|</span>
+    <a href="bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="shell-wrap">
+    <div id="shellwin">
+      <div class="shell-titlebar">
+        <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
+        <span class="tb-title" id="tbTitle">desktop-boot — Passwort erforderlich</span>
+      </div>
+
+      <div id="gate">
+        <p>
+          GUI-Desktop derselben echten Ubuntu-VM (Xvnc + openbox) — LibreWolf
+          (gehaertet, ausschliesslich ueber Tor/DoH) laesst sich hier per
+          Rechtsklick oeffnen. Nur mit Passwort.<br>
+          Sitzung endet nach <span id="idleInfo">30 Min.</span> Inaktivitaet automatisch.
+        </p>
+        <form id="gateForm" class="row" autocomplete="off">
+          <input type="password" id="pw" placeholder="Passwort" autocomplete="off" required>
+          <button type="submit" id="gateBtn">Verbinden</button>
+        </form>
+        <div id="gateMsg"></div>
+      </div>
+
+      <div id="screenHost"></div>
+    </div>
+    <p class="shell-hint">
+      Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
+      &middot; <a href="shell.html">Zum Text-Terminal (terminal-boot)</a>
+      &middot; <a href="terminal.html">Zurueck zum Uebungs-Terminal</a>
+    </p>
+  </div>
+
+  <div class="marquee marquee--bottom">
+    <span>&#9733; HACK THE PLANET &#9733; ROOT ACCESS GRANTED &#9733; DO NOT HACK GLAPPA.DE &#9733; </span>
+  </div>
+
+  <script src="script.js?v=17"></script>
+  <script type="module">
+    import RFB from './novnc/core/rfb.js';
+
+    const gate       = document.getElementById('gate');
+    const gateForm    = document.getElementById('gateForm');
+    const gateBtn     = document.getElementById('gateBtn');
+    const gateMsg     = document.getElementById('gateMsg');
+    const pwInput     = document.getElementById('pw');
+    const screenHost  = document.getElementById('screenHost');
+    const tbTitle     = document.getElementById('tbTitle');
+
+    /* Gleiche Endpunkt-Logik wie shell.html: lokal (WSL/Dev) direkter Draht
+       zu displaygate, auf home.glappa.de ueber Apache (TLS + Ticket-Auth). */
+    function endpoints() {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return { authUrl: 'http://' + h + ':8767/auth', wsBase: 'ws://' + h + ':8766/' };
+      if (h === 'home.glappa.de') return { authUrl: 'https://' + h + '/api/shell/vnc-auth', wsBase: 'wss://' + h + '/api/shell/vnc' };
+      return null;
+    }
+    const EP = endpoints();
+    if (!EP) {
+      gateForm.style.display = 'none';
+      gateMsg.className = '';
+      gateMsg.textContent = 'Diese Funktion gibt es nur auf home.glappa.de — dort läuft der Docker-Host.';
+    }
+
+    /* Kam man ueber terminal.html (Befehl "desktop-boot") hierher, liegt das
+       Passwort kurz in sessionStorage — read-once, wie bei shell.html. */
+    let autoPw = null;
+    try {
+      autoPw = sessionStorage.getItem('glappaShellPw');
+      sessionStorage.removeItem('glappaShellPw');
+    } catch (e) {}
+
+    let rfb = null;
+    let connecting = false;
+
+    function setMsg(text, cls) {
+      gateMsg.className = cls || '';
+      gateMsg.textContent = text || '';
+    }
+
+    function startDesktop(ticket) {
+      gate.style.display = 'none';
+      screenHost.style.display = 'block';
+      tbTitle.textContent = 'desktop-boot — verbunden';
+
+      const wsUrl = EP.wsBase + '?ticket=' + encodeURIComponent(ticket);
+      rfb = new RFB(screenHost, wsUrl, { shared: false });
+      rfb.scaleViewport = true;
+      rfb.clipViewport = false;
+      rfb.resizeSession = false;
+
+      rfb.addEventListener('connect', function () {
+        setMsg('', '');
+      });
+      rfb.addEventListener('disconnect', function (ev) {
+        connecting = false;
+        gateBtn.disabled = false;
+        const clean = ev.detail && ev.detail.clean;
+        tbTitle.textContent = 'desktop-boot — getrennt';
+        setMsg(clean ? 'Verbindung beendet — Seite neu laden für eine neue Sitzung.'
+                      : 'Verbindung verloren — Seite neu laden für eine neue Sitzung.');
+      });
+      rfb.addEventListener('securityfailure', function (ev) {
+        setMsg('Sicherheitsfehler: ' + (ev.detail && ev.detail.reason || 'unbekannt'));
+      });
+    }
+
+    function connect(password) {
+      if (connecting) return;
+      connecting = true;
+      gateBtn.disabled = true;
+      setMsg('Verbinde …', 'info');
+
+      fetch(EP.authUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: password }),
+      })
+        .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+        .then(function (res) {
+          if (!res.data || !res.data.ok) {
+            setMsg((res.data && res.data.msg) || 'Falsches Passwort.');
+            connecting = false;
+            gateBtn.disabled = false;
+            pwInput.value = '';
+            pwInput.focus();
+            return;
+          }
+          setMsg('Passwort ok — verbinde zum Desktop …', 'info');
+          startDesktop(res.data.ticket);
+        })
+        .catch(function (e) {
+          setMsg('Verbindung fehlgeschlagen: ' + e.message);
+          connecting = false;
+          gateBtn.disabled = false;
+        });
+    }
+
+    gateForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const pw = pwInput.value;
+      if (!pw) return;
+      connect(pw);
+    });
+
+    if (autoPw && EP) {
+      gateForm.style.display = 'none';
+      setMsg('Verbinde …', 'info');
+      connect(autoPw);
+    }
+
+    document.querySelectorAll('.marquee span').forEach(function (span) {
+      span.style.animation = 'scroll-left 28s linear infinite';
+    });
+  </script>
+</body>
+</html>

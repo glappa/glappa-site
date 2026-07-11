@@ -218,17 +218,23 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
             f'(restart.sh --vps macht das automatisch).')
 
     # Alles ins Netz laeuft ueber den Egress-Proxy: HTTP/HTTPS per Proxy-Env,
-    # DNS per dns=[EGRESS_IP]. GLAPPA_EGRESS=1 ist der Marker, an dem wir unten
+    # DNS per dns=[EGRESS_IP]. GLAPPA_EGRESS ist der Marker, an dem wir unten
     # erkennen, ob ein schon existierender Gast bereits im gehaerteten Modus
-    # laeuft (Env laesst sich an einem laufenden Container nicht nachtraeglich
-    # aendern -> sonst muss er einmalig neu gebaut werden).
+    # laeuft (Env/CMD/mem_limit lassen sich an einem laufenden Container nicht
+    # nachtraeglich aendern -> sonst muss er einmalig neu gebaut werden). Der
+    # WERT wird hochgezaehlt, wenn sich am Image etwas aendert, das eine
+    # Neuerzeugung braucht (nicht nur Netz/Proxy) — hier: Xvnc/openbox/
+    # LibreWolf kamen dazu, ein Container von VOR dieser Aenderung haette sie
+    # nicht, obwohl er noch als "gehaertet" durchgehen wuerde (GLAPPA_EGRESS=1
+    # war schon gesetzt). Bei rein zukuenftigen Netz/Proxy-Aenderungen ohne
+    # Image-Inhaltsaenderung muss der Wert NICHT wieder hochgezaehlt werden.
     proxy_url = f'http://{EGRESS_IP}:{PROXY_PORT}'
     guest_env = {
         'http_proxy':  proxy_url, 'https_proxy': proxy_url,
         'HTTP_PROXY':  proxy_url, 'HTTPS_PROXY': proxy_url,
         'no_proxy':    'localhost,127.0.0.1,::1',
         'NO_PROXY':    'localhost,127.0.0.1,::1',
-        'GLAPPA_EGRESS': '1',
+        'GLAPPA_EGRESS': '2',
     }
 
     try:
@@ -236,7 +242,7 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
         container.reload()
         nets = set((container.attrs.get('NetworkSettings', {}).get('Networks') or {}).keys())
         env_list = (container.attrs.get('Config', {}) or {}).get('Env') or []
-        locked = ('GLAPPA_EGRESS=1' in env_list) and nets == {LAN_NETWORK}
+        locked = ('GLAPPA_EGRESS=2' in env_list) and nets == {LAN_NETWORK}
         if not locked:
             # Alt-Container (noch am Internet, oder aus der Zeit vor der
             # Egress-Haertung) -> EINMALIG verwerfen und im Privacy-Modus neu
@@ -263,7 +269,9 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
         name=GUEST_CONTAINER_NAME,
         hostname='VIRT',
         detach=True,
-        command=['sleep', 'infinity'],
+        # Kein command=['sleep','infinity'] mehr — das Image-eigene CMD
+        # (supervisord) haelt jetzt Xvnc+openbox dauerhaft am Leben, fuer
+        # die GUI-Anzeige (desktop-boot). Siehe shellvm/Dockerfile.
         # NUR internes Netz (internal=True -> kein Internet-Gateway) + DNS auf
         # den Egress-Proxy + http(s)_proxy-Env. Damit kann der Gast NICHTS
         # direkt ins Netz schicken, nur ueber den Proxy (Tor/DoH).
@@ -278,8 +286,11 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
         # Netz-Sperre kommt aus der Topologie (internes Netz), NICHT aus
         # Capabilities: der Gast braucht so gerade KEIN NET_ADMIN.
         pids_limit=256,
-        mem_limit='512m',
-        memswap_limit='512m',
+        # Angehoben von 512m: LibreWolf + Xvnc + openbox brauchen spuerbar
+        # mehr als die reine Text-Shell. 1G passt bequem ins VPS-Budget
+        # (24G RAM, ~12G Ollama, ~5G System/SearXNG -> ~7G frei).
+        mem_limit='1024m',
+        memswap_limit='1024m',
         nano_cpus=1_000_000_000,   # 1 CPU-Kern
     )
 
@@ -302,7 +313,11 @@ async def spawn_exec(container) -> tuple[str, object]:
         exec_id = api.exec_create(
             container.id, ['bash', '-l'],
             stdin=True, tty=True,
-            environment={'TERM': 'xterm-256color'},
+            # DISPLAY=:1 -> GUI-Programme, die man hier im Text-Terminal
+            # startet (z.B. "librewolf &"), erscheinen auf demselben
+            # Xvnc-Desktop, den desktop-boot anzeigt (selber Container,
+            # supervisord haelt Xvnc auf :1 dauerhaft am Leben).
+            environment={'TERM': 'xterm-256color', 'DISPLAY': ':1'},
         )['Id']
         sock = api.exec_start(exec_id, tty=True, socket=True)
         return exec_id, sock

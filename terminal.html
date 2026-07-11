@@ -864,7 +864,12 @@
        bei glappa-do/read, dann wird es kurz ueber sessionStorage an
        shell.html gereicht (siehe startRealShell) und dort SOFORT wieder
        geloescht, sobald gelesen. ── */
-    let awaitingShellPassword = false;
+    /* null = wartet auf nichts. Sonst die Zielseite, zu der nach der
+       Passworteingabe weitergeleitet wird ('shell.html' fuer terminal-boot,
+       'desktop.html' fuer desktop-boot) — EIN gemeinsamer Passwort-Ablauf
+       fuer beide versteckten Befehle, siehe SPECIAL['terminal-boot']/
+       SPECIAL['desktop-boot'] und startRealShell(). */
+    let awaitingShellTarget = null;
     const SHELL_PW_PROMPT = 'Passwort: ';
 
     /* Chat-API: gleiche Endpoint-Logik wie der Visitor-Counter in script.js.
@@ -2969,6 +2974,7 @@
         blank();
         appendLine('ECHTE SHELL', 'line-info');
         appendLine('  terminal-boot           Echte Ubuntu-Shell verbinden (Passwort, nur home.glappa.de)', 'line-pink');
+        appendLine('  desktop-boot            GUI-Desktop derselben VM (LibreWolf, Passwort, nur home.glappa.de)', 'line-pink');
         blank();
         appendLine('SPASS', 'line-info');
         appendLine('  fastfetch, fortune, cowsay, sl, matrix/cmatrix, hack, ping (simuliert), sudo');
@@ -3283,7 +3289,20 @@
       'terminal-boot'() {
         blank();
         appendLine('Echte Ubuntu-Shell (Docker, nur auf home.glappa.de).', 'line-info');
-        awaitingShellPassword = true;
+        awaitingShellTarget = 'shell.html';
+        inp.type = 'password';
+        updatePrompt();
+      },
+
+      /* GUI-Anzeige derselben Gast-VM (Xvnc + openbox, siehe
+         _docker/shellvm/ + _docker/displaygate/) — eigene Seite, weil sie
+         einen VNC-Client (noVNC) statt eines Terminal-Emulators braucht.
+         Dasselbe Passwort wie terminal-boot, derselbe Weiterleitungs-
+         Mechanismus, nur anderes Ziel. */
+      'desktop-boot'() {
+        blank();
+        appendLine('GUI-Desktop der Gast-VM (Docker, nur auf home.glappa.de).', 'line-info');
+        awaitingShellTarget = 'desktop.html';
         inp.type = 'password';
         updatePrompt();
       },
@@ -3410,7 +3429,7 @@
       const label = document.querySelector('.prompt-label');
       label.textContent = '';
       if (topMode || matrixMode) return;
-      if (awaitingShellPassword) { label.textContent = SHELL_PW_PROMPT; return; }
+      if (awaitingShellTarget) { label.textContent = SHELL_PW_PROMPT; return; }
       if (chatMode) { label.textContent = 'glappa-chat> '; return; }
       label.appendChild(promptSpans());
     }
@@ -3502,11 +3521,11 @@
        es augenblicklich wieder (siehe shell.html), unabhaengig davon ob
        das Passwort stimmt. sessionStorage ueberlebt keinen Tab-Neustart
        und wird nie automatisch mitgeschickt (anders als Cookies). */
-    function startRealShell(password) {
+    function startRealShell(password, target) {
       try { sessionStorage.setItem('glappaShellPw', password); } catch(e) {}
       appendLine('Verbinde …', 'line-info');
       blank();
-      setTimeout(function() { window.location.href = 'shell.html'; }, 400);
+      setTimeout(function() { window.location.href = target; }, 400);
     }
 
     function runCmd(raw) {
@@ -3517,11 +3536,12 @@
          es zu versuchen und serverseitig abzulehnen). NIEMALS raw/trimmed
          in appendLine landen lassen — das waere Klartext-Passwort in der
          sichtbaren Terminal-Historie. */
-      if (awaitingShellPassword) {
-        awaitingShellPassword = false;
+      if (awaitingShellTarget) {
+        const shellTarget = awaitingShellTarget;
+        awaitingShellTarget = null;
         inp.type = 'text';
         appendLine(SHELL_PW_PROMPT + '••••••••', 'line-cmd');
-        startRealShell(raw);
+        startRealShell(raw, shellTarget);
         updatePrompt();
         return;
       }
@@ -3599,7 +3619,7 @@
     /* Bewusst NICHT gelistet: weder in help noch in der Tab-Vervoll-
        staendigung. Wer terminal-boot nutzen will, muss den Befehl schon
        kennen — kein Link, keine Erwaehnung, nur wer ihn eintippt kommt hin. */
-    const HIDDEN_COMMANDS = new Set(['terminal-boot']);
+    const HIDDEN_COMMANDS = new Set(['terminal-boot', 'desktop-boot']);
 
     /* ── Tab-Vervollständigung: Befehle + Pfade ── */
     function allCommands() {
@@ -3698,14 +3718,14 @@
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
         e.preventDefault();
-        if (awaitingShellPassword) appendLine(SHELL_PW_PROMPT + '^C', 'line-cmd');   /* NIE inp.value hier — waere Klartext-Passwort */
+        if (awaitingShellTarget) appendLine(SHELL_PW_PROMPT + '^C', 'line-cmd');   /* NIE inp.value hier — waere Klartext-Passwort */
         else if (activeScript) appendLine(activeScript.pendingPrompt + inp.value + '^C', 'line-cmd');
         else if (activeAgent && activeAgent.awaitingConfirm) appendLine(AGENT_CONFIRM_PROMPT + inp.value + '^C', 'line-cmd');
         else echoCmd(inp.value + '^C');
         inp.value = '';
         histIdx = -1;
-        if (awaitingShellPassword) {
-          awaitingShellPassword = false;
+        if (awaitingShellTarget) {
+          awaitingShellTarget = null;
           inp.type = 'text';
           appendLine('(abgebrochen)', 'line-sys');
           updatePrompt();

@@ -21,7 +21,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 # sudo           -> "fallen" darf root werden (die eigentliche Sicherheitsgrenze
 #                    ist die Docker-Capability/Ressourcen-Haertung, NICHT das
 #                    fehlen von root IM Container)
-# jq -> fuer das `such`-Such-CLI (JSON aus SearXNG parsen)
+# jq              -> fuer das `such`-Such-CLI (JSON aus SearXNG parsen)
+# gettext-base     -> envsubst, fuer das librewolf-Wrapperskript (Proxy-Policy
+#                     wird bei jedem Start frisch aus $http_proxy generiert)
+# tigervnc-standalone-server -> Xvnc (X-Server + VNC-Server in einem Prozess)
+# openbox/dbus-x11/xterm     -> minimaler Desktop fuer die GUI-Anzeige
+# supervisor       -> haelt Xvnc+openbox dauerhaft am Leben (ersetzt "sleep
+#                     infinity" als CMD, siehe Dateiende)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         iputils-ping \
         dnsutils \
@@ -29,6 +35,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         wget \
         jq \
+        gettext-base \
+        tigervnc-standalone-server \
+        openbox \
+        dbus-x11 \
+        xterm \
+        supervisor \
         nano \
         less \
         htop \
@@ -42,6 +54,37 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ubuntu:latest ist minimal -> meist gar nicht installiert, daher tolerant
 # (|| true). Kostet nichts und stellt sicher, dass hier nichts nach Hause funkt.
 RUN apt-get purge -y popularity-contest ubuntu-report apport whoopsie >/dev/null 2>&1 || true
+
+# ── LibreWolf: gehaerteter, quelloffener Firefox-Fork ──────────────────
+# Bewusst NICHT "apt install firefox" — Ubuntu ersetzt das Paket seit einigen
+# Versionen durch einen reinen Snap-Wrapper ("requires the firefox snap"),
+# und snapd laeuft in einem Container ohne systemd nicht. LibreWolf hat ein
+# eigenes APT-Repo mit einem echten .deb (kein Snap), UND bringt schon ab
+# Werk das mit, was hier gewuenscht ist: Telemetrie raus, uBlock Origin
+# vorinstalliert, kein Pocket/gesponserte Inhalte, staerkere Anti-
+# Fingerprinting-Vorgaben als Standard-Firefox.
+#
+# Codename-Fallback: das offizielle LibreWolf-Repo listet nur eine feste
+# Menge bekannter Debian/Ubuntu-Codenamen. "ubuntu:latest" zeigt aber immer
+# auf die JEWEILS aktuelle LTS (s. Kommentar oben) — deren Codename kann
+# also neuer sein als alles, was das Repo kennt (404 auf die Release-Datei).
+# Genau wie LibreWolfs eigenes Install-Skript: unbekannten Codename auf
+# einen bekannten, kompatiblen Fallback abbilden statt zu scheitern.
+RUN . /etc/os-release \
+    && case "$VERSION_CODENAME" in \
+         una|vanessa|focal|jammy|bionic|buster|bullseye) LW_DISTRO="$VERSION_CODENAME" ;; \
+         *) LW_DISTRO="jammy" ;; \
+       esac \
+    && mkdir -p /etc/apt/keyrings \
+    && wget -O /etc/apt/keyrings/librewolf.asc https://deb.librewolf.net/keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/librewolf.asc] https://deb.librewolf.net ${LW_DISTRO} main" \
+         > /etc/apt/sources.list.d/librewolf.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends librewolf \
+    && rm -rf /var/lib/apt/lists/* \
+    && REAL_BIN="$(dpkg -L librewolf | grep -E '/librewolf$' | grep -v '^/usr/bin/librewolf$' | head -n1)" \
+    && test -x "$REAL_BIN" \
+    && echo "$REAL_BIN" > /etc/librewolf-real-bin-path
 
 RUN useradd -m -s /bin/bash fallen \
     && echo 'fallen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/fallen \
@@ -59,10 +102,36 @@ COPY --chown=fallen:fallen wgetrc /home/fallen/.wgetrc
 COPY glappa-privacy.sh /etc/profile.d/glappa-privacy.sh
 RUN chmod +x /usr/local/bin/such /etc/profile.d/glappa-privacy.sh
 
+# ── librewolf-Wrapper ────────────────────────────────────────────────
+# /usr/local/bin liegt im PATH VOR /usr/bin — dieses Skript wird also
+# gefunden, bevor apt's eigener /usr/bin/librewolf-Symlink zum Zug kommt.
+# Es schreibt bei JEDEM Start die Proxy-Policy frisch aus $http_proxy
+# (von shellgate gesetzt, siehe shellgate/server.py: guest_env) — dadurch
+# muss die Egress-Proxy-Adresse hier nicht hart codiert werden und bleibt
+# auch dann korrekt, wenn sie sich mal aendert.
+COPY librewolf-policy.json.template /etc/librewolf/policies/policies.json.template
+COPY librewolf-wrapper.sh /usr/local/bin/librewolf
+RUN chmod +x /usr/local/bin/librewolf \
+    && ln -sf /usr/local/bin/librewolf /usr/local/bin/firefox
+
+# ── Minimaler Desktop (Xvnc + openbox) fuer die GUI-Anzeige ───────────
+# Rechtsklick-Menue mit LibreWolf + Terminal — reicht als Ausgangspunkt,
+# weitere GUI-Programme lassen sich per apt nachinstallieren und ueber
+# xterm starten. KEIN Autostart von LibreWolf: der Desktop soll im Ruhe-
+# zustand leicht bleiben (wie der Rest dieser dauerhaften VM), der Browser
+# startet nur, wenn ihn wer tatsaechlich anklickt/eintippt.
+COPY openbox-menu.xml /etc/xdg/openbox/menu.xml
+COPY supervisord.conf /etc/supervisord.conf
+RUN mkdir -p /var/log/glappa-desktop && chown fallen:fallen /var/log/glappa-desktop
+
 USER fallen
 WORKDIR /home/fallen
 
-# Der Container tut sonst nichts — der Gateway haengt sich per
-# `docker exec -it <container> bash` rein (server.py). "sleep infinity"
-# haelt ihn nur am Leben, bis der Gateway ihn nach Sitzungsende stoppt.
-CMD ["sleep", "infinity"]
+# supervisord haelt Xvnc + openbox dauerhaft am Leben (Details siehe
+# supervisord.conf) — laeuft komplett als "fallen", keine root-Rechte
+# noetig. Der Text-Terminal-Zugang (terminal.html "terminal-boot") haengt
+# sich weiterhin per `docker exec -it <container> bash` separat rein
+# (server.py); shellgate setzt dort DISPLAY=:1, GUI-Programme, die man im
+# Text-Terminal startet, tauchen also auf demselben Desktop auf, den
+# desktop-boot anzeigt.
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisord.conf", "-n"]

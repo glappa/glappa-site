@@ -1,0 +1,39 @@
+{
+  "policies": {
+    "DisableTelemetry": true,
+    "DisablePocket": true,
+    "DisableFirefoxAccounts": true,
+    "DisableFirefoxStudies": true,
+    "DisableAppUpdate": true,
+    "DontCheckDefaultBrowser": true,
+    "OfferToSaveLogins": false,
+    "NoDefaultBookmarks": true,
+    "Proxy": {
+      "Mode": "manual",
+      "Locked": true,
+      "HTTPProxy": "${GLAPPA_PROXY_HOST}:${GLAPPA_PROXY_PORT}",
+      "UseHTTPProxyForAllProtocols": true,
+      "Passthrough": ""
+    },
+    "Preferences": {
+      "browser.privatebrowsing.autostart": { "Value": true, "Status": "locked" },
+      "network.cookie.cookieBehavior": { "Value": 5, "Status": "locked" },
+      "privacy.resistFingerprinting": { "Value": true, "Status": "locked" },
+      "media.peerconnection.enabled": { "Value": false, "Status": "locked" },
+      "geo.enabled": { "Value": false, "Status": "locked" },
+      "browser.newtabpage.activity-stream.showSponsored": { "Value": false, "Status": "locked" },
+      "browser.newtabpage.activity-stream.showSponsoredTopSites": { "Value": false, "Status": "locked" }
+    },
+    "SearchEngines": {
+      "Default": "GlappaSearch",
+      "PreventInstalls": true,
+      "Add": [
+        {
+          "Name": "GlappaSearch",
+          "URLTemplate": "https://search.glappa.de/search?q={searchTerms}",
+          "Method": "GET"
+        }
+      ]
+    }
+  }
+}

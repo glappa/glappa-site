@@ -243,6 +243,16 @@ else
             || warn "Gast-Image-Build fehlgeschlagen — real-shell startet keine Sitzungen"
     fi
 
+    # Egress-Proxy-Image (Tor+privoxy+dnscrypt) — ebenfalls kein Compose-
+    # Service, gleicher Grund wie oben. Ohne dieses Image hat die Gast-VM
+    # keinen Ausgang (fail-closed, siehe shell-egress/README.md).
+    if [ -f "$PROJECT/shell-egress/Dockerfile" ]; then
+        say "Baue Egress-Image glappa-shell-egress:latest (Tor+privoxy+dnscrypt)..."
+        $DOCKER_SUDO docker build -t glappa-shell-egress:latest "$PROJECT/shell-egress" \
+            && ok "Egress-Image glappa-shell-egress:latest gebaut" \
+            || warn "Egress-Image-Build fehlgeschlagen — real-shell hat dann keinen Ausgang"
+    fi
+
     if $DOCKER_SUDO $COMPOSE_BIN -f "$COMPOSE_FILE" up -d --build; then
         ok "Container gebaut + gestartet (Downloader :$DL_PORT)"
         # SearXNG explizit neu starten, damit es eine evtl. neue settings.yml

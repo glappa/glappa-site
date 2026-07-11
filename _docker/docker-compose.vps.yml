@@ -150,6 +150,58 @@ services:
         max-size: "2m"
         max-file: "3"
 
+  # ── displaygate: GUI-Anzeige der Gast-VM im Browser (noVNC) ────────
+  # desktop.html -> Apache /api/shell/vnc-auth + /api/shell/vnc -> hier.
+  # Bruecke zwischen WebSocket (Browser) und dem Xvnc-Port der Gast-VM
+  # (siehe displaygate/server.py). ANDERS als shellgate: KEIN docker.sock
+  # noetig — displaygate erzeugt keine Container, sondern verbindet sich
+  # nur per normalem TCP zum bereits laufenden Gast, deshalb auch ohne
+  # root (siehe Dockerfile). Muss dafuer im selben internen Docker-Netz
+  # haengen wie der Gast (glappa-shell-lan, s.u.) — Namensaufloesung
+  # ueber Dockers eingebauten DNS.
+  displaygate:
+    build:
+      context: displaygate
+    image: glappa-displaygate:latest
+    container_name: glappa-displaygate
+    networks:
+      - glappa-shell-lan
+    ports:
+      # NUR localhost — von aussen ausschliesslich ueber Apache, wie shellgate.
+      - "127.0.0.1:8766:8766"   # WebSocket (VNC-Bytes)
+      - "127.0.0.1:8767:8767"   # Ticket-Auth (POST /auth)
+    environment:
+      # Dasselbe Geheimnis wie shellgate — EIN Passwort fuer Text-Terminal
+      # UND Desktop.
+      - SHELL_PASSWORD_HASH=${SHELL_PASSWORD_HASH}
+      - SHELL_CONTAINER_NAME=glappa-shell-persistent
+      - GUEST_VNC_PORT=5901
+      - DISPLAYGATE_IDLE_TIMEOUT=1800
+      - DISPLAYGATE_MAX_SESSIONS=5
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "3"
+
 volumes:
   glappa-downloads:
   ollama-models:
+
+# glappa-shell-lan MUSS hier (nicht nur dynamisch von shellgate) definiert
+# sein: displaygate ist ein normaler Compose-Service und braucht das Netz
+# schon beim eigenen Container-Start, um den Gast per Name aufzuloesen —
+# shellgate legt es sonst erst SPAETER zur Laufzeit an (Henne-Ei-Problem).
+# shellgate/server.py:ensure_networks() findet dieses hier bereits
+# existierende Netz einfach vor (client.networks.get()) und legt nichts
+# doppelt an — Subnetz/Gateway MUESSEN daher exakt zu dessen Defaults
+# passen (LAN_SUBNET/LAN_GATEWAY, per env ueberschreibbar).
+networks:
+  glappa-shell-lan:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.89.7.0/24
+          gateway: 10.89.7.1
