@@ -1,0 +1,12 @@
+# Tor-Config fuer den Egress-Proxy.
+#
+# NUR ein SOCKS-Port, gebunden an 127.0.0.1 — d.h. ausschliesslich privoxy
+# im SELBEN Container erreicht Tor, der Gast-Container NICHT direkt. Der Gast
+# spricht nur privoxy (:8118) und dnscrypt (:53) an.
+SocksPort 127.0.0.1:9050
+
+# Kein Klartext-Ausgang, kein Onion-Service, keine Steuer-Ports.
+DataDirectory /var/lib/tor
+Log notice stdout
+
+# Tor loggt selbst KEINE besuchten Ziele — hier nur Bootstrap-/Statusmeldungen.

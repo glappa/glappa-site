@@ -1,0 +1,55 @@
+##########################################################################
+# dnscrypt-proxy — verschluesseltes DNS fuer die Gast-Shell.
+#
+# Loest Namen ueber DoH (DNS-over-HTTPS) bei No-Log-Resolvern auf, statt im
+# Klartext zum ISP-DNS der VPS. Hoert im Container auf :53; der Gast nutzt
+# den Proxy per resolv.conf (shellgate setzt dns=[EGRESS_IP]).
+#
+# Web-Traffic braucht diesen Resolver gar nicht (privoxy loest Namen ueber
+# Tor am Exit auf) — er deckt Tools ab, die selbst aufloesen (dig, apt,
+# host, getent, ...). Faellt er aus, faellt nur die lokale Namensaufloesung
+# aus; es leakt nichts im Klartext.
+##########################################################################
+
+listen_addresses = ['0.0.0.0:53']
+max_clients = 250
+
+ipv4_servers = true
+ipv6_servers = false
+dnscrypt_servers = true
+doh_servers = true
+odoh_servers = false
+
+# Nur Resolver, die NICHT loggen, NICHT filtern und DNSSEC koennen. Bewusst
+# KEINE feste server_names-Liste -> dnscrypt-proxy waehlt automatisch die
+# schnellsten passenden. Robuster: faellt nicht aus, wenn ein einzelner
+# Resolver-Name aus der Liste verschwindet.
+require_dnssec = true
+require_nolog = true
+require_nofilter = true
+
+# Bootstrap: zum ERSTMALIGEN Laden der signierten Resolver-Liste (ueber
+# HTTPS) braucht es einmal klassisches DNS. Danach laeuft alles verschluesselt.
+bootstrap_resolvers = ['9.9.9.9:53', '1.1.1.1:53']
+ignore_system_dns = true
+netprobe_address = '9.9.9.9:53'
+netprobe_timeout = 60
+
+cache = true
+cache_size = 4096
+cache_min_ttl = 600
+cache_max_ttl = 86400
+
+log_level = 2
+use_syslog = false
+
+[sources]
+  [sources.public-resolvers]
+  urls = [
+    'https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md',
+    'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md',
+  ]
+  cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'
+  minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
+  refresh_delay = 72
+  prefix = ''

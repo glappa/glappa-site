@@ -21,12 +21,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # sudo           -> "fallen" darf root werden (die eigentliche Sicherheitsgrenze
 #                    ist die Docker-Capability/Ressourcen-Haertung, NICHT das
 #                    fehlen von root IM Container)
+# jq -> fuer das `such`-Such-CLI (JSON aus SearXNG parsen)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         iputils-ping \
         dnsutils \
         net-tools \
         curl \
         wget \
+        jq \
         nano \
         less \
         htop \
@@ -36,9 +38,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
+# Ubuntu-Telemetrie / Phone-Home entfernen, falls im Base-Image vorhanden.
+# ubuntu:latest ist minimal -> meist gar nicht installiert, daher tolerant
+# (|| true). Kostet nichts und stellt sicher, dass hier nichts nach Hause funkt.
+RUN apt-get purge -y popularity-contest ubuntu-report apport whoopsie >/dev/null 2>&1 || true
+
 RUN useradd -m -s /bin/bash fallen \
     && echo 'fallen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/fallen \
     && chmod 0440 /etc/sudoers.d/fallen
+
+# ── Privacy-Werkzeuge ─────────────────────────────────────────────────
+# such            -> Websuche nur ueber die eigene SearXNG (search.glappa.de)
+# .curlrc/.wgetrc -> generischer User-Agent statt "curl/x" (Anti-Fingerprint)
+# glappa-privacy  -> einmaliger Login-Hinweis auf den Privacy-Modus
+# Der eigentliche Ausgang (Tor/DoH) sitzt im Egress-Proxy, nicht hier — diese
+# Dateien machen die VM nur bewusst "privacy-first" bedienbar.
+COPY such /usr/local/bin/such
+COPY --chown=fallen:fallen curlrc /home/fallen/.curlrc
+COPY --chown=fallen:fallen wgetrc /home/fallen/.wgetrc
+COPY glappa-privacy.sh /etc/profile.d/glappa-privacy.sh
+RUN chmod +x /usr/local/bin/such /etc/profile.d/glappa-privacy.sh
 
 USER fallen
 WORKDIR /home/fallen

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# such — Websuche AUSSCHLIESSLICH ueber die selbst-gehostete, tracking-freie
+# SearXNG-Instanz (search.glappa.de). Kein Google/Bing direkt, kein API-Key,
+# keine Cookies. Der Aufruf laeuft ueber die http(s)_proxy-Variablen dieser
+# VM (privoxy → direkt zu *.glappa.de, s. shell-egress), also schnell und
+# ohne dass irgendein Dritter die Suchanfrage sieht.
+#
+#   such <suchbegriff ...>
+#
+# Ergebnisse (Top 10) als Titel + URL. Reiner Text -> laesst sich weiter
+# pipen (z.B. `such linux firewall | head`).
+set -euo pipefail
+
+SEARX="${GLAPPA_SEARX_URL:-https://search.glappa.de}"
+
+if [ "$#" -eq 0 ]; then
+    echo "Aufruf: such <suchbegriff ...>" >&2
+    echo "Beispiel: such wireguard vs openvpn" >&2
+    exit 2
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "such: 'jq' fehlt im Image (sollte via apt installiert sein)." >&2
+    exit 1
+fi
+
+# SearXNG liefert JSON (in settings.yml unter formats aktiviert). --get +
+# --data-urlencode kodiert Sonderzeichen/Leerzeichen sauber.
+curl -fsS --get "$SEARX/search" \
+        --data-urlencode "q=$*" \
+        --data-urlencode "format=json" \
+    | jq -r '
+        if (.results | length) == 0 then
+            "Keine Treffer."
+        else
+            (.results[:10] | to_entries[]
+             | "\(.key + 1). \(.value.title)\n   \(.value.url)\n")
+        end'

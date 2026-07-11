@@ -47,6 +47,7 @@ import time
 import docker
 import websockets
 from docker.errors import APIError, DockerException
+from docker.types import IPAMConfig, IPAMPool
 from docker.utils.socket import read as docker_sock_read
 
 logging.basicConfig(level=logging.INFO, format='[shellgate] %(asctime)s %(message)s')
@@ -60,7 +61,27 @@ IDLE_TIMEOUT   = int(os.environ.get('SHELL_IDLE_TIMEOUT', '1800'))   # 30 Min. o
 MAX_SESSIONS   = int(os.environ.get('SHELL_MAX_SESSIONS', '5'))      # gleichzeitige Exec-Sitzungen
 BOOT_TIMEOUT   = int(os.environ.get('SHELL_BOOT_TIMEOUT', '20'))     # Sek. bis Container+Shell stehen
 LISTEN_PORT    = int(os.environ.get('SHELL_PORT', '8765'))
-NETWORK_NAME   = os.environ.get('SHELL_NETWORK', 'glappa-shell-net')
+
+# ── Anti-Tracking-Netztopologie ("Ausgang nur ueber den Egress-Proxy") ──
+# Der Gast haengt AUSSCHLIESSLICH am internen LAN (internal=True -> KEIN
+# Internet-Gateway). Der einzige Weg nach draussen ist der Egress-Proxy-
+# Container, der an beiden Netzen haengt:
+#   LAN (internal)  -> Gast <-> Proxy; feste Range, damit der Proxy eine
+#                       stabile IP (EGRESS_IP) hat, die der Gast ohne DNS
+#                       erreicht.
+#   WAN (Bridge)    -> nur der Proxy, hat darueber Internet (NAT vom Host).
+# Im Proxy: Tor (SOCKS) + privoxy (HTTP/HTTPS->Tor) + dnscrypt-proxy (DoH).
+# Vorteil ggü. Firewall-Regeln im Gast: KEIN NET_ADMIN im Gast noetig, und
+# es ist fail-closed (faellt der Proxy aus, kommt der Gast schlicht nicht
+# mehr raus — nichts leakt an ISP/Tracker). Siehe _docker/shell-egress/.
+LAN_NETWORK    = os.environ.get('SHELL_LAN_NETWORK', 'glappa-shell-lan')
+WAN_NETWORK    = os.environ.get('SHELL_WAN_NETWORK', 'glappa-shell-wan')
+LAN_SUBNET     = os.environ.get('SHELL_LAN_SUBNET', '10.89.7.0/24')
+LAN_GATEWAY    = os.environ.get('SHELL_LAN_GATEWAY', '10.89.7.1')
+EGRESS_IMAGE   = os.environ.get('SHELL_EGRESS_IMAGE', 'glappa-shell-egress:latest')
+EGRESS_NAME    = os.environ.get('SHELL_EGRESS_CONTAINER', 'glappa-shell-egress')
+EGRESS_IP      = os.environ.get('SHELL_EGRESS_IP', '10.89.7.2')
+PROXY_PORT     = int(os.environ.get('SHELL_PROXY_PORT', '8118'))
 
 MAX_ATTEMPTS  = 5      # Fehlversuche pro IP
 LOCKOUT_SECS  = 300     # ... bevor die IP fuer 5 Minuten gesperrt wird
@@ -91,15 +112,82 @@ def check_password(candidate: str) -> bool:
     return hmac.compare_digest(digest, PASSWORD_HASH)
 
 
-def ensure_network() -> None:
-    """Eigenes, von Ollama/SearXNG/glappa GETRENNTES Docker-Netz fuer die
-    Gast-Container — die koennen so nichts von der uebrigen Infrastruktur
-    im internen Docker-Netz sehen, nur raus ins Internet (NAT vom Host)."""
+def ensure_networks() -> None:
+    """Legt die beiden Docker-Netze an, falls noetig:
+      - LAN_NETWORK (internal=True): der Gast haengt NUR hier -> KEIN
+        direkter Internet-Zugang. Feste Subnetz-/Gateway-Range, damit der
+        Egress-Proxy eine stabile IP (EGRESS_IP) bekommen kann.
+      - WAN_NETWORK (normaler Bridge): nur der Egress-Proxy haengt hier und
+        hat darueber Internet (NAT vom Host)."""
     try:
-        client.networks.get(NETWORK_NAME)
+        client.networks.get(LAN_NETWORK)
     except docker.errors.NotFound:
-        log.info('lege Docker-Netz %s an', NETWORK_NAME)
-        client.networks.create(NETWORK_NAME, driver='bridge')
+        log.info('lege internes Gast-Netz %s an (internal, %s)', LAN_NETWORK, LAN_SUBNET)
+        ipam = IPAMConfig(pool_configs=[IPAMPool(subnet=LAN_SUBNET, gateway=LAN_GATEWAY)])
+        client.networks.create(LAN_NETWORK, driver='bridge', internal=True, ipam=ipam)
+    try:
+        client.networks.get(WAN_NETWORK)
+    except docker.errors.NotFound:
+        log.info('lege Egress-Netz %s an (mit Internet)', WAN_NETWORK)
+        client.networks.create(WAN_NETWORK, driver='bridge')
+
+
+def ensure_egress() -> 'docker.models.containers.Container':
+    """Stellt sicher, dass der EINE dauerhafte Egress-Proxy laeuft und an
+    BEIDEN Netzen haengt. Er ist der einzige Weg des Gastes nach draussen:
+    Tor + privoxy (HTTP/HTTPS anonymisiert) + dnscrypt-proxy (DNS via DoH).
+    Faellt er aus, kommt der Gast schlicht nicht mehr raus (fail-closed) —
+    es leakt nichts an ISP/Tracker. Kein docker.sock, keine Host-Mounts."""
+    ensure_networks()
+    try:
+        client.images.get(EGRESS_IMAGE)
+    except docker.errors.ImageNotFound:
+        raise RuntimeError(
+            f'Egress-Image {EGRESS_IMAGE} fehlt. Auf der VPS bauen mit:  '
+            f'docker build -t {EGRESS_IMAGE} _docker/shell-egress   '
+            f'(restart.sh --vps macht das automatisch).')
+
+    try:
+        c = client.containers.get(EGRESS_NAME)
+        c.reload()
+        nets = set((c.attrs.get('NetworkSettings', {}).get('Networks') or {}).keys())
+        if LAN_NETWORK not in nets or WAN_NETWORK not in nets:
+            log.warning('Egress-Proxy %s haengt nicht an beiden Netzen (%s) — neu anlegen',
+                        EGRESS_NAME, sorted(nets))
+            c.remove(force=True)
+        else:
+            if c.status != 'running':
+                log.info('Egress-Proxy %s laeuft nicht (%s) — starte neu', EGRESS_NAME, c.status)
+                c.start()
+            return c
+    except docker.errors.NotFound:
+        pass
+
+    log.info('lege Egress-Proxy %s an (Tor + privoxy + dnscrypt), feste IP %s',
+             EGRESS_NAME, EGRESS_IP)
+    # Low-Level-API, weil eine FESTE IP (der Gast erreicht den Proxy ohne DNS)
+    # nur ueber networking_config/create_endpoint_config sauber setzbar ist.
+    networking = client.api.create_networking_config({
+        LAN_NETWORK: client.api.create_endpoint_config(ipv4_address=EGRESS_IP),
+    })
+    host_config = client.api.create_host_config(
+        restart_policy={'Name': 'unless-stopped'},
+        mem_limit='256m',
+        pids_limit=256,
+        nano_cpus=1_000_000_000,
+    )
+    cid = client.api.create_container(
+        EGRESS_IMAGE,
+        name=EGRESS_NAME,
+        hostname='egress',
+        host_config=host_config,
+        networking_config=networking,
+    )['Id']
+    # Zweites Netz (mit Internet) dazu: der Gast erreicht den Proxy ueber das
+    # interne LAN, der Proxy das Internet ueber das WAN.
+    client.api.connect_container_to_network(cid, WAN_NETWORK)
+    client.api.start(cid)
+    return client.containers.get(cid)
 
 
 def spawn_guest_container() -> 'docker.models.containers.Container':
@@ -112,6 +200,11 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
     gestartet, der Container selbst bleibt unberuehrt stehen). Reset auf
     einen sauberen Zustand: von Hand auf der VPS
     `docker rm -f glappa-shell-persistent` (naechste Sitzung baut ihn neu)."""
+    # Egress-Proxy + Netze muessen stehen, BEVOR der Gast startet — seine DNS
+    # (dns=[EGRESS_IP]) und sein http(s)_proxy zeigen auf den Proxy. Laueft
+    # der Proxy schon, ist das ein billiger get(); sonst wird er hier erzeugt.
+    ensure_egress()
+
     # Bewusst VORHER pruefen, ob das Gast-Image lokal existiert: sonst
     # versucht containers.run() es von Docker Hub zu ziehen (das Repo
     # gibt es dort nicht -> kryptisches "pull access denied"). Klarer
@@ -124,34 +217,66 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
             f'docker build -t {GUEST_IMAGE} _docker/shellvm   '
             f'(restart.sh --vps macht das automatisch).')
 
+    # Alles ins Netz laeuft ueber den Egress-Proxy: HTTP/HTTPS per Proxy-Env,
+    # DNS per dns=[EGRESS_IP]. GLAPPA_EGRESS=1 ist der Marker, an dem wir unten
+    # erkennen, ob ein schon existierender Gast bereits im gehaerteten Modus
+    # laeuft (Env laesst sich an einem laufenden Container nicht nachtraeglich
+    # aendern -> sonst muss er einmalig neu gebaut werden).
+    proxy_url = f'http://{EGRESS_IP}:{PROXY_PORT}'
+    guest_env = {
+        'http_proxy':  proxy_url, 'https_proxy': proxy_url,
+        'HTTP_PROXY':  proxy_url, 'HTTPS_PROXY': proxy_url,
+        'no_proxy':    'localhost,127.0.0.1,::1',
+        'NO_PROXY':    'localhost,127.0.0.1,::1',
+        'GLAPPA_EGRESS': '1',
+    }
+
     try:
         container = client.containers.get(GUEST_CONTAINER_NAME)
         container.reload()
-        if container.status != 'running':
-            log.info('dauerhafter Gast-Container %s existiert, aber laeuft nicht (%s) — starte neu',
-                      GUEST_CONTAINER_NAME, container.status)
-            container.start()
-        return container
+        nets = set((container.attrs.get('NetworkSettings', {}).get('Networks') or {}).keys())
+        env_list = (container.attrs.get('Config', {}) or {}).get('Env') or []
+        locked = ('GLAPPA_EGRESS=1' in env_list) and nets == {LAN_NETWORK}
+        if not locked:
+            # Alt-Container (noch am Internet, oder aus der Zeit vor der
+            # Egress-Haertung) -> EINMALIG verwerfen und im Privacy-Modus neu
+            # bauen. Installierte Pakete in der alten Kiste gehen dabei
+            # verloren; das ist der bewusste Umstieg.
+            log.warning('Gast-Container %s ist nicht (mehr) an den Egress-Proxy gebunden '
+                        '(Netze=%s) — wird EINMALIG neu angelegt (Umstieg auf Privacy-Modus).',
+                        GUEST_CONTAINER_NAME, sorted(nets))
+            container.remove(force=True)
+        else:
+            if container.status != 'running':
+                log.info('dauerhafter Gast-Container %s existiert, laeuft aber nicht (%s) — starte neu',
+                          GUEST_CONTAINER_NAME, container.status)
+                container.start()
+            return container
     except docker.errors.NotFound:
         pass
 
-    log.info('lege dauerhaften Gast-Container %s an', GUEST_CONTAINER_NAME)
+    log.info('lege dauerhaften Gast-Container %s an — nur internes Netz %s, '
+             'Ausgang ausschliesslich ueber Egress-Proxy %s',
+             GUEST_CONTAINER_NAME, LAN_NETWORK, EGRESS_IP)
     return client.containers.run(
         GUEST_IMAGE,
         name=GUEST_CONTAINER_NAME,
         hostname='VIRT',
         detach=True,
         command=['sleep', 'infinity'],
-        network=NETWORK_NAME,
+        # NUR internes Netz (internal=True -> kein Internet-Gateway) + DNS auf
+        # den Egress-Proxy + http(s)_proxy-Env. Damit kann der Gast NICHTS
+        # direkt ins Netz schicken, nur ueber den Proxy (Tor/DoH).
+        network=LAN_NETWORK,
+        dns=[EGRESS_IP],
+        environment=guest_env,
         # Normale Docker-Standard-Capabilities (bewusst KEIN cap_drop=ALL
         # mehr): sudo braucht SETUID/SETGID/AUDIT_WRITE, apt/dpkg brauchen
-        # DAC_OVERRIDE/FOWNER/CHOWN/SYS_CHROOT — das laesst sich nicht
-        # sinnvoll chirurgisch aus einem cap_drop=ALL-Ausgangspunkt einzeln
-        # freischalten, ohne am Ende praktisch beim Standard-Set zu landen.
-        # Bleibt trotzdem OHNE SYS_ADMIN/NET_ADMIN/SYS_PTRACE/--privileged
-        # und ohne jeden Host-Mount — root IM Gast-Container ist weiterhin
-        # kein Root auf dem Host. Isolation kommt aus Namespaces/eigenem
-        # Docker-Netz/Ressourcen-Limits, nicht mehr aus Capability-Entzug.
+        # DAC_OVERRIDE/FOWNER/CHOWN/SYS_CHROOT. Bleibt trotzdem OHNE
+        # SYS_ADMIN/NET_ADMIN/SYS_PTRACE/--privileged und ohne jeden Host-
+        # Mount — root IM Gast ist weiterhin kein Root auf dem Host. Die
+        # Netz-Sperre kommt aus der Topologie (internes Netz), NICHT aus
+        # Capabilities: der Gast braucht so gerade KEIN NET_ADMIN.
         pids_limit=256,
         mem_limit='512m',
         memswap_limit='512m',
@@ -472,7 +597,16 @@ async def handle(ws) -> None:
 
 
 async def main() -> None:
-    ensure_network()
+    ensure_networks()
+    # Egress-Proxy schon beim Start hochziehen (nicht erst bei der ersten
+    # Sitzung). Fehlt das Image noch, NICHT den Server abschiessen — die
+    # Sitzung meldet den Fehler dann klar ueber ensure_egress()/RuntimeError.
+    try:
+        ensure_egress()
+    except RuntimeError as e:
+        log.warning('%s', e)
+    except (APIError, DockerException):
+        log.exception('Egress-Proxy-Start beim Boot fehlgeschlagen — wird bei der ersten Sitzung erneut versucht')
     # Bindet innerhalb des Containers auf allen Interfaces (0.0.0.0) - der
     # eigentliche Zugriffsschutz nach aussen kommt vom docker-compose
     # Port-Mapping (127.0.0.1:PORT:PORT, siehe docker-compose.vps.yml)

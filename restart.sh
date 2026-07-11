@@ -284,6 +284,22 @@ build_shell_guest_image() {
     fi
 }
 
+# Baut das EGRESS-Proxy-Image (glappa-shell-egress:latest) — Tor + privoxy +
+# dnscrypt-proxy. shellgate haengt den Gast an ein internes Netz OHNE Internet
+# und laesst ihn NUR ueber diesen Proxy raus (Anti-Tracking: Ausgang via Tor,
+# DNS via DoH). Wie beim Gast-Image steht es NICHT im Compose (kein Service),
+# also hier direkt bauen. Nur auf dem VPS.
+build_shell_egress_image() {
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
+    [ -f "_docker/shell-egress/Dockerfile" ] || return 0
+    say "baue Egress-Image glappa-shell-egress:latest (Tor+privoxy+dnscrypt)..."
+    if $SUDO docker build -t glappa-shell-egress:latest _docker/shell-egress; then
+        ok "Egress-Image glappa-shell-egress:latest gebaut"
+    else
+        warn "Egress-Image-Build fehlgeschlagen — real-shell hat dann keinen Ausgang (fail-closed)."
+    fi
+}
+
 # Warnt fruehzeitig, wenn _docker/.env (SHELL_PASSWORD_HASH fuer real-shell)
 # fehlt — sonst crashed der shellgate-Container beim Start mit einer
 # kryptischen Python-Fehlermeldung ohne ersichtlichen Grund.
@@ -341,6 +357,8 @@ if [ -n "$BUILD" ]; then
     $SUDO docker compose -f "$COMPOSE" build
     # Gast-Image separat bauen — compose ueberspringt es (Profil), s.o.
     build_shell_guest_image
+    # Egress-Proxy-Image separat bauen (steht wie der Gast nicht im Compose).
+    build_shell_egress_image
 fi
 
 say "raeume Ports frei (${HOST_PORTS[*]})..."

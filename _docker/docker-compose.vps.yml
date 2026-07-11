@@ -101,14 +101,16 @@ services:
         max-size: "1m"
         max-file: "3"
 
-  # ── Gast-Image glappa-shellvm:latest ──────────────────────────────
+  # ── Gast-Image glappa-shellvm:latest + Egress-Image glappa-shell-egress ──
   # ABSICHTLICH KEIN Compose-Service: ein Service mit `profiles:` wird von
   # `docker compose build` UEBERSPRUNGEN (Profil inaktiv), das Image
   # entstuende also nie und shellgate scheiterte zur Laufzeit mit
-  # ImageNotFound. Deshalb baut restart.sh (build_shell_guest_image) das
-  # Gast-Image direkt per `docker build -t glappa-shellvm:latest
-  # _docker/shellvm`. shellgate (unten) erzeugt daraus PRO SITZUNG
-  # frische, gehaertete Container (siehe shellgate/server.py).
+  # ImageNotFound. Deshalb baut restart.sh beide Images direkt:
+  #   build_shell_guest_image  -> glappa-shellvm:latest     (_docker/shellvm)
+  #   build_shell_egress_image -> glappa-shell-egress:latest (_docker/shell-egress)
+  # shellgate (unten) erzeugt daraus den dauerhaften Gast + Egress-Proxy und
+  # haengt den Gast an ein INTERNES Netz ohne Internet — Ausgang nur ueber den
+  # Proxy (Tor/DoH, Anti-Tracking). Siehe shellgate/server.py + shell-egress/.
 
   # ── shellgate: passwortgeschuetzte ECHTE Ubuntu-Shell im Browser ──
   # terminal.html "real-shell" -> Apache /api/shell/ws -> hier. Siehe
@@ -133,6 +135,10 @@ services:
     environment:
       - SHELL_PASSWORD_HASH=${SHELL_PASSWORD_HASH}
       - SHELL_IMAGE=glappa-shellvm:latest
+      # Egress-Proxy-Image (Tor+privoxy+dnscrypt). shellgate zieht daraus den
+      # dauerhaften Proxy hoch und bindet den Gast per internem Netz nur an
+      # ihn. Defaults stehen in server.py; hier nur zur Auffindbarkeit.
+      - SHELL_EGRESS_IMAGE=glappa-shell-egress:latest
       - SHELL_IDLE_TIMEOUT=1800
       - SHELL_MAX_SESSIONS=5
     volumes:
