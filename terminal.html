@@ -2678,8 +2678,6 @@
     ══════════════════════════════════════════════════════════════ */
     function startShell() {
       blank();
-      echoCmd('help');
-      SPECIAL.help();
       inputRow.style.display = 'flex';
       updatePrompt();
       inp.focus();
@@ -2891,6 +2889,9 @@
         appendLine('  glappa-chat             Chat mit der Glappa-KI starten (einziger Online-Befehl)', 'line-pink');
         appendLine('  glappa -s <frage>       Schnelle KI-Antwort, ohne in den Chat zu wechseln', 'line-pink');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
+        blank();
+        appendLine('ECHTE SHELL', 'line-info');
+        appendLine('  terminal-boot           Echte Ubuntu-Shell verbinden (Passwort, nur home.glappa.de)', 'line-pink');
         blank();
         appendLine('SPASS', 'line-info');
         appendLine('  fastfetch, fortune, cowsay, sl, matrix/cmatrix, hack, ping (simuliert), sudo');
