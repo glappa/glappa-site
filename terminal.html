@@ -134,6 +134,11 @@
       word-break: break-word;
       line-height: 1.55;
     }
+    /* cmatrix — Canvas statt Zeilen, fuellt die sichtbare Terminal-Flaeche */
+    .matrix-canvas {
+      display: block;
+      width: 100%;
+    }
 
     .input-row {
       flex: none;
@@ -2587,6 +2592,88 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
+       CMATRIX — echter digitaler Regen (Canvas), wie das Original
+       (github.com/abishekvashok/cmatrix): laeuft UNENDLICH, bis q
+       oder Strg+C kommt — genau das gleiche Exit-Muster wie bei top.
+    ══════════════════════════════════════════════════════════════ */
+    let matrixMode = false, matrixTimer = null, matrixCanvas = null, matrixCtx = null, matrixDrops = [];
+    const MATRIX_COL_PX = 15;
+    const MATRIX_CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$+-*/=%&#@?!';
+
+    function matrixCanvasDims() {
+      return {
+        w: Math.max(200, termBody.clientWidth - 4),
+        h: Math.max(160, termBody.clientHeight - 4)
+      };
+    }
+
+    function resetMatrixDrops(cols) {
+      matrixDrops = new Array(cols);
+      for (let i = 0; i < cols; i++) matrixDrops[i] = Math.floor(Math.random() * -60);
+    }
+
+    function syncMatrixCanvas() {
+      const dims = matrixCanvasDims();
+      if (matrixCanvas.width === dims.w && matrixCanvas.height === dims.h) return;
+      matrixCanvas.width = dims.w;
+      matrixCanvas.height = dims.h;
+      matrixCtx.fillStyle = '#0a0a0a';
+      matrixCtx.fillRect(0, 0, dims.w, dims.h);
+      resetMatrixDrops(Math.ceil(dims.w / MATRIX_COL_PX));
+    }
+
+    function drawMatrixFrame() {
+      syncMatrixCanvas();
+      const w = matrixCanvas.width, h = matrixCanvas.height;
+      /* Schwarzer Halbtransparenz-Schleier statt Loeschen — genau der
+         Trick, der die ausklingende gruene Spur entstehen laesst. */
+      matrixCtx.fillStyle = 'rgba(10,10,10,0.08)';
+      matrixCtx.fillRect(0, 0, w, h);
+      matrixCtx.font = MATRIX_COL_PX + 'px "Courier New", monospace';
+      matrixCtx.textBaseline = 'top';
+      for (let i = 0; i < matrixDrops.length; i++) {
+        const rowY = matrixDrops[i];
+        if (rowY >= 0) {
+          const ch = MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)];
+          /* heller Kopf, der Rest der Spur ergibt sich aus dem Verblassen oben */
+          matrixCtx.fillStyle = Math.random() > 0.94 ? '#e8ffe8' : '#00ff00';
+          matrixCtx.fillText(ch, i * MATRIX_COL_PX, rowY * MATRIX_COL_PX);
+        }
+        if (rowY * MATRIX_COL_PX > h && Math.random() > 0.975) matrixDrops[i] = 0;
+        matrixDrops[i]++;
+      }
+    }
+
+    function startMatrix() {
+      if (matrixMode || topMode) return;
+      blank();
+      matrixCanvas = document.createElement('canvas');
+      matrixCanvas.className = 'matrix-canvas';
+      out.appendChild(matrixCanvas);
+      matrixCtx = matrixCanvas.getContext('2d');
+      const dims = matrixCanvasDims();
+      matrixCanvas.width = dims.w;
+      matrixCanvas.height = dims.h;
+      matrixCtx.fillStyle = '#0a0a0a';
+      matrixCtx.fillRect(0, 0, dims.w, dims.h);
+      resetMatrixDrops(Math.ceil(dims.w / MATRIX_COL_PX));
+      matrixMode = true;
+      updatePrompt();
+      scrollBottom();
+      matrixTimer = setInterval(drawMatrixFrame, 45);
+    }
+
+    function exitMatrix() {
+      clearInterval(matrixTimer);
+      matrixTimer = null;
+      matrixMode = false;
+      appendLine('(cmatrix beendet)', 'line-sys');
+      blank();
+      updatePrompt();
+      scrollBottom();
+    }
+
+    /* ══════════════════════════════════════════════════════════════
        UEBUNGS-SHELL — startet DIREKT nach der BIOS-Show.
     ══════════════════════════════════════════════════════════════ */
     function startShell() {
@@ -2935,19 +3022,9 @@
         }, 180);
       },
 
-      cmatrix() { SPECIAL.matrix(); },
+      cmatrix() { startMatrix(); },
 
-      matrix() {
-        blank(); appendLine('[ Matrix-Modus für 3 Sekunden ]', 'line-info'); blank();
-        const chars = '01アイウエオカキクケコサシスセソタチツテト';
-        let count = 0;
-        const iv = setInterval(function() {
-          if (count++ > 18) { clearInterval(iv); blank(); return; }
-          let row = '';
-          for (let i = 0; i < 60; i++) row += chars[Math.floor(Math.random() * chars.length)];
-          appendLine(row, 'line-ok');
-        }, 80);
-      },
+      matrix() { startMatrix(); },
 
       ping(args) {
         const host = args[0] || 'glappa.de';
@@ -2991,7 +3068,7 @@
       },
 
       top() {
-        if (topMode) return;
+        if (topMode || matrixMode) return;
         blank();
         topBox = document.createElement('div');
         out.appendChild(topBox);
@@ -3251,10 +3328,10 @@
       return chatMode ? 'glappa-chat> ' : (ENV.USER + '@' + ENV.HOSTNAME + ' ' + shortCwd() + ' $ ');
     }
     function updatePrompt() {
-      /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top. */
+      /* Waehrend top/cmatrix laeuft, gibt es keinen Prompt — wie beim echten Original. */
       const label = document.querySelector('.prompt-label');
       label.textContent = '';
-      if (topMode) return;
+      if (topMode || matrixMode) return;
       if (awaitingShellPassword) { label.textContent = SHELL_PW_PROMPT; return; }
       if (chatMode) { label.textContent = 'glappa-chat> '; return; }
       label.appendChild(promptSpans());
@@ -3512,12 +3589,16 @@
 
     inp.addEventListener('keydown', function(e) {
       playClick();
-      /* top laeuft: q oder Strg+C beendet es, alle anderen Tasten werden
-         geschluckt (das echte top nimmt die Eingabe ja auch nicht als Shell). */
-      if (topMode) {
+      /* top/cmatrix laeuft: q oder Strg+C beendet es, alle anderen Tasten
+         werden geschluckt (die echten Originale nehmen Eingaben ja auch
+         nicht als Shell-Befehle). */
+      if (topMode || matrixMode) {
         e.preventDefault();
         if (e.key === 'q' || e.key === 'Q'
-            || (e.ctrlKey && (e.key === 'c' || e.key === 'C'))) exitTop();
+            || (e.ctrlKey && (e.key === 'c' || e.key === 'C'))) {
+          if (topMode) exitTop();
+          if (matrixMode) exitMatrix();
+        }
         return;
       }
       if (e.key === 'Enter') {
