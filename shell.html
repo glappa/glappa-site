@@ -147,7 +147,7 @@
     <div id="shellwin">
       <div class="shell-titlebar">
         <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
-        <span class="tb-title" id="tbTitle">real-shell — Passwort erforderlich</span>
+        <span class="tb-title" id="tbTitle">terminal-boot — Passwort erforderlich</span>
       </div>
 
       <div id="gate">
@@ -208,7 +208,7 @@
       gateMsg.textContent = 'Diese Funktion gibt es nur auf home.glappa.de — dort läuft der Docker-Host.';
     }
 
-    /* Kam man ueber terminal.html (Befehl "real-shell") hierher, liegt das
+    /* Kam man ueber terminal.html (Befehl "terminal-boot") hierher, liegt das
        Passwort kurz in sessionStorage — SOFORT auslesen+loeschen (read-once,
        ueberlebt keinen Reload/neuen Tab), damit hier gar nicht erst ein
        Formular gezeigt werden muss. Direkter Aufruf dieser Seite (Bookmark,
@@ -232,7 +232,7 @@
     function startTerminal() {
       gate.style.display = 'none';
       termHost.style.display = 'block';
-      tbTitle.textContent = 'real-shell — verbunden';
+      tbTitle.textContent = 'terminal-boot — verbunden';
 
       term = new Terminal({
         cursorBlink: true,

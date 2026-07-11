@@ -21,7 +21,6 @@ glappa-site/
 ├── mp3/             hoch
 ├── mp4/             hoch
 ├── secret/          hoch (nur pilzskip.html — GIFs liegen jetzt in img/gif/)
-├── v86/             hoch (echtes Linux im Terminal: libv86.js, v86.wasm, bzimage.bin ~9 MB)
 ├── xterm/           <-- NICHT hochladen — nur fuer shell.html, s.u.
 ├── bounce.html      hoch
 ├── favicon.ico      hoch (Browser-Konvention bleibt im Root)
@@ -40,7 +39,7 @@ dort automatisch mit `git pull`/`restart.sh --pull`). Auf glappa.de
 (reines FTP-Static-Hosting) wuerde die Seite eh nur "nicht verfuegbar"
 zeigen — sie dort erst gar nicht abzulegen haelt die Sache etwas
 unauffaelliger (kein Eintrag in irgendeinem FTP-Verzeichnis, den
-jemand zufaellig findet). Der Befehl `real-shell` im Terminal ist
+jemand zufaellig findet). Der Befehl `terminal-boot` im Terminal ist
 zudem bewusst nirgends gelistet (nicht in `help`, nicht in der Tab-
 Vervollstaendigung) — nur wer ihn kennt, kommt hin.
 

@@ -615,13 +615,12 @@
 
     function defaultFS() {
       /* Volle Linux-Verzeichnisstruktur (FHS) — damit sich ls / , cd /etc,
-         cat /proc/cpuinfo usw. wie auf einem echten System anfuehlen.
-         Das KOMPLETT echte Linux (eigener Kernel) bootet beim Start
-         automatisch — boot-linux fuehrt jederzeit dorthin zurueck. */
+         cat /proc/cpuinfo usw. wie auf einem echten System anfuehlen
+         (rein simuliert, ohne echten Kernel darunter). */
       const ELF = 'ELF 64-bit LSB executable, x86-64\n(nicht lesbar, aber ausführbar 😉)';
       const bin = {};
       ['ls','cd','cat','echo','grep','find','mkdir','touch','rm','cp','mv',
-       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do','boot-linux',
+       'nano','head','tail','wc','sort','uniq','tree','man','glappa','glappa-chat','glappa-do',
        'cut','tr','sed','tac','nl','seq','diff','du','df','free','ps','top',
        'kill','cal','expr','stat','file','hostname','id','sound','bash','sh','chmod',
        'fastfetch','neofetch','uname','whoami','uptime','date','clear','cmatrix']
@@ -668,8 +667,7 @@
               'Dateien anlegen, löschen, Pipes, nano — alles geht.\n' +
               'Alles läuft nur in deinem Browser, nichts wird gesendet.\n\n' +
               'Tippe  tutorial  für Übungsaufgaben.\n' +
-              'Ein ECHTES Linux (eigener Kernel) bootet beim Start unsichtbar vor —\n' +
-              'tippe  boot-linux  um direkt hineinzuwechseln.\n' +
+              'Tippe  glappa-chat  um mit der Glappa-KI zu reden.\n' +
               'Tippe  reset  wenn du alles zurücksetzen willst.\n\n' +
               'Viel Spaß beim Üben! 😎\n\n-- Lex'),
             'todo.txt': fileNode('[ ] Mehr GIFs\n[ ] Weltfrieden\n[x] Cool sein\n[x] Terminal bauen\n[x] Terminal ECHT machen'),
@@ -821,7 +819,7 @@
     let chatBusy = false;          // eine Anfrage laeuft gerade
     const chatHistory = [];        // {role, content} fuer Kontext
 
-    /* ── real-shell: Passwort wird HIER im Terminal abgefragt (nicht auf
+    /* ── terminal-boot: Passwort wird HIER im Terminal abgefragt (nicht auf
        shell.html) — die naechste Eingabe ist das Passwort, maskiert wie
        bei glappa-do/read, dann wird es kurz ueber sessionStorage an
        shell.html gereicht (siehe startRealShell) und dort SOFORT wieder
@@ -2589,453 +2587,16 @@
     }
 
     /* ══════════════════════════════════════════════════════════════
-       BOOT-LINUX — ein ECHTES Linux (eigener Kernel) DIREKT im Terminal.
-       v86 (BSD-Lizenz, github.com/copy/v86) emuliert einen x86-PC in
-       WebAssembly und bootet v86/bzimage.bin (Kernel 4.16 + eingebautes
-       BusyBox-initramfs, extrahiert aus linux4.iso). Die Konsole laeuft
-       SERIELL (console=ttyS0): Kernel-Log und Shell kommen als Zeilen-
-       strom und erscheinen im NORMALEN Terminal-Output — getippt wird
-       in der normalen Eingabezeile, kein eigener Bildschirm/Overlay.
-       Kein Netzwerk konfiguriert, alles client-seitig — reine Sandbox.
+       UEBUNGS-SHELL — startet DIREKT nach der BIOS-Show.
     ══════════════════════════════════════════════════════════════ */
-    let lxEmulator = null;
-    let linuxMode = false;     /* true = Eingaben gehen an die Gast-Shell */
-    let lxLive = null;         /* div fuer die angefangene Zeile (Prompt ~%) */
-    let lxBuf = '';            /* Zeilenpuffer fuer den seriellen Strom */
-    let lxGotBytes = false;    /* kam ueberhaupt etwas ueber seriell? */
-    let lxSilent = false;      /* true = Boot laeuft UNSICHTBAR im Hintergrund */
-    let lxBooted = false;      /* Gast-Shell hat ihren ersten Prompt gezeigt */
-    let lxEntered = false;     /* schon mal im Linux-Modus gewesen (Einmal-Tipp) */
-    let biosDone = false;      /* BIOS-Show fertig — ab jetzt darf Linux uebernehmen */
-    let simIntroShown = false; /* help-Intro der Uebungs-Shell schon gezeigt */
-    let lxSetupSent = false;   /* Identitaets-Setup (User, Prompt, Farben) schon geschickt */
-    let lxColor = null;        /* aktuelle ANSI-Vordergrundfarbe im seriellen Strom */
-    let lxBold = false;
-    let lxColorNL = null;      /* Farb/Bold-Zustand am Zeilenanfang (fuer Re-Renders) */
-    let lxBoldNL = false;
-
-    /* Zufaelliger Gast-User — jedes Booten ein neuer (den echten PC-Namen
-       des Besuchers gibt der Browser nicht her). */
-    const LX_USER = (function() {
-      const n = ['pixel','turbo','neon','retro','modem','floppy','laser',
-                 'cyber','glitch','vector','disk','byte'];
-      return n[Math.floor(Math.random() * n.length)] + (10 + Math.floor(Math.random() * 90));
-    })();
-    let lxLoader = null;       /* Spinner-Zeile waehrend des Wartens auf den Boot */
-    let lxLoaderTimer = null;
-
-    /* ANSI-Escapes und Steuerzeichen aus dem seriellen Strom entfernen —
-       das Terminal rendert reinen Text (top & Co. malen mit Escapes). */
-    function lxClean(s) {
-      return s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '')
-              .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
-              .replace(/\x1b[()][0-9A-B]/g, '')
-              .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
-    }
-
-    function lxFlushLive() {
-      if (lxLive) { lxLive.remove(); lxLive = null; }
-    }
-
-    /* ── ANSI-FARBEN: SGR-Codes (\e[..m) aus dem seriellen Strom werden
-       in farbige Spans uebersetzt statt weggeworfen — damit sieht das
-       echte Linux aus wie der Rest des Terminals (Prompt, ls --color).
-       Andere Escapes (Cursor & Co.) filtert weiterhin lxClean. ── */
-    const ANSI_FG = {
-      30:'#3f4954', 31:'#ec6a6a', 32:'#8fc775', 33:'#e2c178',
-      34:'#64a2e0', 35:'#f272b6', 36:'#45c6d6', 37:'#d3dae3',
-      90:'#6d7783', 91:'#f28b82', 92:'#a5d6a7', 93:'#ffe082',
-      94:'#90caf9', 95:'#f48fb1', 96:'#80deea', 97:'#ffffff',
-    };
-    function lxSpansFrom(text) {
-      const frag = document.createDocumentFragment();
-      text.split(/(\x1b\[[0-9;]*m)/).forEach(function(part) {
-        const m = part.match(/^\x1b\[([0-9;]*)m$/);
-        if (m) {
-          (m[1] === '' ? ['0'] : m[1].split(';')).forEach(function(code) {
-            const c = parseInt(code, 10);
-            if (c === 0)       { lxColor = null; lxBold = false; }
-            else if (c === 1)  lxBold = true;
-            else if (c === 22) lxBold = false;
-            else if (c === 39) lxColor = null;
-            else if (ANSI_FG[c]) lxColor = ANSI_FG[c];
-          });
-          return;
-        }
-        const clean = lxClean(part);
-        if (!clean) return;
-        const s = document.createElement('span');
-        if (lxColor) s.style.color = lxColor;
-        if (lxBold)  s.style.fontWeight = 'bold';
-        s.textContent = clean;
-        frag.appendChild(s);
-      });
-      return frag;
-    }
-    /* Fertige Gast-Zeile mit Farben in den Output schreiben */
-    function lxAppendAnsi(raw) {
-      lxColor = lxColorNL; lxBold = lxBoldNL;
-      const div = document.createElement('div');
-      div.className = 'line-ok';
-      div.appendChild(lxSpansFrom(raw));
-      lxColorNL = lxColor; lxBoldNL = lxBold;
-      if (captureBuf) captureBuf.push(lxClean(raw.replace(/\x1b\[[0-9;]*m/g, '')));
-      out.appendChild(div);
-      scrollBottom();
-    }
-
-    /* ── GAST-IDENTITAET: beim ersten Shell-Prompt bekommt die Gast-Shell
-       unsichtbar einen User + farbigen Prompt verpasst — aus dem nackten
-       "~%" wird "<user>@glappa.de:/pfad $" wie im Uebungs-Terminal.
-       Die Echos der Setup-Befehle verschluckt der Silent-Modus. ── */
-    function lxSendSetup() {
-      const esc = function(c) { return "$(printf '\\033[" + c + "m')"; };
-      const ps1 = esc('1;36') + LX_USER + esc('0') + '@' + esc('1;35') + 'glappa.de'
-                + esc('0') + ':\\$PWD ' + esc('35') + '\\$' + esc('0') + ' ';
-      const cmds = [
-        'hostname glappa.de 2>/dev/null',
-        /* Serielle Konsole kennt keine Terminalgroesse (0x0) — ohne das
-           zerhackt der ash-Zeileneditor lange Eingabezeilen beim Echo. */
-        'stty cols 250 rows 50 2>/dev/null',
-        'export HOME="${HOME:-/root}"',
-        'export USER=' + LX_USER + ' LOGNAME=' + LX_USER + ' HOSTNAME=glappa.de',
-        'ls --color=auto / >/dev/null 2>&1 && alias ls="ls --color=auto"',
-        'cd "$HOME"',
-
-        /* Home vorbefuellen — wie im Uebungs-Terminal (nur ASCII: nur
-           Latin-1 uebersteht die serielle Leitung, Emojis nicht) */
-        'mkdir -p "$HOME/uebung"',
-        "cat > \"$HOME/README.txt\" << 'GLEOF'",
-        'Willkommen auf glappa.de - das hier ist ein ECHTES Linux',
-        '(Kernel 4.16 + BusyBox), es laeuft direkt in deinem Browser.',
-        '',
-        'Probier mal:  cmatrix   top -b -n 1   cat /proc/cpuinfo',
-        'exit-linux  wechselt zum Uebungs-Terminal mit Tutorial und KI.',
-        'GLEOF',
-        "cat > \"$HOME/todo.txt\" << 'GLEOF'",
-        '[ ] Mehr GIFs',
-        '[ ] Weltfrieden',
-        '[x] Cool sein',
-        '[x] Terminal bauen',
-        '[x] ECHTES Linux booten',
-        'GLEOF',
-        "cat > \"$HOME/uebung/namen.txt\" << 'GLEOF'",
-        'anna', 'bob', 'charlie', 'anna', 'dora', 'bob', 'anna', 'emil',
-        'GLEOF',
-        "cat > \"$HOME/uebung/zahlen.txt\" << 'GLEOF'",
-        '42', '7', '1337', '3', '99', '7', '256',
-        'GLEOF',
-
-        /* cmatrix "vorinstallieren": Mini-Matrixregen als Shellskript —
-           ein echtes ncurses-cmatrix gibt es in der BusyBox nicht, und
-           Vollbild-Escapes kaeme durch die serielle Leitung eh nicht. */
-        "cat > /bin/cmatrix << 'GLEOF'",
-        '#!/bin/sh',
-        '# cmatrix mini — Matrixregen fuer die serielle Konsole (~5 Sek.)',
-        "awk 'BEGIN{",
-        'srand();',
-        'for(i=0;i<60;i++){',
-        's="";',
-        'for(c=0;c<64;c++){ if(rand()<0.35) s=s" "; else s=s sprintf("%c",33+int(rand()*93)); }',
-        'printf("%s%s\\033[0m\\n",(rand()<0.2)?"\\033[1;32m":"\\033[32m",s);',
-        'system("usleep 70000 2>/dev/null");',
-        '}',
-        "}'",
-        'GLEOF',
-        'chmod +x /bin/cmatrix',
-
-        'export PS1="' + ps1 + '"',
-      ];
-      try { lxEmulator.serial0_send(cmds.join('\r') + '\r'); } catch(e) {}
-    }
-
-    /* Seriellen Output zeilenweise ins normale Terminal schreiben. Die
-       angefangene letzte Zeile (z.B. der ~%-Prompt, kommt ohne \n) wird
-       als Live-Zeile angezeigt und beim naechsten \n festgeschrieben. */
-    function lxWrite(chunk) {
-      /* UNSICHTBARER Vor-Boot: Kernel-Log verschlucken, nur die
-         angefangene letzte Zeile auf den ersten Shell-Prompt abklopfen. */
-      if (lxSilent) {
-        lxBuf += chunk;
-        const nl = lxBuf.lastIndexOf('\n');
-        if (nl !== -1) lxBuf = lxBuf.slice(nl + 1);
-        if (/~[%#$]\s*$/.test(lxClean(lxBuf.replace(/\r/g, '')))) lxBootReady();
-        return;
-      }
-      lxBuf += chunk;
-
-      /* Stille Abfrage (Tab-Vervollstaendigung): Ausgabe einsammeln
-         statt anzeigen, bis die GLQ_END-Markierung kommt. */
-      if (lxQuiet) {
-        let qi;
-        while (lxQuiet && (qi = lxBuf.indexOf('\n')) !== -1) {
-          const qline = lxClean(lxBuf.slice(0, qi).replace(/\r+$/, '').replace(/\x1b\[[0-9;]*m/g, ''));
-          lxBuf = lxBuf.slice(qi + 1);
-          if (qline === 'GLQ_END') { lxQueryFinish(); break; }
-          /* das Kommando-Echo selbst (enthaelt Q_END in Anfuehrungszeichen) ueberspringen */
-          if (qline.indexOf('Q_END') === -1) lxQuiet.lines.push(qline);
-        }
-        if (lxQuiet) return;   /* noch nicht fertig — weiter sammeln */
-        /* fertig: Rest im Puffer (frischer Prompt) normal weiterverarbeiten */
-      }
-
-      /* clear / Strg+L im Gast: Erase-Display-Escape (\e[2J) wirklich
-         ausfuehren — Bildschirm leeren statt die Sequenz wegzufiltern */
-      const ci = lxBuf.search(/\x1b\[[0-3]?J/);
-      if (ci !== -1) {
-        out.innerHTML = '';
-        lxFlushLive();
-        lxBuf = lxBuf.slice(ci).replace(/^\x1b\[[0-3]?J/, '');
-      }
-
-      let idx;
-      while ((idx = lxBuf.indexOf('\n')) !== -1) {
-        const line = lxBuf.slice(0, idx).replace(/\r+$/, '');
-        lxBuf = lxBuf.slice(idx + 1);
-        lxFlushLive();
-        lxAppendAnsi(line);
-      }
-      /* Angefangene Zeile: unfertige Escape-Sequenz am Ende abschneiden
-         (kommt mit dem naechsten Chunk komplett) und mit Farben rendern */
-      const raw = lxBuf.replace(/\r/g, '').replace(/\x1b(\[[0-9;]*)?$/, '');
-      const visible = lxClean(raw.replace(/\x1b\[[0-9;]*m/g, ''));
-      if (visible) {
-        if (!lxLive) {
-          lxLive = document.createElement('div');
-          lxLive.className = 'line-ok';
-          out.appendChild(lxLive);
-        }
-        lxColor = lxColorNL; lxBold = lxBoldNL;
-        lxLive.textContent = '';
-        lxLive.appendChild(lxSpansFrom(raw));
-        scrollBottom();
-      } else lxFlushLive();
-    }
-
-    /* ── TAB-VERVOLLSTAENDIGUNG IM GAST: eine STILLE Abfrage laeuft in
-       der echten Gast-Shell (ls), die Ausgabe wird abgefangen statt
-       angezeigt — echte Datei- und Befehlsnamen, kein Fake. ── */
-    let lxQuiet = null;   /* { lines, cb, timer } */
-    function lxQueryFinish() {
-      if (!lxQuiet) return;
-      clearTimeout(lxQuiet.timer);
-      const q = lxQuiet;
-      lxQuiet = null;
-      q.cb(q.lines);
-    }
-    function lxQuery(cmd, cb) {
-      if (!lxEmulator || !linuxMode || lxSilent || lxQuiet) { cb(null); return; }
-      lxQuiet = { lines: [], cb: cb, timer: setTimeout(lxQueryFinish, 900) };
-      try { lxEmulator.serial0_send(cmd + '; echo GL"Q_END"\r'); }
-      catch(e) { lxQueryFinish(); }
-    }
-    function lxComplete() {
-      /* letztes Wort der Eingabe — nur harmlose Zeichen zulassen,
-         alles andere geht 1:1 in die Gast-Shell */
-      const m = inp.value.match(/(^|[\s;|&])([A-Za-z0-9._\/~+-]*)$/);
-      if (!m) return;
-      const prefix = m[2];
-      const isCmd = prefix.indexOf('/') === -1 && (m[1] === '' || m[1] === ';' || m[1] === '|' || m[1] === '&');
-      if (!prefix) return;   /* leeres Wort: alles waere Kandidat — lassen */
-      const q = isCmd
-        ? 'ls -1 /bin /sbin /usr/bin /usr/sbin 2>/dev/null | sort -u | grep -- "^' + prefix + '"'
-        : 'ls -1dp -- ' + prefix + '* 2>/dev/null';
-      lxQuery(q, function(lines) {
-        if (!lines) return;
-        const cands = lines.filter(function(l) { return l; });
-        if (!cands.length) { playSfx('deny'); return; }
-        const base = inp.value.slice(0, inp.value.length - prefix.length);
-        if (cands.length === 1) {
-          const c = cands[0];
-          inp.value = base + c + (c.slice(-1) === '/' ? '' : ' ');
-        } else {
-          let common = cands[0];
-          cands.forEach(function(c) {
-            while (common && c.indexOf(common) !== 0) common = common.slice(0, -1);
-          });
-          if (common.length > prefix.length) inp.value = base + common;
-          else { appendLine(cands.join('   '), 'line-sys'); scrollBottom(); }
-        }
-        inp.focus();
-      });
-    }
-
-    /* ── AUTO-BOOT: Linux startet mit der BIOS-Show — unsichtbar im
-       Hintergrund (lxSilent), die Show ueberbrueckt die Ladezeit.
-       Beim ersten Shell-Prompt (bzw. am Ende der Show) uebernimmt das
-       echte Linux DIREKT — die Seite startet also im boot-linux-Modus. */
-
-    function lxShowLoader() {
-      if (lxLoader) return;
-      lxLoader = document.createElement('div');
-      lxLoader.className = 'line-sys';
-      out.appendChild(lxLoader);
-      const frames = ['|', '/', '-', '\\'];
-      let i = 0;
-      lxLoaderTimer = setInterval(function() {
-        lxLoader.textContent = 'Boote echtes Linux (Kernel 4.16 + BusyBox) ... ' +
-          frames[i++ % frames.length] + '   (erster Start lädt ~7 MB)';
-        scrollBottom();
-      }, 120);
-    }
-
-    function lxHideLoader() {
-      if (lxLoaderTimer) { clearInterval(lxLoaderTimer); lxLoaderTimer = null; }
-      if (lxLoader) { lxLoader.remove(); lxLoader = null; }
-    }
-
-    /* Erster Shell-Prompt der Gast-Shell ist da: erst unsichtbar die
-       Identitaet einrichten (User, farbiger Prompt), Echos verschlucken,
-       DANN bereit melden. Laeuft die BIOS-Show noch, schaltet sie am
-       Ende selbst um; sonst (Retry via boot-linux) direkt hinein. */
-    function lxBootReady() {
-      if (!lxSilent || lxBooted) return;
-      if (lxSetupSent) return;   /* Setup laeuft schon, Timer meldet gleich */
-      lxSetupSent = true;
-      lxSendSetup();
-      setTimeout(function() {
-        lxBooted = true;
-        lxBuf = '';
-        if (biosDone) {
-          lxSilent = false;
-          lxHideLoader();
-          enterLinux();
-        }
-      }, 1400);
-    }
-
-    /* In den Linux-Modus wechseln: VM (weiter)laufen lassen, Prompt anfordern */
-    function enterLinux() {
-      linuxMode = true;
-      lxBuf = '';
+    function startShell() {
       blank();
-      appendLine('[ ECHTES Linux (Kernel 4.16 + BusyBox) — Eingaben gehen direkt an die Gast-Shell ]', 'line-sys');
-      if (!lxEntered) {
-        lxEntered = true;
-        appendLine('[ Schau dich um:  ls   cat README.txt   cmatrix   top -b -n 1   uname -a ]', 'line-sys');
-      }
-      appendLine('[ exit-linux (oder Strg+C) wechselt zurück — die VM pausiert dann nur ]', 'line-sys');
+      echoCmd('help');
+      SPECIAL.help();
       inputRow.style.display = 'flex';
       updatePrompt();
       inp.focus();
       scrollBottom();
-      try { lxEmulator.run(); } catch(e) {}
-      try { lxEmulator.serial0_send('\n'); } catch(e) {}
-    }
-
-    /* Boot kaputt (Datei fehlt, WASM blockiert, Kernel stumm): ehrlich
-       sagen und in die Uebungs-Shell ausweichen statt ewig zu drehen.
-       Laeuft die BIOS-Show noch, uebernimmt deren Ende das Umschalten. */
-    function lxAutoFail(msg) {
-      if (!lxSilent) return;
-      lxSilent = false;
-      lxHideLoader();
-      if (lxEmulator) { try { lxEmulator.destroy(); } catch(e) {} lxEmulator = null; }
-      lxBuf = ''; lxGotBytes = false; lxBooted = false; lxSetupSent = false;
-      appendLine('Linux-Start fehlgeschlagen: ' + msg, 'line-err');
-      appendLine('Du bist im Übungs-Terminal —  boot-linux  versucht es erneut.', 'line-sys');
-      if (biosDone) enterSimShell();
-    }
-
-    function autoBootLinux() {
-      lxSilent = true;
-      if (typeof window.V86 === 'function') { lxStart(); return; }
-      const s = document.createElement('script');
-      s.src = 'v86/libv86.js';
-      s.onload = lxStart;
-      s.onerror = function() { lxAutoFail('v86/libv86.js fehlt auf dem Server.'); };
-      document.head.appendChild(s);
-    }
-
-    function bootLinux() {
-      if (linuxMode) return;
-      /* Fertig gebootet (oder via exit-linux nur pausiert): sofort hinein */
-      if (lxEmulator && lxBooted) { enterLinux(); return; }
-      /* Bootet noch unsichtbar: Spinner zeigen — lxBootReady wechselt selbst */
-      if (lxEmulator && lxSilent) {
-        inputRow.style.display = 'none';
-        blank();
-        lxShowLoader();
-        return;
-      }
-      /* Kein Emulator (Boot fehlgeschlagen): neuer Versuch */
-      inputRow.style.display = 'none';
-      blank();
-      lxShowLoader();
-      autoBootLinux();
-    }
-
-    /* Uebungs-Shell freigeben — beim ersten Mal wird help gelistet
-       (kein fastfetch-Intro; das gibt es weiter als Befehl). */
-    function enterSimShell() {
-      lxHideLoader();
-      if (!simIntroShown) {
-        simIntroShown = true;
-        blank();
-        echoCmd('help');
-        SPECIAL.help();
-      }
-      inputRow.style.display = 'flex';
-      updatePrompt();
-      inp.focus();
-      scrollBottom();
-    }
-
-    function lxStart() {
-      lxEmulator = new V86({
-        wasm_path: 'v86/v86.wasm',
-        /* Ohne SeaBIOS+VGABIOS bootet NICHTS — die CPU haette kein ROM. */
-        bios:     { url: 'v86/seabios.bin' },
-        vga_bios: { url: 'v86/vgabios.bin' },
-        memory_size: 128 * 1024 * 1024,
-        /* Kernel direkt booten (statt ueber das ISO): so bestimmen WIR die
-           Kernel-Parameter. WICHTIG, hart erarbeitet: Das initramfs startet
-           ZWEI Shells — eine auf /dev/console und eine explizit auf ttyS0.
-           Mit nur "console=ttyS0" landen BEIDE auf der seriellen Leitung
-           und zerreissen sich die Eingabe-Bytes (Befehle wie "cat /proc/
-           cpuinfo" kamen als "puinfo" an). "console=ttyS0 console=tty1"
-           loggt den Kernel weiter auf seriell (Boot-Meldungen sichtbar),
-           macht aber tty1 zu /dev/console — die zweite Shell wandert auf
-           das unsichtbare VGA und NUR die ttyS0-Shell redet mit uns. */
-        bzimage: { url: 'v86/bzimage.bin' },
-        cmdline: 'console=ttyS0 console=tty1 tsc=reliable mitigations=off random.trust_cpu=on',
-        disable_keyboard: true,
-        disable_mouse: true,
-        autostart: true,
-      });
-      /* Bewusst global: Power-User koennen die VM aus der Browser-Konsole
-         steuern (z.B. GLAPPA_LINUX.serial0_send('ls\n')). */
-      window.GLAPPA_LINUX = lxEmulator;
-      lxEmulator.add_listener('serial0-output-byte', function(b) {
-        lxGotBytes = true;
-        lxWrite(String.fromCharCode(b));
-      });
-      /* Fallschirm: kommt nach 90s gar nichts ueber seriell, stimmt was
-         mit dem Kernel-Boot nicht — ehrlich sagen statt ewig warten. */
-      setTimeout(function() {
-        if (lxSilent && !lxGotBytes) {
-          lxAutoFail('der Kernel meldet sich nicht (Tab unsichtbar? Browser drosselt?).');
-        } else if (linuxMode && !lxGotBytes) {
-          appendLine('(Hmm — der Kernel meldet sich nicht. Tab sichtbar? Sonst: exit-linux und nochmal.)', 'line-sys');
-        }
-      }, 90000);
-      /* Fallschirm 2: Kernel redet, aber der Prompt wird nicht erkannt —
-         nach 60s trotzdem als bereit durchwinken. */
-      setTimeout(function() {
-        if (lxSilent && lxGotBytes) lxBootReady();
-      }, 60000);
-    }
-
-    /* Zurueck zum GLAPPA-Terminal. Die VM wird nur PAUSIERT — das
-       naechste boot-linux setzt die Session nahtlos fort. */
-    function exitLinuxMode() {
-      linuxMode = false;
-      lxFlushLive();
-      lxBuf = '';
-      if (lxEmulator) { try { lxEmulator.stop(); } catch(e) {} }
-      blank();
-      appendLine('[ Linux pausiert — boot-linux setzt die Session fort ]', 'line-sys');
-      enterSimShell();
     }
 
     /* ══════════════════════════════════════════════════════════════
@@ -3230,6 +2791,7 @@
         appendLine('  sound on|off            Soundeffekte         clear = Strg+L');
         appendLine('  tutorial                Übungsaufgaben zum Lernen', 'line-pink');
         appendLine('  reset                   Dateisystem auf Anfang zurücksetzen');
+        appendLine('  reboot / exit           Neustart / Terminal verlassen');
         blank();
         appendLine('SKRIPTE', 'line-info');
         appendLine('  nano script.sh          Skript schreiben — Variablen, $((rechnung)), $RANDOM,');
@@ -3238,14 +2800,13 @@
         appendLine('  ./script.sh             Ausführen — braucht +x');
         appendLine('  bash script.sh          Ausführen — braucht KEIN +x (wie sh script.sh)');
         blank();
-        appendLine('SPASS & KI', 'line-info');
-        appendLine('  fastfetch, fortune, cowsay, sl, matrix/cmatrix, hack, ping (simuliert), sudo');
-        appendLine('  glappa-chat             Mit der Glappa-KI reden (einziger Online-Befehl)');
-        appendLine('  glappa -s <frage>       KI-Schnellantwort');
+        appendLine('GLAPPA-KI', 'line-info');
+        appendLine('  glappa-chat             Chat mit der Glappa-KI starten (einziger Online-Befehl)', 'line-pink');
+        appendLine('  glappa -s <frage>       Schnelle KI-Antwort, ohne in den Chat zu wechseln', 'line-pink');
         appendLine('  glappa-do <ziel>        KI-Agent führt selbst Befehle aus  (confirm on|off)', 'line-pink');
-        appendLine('  boot-linux              ins ECHTE Linux wechseln (bootet beim Start unsichtbar vor)', 'line-pink');
-        appendLine('  exit-linux              ... und zurück zum Übungs-Terminal (VM pausiert nur)', 'line-pink');
-        appendLine('  reboot / exit           Neustart / Terminal verlassen');
+        blank();
+        appendLine('SPASS', 'line-info');
+        appendLine('  fastfetch, fortune, cowsay, sl, matrix/cmatrix, hack, ping (simuliert), sudo');
         blank();
         appendLine('Tab vervollständigt Befehle und Pfade (2x Tab listet alles auf).', 'line-sys');
         appendLine('Strg+A/E = Zeilenanfang/-ende, Strg+U/K = bis Anfang/Ende löschen.', 'line-sys');
@@ -3556,9 +3117,6 @@
         startAgent(goal, auto);
       },
 
-      'boot-linux'() { bootLinux(); },
-      linux()        { bootLinux(); },
-
       /* ECHTE, passwortgeschuetzte Ubuntu-VM auf dem VPS (nicht im Browser
          simuliert!) — separate Seite, weil sie einen richtigen Terminal-
          Emulator (xterm.js) braucht: Vollbild-Programme, Cursor-Editing
@@ -3567,7 +3125,7 @@
          Passwort wird HIER abgefragt (maskiert, s. runCmd) statt auf
          shell.html selbst — die zeigt ihr eigenes Formular nur noch, wenn
          man sie direkt aufruft statt ueber diesen Befehl. */
-      'real-shell'() {
+      'terminal-boot'() {
         blank();
         appendLine('Echte Ubuntu-Shell (Docker, nur auf home.glappa.de).', 'line-info');
         awaitingShellPassword = true;
@@ -3693,12 +3251,10 @@
       return chatMode ? 'glappa-chat> ' : (ENV.USER + '@' + ENV.HOSTNAME + ' ' + shortCwd() + ' $ ');
     }
     function updatePrompt() {
-      /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top.
-         Im Linux-Modus zeichnet die Gast-Shell ihren eigenen Prompt (~%)
-         in den Output-Strom, unser Label bleibt leer. */
+      /* Waehrend top laeuft, gibt es keinen Prompt — wie beim echten top. */
       const label = document.querySelector('.prompt-label');
       label.textContent = '';
-      if (topMode || linuxMode) return;
+      if (topMode) return;
       if (awaitingShellPassword) { label.textContent = SHELL_PW_PROMPT; return; }
       if (chatMode) { label.textContent = 'glappa-chat> '; return; }
       label.appendChild(promptSpans());
@@ -3801,7 +3357,7 @@
     function runCmd(raw) {
       let trimmed = raw.trim();
 
-      /* real-shell wartet auf das Passwort — VOR allem anderen, auch vor
+      /* terminal-boot wartet auf das Passwort — VOR allem anderen, auch vor
          leeren Eingaben (die waeren ein leeres Passwort, gueltig genug um
          es zu versuchen und serverseitig abzulehnen). NIEMALS raw/trimmed
          in appendLine landen lassen — das waere Klartext-Passwort in der
@@ -3834,18 +3390,6 @@
       }
       if (activeAgent && agentBusy) {
         appendLine('GLAPPA-BOT arbeitet noch … (Strg+C bricht ab)', 'line-sys');
-        return;
-      }
-
-      /* Linux-Modus: Eingaben gehen 1:1 an die Gast-Shell (seriell).
-         Die Shell echot die Zeile selbst zurueck (inkl. Prompt) — darum
-         hier KEIN eigenes appendLine. Leere Zeile = Enter (neuer Prompt).
-         exit-linux verlaesst den Modus. */
-      if (linuxMode) {
-        if (trimmed.toLowerCase() === 'exit-linux') { exitLinuxMode(); return; }
-        if (trimmed) { cmdHistory.unshift(trimmed); histIdx = -1; }
-        /* CR statt LF: so beendet ein echtes serielles Terminal die Zeile */
-        try { if (lxEmulator) lxEmulator.serial0_send(trimmed + '\r'); } catch(e) {}
         return;
       }
 
@@ -3898,9 +3442,9 @@
     }
 
     /* Bewusst NICHT gelistet: weder in help noch in der Tab-Vervoll-
-       staendigung. Wer real-shell nutzen will, muss den Befehl schon
+       staendigung. Wer terminal-boot nutzen will, muss den Befehl schon
        kennen — kein Link, keine Erwaehnung, nur wer ihn eintippt kommt hin. */
-    const HIDDEN_COMMANDS = new Set(['real-shell']);
+    const HIDDEN_COMMANDS = new Set(['terminal-boot']);
 
     /* ── Tab-Vervollständigung: Befehle + Pfade ── */
     function allCommands() {
@@ -3991,7 +3535,6 @@
       } else if (e.key === 'Tab') {
         e.preventDefault();
         if (chatMode) { /* im Chat gibt es nichts zu vervollstaendigen */ }
-        else if (linuxMode) lxComplete();
         else completeInput();
       } else if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         if (inp.selectionStart !== inp.selectionEnd) return;   /* Kopieren erlauben */
@@ -4011,8 +3554,6 @@
           activeScript = null;
           appendLine('(Skript abgebrochen)', 'line-sys');
           updatePrompt();
-        } else if (linuxMode) {
-          exitLinuxMode();
         } else if (activeAgent) {
           activeAgent = null;
           agentBusy = false;
@@ -4097,9 +3638,8 @@
 
     /* ══════════════════════════════════════════════════════════════
        BOOT-SEQUENZ — der alte GLAPPA-Start: BIOS-Show mit Half-Life-
-       Seeks und XP-Startsound. Waehrend die Show laeuft, bootet das
-       ECHTE Linux unsichtbar im Hintergrund; am Ende der Show ueber-
-       nimmt es direkt (boot-linux-Modus ab Start).
+       Seeks und XP-Startsound. Am Ende landet man direkt im normalen
+       Uebungs-Terminal (kein Linux-VM-Umweg mehr).
     ══════════════════════════════════════════════════════════════ */
     const BOOT = [
       // BIOS Phase
@@ -4130,7 +3670,7 @@
       { t: 2900, cls: 'line-sys',  txt: 'Lade GLAPPA-BOT KI ..............  [ OK ]' },
       { t: 2950, sound: 'seek' },
       { t: 3000, cls: 'line-err',  txt: '[WARN] Weltfrieden nicht gefunden. Überspringe.' },
-      { t: 3150, cls: 'line-sys',  txt: 'Starte echtes Linux (v86) .......  [ OK ]' },
+      { t: 3150, cls: 'line-sys',  txt: 'Starte glappa-sh v2.0 ...........  [ OK ]' },
       { t: 3300, cls: 'line-sys',  txt: '──────────────────────────────────────────────────────' },
       // ASCII Art
       { t: 3450, cls: 'line-ok',   txt: '' },
@@ -4142,10 +3682,9 @@
       { t: 3570, cls: 'line-ok',   txt: '  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝  ╚═╝' },
       { t: 3590, cls: 'line-ok',   txt: '' },
       { t: 3610, sound: 'chime' },
-      { t: 3630, cls: 'line-white',txt: '  ECHTES Linux (eigener Kernel, kein Fake) startet automatisch — direkt hier.' },
-      { t: 3650, cls: 'line-pink', txt: '  exit-linux  (oder Strg+C) wechselt zum Übungs-Terminal:' },
-      { t: 3665, cls: 'line-info', txt: '  dort warten  help, tutorial, fastfetch, glappa-chat  und  glappa -s <frage>.' },
-      { t: 3680, cls: 'line-info', txt: '  boot-linux  bringt dich von dort jederzeit zurück ins Linux.' },
+      { t: 3630, cls: 'line-white',txt: '  Willkommen im GLAPPA-Terminal — läuft komplett offline im Browser.' },
+      { t: 3650, cls: 'line-pink', txt: '  glappa-chat  redet mit der Glappa-KI (einziger Online-Befehl).' },
+      { t: 3665, cls: 'line-info', txt: '  help  listet alle Befehle,  tutorial  zeigt Übungsaufgaben.' },
       { t: 3698, cls: 'line-ok',   txt: '' },
     ];
 
@@ -4172,10 +3711,6 @@
     function startBoot() {
       presskey.style.display = 'none';
 
-      /* Echtes Linux SOFORT unsichtbar im Hintergrund laden & booten —
-         die BIOS-Show ueberbrueckt die Ladezeit (~7 MB + Kernel-Boot). */
-      autoBootLinux();
-
       // HDD hochlaufen (sofort)
       playHDDSpinup();
       // BIOS-Piep nach 300ms
@@ -4193,18 +3728,9 @@
         }, entry.t);
       });
 
-      /* BIOS-Show fertig. Ist Linux schon da: direkt uebernehmen.
-         Bootet es noch: Spinner — lxBootReady() schaltet dann um.
-         Ist der Boot schon gescheitert, hat lxAutoFail() die Fehler-
-         zeilen gedruckt: ab in die Uebungs-Shell. */
+      /* BIOS-Show fertig — direkt ins normale Uebungs-Terminal. */
       setTimeout(function() {
-        biosDone = true;
-        if (lxSilent) {
-          if (lxBooted) { lxSilent = false; enterLinux(); }
-          else lxShowLoader();
-          return;
-        }
-        enterSimShell();
+        startShell();
       }, 3800);
     }
 
