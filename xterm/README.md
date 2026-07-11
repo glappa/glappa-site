@@ -1,12 +1,12 @@
 # xterm.js — echter Terminal-Emulator fuer shell.html ("real-shell")
 
 Wird NUR von `shell.html` benutzt (nicht von `terminal.html` — das
-Uebungs-Terminal und die v86-Linux-VM haben ihren eigenen, einfachen
-Zeilen-Renderer, siehe `v86/README.md`). shell.html braucht einen
-ECHTEN Terminal-Emulator, weil dort eine ECHTE Bash-Session (Docker-
-Container auf dem VPS, siehe `_docker/shellgate/`) laeuft: Cursor-
-Bewegung, Vollbild-Programme (vim, htop), Tab-Vervollstaendigungs-
-Menues usw. kann ein simpler Zeilen-Renderer nicht sauber darstellen.
+Uebungs-Terminal hat seinen eigenen, einfachen Zeilen-Renderer).
+shell.html braucht einen ECHTEN Terminal-Emulator, weil dort eine
+ECHTE Bash-Session (Docker-Container auf dem VPS, siehe
+`_docker/shellgate/`) laeuft: Cursor-Bewegung, Vollbild-Programme
+(vim, htop), Tab-Vervollstaendigungs-Menues usw. kann ein simpler
+Zeilen-Renderer nicht sauber darstellen.
 
 ## Dateien & Herkunft
 

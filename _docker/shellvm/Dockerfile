@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # net-tools      -> ifconfig/netstat (viele Leute suchen die aus Gewohnheit)
 # curl/wget      -> HTTP-Testing
 # nano/less/htop -> Basis-Werkzeuge, damit es sich wie eine echte Kiste anfuehlt
-# sudo           -> "guest" darf root werden (die eigentliche Sicherheitsgrenze
+# sudo           -> "fallen" darf root werden (die eigentliche Sicherheitsgrenze
 #                    ist die Docker-Capability/Ressourcen-Haertung, NICHT das
 #                    fehlen von root IM Container)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -36,12 +36,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -m -s /bin/bash guest \
-    && echo 'guest ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/guest \
-    && chmod 0440 /etc/sudoers.d/guest
+RUN useradd -m -s /bin/bash fallen \
+    && echo 'fallen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/fallen \
+    && chmod 0440 /etc/sudoers.d/fallen
 
-USER guest
-WORKDIR /home/guest
+USER fallen
+WORKDIR /home/fallen
 
 # Der Container tut sonst nichts — der Gateway haengt sich per
 # `docker exec -it <container> bash` rein (server.py). "sleep infinity"
