@@ -3,7 +3,8 @@
 #
 # Loest Namen ueber DoH (DNS-over-HTTPS) bei No-Log-Resolvern auf, statt im
 # Klartext zum ISP-DNS der VPS. Hoert im Container auf :53; der Gast nutzt
-# den Proxy per resolv.conf (shellgate setzt dns=[EGRESS_IP]).
+# den Proxy per resolv.conf (shellgate setzt dns=[<Proxy-IP>], zur Laufzeit
+# ausgelesen — kein fest codierter Wert, siehe shellgate/server.py).
 #
 # Web-Traffic braucht diesen Resolver gar nicht (privoxy loest Namen ueber
 # Tor am Exit auf) — er deckt Tools ab, die selbst aufloesen (dig, apt,

@@ -47,7 +47,6 @@ import time
 import docker
 import websockets
 from docker.errors import APIError, DockerException
-from docker.types import IPAMConfig, IPAMPool
 from docker.utils.socket import read as docker_sock_read
 
 logging.basicConfig(level=logging.INFO, format='[shellgate] %(asctime)s %(message)s')
@@ -66,9 +65,10 @@ LISTEN_PORT    = int(os.environ.get('SHELL_PORT', '8765'))
 # Der Gast haengt AUSSCHLIESSLICH am internen LAN (internal=True -> KEIN
 # Internet-Gateway). Der einzige Weg nach draussen ist der Egress-Proxy-
 # Container, der an beiden Netzen haengt:
-#   LAN (internal)  -> Gast <-> Proxy; feste Range, damit der Proxy eine
-#                       stabile IP (EGRESS_IP) hat, die der Gast ohne DNS
-#                       erreicht.
+#   LAN (internal)  -> Gast <-> Proxy; die tatsaechlich vom Docker vergebene
+#                       IP des Proxys wird zur Laufzeit ausgelesen
+#                       (egress_lan_ip()) und dem Gast als DNS-Server
+#                       gesetzt — kein fest codiertes Subnetz mehr.
 #   WAN (Bridge)    -> nur der Proxy, hat darueber Internet (NAT vom Host).
 # Im Proxy: Tor (SOCKS) + privoxy (HTTP/HTTPS->Tor) + dnscrypt-proxy (DoH).
 # Vorteil ggü. Firewall-Regeln im Gast: KEIN NET_ADMIN im Gast noetig, und
@@ -76,12 +76,15 @@ LISTEN_PORT    = int(os.environ.get('SHELL_PORT', '8765'))
 # mehr raus — nichts leakt an ISP/Tracker). Siehe _docker/shell-egress/.
 LAN_NETWORK    = os.environ.get('SHELL_LAN_NETWORK', 'glappa-shell-lan')
 WAN_NETWORK    = os.environ.get('SHELL_WAN_NETWORK', 'glappa-shell-wan')
-LAN_SUBNET     = os.environ.get('SHELL_LAN_SUBNET', '10.89.7.0/24')
-LAN_GATEWAY    = os.environ.get('SHELL_LAN_GATEWAY', '10.89.7.1')
 EGRESS_IMAGE   = os.environ.get('SHELL_EGRESS_IMAGE', 'glappa-shell-egress:latest')
 EGRESS_NAME    = os.environ.get('SHELL_EGRESS_CONTAINER', 'glappa-shell-egress')
-EGRESS_IP      = os.environ.get('SHELL_EGRESS_IP', '10.89.7.2')
 PROXY_PORT     = int(os.environ.get('SHELL_PROXY_PORT', '8118'))
+# KEIN fest codiertes Subnetz/keine feste IP mehr (siehe ensure_networks() +
+# egress_lan_ip() unten) — ein hart codierter Wert (10.89.7.0/24) hat auf der
+# VPS mit einem bereits existierenden Docker-Netz kollidiert ("Pool overlaps
+# with other one on this address space"). Docker waehlt die Range jetzt
+# selbst; die tatsaechlich vergebene IP des Egress-Proxys wird zur Laufzeit
+# ausgelesen (egress_lan_ip()), nicht mehr angenommen.
 
 MAX_ATTEMPTS  = 5      # Fehlversuche pro IP
 LOCKOUT_SECS  = 300     # ... bevor die IP fuer 5 Minuten gesperrt wird
@@ -113,18 +116,22 @@ def check_password(candidate: str) -> bool:
 
 
 def ensure_networks() -> None:
-    """Legt die beiden Docker-Netze an, falls noetig:
+    """Legt die beiden Docker-Netze an, falls noetig — OHNE eigenes
+    Subnetz/Gateway anzugeben: Docker waehlt selbst eine freie Range aus
+    seinem Standard-Pool. Ein frueher hier fest codiertes Subnetz
+    (10.89.7.0/24) hat auf der VPS mit einem bereits existierenden Netz
+    kollidiert ("Pool overlaps with other one on this address space") —
+    Docker vermeidet solche Kollisionen selbststaendig, wenn man es nicht
+    durch eine eigene Vorgabe daran hindert.
       - LAN_NETWORK (internal=True): der Gast haengt NUR hier -> KEIN
-        direkter Internet-Zugang. Feste Subnetz-/Gateway-Range, damit der
-        Egress-Proxy eine stabile IP (EGRESS_IP) bekommen kann.
+        direkter Internet-Zugang.
       - WAN_NETWORK (normaler Bridge): nur der Egress-Proxy haengt hier und
         hat darueber Internet (NAT vom Host)."""
     try:
         client.networks.get(LAN_NETWORK)
     except docker.errors.NotFound:
-        log.info('lege internes Gast-Netz %s an (internal, %s)', LAN_NETWORK, LAN_SUBNET)
-        ipam = IPAMConfig(pool_configs=[IPAMPool(subnet=LAN_SUBNET, gateway=LAN_GATEWAY)])
-        client.networks.create(LAN_NETWORK, driver='bridge', internal=True, ipam=ipam)
+        log.info('lege internes Gast-Netz %s an (internal, Docker waehlt das Subnetz)', LAN_NETWORK)
+        client.networks.create(LAN_NETWORK, driver='bridge', internal=True)
     try:
         client.networks.get(WAN_NETWORK)
     except docker.errors.NotFound:
@@ -163,31 +170,37 @@ def ensure_egress() -> 'docker.models.containers.Container':
     except docker.errors.NotFound:
         pass
 
-    log.info('lege Egress-Proxy %s an (Tor + privoxy + dnscrypt), feste IP %s',
-             EGRESS_NAME, EGRESS_IP)
-    # Low-Level-API, weil eine FESTE IP (der Gast erreicht den Proxy ohne DNS)
-    # nur ueber networking_config/create_endpoint_config sauber setzbar ist.
-    networking = client.api.create_networking_config({
-        LAN_NETWORK: client.api.create_endpoint_config(ipv4_address=EGRESS_IP),
-    })
-    host_config = client.api.create_host_config(
+    log.info('lege Egress-Proxy %s an (Tor + privoxy + dnscrypt)', EGRESS_NAME)
+    # Keine feste IP mehr (s. ensure_networks()) — normale containers.run()
+    # reicht, das zweite Netz kommt per connect_container_to_network() dazu.
+    c = client.containers.run(
+        EGRESS_IMAGE,
+        name=EGRESS_NAME,
+        hostname='egress',
+        detach=True,
+        network=LAN_NETWORK,
         restart_policy={'Name': 'unless-stopped'},
         mem_limit='256m',
         pids_limit=256,
         nano_cpus=1_000_000_000,
     )
-    cid = client.api.create_container(
-        EGRESS_IMAGE,
-        name=EGRESS_NAME,
-        hostname='egress',
-        host_config=host_config,
-        networking_config=networking,
-    )['Id']
     # Zweites Netz (mit Internet) dazu: der Gast erreicht den Proxy ueber das
     # interne LAN, der Proxy das Internet ueber das WAN.
-    client.api.connect_container_to_network(cid, WAN_NETWORK)
-    client.api.start(cid)
-    return client.containers.get(cid)
+    client.api.connect_container_to_network(c.id, WAN_NETWORK)
+    return c
+
+
+def egress_lan_ip(container) -> str:
+    """Liest die von Docker VERGEBENE IP des Egress-Proxys im internen LAN
+    aus. Wird fuer dns=[...] im Gast gebraucht — das MUSS eine echte IP
+    sein, kein Name (Dockers eingebauter Name-DNS ist im Gast ja gerade
+    NICHT konfiguriert, dns=[...] ersetzt ihn vollstaendig, s.u.)."""
+    container.reload()
+    net = (container.attrs.get('NetworkSettings', {}).get('Networks') or {}).get(LAN_NETWORK) or {}
+    ip = net.get('IPAddress')
+    if not ip:
+        raise RuntimeError(f'Egress-Proxy {EGRESS_NAME} hat (noch) keine IP im Netz {LAN_NETWORK}.')
+    return ip
 
 
 def spawn_guest_container() -> 'docker.models.containers.Container':
@@ -201,9 +214,9 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
     einen sauberen Zustand: von Hand auf der VPS
     `docker rm -f glappa-shell-persistent` (naechste Sitzung baut ihn neu)."""
     # Egress-Proxy + Netze muessen stehen, BEVOR der Gast startet — seine DNS
-    # (dns=[EGRESS_IP]) und sein http(s)_proxy zeigen auf den Proxy. Laueft
+    # (dns=[egress_ip]) und sein http(s)_proxy zeigen auf den Proxy. Laueft
     # der Proxy schon, ist das ein billiger get(); sonst wird er hier erzeugt.
-    ensure_egress()
+    egress_ip = egress_lan_ip(ensure_egress())
 
     # Bewusst VORHER pruefen, ob das Gast-Image lokal existiert: sonst
     # versucht containers.run() es von Docker Hub zu ziehen (das Repo
@@ -218,7 +231,7 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
             f'(restart.sh --vps macht das automatisch).')
 
     # Alles ins Netz laeuft ueber den Egress-Proxy: HTTP/HTTPS per Proxy-Env,
-    # DNS per dns=[EGRESS_IP]. GLAPPA_EGRESS ist der Marker, an dem wir unten
+    # DNS per dns=[egress_ip]. GLAPPA_EGRESS ist der Marker, an dem wir unten
     # erkennen, ob ein schon existierender Gast bereits im gehaerteten Modus
     # laeuft (Env/CMD/mem_limit lassen sich an einem laufenden Container nicht
     # nachtraeglich aendern -> sonst muss er einmalig neu gebaut werden). Der
@@ -228,7 +241,7 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
     # nicht, obwohl er noch als "gehaertet" durchgehen wuerde (GLAPPA_EGRESS=1
     # war schon gesetzt). Bei rein zukuenftigen Netz/Proxy-Aenderungen ohne
     # Image-Inhaltsaenderung muss der Wert NICHT wieder hochgezaehlt werden.
-    proxy_url = f'http://{EGRESS_IP}:{PROXY_PORT}'
+    proxy_url = f'http://{egress_ip}:{PROXY_PORT}'
     guest_env = {
         'http_proxy':  proxy_url, 'https_proxy': proxy_url,
         'HTTP_PROXY':  proxy_url, 'HTTPS_PROXY': proxy_url,
@@ -263,7 +276,7 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
 
     log.info('lege dauerhaften Gast-Container %s an — nur internes Netz %s, '
              'Ausgang ausschliesslich ueber Egress-Proxy %s',
-             GUEST_CONTAINER_NAME, LAN_NETWORK, EGRESS_IP)
+             GUEST_CONTAINER_NAME, LAN_NETWORK, egress_ip)
     return client.containers.run(
         GUEST_IMAGE,
         name=GUEST_CONTAINER_NAME,
@@ -276,7 +289,7 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
         # den Egress-Proxy + http(s)_proxy-Env. Damit kann der Gast NICHTS
         # direkt ins Netz schicken, nur ueber den Proxy (Tor/DoH).
         network=LAN_NETWORK,
-        dns=[EGRESS_IP],
+        dns=[egress_ip],
         environment=guest_env,
         # Normale Docker-Standard-Capabilities (bewusst KEIN cap_drop=ALL
         # mehr): sudo braucht SETUID/SETGID/AUDIT_WRITE, apt/dpkg brauchen

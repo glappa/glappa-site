@@ -10,10 +10,12 @@ Ausgang diesen Proxy-Container.
      │  WebSocket
      ▼
  shellgate ──docker.sock──▶ Gast  (glappa-shell-lan, internal=True, KEIN Internet)
-                             │ http(s)_proxy=10.89.7.2:8118
-                             │ dns=10.89.7.2:53
+                             │ http(s)_proxy=<Proxy-IP>:8118
+                             │ dns=<Proxy-IP>:53
+                             │   (IP wird von shellgate zur Laufzeit
+                             │    ausgelesen, kein fester Wert)
                              ▼
-                       shell-egress (10.89.7.2)
+                       shell-egress
                           ├─ privoxy :8118 ─┐
                           ├─ tor    :9050 ◀─┘  forward-socks5t (remote DNS)
                           └─ dnscrypt :53 ── DoH ── No-Log-Resolver

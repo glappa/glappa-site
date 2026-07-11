@@ -64,20 +64,18 @@ RUN apt-get purge -y popularity-contest ubuntu-report apport whoopsie >/dev/null
 # vorinstalliert, kein Pocket/gesponserte Inhalte, staerkere Anti-
 # Fingerprinting-Vorgaben als Standard-Firefox.
 #
-# Codename-Fallback: das offizielle LibreWolf-Repo listet nur eine feste
-# Menge bekannter Debian/Ubuntu-Codenamen. "ubuntu:latest" zeigt aber immer
-# auf die JEWEILS aktuelle LTS (s. Kommentar oben) — deren Codename kann
-# also neuer sein als alles, was das Repo kennt (404 auf die Release-Datei).
-# Genau wie LibreWolfs eigenes Install-Skript: unbekannten Codename auf
-# einen bekannten, kompatiblen Fallback abbilden statt zu scheitern.
-RUN . /etc/os-release \
-    && case "$VERSION_CODENAME" in \
-         una|vanessa|focal|jammy|bionic|buster|bullseye) LW_DISTRO="$VERSION_CODENAME" ;; \
-         *) LW_DISTRO="jammy" ;; \
-       esac \
-    && mkdir -p /etc/apt/keyrings \
-    && wget -O /etc/apt/keyrings/librewolf.asc https://deb.librewolf.net/keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/librewolf.asc] https://deb.librewolf.net ${LW_DISTRO} main" \
+# Host ist repo.librewolf.net (NICHT deb.librewolf.net — das war ein
+# Irrtum, liefert 404; live gegen den echten Server verifiziert). Die Suite
+# heisst dort schlicht "librewolf" (EIN fester Name fuer alle Debian/Ubuntu-
+# Versionen, kein Codename-Mapping noetig — /dists/ listet nur diesen einen
+# Eintrag, kein per-Codename-Ordner). Keyring wird als binaere OpenPGP-Datei
+# ausgeliefert (kein --dearmor noetig), SHA256 gegen die auf der Repo-Seite
+# angegebene Pruefsumme verifiziert:
+#   537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5
+RUN mkdir -p /etc/apt/keyrings \
+    && wget -O /etc/apt/keyrings/librewolf.asc https://repo.librewolf.net/keyring.gpg \
+    && echo "537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5  /etc/apt/keyrings/librewolf.asc" | sha256sum -c - \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/librewolf.asc] https://repo.librewolf.net librewolf main" \
          > /etc/apt/sources.list.d/librewolf.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends librewolf \

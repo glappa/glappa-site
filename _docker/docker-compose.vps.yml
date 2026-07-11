@@ -195,13 +195,22 @@ volumes:
 # shellgate legt es sonst erst SPAETER zur Laufzeit an (Henne-Ei-Problem).
 # shellgate/server.py:ensure_networks() findet dieses hier bereits
 # existierende Netz einfach vor (client.networks.get()) und legt nichts
-# doppelt an — Subnetz/Gateway MUESSEN daher exakt zu dessen Defaults
-# passen (LAN_SUBNET/LAN_GATEWAY, per env ueberschreibbar).
+# doppelt an. BEWUSST OHNE eigenes Subnetz/Gateway (ipam) — ein fest
+# codierter Wert hat auf der VPS mit einem bereits existierenden Docker-Netz
+# kollidiert ("Pool overlaps"); Docker waehlt die Range jetzt selbst,
+# displaygate/der Gast erreichen sich ohnehin per Name bzw. per zur
+# Laufzeit ausgelesener IP (egress_lan_ip() in shellgate/server.py), nicht
+# ueber einen angenommenen fixen Wert.
+#
+# WICHTIG: name: MUSS gesetzt sein. Ohne das haengt Compose den Projekt-
+# Namen als Praefix an (hier "docker_glappa-shell-lan", weil die Compose-
+# Datei in _docker/ liegt) — shellgate sucht das Netz aber ueber docker-py
+# unter dem UNPRAEFIGIERTEN Namen (env SHELL_LAN_NETWORK, Default exakt
+# "glappa-shell-lan"). Ohne dieses name: waeren das zwei VERSCHIEDENE Netze:
+# displaygate haenge am praefigierten, Gast+Egress-Proxy am unpraefigierten
+# — displaygate koennte den Gast dann nie erreichen.
 networks:
   glappa-shell-lan:
+    name: glappa-shell-lan
     driver: bridge
     internal: true
-    ipam:
-      config:
-        - subnet: 10.89.7.0/24
-          gateway: 10.89.7.1

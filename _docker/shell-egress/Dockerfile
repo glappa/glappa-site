@@ -36,11 +36,21 @@ RUN mkdir -p /var/log/privoxy /var/cache/dnscrypt-proxy /var/lib/tor \
 
 # privoxy: die vom Paket mitgelieferte Config als Basis NEHMEN (damit die
 # confdir/actionsfile-Verweise sicher stimmen) und nur das Noetige aendern —
-# auf allen Interfaces lauschen (der Gast erreicht uns unter der festen
-# EGRESS_IP) und ALLES ueber Tor forwarden, *.glappa.de direkt.
+# auf allen Interfaces lauschen (der Gast erreicht uns hier) und ALLES ueber
+# Tor forwarden, *.glappa.de direkt.
+#   Alpines privoxy-Paket liefert seine Config-Dateien bewusst als *.new aus
+#   (Alpines conffile-Schutzkonvention: eigene Aenderungen ueberleben ein
+#   Paket-Upgrade, weil die "config" selbst nie vom Paket ueberschrieben
+#   wird) — MUESSEN erst auf die echten Namen umbenannt werden, sonst startet
+#   privoxy gar nicht ("No such file or directory"). Verifiziert gegen
+#   Alpines echte Paketinhalte (pkgs.alpinelinux.org).
 #   sed: jede aktive listen-address auskommentieren -> genau EINE eigene setzen
 #        (verhindert Doppel-Bind 127.0.0.1 + 0.0.0.0).
-RUN sed -i 's|^[[:space:]]*listen-address|#listen-address|' /etc/privoxy/config \
+RUN mv /etc/privoxy/config.new /etc/privoxy/config \
+    && mv /etc/privoxy/default.action.new /etc/privoxy/default.action \
+    && mv /etc/privoxy/default.filter.new /etc/privoxy/default.filter \
+    && mv /etc/privoxy/match-all.action.new /etc/privoxy/match-all.action \
+    && sed -i 's|^[[:space:]]*listen-address|#listen-address|' /etc/privoxy/config \
     && printf '%s\n' \
         '' \
         '# --- glappa egress ---' \

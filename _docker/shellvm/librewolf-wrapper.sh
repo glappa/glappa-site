@@ -8,7 +8,8 @@
 # shellgate gesetzt) — die VM hat KEINEN direkten Internet-Zugang (siehe
 # _docker/shell-egress/), ohne diese Policy wuerde der Browser einfach
 # nirgends hinkommen. Kein hart codierter Proxy-Wert hier: bleibt auch
-# dann korrekt, wenn sich EGRESS_IP/PROXY_PORT mal aendern.
+# dann korrekt, wenn shellgate die Proxy-Adresse mal aendert (die IP wird
+# dort zur Laufzeit von Docker vergeben, nicht fest codiert).
 set -euo pipefail
 
 PROXY_URL="${http_proxy:-${HTTP_PROXY:-}}"
@@ -18,7 +19,8 @@ if [ -z "$PROXY_URL" ]; then
     exit 1
 fi
 
-# "http://10.89.7.2:8118" -> Host=10.89.7.2 Port=8118
+# "http://172.19.0.2:8118" -> Host=172.19.0.2 Port=8118 (Beispiel — die
+# tatsaechliche IP vergibt Docker dynamisch, s.o.)
 HOSTPORT="${PROXY_URL#*://}"
 HOSTPORT="${HOSTPORT%%/*}"
 export GLAPPA_PROXY_HOST="${HOSTPORT%%:*}"
