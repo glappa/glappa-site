@@ -1,6 +1,6 @@
 """
-shellgate — passwortgeschuetzter Zugang zu einer ECHTEN, wegwerfbaren
-Ubuntu-Shell pro Sitzung, gesteuert ueber terminal.html ("real-shell").
+shellgate — passwortgeschuetzter Zugang zu EINER dauerhaften Ubuntu-Shell,
+gesteuert ueber terminal.html ("terminal-boot").
 
 Architektur (bewusst als EIGENER, isolierter Dienst — NICHT im Haupt-
 Container "glappa" mitgemountet):
@@ -8,9 +8,14 @@ Container "glappa" mitgemountet):
                                           |
                                           | Docker-API (docker.sock)
                                           v
-                                 pro Sitzung EIN frisches,
-                                 stark eingeschraenktes Ubuntu-
-                                 Gast-Container (siehe shellvm/)
+                                 EIN dauerhafter Ubuntu-Gast-
+                                 Container (fester Name statt
+                                 Zufalls-Suffix, siehe shellvm/) —
+                                 ueberlebt Reconnects UND Redeploys,
+                                 wird bei Sitzungsende nicht gestoppt.
+                                 Jede Sitzung startet nur eine eigene
+                                 `bash -l`-Exec-Session darin (wie
+                                 mehrere SSH-Sitzungen auf eine Kiste).
 
 Warum ein eigener Dienst? Der Haupt-Container bedient yt-dlp/ffmpeg auf
 oeffentlichen Nutzereingaben (URLs) — der Docker-Socket ist praktisch
@@ -38,7 +43,6 @@ import logging
 import os
 import socket as pysocket
 import time
-import uuid
 
 import docker
 import websockets
@@ -49,13 +53,14 @@ logging.basicConfig(level=logging.INFO, format='[shellgate] %(asctime)s %(messag
 log = logging.getLogger('shellgate')
 
 # ── Config (alles per env, kein Hardcoding von Geheimnissen im Code) ──
-PASSWORD_HASH = (os.environ.get('SHELL_PASSWORD_HASH') or '').strip().lower()
-GUEST_IMAGE   = os.environ.get('SHELL_IMAGE', 'glappa-shellvm:latest')
-IDLE_TIMEOUT  = int(os.environ.get('SHELL_IDLE_TIMEOUT', '1800'))   # 30 Min. ohne Eingabe
-MAX_SESSIONS  = int(os.environ.get('SHELL_MAX_SESSIONS', '5'))      # gleichzeitige Gast-Container
-BOOT_TIMEOUT  = int(os.environ.get('SHELL_BOOT_TIMEOUT', '20'))     # Sek. bis Container+Shell stehen
-LISTEN_PORT   = int(os.environ.get('SHELL_PORT', '8765'))
-NETWORK_NAME  = os.environ.get('SHELL_NETWORK', 'glappa-shell-net')
+PASSWORD_HASH  = (os.environ.get('SHELL_PASSWORD_HASH') or '').strip().lower()
+GUEST_IMAGE    = os.environ.get('SHELL_IMAGE', 'glappa-shellvm:latest')
+GUEST_CONTAINER_NAME = os.environ.get('SHELL_CONTAINER_NAME', 'glappa-shell-persistent')
+IDLE_TIMEOUT   = int(os.environ.get('SHELL_IDLE_TIMEOUT', '1800'))   # 30 Min. ohne Eingabe -> WS zu
+MAX_SESSIONS   = int(os.environ.get('SHELL_MAX_SESSIONS', '5'))      # gleichzeitige Exec-Sitzungen
+BOOT_TIMEOUT   = int(os.environ.get('SHELL_BOOT_TIMEOUT', '20'))     # Sek. bis Container+Shell stehen
+LISTEN_PORT    = int(os.environ.get('SHELL_PORT', '8765'))
+NETWORK_NAME   = os.environ.get('SHELL_NETWORK', 'glappa-shell-net')
 
 MAX_ATTEMPTS  = 5      # Fehlversuche pro IP
 LOCKOUT_SECS  = 300     # ... bevor die IP fuer 5 Minuten gesperrt wird
@@ -98,7 +103,15 @@ def ensure_network() -> None:
 
 
 def spawn_guest_container() -> 'docker.models.containers.Container':
-    name = f'glappa-shell-{uuid.uuid4().hex[:10]}'
+    """Gibt den EINEN dauerhaften Gast-Container zurueck — legt ihn beim
+    allerersten Aufruf an, startet ihn bei jedem weiteren Aufruf nur neu,
+    falls er (z.B. nach einem Host-Reboot) gerade nicht laeuft. KEIN
+    Wegwerf-Container mehr pro Sitzung: fester Name statt Zufalls-Suffix,
+    kein remove=True — installierte Pakete/Dateien bleiben ueber Sitzungen
+    UND ueber restart.sh-Redeploys hinweg erhalten (shellgate wird neu
+    gestartet, der Container selbst bleibt unberuehrt stehen). Reset auf
+    einen sauberen Zustand: von Hand auf der VPS
+    `docker rm -f glappa-shell-persistent` (naechste Sitzung baut ihn neu)."""
     # Bewusst VORHER pruefen, ob das Gast-Image lokal existiert: sonst
     # versucht containers.run() es von Docker Hub zu ziehen (das Repo
     # gibt es dort nicht -> kryptisches "pull access denied"). Klarer
@@ -110,28 +123,39 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
             f'Gast-Image {GUEST_IMAGE} fehlt. Auf der VPS bauen mit:  '
             f'docker build -t {GUEST_IMAGE} _docker/shellvm   '
             f'(restart.sh --vps macht das automatisch).')
+
+    try:
+        container = client.containers.get(GUEST_CONTAINER_NAME)
+        container.reload()
+        if container.status != 'running':
+            log.info('dauerhafter Gast-Container %s existiert, aber laeuft nicht (%s) — starte neu',
+                      GUEST_CONTAINER_NAME, container.status)
+            container.start()
+        return container
+    except docker.errors.NotFound:
+        pass
+
+    log.info('lege dauerhaften Gast-Container %s an', GUEST_CONTAINER_NAME)
     return client.containers.run(
         GUEST_IMAGE,
-        name=name,
+        name=GUEST_CONTAINER_NAME,
         hostname='VIRT',
         detach=True,
         command=['sleep', 'infinity'],
         network=NETWORK_NAME,
-        # Haertung: ALLES kappen, nur NET_RAW (fuer ping) wieder zulassen.
-        # KEIN no-new-privileges hier: dieses Flag verbietet setuid-Binaries
-        # jegliches Rechte-Upgrade — genau das braucht sudo, um ueberhaupt
-        # root zu werden (ohne das Flag scheitert "sudo -l" im Container mit
-        # "no new privileges flag is set"). Die eigentliche Sicherheitsgrenze
-        # bleibt cap_drop/mem_limit/pids_limit/eigenes Docker-Netz, nicht die
-        # In-Container-UID — root IM Gast-Container ist weiterhin kein Root
-        # auf dem Host.
-        cap_drop=['ALL'],
-        cap_add=['NET_RAW'],
+        # Normale Docker-Standard-Capabilities (bewusst KEIN cap_drop=ALL
+        # mehr): sudo braucht SETUID/SETGID/AUDIT_WRITE, apt/dpkg brauchen
+        # DAC_OVERRIDE/FOWNER/CHOWN/SYS_CHROOT — das laesst sich nicht
+        # sinnvoll chirurgisch aus einem cap_drop=ALL-Ausgangspunkt einzeln
+        # freischalten, ohne am Ende praktisch beim Standard-Set zu landen.
+        # Bleibt trotzdem OHNE SYS_ADMIN/NET_ADMIN/SYS_PTRACE/--privileged
+        # und ohne jeden Host-Mount — root IM Gast-Container ist weiterhin
+        # kein Root auf dem Host. Isolation kommt aus Namespaces/eigenem
+        # Docker-Netz/Ressourcen-Limits, nicht mehr aus Capability-Entzug.
         pids_limit=256,
         mem_limit='512m',
         memswap_limit='512m',
         nano_cpus=1_000_000_000,   # 1 CPU-Kern
-        remove=True,               # rm beim Stoppen — keine Container-Leichen
     )
 
 
@@ -292,6 +316,12 @@ class Session:
         await asyncio.to_thread(_do)
 
     async def cleanup(self) -> None:
+        # Beendet NUR die eigene bash-Exec-Sitzung (Socket zu) — der
+        # dauerhafte Gast-Container selbst (siehe spawn_guest_container)
+        # bleibt fuer parallele und zukuenftige Sitzungen weiterlaufen.
+        # Kein container.stop() mehr hier — sonst wuerde jede einzelne
+        # Sitzung beim Schliessen den GEMEINSAMEN Container fuer alle
+        # anderen mit beenden.
         self.closing = True
         if self.sock is not None:
             try:
@@ -299,13 +329,8 @@ class Session:
             except OSError:
                 pass
         if self.container is not None:
-            def _stop():
-                try:
-                    self.container.stop(timeout=2)
-                except (APIError, DockerException):
-                    pass
-            await asyncio.to_thread(_stop)
-            log.info('Container %s beendet (Session %s)', self.container.name, self.ip)
+            log.info('Sitzung beendet (Session %s, Container %s laeuft weiter)',
+                      self.ip, self.container.name)
 
 
 async def idle_watchdog(session: Session) -> None:
