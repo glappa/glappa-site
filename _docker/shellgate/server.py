@@ -113,15 +113,20 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
     return client.containers.run(
         GUEST_IMAGE,
         name=name,
+        hostname='VIRT',
         detach=True,
         command=['sleep', 'infinity'],
         network=NETWORK_NAME,
         # Haertung: ALLES kappen, nur NET_RAW (fuer ping) wieder zulassen.
-        # sudo im Container aendert daran nichts — die Grenze liegt hier,
-        # nicht bei der In-Container-UID.
+        # KEIN no-new-privileges hier: dieses Flag verbietet setuid-Binaries
+        # jegliches Rechte-Upgrade — genau das braucht sudo, um ueberhaupt
+        # root zu werden (ohne das Flag scheitert "sudo -l" im Container mit
+        # "no new privileges flag is set"). Die eigentliche Sicherheitsgrenze
+        # bleibt cap_drop/mem_limit/pids_limit/eigenes Docker-Netz, nicht die
+        # In-Container-UID — root IM Gast-Container ist weiterhin kein Root
+        # auf dem Host.
         cap_drop=['ALL'],
         cap_add=['NET_RAW'],
-        security_opt=['no-new-privileges:true'],
         pids_limit=256,
         mem_limit='512m',
         memswap_limit='512m',
