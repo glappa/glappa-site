@@ -61,7 +61,21 @@ RUN mv /etc/privoxy/config.new /etc/privoxy/config \
         'forward-socks5t / 127.0.0.1:9050 .' \
         'forward   .glappa.de/   .' \
         'forward    glappa.de/   .' \
-        >> /etc/privoxy/config
+        >> /etc/privoxy/config \
+    # user.action/user.filter stehen in der Stock-Config, liegen aber in
+    # KEINER Alpine-Paketversion bei — und privoxy 4.0 bricht bei fehlenden
+    # referenzierten Dateien FATAL ab ("can't load re_filterfile
+    # '/etc/privoxy/user.filter'", live: supervisord-Retry-Schleife, :8118
+    # lauschte nie, der Gast sah nur "refusing connections"). Leere Dateien
+    # genuegen; kaeme kuenftig doch ein *.new vom Paket, gewinnt dessen Inhalt.
+    && for f in user.action user.filter; do \
+           if [ -f "/etc/privoxy/$f.new" ]; then mv "/etc/privoxy/$f.new" "/etc/privoxy/$f"; \
+           elif [ ! -f "/etc/privoxy/$f" ]; then : > "/etc/privoxy/$f"; fi; \
+       done \
+    # Bau bricht ab, wenn die zusammengesetzte Config nicht laedt — genau die
+    # Fehlerklasse oben waere so schon beim Image-Build aufgefallen statt erst
+    # zur Laufzeit im supervisord-Log des laufenden Proxys.
+    && privoxy --config-test /etc/privoxy/config
 
 COPY torrc                /etc/tor/torrc
 COPY dnscrypt-proxy.toml  /etc/dnscrypt-proxy/dnscrypt-proxy.toml

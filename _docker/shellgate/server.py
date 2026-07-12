@@ -242,7 +242,7 @@ def ensure_egress() -> 'docker.models.containers.Container':
     Host-Mounts."""
     ensure_networks()
     try:
-        client.images.get(EGRESS_IMAGE)
+        egress_image = client.images.get(EGRESS_IMAGE)
     except docker.errors.ImageNotFound:
         raise RuntimeError(
             f'Egress-Image {EGRESS_IMAGE} fehlt. Auf der VPS bauen mit:  '
@@ -255,7 +255,19 @@ def ensure_egress() -> 'docker.models.containers.Container':
         c = client.containers.get(EGRESS_NAME)
         c.reload()
         nets = set((c.attrs.get('NetworkSettings', {}).get('Networks') or {}).keys())
-        if LAN_NETWORK not in nets or WAN_NETWORK not in nets:
+        # Image-ID-Vergleich wie beim Gast (spawn_guest_container): restart.sh
+        # baut das Egress-Image zwar bei jedem Deploy neu, aber der Proxy-
+        # Container haengt nicht am Compose-Stack und blieb bisher FUER IMMER
+        # auf dem Stand seiner Erst-Erzeugung. Live gesehen: der privoxy-
+        # FATAL-Fix im Image kam nie an — shellgate startete nur immer wieder
+        # den kaputten alten Container durch (:8118 lauschte nie). Dank der
+        # gepinnten LAN-IP ist die Neuanlage fuer den Gast unsichtbar: die
+        # eingebrannte Proxy-Adresse gilt weiter, der Gast bleibt stehen.
+        if c.attrs.get('Image') != egress_image.id:
+            log.warning('Egress-Proxy %s laeuft mit altem Image (%s, aktuell %s) — neu anlegen',
+                        EGRESS_NAME, (c.attrs.get('Image') or '?')[:19], egress_image.id[:19])
+            c.remove(force=True)
+        elif LAN_NETWORK not in nets or WAN_NETWORK not in nets:
             log.warning('Egress-Proxy %s haengt nicht an beiden Netzen (%s) — neu anlegen',
                         EGRESS_NAME, sorted(nets))
             c.remove(force=True)
