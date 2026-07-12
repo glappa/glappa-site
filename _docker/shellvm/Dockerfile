@@ -82,6 +82,18 @@ RUN apt-get purge -y popularity-contest ubuntu-report apport whoopsie >/dev/null
 # gescheitert. SHA256 gegen die auf der Repo-Seite angegebene Pruefsumme
 # verifiziert:
 #   537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5
+#
+# REAL_BIN-Suche: der echte Start-Pfad wird beim BUILD aus der Paketliste
+# ermittelt und verifiziert (Build bricht laut ab, falls die Struktur je
+# abweicht). Live gegen das echte .deb (152.0.5, Dateiliste aus control.tar)
+# geprueft: das Paket liefert /usr/share/librewolf/librewolf (Launcher) +
+# .../librewolf-bin (Binary); /usr/bin/librewolf ist nur ein Symlink darauf.
+# VORSICHT: auf "/librewolf" enden AUCH das AppArmor-Profil
+# /etc/apparmor.d/librewolf (regulaere Datei, NICHT ausfuehrbar — ein
+# naives "grep | head -n1 && test -x" ist genau daran gescheitert, dritter
+# Deploy-Fehlversuch) und das VERZEICHNIS /usr/share/librewolf. Deshalb
+# zaehlen nur regulaere, ausfuehrbare Dateien ausserhalb /usr/bin (das ist
+# der Symlink) und /etc (AppArmor).
 RUN mkdir -p /etc/apt/keyrings \
     && wget -O /etc/apt/keyrings/librewolf.gpg https://repo.librewolf.net/keyring.gpg \
     && echo "537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5  /etc/apt/keyrings/librewolf.gpg" | sha256sum -c - \
@@ -90,12 +102,22 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get update \
     && apt-get install -y --no-install-recommends librewolf \
     && rm -rf /var/lib/apt/lists/* \
-    && REAL_BIN="$(dpkg -L librewolf | grep -E '/librewolf$' | grep -v '^/usr/bin/librewolf$' | head -n1)" \
-    && test -x "$REAL_BIN" \
+    && REAL_BIN="$(dpkg -L librewolf | grep -E '/librewolf(-bin)?$' \
+         | while read -r p; do \
+             case "$p" in /usr/bin/*|/etc/*) continue;; esac; \
+             if [ -f "$p" ] && [ -x "$p" ]; then echo "$p"; fi; \
+           done | head -n1)" \
+    && test -n "$REAL_BIN" \
+    && echo "librewolf-Startpfad: $REAL_BIN" \
     && echo "$REAL_BIN" > /etc/librewolf-real-bin-path
 
+# env_keep: sudo wirft per env_reset die Umgebung weg — OHNE die proxy-
+# Variablen kommt "sudo apt update/install" dann nicht mehr raus ("Network
+# is unreachable", live gesehen): die VM hat KEIN direktes Internet, apt
+# MUSS durch den Egress-Proxy. env_keep reicht http(s)_proxy an root durch.
 RUN useradd -m -s /bin/bash fallen \
     && echo 'fallen ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/fallen \
+    && echo 'Defaults env_keep += "http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY"' >> /etc/sudoers.d/fallen \
     && chmod 0440 /etc/sudoers.d/fallen
 
 # ── Privacy-Werkzeuge ─────────────────────────────────────────────────
