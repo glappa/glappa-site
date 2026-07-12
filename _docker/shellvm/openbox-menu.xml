@@ -7,6 +7,16 @@
     <item label="Terminal">
       <action name="Execute"><command>xterm</command></action>
     </item>
+    <separator label="GUI-Test"/>
+    <item label="Uhr (xclock)">
+      <action name="Execute"><command>xclock</command></action>
+    </item>
+    <item label="Augen (xeyes)">
+      <action name="Execute"><command>xeyes</command></action>
+    </item>
+    <item label="Taschenrechner (xcalc)">
+      <action name="Execute"><command>xcalc</command></action>
+    </item>
     <separator/>
     <item label="Fenster neu anordnen">
       <action name="Reconfigure"/>

@@ -26,6 +26,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 #                     wird bei jedem Start frisch aus $http_proxy generiert)
 # tigervnc-standalone-server -> Xvnc (X-Server + VNC-Server in einem Prozess)
 # openbox/dbus-x11/xterm     -> minimaler Desktop fuer die GUI-Anzeige
+# x11-apps         -> xeyes/xclock/xcalc: winzige klassische GUI-Testprogramme,
+#                     um den kompletten Desktop-Weg (Xvnc -> displaygate ->
+#                     noVNC im Browser) UNABHAENGIG von LibreWolf zu testen —
+#                     starten in <1s, brauchen kein Netz, kein Profil, nichts
 # supervisor       -> haelt Xvnc+openbox dauerhaft am Leben (ersetzt "sleep
 #                     infinity" als CMD, siehe Dateiende)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         openbox \
         dbus-x11 \
         xterm \
+        x11-apps \
         supervisor \
         nano \
         less \

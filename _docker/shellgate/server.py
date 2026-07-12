@@ -232,22 +232,29 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
 
     # Alles ins Netz laeuft ueber den Egress-Proxy: HTTP/HTTPS per Proxy-Env,
     # DNS per dns=[egress_ip]. GLAPPA_EGRESS ist der Marker, an dem wir unten
-    # erkennen, ob ein schon existierender Gast bereits im gehaerteten Modus
-    # laeuft (Env/CMD/mem_limit lassen sich an einem laufenden Container nicht
+    # erkennen, ob ein schon existierender Gast bereits zum gewuenschten Stand
+    # passt (Env/CMD/mem_limit lassen sich an einem laufenden Container nicht
     # nachtraeglich aendern -> sonst muss er einmalig neu gebaut werden). Der
     # WERT wird hochgezaehlt, wenn sich am Image etwas aendert, das eine
-    # Neuerzeugung braucht (nicht nur Netz/Proxy) — hier: Xvnc/openbox/
-    # LibreWolf kamen dazu, ein Container von VOR dieser Aenderung haette sie
-    # nicht, obwohl er noch als "gehaertet" durchgehen wuerde (GLAPPA_EGRESS=1
-    # war schon gesetzt). Bei rein zukuenftigen Netz/Proxy-Aenderungen ohne
-    # Image-Inhaltsaenderung muss der Wert NICHT wieder hochgezaehlt werden.
+    # Neuerzeugung braucht (nicht nur Netz/Proxy):
+    #   1 -> 2: Xvnc/openbox/LibreWolf kamen dazu.
+    #   2 -> 3: FALLE — der Marker haengt am CONTAINER (shellgate setzt ihn
+    #           beim Anlegen), NICHT am Image-Inhalt. Beim zweiten VPS-Deploy
+    #           wurde der Gast neu angelegt, waehrend der shellvm-Build
+    #           (LibreWolf-Keyring) fehlgeschlagen war: der Container trug
+    #           Marker 2, entstand aber aus dem ALTEN Image ohne LibreWolf/
+    #           Xvnc ("firefox: command not found", live gesehen) — und galt
+    #           damit faelschlich als aktuell. Ausserdem neu im Image:
+    #           x11-apps als GUI-Testprogramme. Der Bump erzwingt GENAU
+    #           EINMAL die Neuerzeugung aus dem reparierten Image.
+    EGRESS_MARKER = '3'
     proxy_url = f'http://{egress_ip}:{PROXY_PORT}'
     guest_env = {
         'http_proxy':  proxy_url, 'https_proxy': proxy_url,
         'HTTP_PROXY':  proxy_url, 'HTTPS_PROXY': proxy_url,
         'no_proxy':    'localhost,127.0.0.1,::1',
         'NO_PROXY':    'localhost,127.0.0.1,::1',
-        'GLAPPA_EGRESS': '2',
+        'GLAPPA_EGRESS': EGRESS_MARKER,
     }
 
     try:
@@ -255,15 +262,15 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
         container.reload()
         nets = set((container.attrs.get('NetworkSettings', {}).get('Networks') or {}).keys())
         env_list = (container.attrs.get('Config', {}) or {}).get('Env') or []
-        locked = ('GLAPPA_EGRESS=2' in env_list) and nets == {LAN_NETWORK}
+        locked = (f'GLAPPA_EGRESS={EGRESS_MARKER}' in env_list) and nets == {LAN_NETWORK}
         if not locked:
-            # Alt-Container (noch am Internet, oder aus der Zeit vor der
-            # Egress-Haertung) -> EINMALIG verwerfen und im Privacy-Modus neu
-            # bauen. Installierte Pakete in der alten Kiste gehen dabei
-            # verloren; das ist der bewusste Umstieg.
-            log.warning('Gast-Container %s ist nicht (mehr) an den Egress-Proxy gebunden '
-                        '(Netze=%s) — wird EINMALIG neu angelegt (Umstieg auf Privacy-Modus).',
-                        GUEST_CONTAINER_NAME, sorted(nets))
+            # Alt-Container (noch am Internet, aus der Zeit vor der Egress-
+            # Haertung, oder mit veraltetem Marker-Stand, s.o.) -> EINMALIG
+            # verwerfen und neu bauen. Installierte Pakete in der alten Kiste
+            # gehen dabei verloren; das ist der bewusste Umstieg.
+            log.warning('Gast-Container %s passt nicht zum aktuellen Stand '
+                        '(erwartet Marker %s + nur Netz %s; Netze=%s) — wird EINMALIG neu angelegt.',
+                        GUEST_CONTAINER_NAME, EGRESS_MARKER, LAN_NETWORK, sorted(nets))
             container.remove(force=True)
         else:
             if container.status != 'running':
