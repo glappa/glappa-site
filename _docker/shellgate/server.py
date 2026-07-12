@@ -223,7 +223,7 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
     # gibt es dort nicht -> kryptisches "pull access denied"). Klarer
     # Hinweis auf den echten Fehler: das Image wurde nicht gebaut.
     try:
-        client.images.get(GUEST_IMAGE)
+        guest_image = client.images.get(GUEST_IMAGE)
     except docker.errors.ImageNotFound:
         raise RuntimeError(
             f'Gast-Image {GUEST_IMAGE} fehlt. Auf der VPS bauen mit:  '
@@ -231,46 +231,44 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
             f'(restart.sh --vps macht das automatisch).')
 
     # Alles ins Netz laeuft ueber den Egress-Proxy: HTTP/HTTPS per Proxy-Env,
-    # DNS per dns=[egress_ip]. GLAPPA_EGRESS ist der Marker, an dem wir unten
-    # erkennen, ob ein schon existierender Gast bereits zum gewuenschten Stand
-    # passt (Env/CMD/mem_limit lassen sich an einem laufenden Container nicht
-    # nachtraeglich aendern -> sonst muss er einmalig neu gebaut werden). Der
-    # WERT wird hochgezaehlt, wenn sich am Image etwas aendert, das eine
-    # Neuerzeugung braucht (nicht nur Netz/Proxy):
-    #   1 -> 2: Xvnc/openbox/LibreWolf kamen dazu.
-    #   2 -> 3: FALLE — der Marker haengt am CONTAINER (shellgate setzt ihn
-    #           beim Anlegen), NICHT am Image-Inhalt. Beim zweiten VPS-Deploy
-    #           wurde der Gast neu angelegt, waehrend der shellvm-Build
-    #           (LibreWolf-Keyring) fehlgeschlagen war: der Container trug
-    #           Marker 2, entstand aber aus dem ALTEN Image ohne LibreWolf/
-    #           Xvnc ("firefox: command not found", live gesehen) — und galt
-    #           damit faelschlich als aktuell. Ausserdem neu im Image:
-    #           x11-apps als GUI-Testprogramme. Der Bump erzwingt GENAU
-    #           EINMAL die Neuerzeugung aus dem reparierten Image.
-    EGRESS_MARKER = '3'
+    # DNS per dns=[egress_ip].
     proxy_url = f'http://{egress_ip}:{PROXY_PORT}'
     guest_env = {
         'http_proxy':  proxy_url, 'https_proxy': proxy_url,
         'HTTP_PROXY':  proxy_url, 'HTTPS_PROXY': proxy_url,
         'no_proxy':    'localhost,127.0.0.1,::1',
         'NO_PROXY':    'localhost,127.0.0.1,::1',
-        'GLAPPA_EGRESS': EGRESS_MARKER,
     }
 
     try:
         container = client.containers.get(GUEST_CONTAINER_NAME)
         container.reload()
         nets = set((container.attrs.get('NetworkSettings', {}).get('Networks') or {}).keys())
-        env_list = (container.attrs.get('Config', {}) or {}).get('Env') or []
-        locked = (f'GLAPPA_EGRESS={EGRESS_MARKER}' in env_list) and nets == {LAN_NETWORK}
+        # "Aktuell" heisst: aus GENAU dem Image gebaut, das gerade als
+        # glappa-shellvm:latest vorliegt, UND nur am internen Netz. Frueher
+        # stand hier ein manuell hochgezaehlter Env-Marker (GLAPPA_EGRESS=
+        # 1/2/3) — der hat live GELOGEN: er haengt am Container (wird beim
+        # Anlegen gesetzt), nicht am Image-Inhalt. Schlug der shellvm-Build
+        # fehl, waehrend der Gast trotzdem neu entstand, trug der Container
+        # den neuesten Marker, aber den ALTEN Image-Stand ("firefox: command
+        # not found") — und galt fortan fuer immer als aktuell. Der Image-ID-
+        # Vergleich kann nicht luegen: identische Dockerfile/Kontext-Inputs
+        # ergeben dank Build-Cache dieselbe ID (der Gast ueberlebt normale
+        # Redeploys weiterhin), ein tatsaechlich geaendertes — oder erst
+        # jetzt erfolgreich gebautes — Image ergibt eine neue ID, und der
+        # Gast wird GENAU EINMAL daraus neu angelegt. (Kalter Build-Cache
+        # zaehlt dabei als Aenderung: seltener, verschmerzbarer Neuaufbau
+        # statt stillem Veralten.)
+        locked = (container.attrs.get('Image') == guest_image.id) and nets == {LAN_NETWORK}
         if not locked:
-            # Alt-Container (noch am Internet, aus der Zeit vor der Egress-
-            # Haertung, oder mit veraltetem Marker-Stand, s.o.) -> EINMALIG
-            # verwerfen und neu bauen. Installierte Pakete in der alten Kiste
-            # gehen dabei verloren; das ist der bewusste Umstieg.
+            # Installierte Pakete/Dateien in der alten Kiste gehen beim
+            # Neuaufbau verloren — bewusster Preis dafuer, dass Image-
+            # Aenderungen wirklich ankommen.
             log.warning('Gast-Container %s passt nicht zum aktuellen Stand '
-                        '(erwartet Marker %s + nur Netz %s; Netze=%s) — wird EINMALIG neu angelegt.',
-                        GUEST_CONTAINER_NAME, EGRESS_MARKER, LAN_NETWORK, sorted(nets))
+                        '(Image %s, erwartet %s; Netze=%s) — wird EINMALIG neu angelegt.',
+                        GUEST_CONTAINER_NAME,
+                        (container.attrs.get('Image') or '?')[:19],
+                        guest_image.id[:19], sorted(nets))
             container.remove(force=True)
         else:
             if container.status != 'running':
