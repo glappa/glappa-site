@@ -300,6 +300,24 @@ build_shell_egress_image() {
     fi
 }
 
+# Legt das interne Gast-Netz glappa-shell-lan an, falls es noch fehlt. Im
+# Compose ist es als external deklariert — Compose uebernimmt kein Netz,
+# das jemand anderes (shellgate zur Laufzeit, per docker-py) angelegt hat
+# ("incorrect label com.docker.compose.network", hat den zweiten VPS-Deploy
+# gebrochen). external heisst aber auch: 'up' bricht ab, wenn das Netz noch
+# GAR NICHT existiert (allererster Start auf frischem Host). Deshalb hier
+# anlegen, mit denselben Eigenschaften wie shellgate/server.py:
+# ensure_networks() — internal (Gast hat KEIN direktes Internet), Subnetz
+# waehlt Docker selbst. Idempotent, nur auf dem VPS.
+ensure_shell_lan_network() {
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
+    if ! $SUDO docker network inspect glappa-shell-lan >/dev/null 2>&1; then
+        say "lege internes Gast-Netz glappa-shell-lan an (im Compose external)..."
+        $SUDO docker network create --internal glappa-shell-lan >/dev/null
+        ok "Netz glappa-shell-lan angelegt"
+    fi
+}
+
 # Warnt fruehzeitig, wenn _docker/.env (SHELL_PASSWORD_HASH fuer real-shell)
 # fehlt — sonst crashed der shellgate-Container beim Start mit einer
 # kryptischen Python-Fehlermeldung ohne ersichtlichen Grund.
@@ -390,6 +408,7 @@ fi
 ok "Ports frei."
 
 # ── Start ───────────────────────────────────────────────────────────
+ensure_shell_lan_network
 say "start..."
 $SUDO docker compose -f "$COMPOSE" up -d --remove-orphans
 

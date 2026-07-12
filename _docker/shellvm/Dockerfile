@@ -69,13 +69,18 @@ RUN apt-get purge -y popularity-contest ubuntu-report apport whoopsie >/dev/null
 # heisst dort schlicht "librewolf" (EIN fester Name fuer alle Debian/Ubuntu-
 # Versionen, kein Codename-Mapping noetig — /dists/ listet nur diesen einen
 # Eintrag, kein per-Codename-Ordner). Keyring wird als binaere OpenPGP-Datei
-# ausgeliefert (kein --dearmor noetig), SHA256 gegen die auf der Repo-Seite
-# angegebene Pruefsumme verifiziert:
+# ausgeliefert (kein --dearmor noetig) — und MUSS deshalb als .gpg gespeichert
+# werden: apt prueft inzwischen die Datei-Endung gegen den Inhalt und
+# ignoriert einen binaeren Key in einer .asc-Datei komplett ("ignored as the
+# file has an unsupported filetype" -> NO_PUBKEY; .asc ist ausschliesslich
+# fuer ASCII-armored zulaessig). Genau daran ist der zweite VPS-Deploy
+# gescheitert. SHA256 gegen die auf der Repo-Seite angegebene Pruefsumme
+# verifiziert:
 #   537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5
 RUN mkdir -p /etc/apt/keyrings \
-    && wget -O /etc/apt/keyrings/librewolf.asc https://repo.librewolf.net/keyring.gpg \
-    && echo "537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5  /etc/apt/keyrings/librewolf.asc" | sha256sum -c - \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/librewolf.asc] https://repo.librewolf.net librewolf main" \
+    && wget -O /etc/apt/keyrings/librewolf.gpg https://repo.librewolf.net/keyring.gpg \
+    && echo "537df0094eeac2c301e0959b08d48b0fd0e8de507836d8720a4abe46522b70d5  /etc/apt/keyrings/librewolf.gpg" | sha256sum -c - \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/librewolf.gpg] https://repo.librewolf.net librewolf main" \
          > /etc/apt/sources.list.d/librewolf.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends librewolf \
