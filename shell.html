@@ -72,6 +72,36 @@
     }
     .tb-btn:hover { background: #363c43; }
 
+    /* ── Schwebendes Desktop-Fenster (Knopf "Desktop") ──────────────
+       Frei beweglich wie das Terminal-Fenster in terminal.html
+       (Titelleiste ziehen, Doppelklick = zuruecksetzen), Groesse am
+       Griff unten rechts aenderbar (CSS resize — noVNC skaliert selbst
+       nach, RFB beobachtet seinen Container per ResizeObserver).
+       position:fixed + hoher z-index: schwebt UEBER dem Terminal,
+       ohne dessen Layout anzufassen. Startposition: mittig, knapp
+       unter dem oberen Rand. */
+    #desktopWin {
+      display: none;
+      position: fixed;
+      left: calc(50vw - min(430px, 46vw));
+      top: 70px;
+      z-index: 60;
+      width: min(860px, 92vw);
+      height: min(560px, 80vh);
+      min-width: 320px;
+      min-height: 240px;
+      flex-direction: column;
+      background: #191d21;
+      border: 1px solid #2c3238;
+      border-radius: 6px;
+      box-shadow: 0 14px 44px rgba(0,0,0,0.78);
+      overflow: hidden;
+      resize: both;
+    }
+    #desktopWin .shell-titlebar { cursor: move; touch-action: none; }
+    #desktopWin .tb-btn { display: inline-block; }
+    #dtScreen { flex: 1; min-height: 0; background: #000; }
+
     /* ── Passwort-Gate ── */
     #gate {
       padding: 40px 24px;
@@ -164,7 +194,7 @@
         <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
         <span class="tb-title" id="tbTitle">terminal-boot — Passwort erforderlich</span>
         <button class="tb-btn" id="btnDesktop"
-                title="GUI-Fenster (librewolf, xeyes, xclock, …) erscheinen auf dem VM-Desktop">Desktop &#8599;</button>
+                title="VM-Desktop als bewegliches Fenster hier auf der Seite oeffnen — dort erscheinen GUI-Programme (librewolf, xeyes, xclock, …)">Desktop</button>
       </div>
 
       <div id="gate">
@@ -185,10 +215,24 @@
     </div>
     <p class="shell-hint">
       GUI-Programme (librewolf, xeyes, xclock, …) oeffnen ihre Fenster auf dem
-      <strong>VM-Desktop</strong> — Knopf &bdquo;Desktop&ldquo; oben rechts.
+      <strong>VM-Desktop</strong> — der Knopf &bdquo;Desktop&ldquo; oben rechts holt ihn
+      als bewegliches Fenster direkt auf diese Seite.
       &middot; Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
       &middot; <a href="terminal.html">Zurueck zum Uebungs-Terminal</a>
     </p>
+  </div>
+
+  <!-- Schwebendes Desktop-Fenster — oeffnet der "Desktop"-Knopf in der
+       Terminal-Titelleiste. GUI-Programme der VM (xeyes, librewolf, …)
+       erscheinen hier als normale Openbox-Fenster (noVNC-Canvas). -->
+  <div id="desktopWin">
+    <div class="shell-titlebar" id="dtBar">
+      <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
+      <span class="tb-title" id="dtTitle">VM-Desktop</span>
+      <button class="tb-btn" id="dtClose"
+              title="Desktop-Fenster schliessen (die VM und ihre Programme laufen weiter)">Schliessen &#10005;</button>
+    </div>
+    <div id="dtScreen"></div>
   </div>
 
   <div class="marquee marquee--bottom">
@@ -390,24 +434,129 @@
       connect(pw);
     });
 
-    /* GUI-Fenster (xeyes, librewolf, …) erscheinen NICHT hier im Text-
-       Terminal, sondern auf dem Desktop der VM (Xvnc) — dieser Knopf
-       oeffnet ihn in einem NEUEN Tab (das Terminal hier lebt weiter, sonst
-       stuerbe die bash samt gestarteter GUI-Programme mit der Verbindung).
-       Passwort-Weitergabe wie beim terminal.html->shell.html-Weg: kurz in
-       sessionStorage legen — window.open OHNE noopener KOPIERT den
-       sessionStorage in den neuen Tab (HTML-Spec), desktop.html liest+
-       loescht seine Kopie read-once — und die eigene Kopie hier sofort
-       wieder entfernen, damit nichts liegen bleibt. Faellt die Uebergabe
-       aus (exotischer Browser), zeigt desktop.html einfach sein Formular. */
-    btnDesktop.addEventListener('click', function () {
-      if (lastPw) {
-        try { sessionStorage.setItem('glappaShellPw', lastPw); } catch (e) {}
+    /* ── Schwebendes Desktop-Fenster ─────────────────────────────────
+       GUI-Fenster (xeyes, librewolf, …) erscheinen NICHT hier im Text-
+       Terminal, sondern auf dem Desktop der VM (Xvnc). Der Knopf holt
+       diesen Desktop als frei bewegliches Fenster AUF DIESE SEITE —
+       noVNC rendert direkt in das div oben, kein neuer Tab, kein
+       Seitenwechsel (der die Terminal-Verbindung samt gestarteter
+       GUI-Programme killen wuerde). desktop.html bleibt fuer den
+       direkten Weg (desktop-boot) unveraendert bestehen.
+       Auth wie dort: Passwort -> kurzlebiges Einmal-Ticket -> WebSocket.
+       lastPw liegt hier noch im Speicher, es muss nichts durch Storage
+       oder URLs gereicht werden. */
+    const desktopWin = document.getElementById('desktopWin');
+    const dtBar      = document.getElementById('dtBar');
+    const dtTitle    = document.getElementById('dtTitle');
+    const dtClose    = document.getElementById('dtClose');
+    const dtScreen   = document.getElementById('dtScreen');
+    let rfb = null;
+    let rfbModule = null;      // Promise des noVNC-Imports — nur einmal laden
+    let dtCloseTimer = null;
+
+    function vncEndpoints() {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return { authUrl: 'http://' + h + ':8767/auth', wsBase: 'ws://' + h + ':8766/' };
+      if (h === 'home.glappa.de') return { authUrl: 'https://' + h + '/api/shell/vnc-auth', wsBase: 'wss://' + h + '/api/shell/vnc' };
+      return null;
+    }
+
+    function closeDesktopWin() {
+      if (dtCloseTimer) { clearTimeout(dtCloseTimer); dtCloseTimer = null; }
+      if (rfb) {
+        const r = rfb;
+        rfb = null;            // VOR disconnect(): der Handler unten soll wissen, dass WIR schliessen
+        try { r.disconnect(); } catch (e) {}
       }
-      window.open('desktop.html', '_blank');
-      try { sessionStorage.removeItem('glappaShellPw'); } catch (e) {}
+      dtScreen.innerHTML = '';
+      desktopWin.style.display = 'none';
       if (term) term.focus();
-    });
+    }
+
+    function openDesktopWin() {
+      if (desktopWin.style.display === 'flex') return;   // schon offen
+      const EPV = vncEndpoints();
+      if (!EPV || !lastPw) return;
+
+      desktopWin.style.display = 'flex';
+      dtTitle.textContent = 'VM-Desktop — verbinde …';
+
+      /* noVNC ist ein ES-Modul; dieses Skript hier ist klassisch —
+         dynamisches import() geht trotzdem und laedt die ~30 Moduldateien
+         erst, wenn wirklich jemand den Desktop oeffnet. */
+      if (!rfbModule) rfbModule = import('./novnc/core/rfb.js');
+
+      Promise.all([
+        rfbModule,
+        fetch(EPV.authUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: lastPw }),
+        }).then(function (r) {
+          /* Erst Text, dann selbst parsen — HTML-Fehlerseiten vom Proxy
+             geben so eine klare Meldung statt JSON.parse-Kryptik
+             (gleiche Lehre wie in desktop.html). */
+          return r.text().then(function (body) {
+            let data = null;
+            try { data = JSON.parse(body); } catch (e) {}
+            if (!data) throw new Error('Backend nicht erreichbar (HTTP ' + r.status + ')');
+            if (!data.ok) throw new Error(data.msg || 'Ticket abgelehnt');
+            return data.ticket;
+          });
+        }),
+      ]).then(function (res) {
+        if (desktopWin.style.display === 'none') return;  // inzwischen geschlossen
+        const RFB = res[0].default;
+        const ticket = res[1];
+        rfb = new RFB(dtScreen, EPV.wsBase + '?ticket=' + encodeURIComponent(ticket), { shared: false });
+        rfb.scaleViewport = true;
+        rfb.clipViewport = false;
+        rfb.resizeSession = false;
+        rfb.addEventListener('connect', function () {
+          dtTitle.textContent = 'VM-Desktop — Rechtsklick = Startmenue';
+        });
+        rfb.addEventListener('disconnect', function () {
+          if (!rfb) return;                // Schliessen-Knopf war der Ausloeser
+          rfb = null;
+          dtTitle.textContent = 'VM-Desktop — getrennt';
+          dtCloseTimer = setTimeout(closeDesktopWin, 1800);
+        });
+      }).catch(function (e) {
+        dtTitle.textContent = 'VM-Desktop — ' + e.message;
+        dtCloseTimer = setTimeout(closeDesktopWin, 3200);
+      });
+    }
+
+    btnDesktop.addEventListener('click', openDesktopWin);
+    dtClose.addEventListener('click', closeDesktopWin);
+
+    /* Verschieben — exakt das Muster aus terminal.html: Titelleiste
+       ziehen (Pointer-Capture), Doppelklick setzt auf die Startposition
+       zurueck. transform statt left/top: kein Layout-Reflow, und das
+       CSS-resize-Handle unten rechts funktioniert unabhaengig weiter. */
+    (function () {
+      let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+      dtBar.addEventListener('pointerdown', function (e) {
+        if (e.target === dtClose) return;   // Schliessen-Klick ist kein Drag
+        dragging = true;
+        sx = e.clientX - ox; sy = e.clientY - oy;
+        try { dtBar.setPointerCapture(e.pointerId); } catch (err) {}
+        e.preventDefault();
+      });
+      dtBar.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        ox = e.clientX - sx; oy = e.clientY - sy;
+        desktopWin.style.transform = 'translate(' + ox + 'px,' + oy + 'px)';
+      });
+      function stopDrag() { dragging = false; }
+      dtBar.addEventListener('pointerup', stopDrag);
+      dtBar.addEventListener('pointercancel', stopDrag);
+      dtBar.addEventListener('dblclick', function () {
+        ox = 0; oy = 0; desktopWin.style.transform = '';
+      });
+    })();
 
     /* Auto-Connect mit dem aus terminal.html mitgebrachten Passwort — das
        manuelle Formular bleibt dabei komplett unsichtbar. */
