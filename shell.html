@@ -56,6 +56,21 @@
     .tb-dot.y { background: #febc2e; }
     .tb-dot.g { background: #28c840; }
     .tb-title { flex: 1; text-align: center; color: #9aa5b1; font-size: 0.8em; }
+    /* Knopf rechts in der Titelleiste — erscheint erst nach dem Verbinden
+       (startTerminal), vorher gibt es ja nichts zu sehen. */
+    .tb-btn {
+      display: none;
+      flex: none;
+      background: #2c3238;
+      border: 1px solid #454c54;
+      color: #d3dae3;
+      font-family: inherit;
+      font-size: 0.78em;
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tb-btn:hover { background: #363c43; }
 
     /* ── Passwort-Gate ── */
     #gate {
@@ -148,12 +163,15 @@
       <div class="shell-titlebar">
         <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
         <span class="tb-title" id="tbTitle">terminal-boot — Passwort erforderlich</span>
+        <button class="tb-btn" id="btnDesktop"
+                title="GUI-Fenster (librewolf, xeyes, xclock, …) erscheinen auf dem VM-Desktop">Desktop &#8599;</button>
       </div>
 
       <div id="gate">
         <p>
-          Echte, wegwerfbare Ubuntu-VM — pro Sitzung ein frischer Container,
-          eigenes Docker-Netz, eingeschraenkte Rechte. Nur mit Passwort.<br>
+          Echte, dauerhafte Ubuntu-VM — dieselbe Kiste ueber alle Sitzungen
+          hinweg, eigenes internes Docker-Netz, Ausgang nur ueber Tor. Nur mit
+          Passwort.<br>
           Sitzung endet nach <span id="idleInfo">30 Min.</span> Inaktivitaet automatisch.
         </p>
         <form id="gateForm" class="row" autocomplete="off">
@@ -166,7 +184,9 @@
       <div id="termHost"></div>
     </div>
     <p class="shell-hint">
-      Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
+      GUI-Programme (librewolf, xeyes, xclock, …) oeffnen ihre Fenster auf dem
+      <strong>VM-Desktop</strong> — Knopf &bdquo;Desktop&ldquo; oben rechts.
+      &middot; Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
       &middot; <a href="terminal.html">Zurueck zum Uebungs-Terminal</a>
     </p>
   </div>
@@ -187,6 +207,7 @@
     const pwInput   = document.getElementById('pw');
     const termHost  = document.getElementById('termHost');
     const tbTitle   = document.getElementById('tbTitle');
+    const btnDesktop = document.getElementById('btnDesktop');
 
     /* ── Endpunkt bestimmen — dieselbe Logik wie terminal.html chatEndpoint():
        lokal (WSL/Dev) direkter Draht zu shellgate, auf home.glappa.de ueber
@@ -223,6 +244,11 @@
     let term = null;
     let fitAddon = null;
     let connecting = false;
+    /* Merkt sich das Passwort der laufenden Sitzung NUR im Speicher (nie
+       DOM/Storage/URL) — der Desktop-Knopf reicht es beim Klick per
+       read-once-sessionStorage an desktop.html weiter, damit man sich dort
+       nicht nochmal einloggen muss. */
+    let lastPw = null;
 
     function setMsg(text, cls) {
       gateMsg.className = cls || '';
@@ -233,6 +259,7 @@
       gate.style.display = 'none';
       termHost.style.display = 'block';
       tbTitle.textContent = 'terminal-boot — verbunden';
+      btnDesktop.style.display = 'inline-block';
 
       term = new Terminal({
         cursorBlink: true,
@@ -275,6 +302,7 @@
     function connect(password) {
       if (connecting) return;
       connecting = true;
+      lastPw = password;
       gateBtn.disabled = true;
       setMsg('Verbinde …', 'info');
 
@@ -360,6 +388,25 @@
       const pw = pwInput.value;
       if (!pw) return;
       connect(pw);
+    });
+
+    /* GUI-Fenster (xeyes, librewolf, …) erscheinen NICHT hier im Text-
+       Terminal, sondern auf dem Desktop der VM (Xvnc) — dieser Knopf
+       oeffnet ihn in einem NEUEN Tab (das Terminal hier lebt weiter, sonst
+       stuerbe die bash samt gestarteter GUI-Programme mit der Verbindung).
+       Passwort-Weitergabe wie beim terminal.html->shell.html-Weg: kurz in
+       sessionStorage legen — window.open OHNE noopener KOPIERT den
+       sessionStorage in den neuen Tab (HTML-Spec), desktop.html liest+
+       loescht seine Kopie read-once — und die eigene Kopie hier sofort
+       wieder entfernen, damit nichts liegen bleibt. Faellt die Uebergabe
+       aus (exotischer Browser), zeigt desktop.html einfach sein Formular. */
+    btnDesktop.addEventListener('click', function () {
+      if (lastPw) {
+        try { sessionStorage.setItem('glappaShellPw', lastPw); } catch (e) {}
+      }
+      window.open('desktop.html', '_blank');
+      try { sessionStorage.removeItem('glappaShellPw'); } catch (e) {}
+      if (term) term.focus();
     });
 
     /* Auto-Connect mit dem aus terminal.html mitgebrachten Passwort — das

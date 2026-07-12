@@ -55,6 +55,20 @@
     .tb-dot.y { background: #febc2e; }
     .tb-dot.g { background: #28c840; }
     .tb-title { flex: 1; text-align: center; color: #9aa5b1; font-size: 0.8em; }
+    /* Knopf rechts in der Titelleiste — erscheint erst nach dem Verbinden. */
+    .tb-btn {
+      display: none;
+      flex: none;
+      background: #2c3238;
+      border: 1px solid #454c54;
+      color: #d3dae3;
+      font-family: inherit;
+      font-size: 0.78em;
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tb-btn:hover { background: #363c43; }
 
     /* ── Passwort-Gate ── */
     #gate {
@@ -149,6 +163,8 @@
       <div class="shell-titlebar">
         <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
         <span class="tb-title" id="tbTitle">desktop-boot — Passwort erforderlich</span>
+        <button class="tb-btn" id="btnShell"
+                title="Text-Terminal derselben VM in einem neuen Tab">Terminal &#8599;</button>
       </div>
 
       <div id="gate">
@@ -168,7 +184,10 @@
       <div id="screenHost"></div>
     </div>
     <p class="shell-hint">
-      Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
+      Hier erscheinen ALLE GUI-Fenster der VM — auch die, die man im
+      Text-Terminal startet (<code>xeyes &amp;</code>, <code>librewolf &amp;</code>, &hellip;), denn beide zeigen
+      dieselbe Kiste. Rechtsklick auf den Desktop = Startmenue.
+      &middot; Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
       &middot; <a href="shell.html">Zum Text-Terminal (terminal-boot)</a>
       &middot; <a href="terminal.html">Zurueck zum Uebungs-Terminal</a>
     </p>
@@ -189,6 +208,7 @@
     const pwInput     = document.getElementById('pw');
     const screenHost  = document.getElementById('screenHost');
     const tbTitle     = document.getElementById('tbTitle');
+    const btnShell    = document.getElementById('btnShell');
 
     /* Gleiche Endpunkt-Logik wie shell.html: lokal (WSL/Dev) direkter Draht
        zu displaygate, auf home.glappa.de ueber Apache (TLS + Ticket-Auth). */
@@ -217,6 +237,9 @@
 
     let rfb = null;
     let connecting = false;
+    /* Wie in shell.html: Passwort der Sitzung nur im Speicher merken, der
+       Terminal-Knopf reicht es per read-once-sessionStorage weiter. */
+    let lastPw = null;
 
     function setMsg(text, cls) {
       gateMsg.className = cls || '';
@@ -227,6 +250,7 @@
       gate.style.display = 'none';
       screenHost.style.display = 'block';
       tbTitle.textContent = 'desktop-boot — verbunden';
+      btnShell.style.display = 'inline-block';
 
       const wsUrl = EP.wsBase + '?ticket=' + encodeURIComponent(ticket);
       rfb = new RFB(screenHost, wsUrl, { shared: false });
@@ -253,6 +277,7 @@
     function connect(password) {
       if (connecting) return;
       connecting = true;
+      lastPw = password;
       gateBtn.disabled = true;
       setMsg('Verbinde …', 'info');
 
@@ -286,6 +311,16 @@
       const pw = pwInput.value;
       if (!pw) return;
       connect(pw);
+    });
+
+    /* Gegenstueck zum Desktop-Knopf in shell.html — Details (sessionStorage-
+       Kopie bei window.open, read-once, sofortiges Aufraeumen) dort. */
+    btnShell.addEventListener('click', function () {
+      if (lastPw) {
+        try { sessionStorage.setItem('glappaShellPw', lastPw); } catch (e) {}
+      }
+      window.open('shell.html', '_blank');
+      try { sessionStorage.removeItem('glappaShellPw'); } catch (e) {}
     });
 
     if (autoPw && EP) {
