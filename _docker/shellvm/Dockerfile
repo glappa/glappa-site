@@ -164,6 +164,29 @@ RUN mkdir -p /var/log/glappa-desktop && chown fallen:fallen /var/log/glappa-desk
 RUN apt-get update && apt-get install -y --no-install-recommends cmatrix \
     && rm -rf /var/lib/apt/lists/*
 
+# ── VM-Ton: sound passthrough zum Browser ────────────────────────────
+# pulseaudio       -> virtuelle Soundkarte (Null-Sink "speaker"): LibreWolf
+#                     & Co. spielen dahin; module-simple-protocol-tcp bietet
+#                     den Sink-Monitor als rohen PCM-Strom auf :5902 an (nur
+#                     internes Docker-Netz!). displaygate brueckt ihn per
+#                     Ticket-Auth als WebSocket (?chan=audio) zum Browser,
+#                     dort spielt ihn ein AudioWorklet ab (shell-audio.js).
+#                     Details/Begruendungen: glappa-pulse.pa.
+# pulseaudio-utils -> pactl/paplay zum Testen in der VM (pactl info,
+#                     pactl list sinks, paplay datei.wav)
+# Eigene SPAETE Schicht (wie cmatrix oben): haelt die teuren
+# librewolf-Layer im Build-Cache.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pulseaudio pulseaudio-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# JEDER Prozess in der VM (Text-Terminal-Exec, openbox-Menue, librewolf)
+# findet den Pulse-Server ueber diese EINE feste Adresse — ENV gilt fuer
+# das CMD (supervisord samt Kindern) UND fuer jede docker-exec-Sitzung,
+# keine XDG_RUNTIME_DIR-Raterei (docker exec setzt das nie).
+ENV PULSE_SERVER=unix:/tmp/pulse-native
+COPY glappa-pulse.pa /etc/pulse/glappa.pa
+
 USER fallen
 WORKDIR /home/fallen
 

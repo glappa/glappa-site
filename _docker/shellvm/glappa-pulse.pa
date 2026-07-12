@@ -1,0 +1,33 @@
+# Virtuelle Soundkarte der Gast-VM + PCM-Abgriff fuer den Browser-Ton
+# ("sound passthrough": YouTube & Co. aus LibreWolf in shell.html hoeren).
+# Geladen von supervisord: pulseaudio -n --file=/etc/pulse/glappa.pa
+# -n = default.pa NICHT laden: keine Hardware-Erkennung (es gibt keine
+# Soundkarte), nur genau die drei Module hier. Der Null-Sink rendert im
+# Leerlauf NICHTS (in ubuntu:latest live verifiziert: 0 Bytes bei Stille)
+# — Daten fliessen auf dem Abgriff also nur, waehrend tatsaechlich etwas
+# spielt. Gewollt: kostet nur dann Bandbreite; der Player im Browser
+# (shell-audio-worklet.js) puffert sich nach jeder Luecke neu an.
+
+# Kontrollverbindung fuer Clients (librewolf, pactl, mpv, ...) — fester
+# Unix-Socket, den ENV PULSE_SERVER (Dockerfile) allen Prozessen bekannt
+# macht (docker exec setzt kein XDG_RUNTIME_DIR, der Standard-Suchpfad
+# waere also Raterei). auth-anonymous: im Container gibt es nur "fallen"
+# (+root) — ein Pulse-Cookie-Abgleich zwischen den getrennten
+# exec-Sitzungen waere nur eine stille Fehlerquelle.
+load-module module-native-protocol-unix auth-anonymous=1 socket=/tmp/pulse-native
+
+# Null-Sink = der "Lautsprecher" der VM. Alles, was in der VM spielt,
+# landet hier — hoerbar wird es erst ueber den Monitor-Abgriff darunter.
+load-module module-null-sink sink_name=speaker
+set-default-sink speaker
+
+# Roher s16le-PCM-Strom des Lautsprecher-Monitors auf :5902 — NUR im
+# internen Docker-Netz erreichbar (der Gast haengt ausschliesslich am
+# internal-LAN, siehe shellgate/server.py: ensure_networks). displaygate
+# brueckt den Port per Ticket-Auth als WebSocket zum Browser (?chan=audio,
+# siehe displaygate/server.py); dort spielt ihn ein AudioWorklet ab
+# (shell-audio.js). 48 kHz stereo passt zu YouTube & Co. (Opus ist immer
+# 48 kHz) — Pulse muss dann nie resamplen. Bewusst UNKODIERT (kein
+# ffmpeg/Opus in der VM): ~1.5 MBit/s, und das nur, waehrend wirklich
+# etwas spielt (s.o.).
+load-module module-simple-protocol-tcp source=speaker.monitor record=true playback=false format=s16le rate=48000 channels=2 port=5902 listen=0.0.0.0

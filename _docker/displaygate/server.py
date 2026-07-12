@@ -1,16 +1,20 @@
 """
 displaygate — Bruecke zwischen dem Browser (noVNC im Browser, WebSocket) und
 dem Xvnc-Port der dauerhaften Gast-VM (siehe shellvm/Dockerfile: Xvnc laeuft
-dort permanent auf :1 / TCP 5901, gehalten von supervisord).
+dort permanent auf :1 / TCP 5901, gehalten von supervisord). Seit dem
+Sound-Passthrough zusaetzlich Bruecke fuer den VM-TON: dieselbe Byte-
+Weiterleitung, nur mit dem Pulse-PCM-Abgriff (:5902, siehe shellvm/
+glappa-pulse.pa) als Ziel — der Browser waehlt den Kanal per ?chan=audio.
 
 Architektur (Schwester-Dienst zu shellgate, siehe dessen server.py):
-  Browser (noVNC) <--WebSocket--> displaygate (dieser Prozess)
-                                       |
+  Browser (noVNC bzw.      <--WebSocket--> displaygate (dieser Prozess)
+   AudioWorklet)                                |
                                        | rohes TCP, im internen Docker-Netz
                                        | glappa-shell-lan (Namensaufloesung
                                        | ueber Dockers eingebauten DNS)
                                        v
                               Gast-Container: Xvnc auf :5901
+                              (?chan=audio: Pulse-PCM auf :5902)
 
 Warum ein EIGENER Dienst statt Teil von shellgate? shellgate braucht den
 docker.sock (erzeugt/steuert Container) — praktisch Host-Root. displaygate
@@ -41,6 +45,10 @@ Protokoll:
     ab Verbindungsaufbau REINES binaeres RFB/VNC-Protokoll in beide
     Richtungen — kein eigenes Rahmenformat, 1:1-Byte-Weiterleitung
     (entspricht dem, was websockify fuer noVNC macht).
+  WebSocket ?ticket=...&chan=audio:
+    roher s16le-PCM-Strom (48 kHz stereo) vom Pulse-Abgriff der VM,
+    faktisch nur Server->Client. Jeder Kanal braucht sein EIGENES
+    Einmal-Ticket (der Browser macht pro Kanal einen /auth-POST).
 """
 
 import asyncio
@@ -62,6 +70,7 @@ log = logging.getLogger('displaygate')
 PASSWORD_HASH   = (os.environ.get('SHELL_PASSWORD_HASH') or '').strip().lower()
 GUEST_HOST      = os.environ.get('SHELL_CONTAINER_NAME', 'glappa-shell-persistent')
 GUEST_VNC_PORT  = int(os.environ.get('GUEST_VNC_PORT', '5901'))
+GUEST_AUDIO_PORT = int(os.environ.get('GUEST_AUDIO_PORT', '5902'))
 WS_PORT         = int(os.environ.get('DISPLAYGATE_WS_PORT', '8766'))
 HTTP_PORT       = int(os.environ.get('DISPLAYGATE_HTTP_PORT', '8767'))
 IDLE_TIMEOUT    = int(os.environ.get('DISPLAYGATE_IDLE_TIMEOUT', '1800'))
@@ -227,6 +236,12 @@ async def handle_ws(ws) -> None:
     path = ws.request.path if ws.request else ''
     query = urllib.parse.parse_qs(path.split('?', 1)[1] if '?' in path else '')
     ticket = (query.get('ticket') or [''])[0]
+    # Kanalwahl: ?chan=audio -> Pulse-PCM-Abgriff der VM (s16le, Ton),
+    # sonst VNC/RFB (Bild). Gleiche Ticket-Auth, gleiche Byte-Bruecke —
+    # nur ein anderer Ziel-Port im Gast. Der Browser holt sich pro Kanal
+    # ein eigenes Einmal-Ticket (Tickets sterben beim ersten Gebrauch).
+    chan = 'audio' if (query.get('chan') or [''])[0] == 'audio' else 'vnc'
+    guest_port = GUEST_AUDIO_PORT if chan == 'audio' else GUEST_VNC_PORT
 
     if not await consume_ticket(ticket):
         log.info('Ungueltiges/abgelaufenes Ticket von %s', ip)
@@ -239,18 +254,18 @@ async def handle_ws(ws) -> None:
             return
         _active_sessions += 1
 
-    log.info('Ticket eingeloest von %s — verbinde zu Gast-VNC (%d/%d Sessions)',
-              ip, _active_sessions, MAX_SESSIONS)
+    log.info('Ticket eingeloest von %s — verbinde zu Gast-Kanal %s (%d/%d Sessions)',
+              ip, chan, _active_sessions, MAX_SESSIONS)
 
     reader = writer = None
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(GUEST_HOST, GUEST_VNC_PORT), timeout=CONNECT_TIMEOUT)
+            asyncio.open_connection(GUEST_HOST, guest_port), timeout=CONNECT_TIMEOUT)
     except (OSError, asyncio.TimeoutError) as e:
-        log.error('Gast-VNC (%s:%d) nicht erreichbar: %s', GUEST_HOST, GUEST_VNC_PORT, e)
+        log.error('Gast-Kanal %s (%s:%d) nicht erreichbar: %s', chan, GUEST_HOST, guest_port, e)
         async with _sessions_lock:
             _active_sessions -= 1
-        await ws.close(code=1011, reason='guest display unreachable')
+        await ws.close(code=1011, reason='guest channel unreachable')
         return
 
     state = {'last_active': time.monotonic()}
@@ -310,8 +325,9 @@ async def handle_ws(ws) -> None:
 
 async def main() -> None:
     log.info('displaygate: WS auf 0.0.0.0:%d, Ticket-Auth auf 0.0.0.0:%d '
-              '(Gast-VNC-Ziel: %s:%d, max %d gleichzeitige Sessions)',
-              WS_PORT, HTTP_PORT, GUEST_HOST, GUEST_VNC_PORT, MAX_SESSIONS)
+              '(Gast-Ziele: VNC %s:%d, Audio %s:%d, max %d gleichzeitige Sessions)',
+              WS_PORT, HTTP_PORT, GUEST_HOST, GUEST_VNC_PORT,
+              GUEST_HOST, GUEST_AUDIO_PORT, MAX_SESSIONS)
     http_server = await asyncio.start_server(handle_http, '0.0.0.0', HTTP_PORT)
     async with http_server, websockets.serve(handle_ws, '0.0.0.0', WS_PORT, max_size=None):
         await asyncio.Future()

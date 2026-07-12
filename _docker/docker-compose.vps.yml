@@ -186,8 +186,14 @@ services:
       - SHELL_PASSWORD_HASH=${SHELL_PASSWORD_HASH}
       - SHELL_CONTAINER_NAME=glappa-shell-persistent
       - GUEST_VNC_PORT=5901
+      # VM-Ton (sound passthrough): roher PCM-Strom vom Pulse-Abgriff im
+      # Gast (shellvm/glappa-pulse.pa) — gleicher WS-Endpunkt, Kanalwahl
+      # per ?chan=audio (siehe displaygate/server.py).
+      - GUEST_AUDIO_PORT=5902
       - DISPLAYGATE_IDLE_TIMEOUT=1800
-      - DISPLAYGATE_MAX_SESSIONS=5
+      # Angehoben von 5: ein offener Desktop MIT Ton belegt jetzt ZWEI
+      # Sessions (VNC- + Audio-Kanal zaehlen beide in denselben Zaehler).
+      - DISPLAYGATE_MAX_SESSIONS=8
     restart: unless-stopped
     logging:
       driver: json-file

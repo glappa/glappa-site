@@ -232,7 +232,9 @@
       GUI-Programme (librewolf, xeyes, xclock, …) oeffnen ihre Fenster auf dem
       <strong>VM-Desktop</strong> — der erscheint beim Start automatisch als
       bewegliches Fenster auf dieser Seite (der Knopf &bdquo;Desktop&ldquo; oben rechts
-      holt ihn auch jederzeit manuell).
+      holt ihn auch jederzeit manuell). <strong>Ton</strong> aus der VM
+      (YouTube &amp; Co.) laeuft automatisch mit — der Knopf &bdquo;Ton&ldquo; im
+      Desktop-Fenster schaltet ihn an/aus.
       &middot; Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
       &middot; <a href="terminal.html">Zurueck zum Uebungs-Terminal</a>
     </p>
@@ -247,6 +249,8 @@
     <div class="shell-titlebar" id="dtBar">
       <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
       <span class="tb-title" id="dtTitle">VM-Desktop</span>
+      <button class="tb-btn" id="dtSound"
+              title="VM-Ton an/aus — was in der VM spielt (YouTube in LibreWolf, mpv, …), hier hoeren">Ton: aus</button>
       <button class="tb-btn" id="dtClose"
               title="Desktop-Fenster schliessen (die VM und ihre Programme laufen weiter)">Schliessen &#10005;</button>
     </div>
@@ -260,6 +264,7 @@
   <script src="script.js?v=17"></script>
   <script src="xterm/xterm.js"></script>
   <script src="xterm/addon-fit.js"></script>
+  <script src="shell-audio.js"></script>
   <script>
   (function () {
     const gate      = document.getElementById('gate');
@@ -483,6 +488,7 @@
     const dtBar      = document.getElementById('dtBar');
     const dtTitle    = document.getElementById('dtTitle');
     const dtClose    = document.getElementById('dtClose');
+    const dtSound    = document.getElementById('dtSound');
     const dtScreen   = document.getElementById('dtScreen');
     let rfb = null;
     let rfbModule = null;      // Promise des noVNC-Imports — nur einmal laden
@@ -497,7 +503,31 @@
       return null;
     }
 
+    /* ── VM-Ton (sound passthrough) ────────────────────────────────
+       noVNC/RFB transportiert nur Bild + Eingaben — der Ton kommt als
+       EIGENER WebSocket-Kanal (?chan=audio) ueber displaygate und wird
+       von einem AudioWorklet abgespielt (Architektur: shell-audio.js).
+       Startet beim Desktop-Verbinden automatisch; der Knopf "Ton" in
+       der Desktop-Titelleiste stoppt/startet den Strom KOMPLETT
+       (gestoppt fliesst auch keine Bandbreite). */
+    const SOUND_LABELS = { aus: 'Ton: aus', verbinde: 'Ton …', an: 'Ton: an',
+                           blockiert: 'Ton freigeben', fehler: 'Ton: Fehler' };
+    const EPA = vncEndpoints();
+    const vmAudio = (window.GlappaVmAudio && EPA) ? window.GlappaVmAudio({
+      authUrl: EPA.authUrl,
+      wsBase: EPA.wsBase,
+      getPassword: function () { return lastPw; },
+      onState: function (state, detail) {
+        dtSound.textContent = SOUND_LABELS[state] || 'Ton';
+        dtSound.title = (state === 'fehler' && detail)
+          ? 'Ton-Fehler: ' + detail
+          : 'VM-Ton an/aus — was in der VM spielt (YouTube in LibreWolf, mpv, …), hier hoeren';
+      },
+    }) : null;
+    dtSound.addEventListener('click', function () { if (vmAudio) vmAudio.toggle(); });
+
     function closeDesktopWin() {
+      if (vmAudio) vmAudio.stop();
       if (dtCloseTimer) { clearTimeout(dtCloseTimer); dtCloseTimer = null; }
       if (rfb) {
         const r = rfb;
@@ -558,10 +588,15 @@
              beim Auto-Oeffnen soll man aber im Terminal weitertippen
              koennen (z.B. nach "librewolf &"). */
           if (auto && term) term.focus();
+          /* Ton automatisch mitstarten — Passwort/Klick/Tippen davor
+             zaehlt als Nutzer-Geste, Autoplay geht also meist durch;
+             wenn nicht, zeigt der Knopf "Ton freigeben". */
+          if (vmAudio) vmAudio.start();
         });
         rfb.addEventListener('disconnect', function () {
           if (!rfb) return;                // Schliessen-Knopf war der Ausloeser
           rfb = null;
+          if (vmAudio) vmAudio.stop();
           dtTitle.textContent = 'VM-Desktop — getrennt';
           dtCloseTimer = setTimeout(closeDesktopWin, 1800);
         });
@@ -665,10 +700,11 @@
        zurueck. transform statt left/top: kein Layout-Reflow, und das
        CSS-resize-Handle unten rechts funktioniert unabhaengig weiter.
        Gilt fuer BEIDE Fenster: Terminal und VM-Desktop. */
-    function makeDraggable(win, bar, ignoreBtn) {
+    function makeDraggable(win, bar) {
       let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
       bar.addEventListener('pointerdown', function (e) {
-        if (e.target === ignoreBtn) return;   // Knopf-Klick ist kein Drag
+        // Knopf-Klicks (Desktop/Ton/Schliessen) sind kein Drag
+        if (e.target.closest && e.target.closest('.tb-btn')) return;
         dragging = true;
         sx = e.clientX - ox; sy = e.clientY - oy;
         try { bar.setPointerCapture(e.pointerId); } catch (err) {}
@@ -686,8 +722,8 @@
         ox = 0; oy = 0; win.style.transform = '';
       });
     }
-    makeDraggable(desktopWin, dtBar, dtClose);
-    makeDraggable(shellwin, shellBar, btnDesktop);
+    makeDraggable(desktopWin, dtBar);
+    makeDraggable(shellwin, shellBar);
 
     /* Auto-Connect mit dem aus terminal.html mitgebrachten Passwort — das
        manuelle Formular bleibt dabei komplett unsichtbar. */
