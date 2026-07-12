@@ -154,6 +154,16 @@ COPY openbox-menu.xml /etc/xdg/openbox/menu.xml
 COPY supervisord.conf /etc/supervisord.conf
 RUN mkdir -p /var/log/glappa-desktop && chown fallen:fallen /var/log/glappa-desktop
 
+# ── Terminal-Klassiker ────────────────────────────────────────────────
+# cmatrix vorinstalliert: wurde live als erstes vermisst ("bash: cmatrix:
+# command not found"). Nachinstallieren geht zwar jederzeit per sudo apt —
+# aber erst NACH einem apt update durch den (langsamen) Tor-Ausgang, weil
+# das Image seine Paketlisten bewusst nicht mitbringt (rm -rf .../lists).
+# Eigene, SPAETE Schicht statt Eintrag in der grossen Liste oben: haelt die
+# teuren librewolf-Layer im Build-Cache.
+RUN apt-get update && apt-get install -y --no-install-recommends cmatrix \
+    && rm -rf /var/lib/apt/lists/*
+
 USER fallen
 WORKDIR /home/fallen
 

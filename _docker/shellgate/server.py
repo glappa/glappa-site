@@ -38,6 +38,7 @@ Protokoll (JSON-Textframes in beide Richtungen):
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -79,12 +80,13 @@ WAN_NETWORK    = os.environ.get('SHELL_WAN_NETWORK', 'glappa-shell-wan')
 EGRESS_IMAGE   = os.environ.get('SHELL_EGRESS_IMAGE', 'glappa-shell-egress:latest')
 EGRESS_NAME    = os.environ.get('SHELL_EGRESS_CONTAINER', 'glappa-shell-egress')
 PROXY_PORT     = int(os.environ.get('SHELL_PROXY_PORT', '8118'))
-# KEIN fest codiertes Subnetz/keine feste IP mehr (siehe ensure_networks() +
-# egress_lan_ip() unten) — ein hart codierter Wert (10.89.7.0/24) hat auf der
-# VPS mit einem bereits existierenden Docker-Netz kollidiert ("Pool overlaps
-# with other one on this address space"). Docker waehlt die Range jetzt
-# selbst; die tatsaechlich vergebene IP des Egress-Proxys wird zur Laufzeit
-# ausgelesen (egress_lan_ip()), nicht mehr angenommen.
+# KEIN fest codiertes Subnetz mehr (siehe ensure_networks()) — ein hart
+# codierter Wert (10.89.7.0/24) hat auf der VPS mit einem bereits
+# existierenden Docker-Netz kollidiert ("Pool overlaps with other one on
+# this address space"). Docker waehlt die Range selbst; INNERHALB der
+# gewaehlten Range bekommt der Egress-Proxy aber eine GEPINNTE Position
+# (letzte nutzbare Adresse, siehe pinned_egress_ip()) — sonst driftet seine
+# IP unter der dauerhaft eingebrannten Proxy-Adresse des Gastes weg.
 
 MAX_ATTEMPTS  = 5      # Fehlversuche pro IP
 LOCKOUT_SECS  = 300     # ... bevor die IP fuer 5 Minuten gesperrt wird
@@ -139,12 +141,105 @@ def ensure_networks() -> None:
         client.networks.create(WAN_NETWORK, driver='bridge')
 
 
+def pinned_egress_ip() -> 'str | None':
+    """Deterministische LAN-IP fuer den Egress-Proxy: die LETZTE nutzbare
+    Adresse des Subnetzes, das Docker fuer das LAN gewaehlt hat (z.B.
+    10.89.7.0/24 -> 10.89.7.254). WARUM eine feste IP, wo doch bewusst kein
+    festes Subnetz mehr konfiguriert wird (s. ensure_networks())? Der Gast-
+    Container ist DAUERHAFT, und seine Proxy-/DNS-Adresse wird beim Anlegen
+    EINGEBRANNT (env + dns=[...] lassen sich an einem existierenden Container
+    nicht mehr aendern). Bekommt der Egress-Proxy spaeter eine andere
+    dynamische IP — live passiert, als displaygate als dritter Container ins
+    LAN kam und der Proxy neu entstand —, zeigt der Gast fortan ins Leere:
+    "Could not connect to 10.89.7.3:8118 ... Connection refused" bei apt UND
+    LibreWolf. Die letzte Host-Adresse pinnen loest das, OHNE das Kollisions-
+    problem von frueher zurueckzuholen: das Subnetz waehlt weiterhin Docker,
+    nur die Position DARIN ist fest — und Docker vergibt dynamische IPs vom
+    unteren Ende, das obere Ende ist praktisch immer frei."""
+    try:
+        lan = client.networks.get(LAN_NETWORK)
+    except docker.errors.NotFound:
+        return None
+    for cfg in (lan.attrs.get('IPAM') or {}).get('Config') or []:
+        try:
+            net = ipaddress.ip_network(cfg.get('Subnet') or '', strict=False)
+        except ValueError:
+            continue
+        if net.version != 4 or net.num_addresses < 8:
+            continue
+        ip = net.broadcast_address - 1
+        # Gateway sitzt praktisch immer am unteren Ende (.1) — falls Docker
+        # ihn doch mal ans obere legt, eine Adresse weiter runterruecken.
+        if str(ip) == (cfg.get('Gateway') or '').split('/')[0]:
+            ip = ip - 1
+        return str(ip)
+    log.warning('Subnetz von %s nicht bestimmbar — Egress-IP bleibt dynamisch (Drift moeglich)',
+                LAN_NETWORK)
+    return None
+
+
+def _connect_egress_lan(c, pinned: 'str | None') -> None:
+    """Haengt den Egress-Proxy ans interne LAN — mit der gepinnten IP, wenn
+    bestimmbar. Ist die Adresse wider Erwarten belegt (Docker meldet das als
+    APIError), lieber dynamisch verbinden als gar nicht: fail-closed bleibt
+    fail-closed, nur die Drift-Heilung fehlt dann eben."""
+    try:
+        client.api.connect_container_to_network(c.id, LAN_NETWORK, ipv4_address=pinned)
+    except APIError as e:
+        if pinned is None:
+            raise
+        log.warning('feste Egress-IP %s nicht vergebbar (%s) — verbinde dynamisch', pinned, e)
+        client.api.connect_container_to_network(c.id, LAN_NETWORK)
+
+
+def _egress_listening(c) -> bool:
+    """True, wenn IM Egress-Container tatsaechlich etwas auf dem Proxy-Port
+    lauscht. Ein 'running' Container heisst naemlich nur: supervisord lebt —
+    ob privoxy selbst laeuft oder in FATAL haengt, sieht man dem Status NICHT
+    an. busybox-netstat ist im alpine-Image immer da, kein Extra-Paket."""
+    try:
+        res = c.exec_run(['sh', '-c', f'netstat -tln 2>/dev/null | grep -q ":{PROXY_PORT} "'])
+        return res.exit_code == 0
+    except (APIError, DockerException):
+        return False
+
+
+def _check_egress_listening(c) -> None:
+    """Wartet kurz auf den Proxy-Port; haengt privoxy (FATAL o.ae.), einmal
+    den ganzen Container durchstarten. Bewusst KEIN RuntimeError, wenn es
+    danach immer noch klemmt: die Text-Shell soll benutzbar bleiben, der
+    Ausgang ist ohnehin fail-closed — aber das Log sagt dann klar, wo man
+    nachsehen muss."""
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _egress_listening(c):
+            return
+        time.sleep(0.5)
+    log.warning('Egress-Proxy %s laeuft, aber :%d lauscht nicht — starte ihn einmal neu',
+                EGRESS_NAME, PROXY_PORT)
+    try:
+        c.restart(timeout=5)
+    except (APIError, DockerException):
+        log.exception('Egress-Neustart fehlgeschlagen')
+        return
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        if _egress_listening(c):
+            return
+        time.sleep(0.5)
+    log.error('Egress-Proxy lauscht auch nach Neustart nicht auf :%d — '
+              '`docker logs %s` ansehen (Gast bleibt fail-closed ohne Internet).',
+              PROXY_PORT, EGRESS_NAME)
+
+
 def ensure_egress() -> 'docker.models.containers.Container':
-    """Stellt sicher, dass der EINE dauerhafte Egress-Proxy laeuft und an
-    BEIDEN Netzen haengt. Er ist der einzige Weg des Gastes nach draussen:
-    Tor + privoxy (HTTP/HTTPS anonymisiert) + dnscrypt-proxy (DNS via DoH).
-    Faellt er aus, kommt der Gast schlicht nicht mehr raus (fail-closed) —
-    es leakt nichts an ISP/Tracker. Kein docker.sock, keine Host-Mounts."""
+    """Stellt sicher, dass der EINE dauerhafte Egress-Proxy laeuft, an BEIDEN
+    Netzen haengt, im LAN auf der GEPINNTEN IP sitzt (s. pinned_egress_ip)
+    und auf :8118 wirklich lauscht. Er ist der einzige Weg des Gastes nach
+    draussen: Tor + privoxy (HTTP/HTTPS anonymisiert) + dnscrypt-proxy (DNS
+    via DoH). Faellt er aus, kommt der Gast schlicht nicht mehr raus
+    (fail-closed) — es leakt nichts an ISP/Tracker. Kein docker.sock, keine
+    Host-Mounts."""
     ensure_networks()
     try:
         client.images.get(EGRESS_IMAGE)
@@ -153,6 +248,8 @@ def ensure_egress() -> 'docker.models.containers.Container':
             f'Egress-Image {EGRESS_IMAGE} fehlt. Auf der VPS bauen mit:  '
             f'docker build -t {EGRESS_IMAGE} _docker/shell-egress   '
             f'(restart.sh --vps macht das automatisch).')
+
+    pinned = pinned_egress_ip()
 
     try:
         c = client.containers.get(EGRESS_NAME)
@@ -166,27 +263,42 @@ def ensure_egress() -> 'docker.models.containers.Container':
             if c.status != 'running':
                 log.info('Egress-Proxy %s laeuft nicht (%s) — starte neu', EGRESS_NAME, c.status)
                 c.start()
+                c.reload()
+            # IP-Drift heilen: sitzt der Proxy nicht auf der gepinnten
+            # Adresse (Altbestand von vor dem Pinning, oder das Netz wurde
+            # zwischendurch neu angelegt), im laufenden Betrieb umhaengen —
+            # privoxy/dnscrypt binden 0.0.0.0, denen ist das neue Interface
+            # egal, kein Neustart noetig.
+            current = ((c.attrs.get('NetworkSettings', {}).get('Networks') or {})
+                       .get(LAN_NETWORK) or {}).get('IPAddress')
+            if pinned and current != pinned:
+                log.warning('Egress-Proxy sitzt im LAN auf %s statt der festen %s — haenge um',
+                            current, pinned)
+                client.api.disconnect_container_from_network(c.id, LAN_NETWORK)
+                _connect_egress_lan(c, pinned)
+            _check_egress_listening(c)
             return c
     except docker.errors.NotFound:
         pass
 
-    log.info('lege Egress-Proxy %s an (Tor + privoxy + dnscrypt)', EGRESS_NAME)
-    # Keine feste IP mehr (s. ensure_networks()) — normale containers.run()
-    # reicht, das zweite Netz kommt per connect_container_to_network() dazu.
+    log.info('lege Egress-Proxy %s an (Tor + privoxy + dnscrypt, LAN-IP %s)',
+             EGRESS_NAME, pinned or 'dynamisch')
+    # Erst nur ans WAN (normale Bridge, Internet fuer Tor/DoH) — das LAN kommt
+    # direkt danach mit der GEPINNTEN IP dazu (containers.run() kann selbst
+    # keine feste Adresse setzen, connect_container_to_network() schon).
     c = client.containers.run(
         EGRESS_IMAGE,
         name=EGRESS_NAME,
         hostname='egress',
         detach=True,
-        network=LAN_NETWORK,
+        network=WAN_NETWORK,
         restart_policy={'Name': 'unless-stopped'},
         mem_limit='256m',
         pids_limit=256,
         nano_cpus=1_000_000_000,
     )
-    # Zweites Netz (mit Internet) dazu: der Gast erreicht den Proxy ueber das
-    # interne LAN, der Proxy das Internet ueber das WAN.
-    client.api.connect_container_to_network(c.id, WAN_NETWORK)
+    _connect_egress_lan(c, pinned)
+    _check_egress_listening(c)
     return c
 
 
@@ -259,16 +371,30 @@ def spawn_guest_container() -> 'docker.models.containers.Container':
         # Gast wird GENAU EINMAL daraus neu angelegt. (Kalter Build-Cache
         # zaehlt dabei als Aenderung: seltener, verschmerzbarer Neuaufbau
         # statt stillem Veralten.)
-        locked = (container.attrs.get('Image') == guest_image.id) and nets == {LAN_NETWORK}
+        #
+        # ZUSAETZLICH muss die beim ANLEGEN eingebrannte Proxy-/DNS-Adresse
+        # noch auf den Egress-Proxy zeigen (env und dns=[...] sind an einem
+        # existierenden Container unveraenderbar). Genau das war 2026-07 live
+        # kaputt: der Egress bekam nach einem Netz-Umbau eine neue IP, der
+        # Gast zeigte mit http_proxy=...10.89.7.3:8118 ins Leere — apt und
+        # LibreWolf liefen in "Connection refused", der Gast galt aber als
+        # aktuell. Dank gepinnter Egress-IP (pinned_egress_ip) triggert
+        # dieser Check kuenftig hoechstens einmal, nicht bei jedem Reboot.
+        env_list = (container.attrs.get('Config') or {}).get('Env') or []
+        egress_ok = (f'http_proxy={proxy_url}' in env_list
+                     and ((container.attrs.get('HostConfig') or {}).get('Dns') or []) == [egress_ip])
+        locked = (container.attrs.get('Image') == guest_image.id) \
+            and nets == {LAN_NETWORK} and egress_ok
         if not locked:
             # Installierte Pakete/Dateien in der alten Kiste gehen beim
             # Neuaufbau verloren — bewusster Preis dafuer, dass Image-
             # Aenderungen wirklich ankommen.
             log.warning('Gast-Container %s passt nicht zum aktuellen Stand '
-                        '(Image %s, erwartet %s; Netze=%s) — wird EINMALIG neu angelegt.',
+                        '(Image %s, erwartet %s; Netze=%s; Egress-Adresse aktuell=%s) '
+                        '— wird EINMALIG neu angelegt.',
                         GUEST_CONTAINER_NAME,
                         (container.attrs.get('Image') or '?')[:19],
-                        guest_image.id[:19], sorted(nets))
+                        guest_image.id[:19], sorted(nets), egress_ok)
             container.remove(force=True)
         else:
             if container.status != 'running':
