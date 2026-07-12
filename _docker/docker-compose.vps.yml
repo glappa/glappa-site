@@ -164,7 +164,17 @@ services:
       context: displaygate
     image: glappa-displaygate:latest
     container_name: glappa-displaygate
+    # default MUSS hier ZUSAETZLICH zum internen Netz stehen:
+    # glappa-shell-lan ist internal=true, und fuer Container, die NUR an
+    # internen Netzen haengen, veroeffentlicht Docker KEINE Ports — die
+    # 127.0.0.1:8766/8767-Mappings unten wurden still ignoriert (leere
+    # PORTS-Spalte in `docker compose ps`), Apache lief beim Proxy auf
+    # 127.0.0.1:8767 ins Leere und lieferte eine HTML-Fehlerseite
+    # ("JSON.parse: unexpected character" in desktop.html, live gesehen).
+    # Ueber default kommen die localhost-Ports an den Host, ueber
+    # glappa-shell-lan erreicht displaygate den Gast (Xvnc :5901).
     networks:
+      - default
       - glappa-shell-lan
     ports:
       # NUR localhost — von aussen ausschliesslich ueber Apache, wie shellgate.

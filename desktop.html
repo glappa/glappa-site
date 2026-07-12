@@ -286,10 +286,27 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: password }),
       })
-        .then(function (r) { return r.json().then(function (data) { return { status: r.status, data: data }; }); })
+        /* Erst als Text lesen, dann selbst parsen: liefert der Proxy statt
+           displaygate eine HTML-Fehlerseite (Backend down/Port nicht
+           veroeffentlicht), gaebe r.json() nur ein kryptisches
+           "JSON.parse: unexpected character" — so gibt es stattdessen
+           eine Meldung, mit der man etwas anfangen kann. */
+        .then(function (r) {
+          return r.text().then(function (body) {
+            let data = null;
+            try { data = JSON.parse(body); } catch (e) {}
+            return { status: r.status, data: data };
+          });
+        })
         .then(function (res) {
-          if (!res.data || !res.data.ok) {
-            setMsg((res.data && res.data.msg) || 'Falsches Passwort.');
+          if (!res.data) {
+            setMsg('Desktop-Backend nicht erreichbar (HTTP ' + res.status + ') — displaygate offline?');
+            connecting = false;
+            gateBtn.disabled = false;
+            return;
+          }
+          if (!res.data.ok) {
+            setMsg(res.data.msg || 'Falsches Passwort.');
             connecting = false;
             gateBtn.disabled = false;
             pwInput.value = '';
