@@ -34,14 +34,25 @@
       padding: 10px 16px 40px;
     }
 
-    /* Gleiches Fenster-Aussehen wie terminal.html (kitty/Solus-Look) */
+    /* Gleiches Fenster-Aussehen wie terminal.html (kitty/Solus-Look).
+       Wie das Desktop-Fenster frei beweglich (Titelleiste ziehen,
+       Doppelklick = zuruecksetzen) und am Griff unten rechts in der
+       Groesse aenderbar — flex-Spalte, damit #termHost beim Aufziehen
+       mitwaechst (ResizeObserver unten passt xterm daran an). */
     #shellwin {
+      display: flex;
+      flex-direction: column;
+      min-width: 320px;
+      min-height: 240px;
       background: #191d21;
       border: 1px solid #2c3238;
       border-radius: 6px;
       box-shadow: 0 10px 34px rgba(0,0,0,0.6);
       overflow: hidden;
     }
+    /* Resize-Griff erst im Terminal-Betrieb — am Passwort-Gate gibt es
+       nichts, was man sinnvoll aufziehen koennte. */
+    #shellwin.term-active { resize: both; }
     .shell-titlebar {
       display: flex;
       align-items: center;
@@ -50,6 +61,8 @@
       background: #22272c;
       border-bottom: 1px solid #2c3238;
       user-select: none;
+      cursor: move;
+      touch-action: none;
     }
     .tb-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
     .tb-dot.r { background: #ff5f57; }
@@ -98,7 +111,6 @@
       overflow: hidden;
       resize: both;
     }
-    #desktopWin .shell-titlebar { cursor: move; touch-action: none; }
     #desktopWin .tb-btn { display: inline-block; }
     #dtScreen { flex: 1; min-height: 0; background: #000; }
 
@@ -138,11 +150,14 @@
     #gateMsg { margin-top: 14px; min-height: 1.4em; color: #ec6a6a; font-size: 0.9rem; }
     #gateMsg.info { color: #e2c178; }
 
-    /* ── Terminal ── */
+    /* ── Terminal ──
+       height:68vh ist nur die Startgroesse (flex-basis) — zieht man das
+       Fenster am Griff auf, fuellt flex:1 die neue Hoehe aus. */
     #termHost {
       display: none;
+      flex: 1 1 auto;
       height: 68vh;
-      min-height: 340px;
+      min-height: 0;
       padding: 8px;
     }
     .xterm { height: 100%; }
@@ -194,7 +209,7 @@
         <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
         <span class="tb-title" id="tbTitle">terminal-boot — Passwort erforderlich</span>
         <button class="tb-btn" id="btnDesktop"
-                title="VM-Desktop als bewegliches Fenster hier auf der Seite oeffnen — dort erscheinen GUI-Programme (librewolf, xeyes, xclock, …)">Desktop</button>
+                title="VM-Desktop als bewegliches Fenster hier auf der Seite oeffnen — oeffnet sich beim Start eines GUI-Programms (librewolf, xeyes, xclock, …) auch von selbst">Desktop</button>
       </div>
 
       <div id="gate">
@@ -215,16 +230,19 @@
     </div>
     <p class="shell-hint">
       GUI-Programme (librewolf, xeyes, xclock, …) oeffnen ihre Fenster auf dem
-      <strong>VM-Desktop</strong> — der Knopf &bdquo;Desktop&ldquo; oben rechts holt ihn
-      als bewegliches Fenster direkt auf diese Seite.
+      <strong>VM-Desktop</strong> — der erscheint beim Start automatisch als
+      bewegliches Fenster auf dieser Seite (der Knopf &bdquo;Desktop&ldquo; oben rechts
+      holt ihn auch jederzeit manuell).
       &middot; Nur auf <strong>home.glappa.de</strong> verfuegbar (echte VM auf dem VPS, nicht im Browser simuliert).
       &middot; <a href="terminal.html">Zurueck zum Uebungs-Terminal</a>
     </p>
   </div>
 
-  <!-- Schwebendes Desktop-Fenster — oeffnet der "Desktop"-Knopf in der
-       Terminal-Titelleiste. GUI-Programme der VM (xeyes, librewolf, …)
-       erscheinen hier als normale Openbox-Fenster (noVNC-Canvas). -->
+  <!-- Schwebendes Desktop-Fenster — oeffnet sich automatisch, sobald im
+       Terminal ein GUI-Programm gestartet wird (oder manuell ueber den
+       "Desktop"-Knopf in der Terminal-Titelleiste). GUI-Programme der VM
+       (xeyes, librewolf, …) erscheinen hier als normale Openbox-Fenster
+       (noVNC-Canvas). -->
   <div id="desktopWin">
     <div class="shell-titlebar" id="dtBar">
       <span class="tb-dot r"></span><span class="tb-dot y"></span><span class="tb-dot g"></span>
@@ -252,6 +270,9 @@
     const termHost  = document.getElementById('termHost');
     const tbTitle   = document.getElementById('tbTitle');
     const btnDesktop = document.getElementById('btnDesktop');
+    const shellwin  = document.getElementById('shellwin');
+    const shellBar  = shellwin.querySelector('.shell-titlebar');
+    const shellWrap = document.querySelector('.shell-wrap');
 
     /* ── Endpunkt bestimmen — dieselbe Logik wie terminal.html chatEndpoint():
        lokal (WSL/Dev) direkter Draht zu shellgate, auf home.glappa.de ueber
@@ -304,6 +325,7 @@
       termHost.style.display = 'block';
       tbTitle.textContent = 'terminal-boot — verbunden';
       btnDesktop.style.display = 'inline-block';
+      shellwin.classList.add('term-active');   // Resize-Griff freischalten
 
       term = new Terminal({
         cursorBlink: true,
@@ -331,6 +353,10 @@
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'input', data: data }));
         }
+        /* Enter gedrueckt -> pruefen, ob die Zeile ein GUI-Programm
+           startet (Details bei maybeAutoOpenDesktop unten). \n faengt
+           Sonderwege ab, die Enter als Newline liefern (IME/insertText). */
+        if (/[\r\n]/.test(data)) maybeAutoOpenDesktop();
       });
       term.onResize(function (size) {
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -341,6 +367,14 @@
       window.addEventListener('resize', function () {
         if (fitAddon) fitAddon.fit();
       });
+      /* Zieht man das Fenster am Resize-Griff auf, waechst #termHost per
+         flex mit — der Observer passt Zeilen/Spalten von xterm daran an
+         (window-resize allein sieht das nicht). */
+      if (window.ResizeObserver) {
+        new ResizeObserver(function () {
+          if (fitAddon) fitAddon.fit();
+        }).observe(termHost);
+      }
     }
 
     function connect(password) {
@@ -475,7 +509,11 @@
       if (term) term.focus();
     }
 
-    function openDesktopWin() {
+    /* auto=true: Aufruf kam von der GUI-Erkennung, nicht vom Knopf —
+       dann bleibt der Fokus im Terminal (die Shell zeigt ja gerade den
+       naechsten Prompt bzw. die Ausgabe des gestarteten Programms). */
+    function openDesktopWin(auto) {
+      bringToFront(desktopWin);                          // auch wenn schon offen
       if (desktopWin.style.display === 'flex') return;   // schon offen
       const EPV = vncEndpoints();
       if (!EPV || !lastPw) return;
@@ -516,6 +554,10 @@
         rfb.resizeSession = false;
         rfb.addEventListener('connect', function () {
           dtTitle.textContent = 'VM-Desktop — Rechtsklick = Startmenue';
+          /* noVNC zieht beim Verbinden den Fokus auf seinen Canvas —
+             beim Auto-Oeffnen soll man aber im Terminal weitertippen
+             koennen (z.B. nach "librewolf &"). */
+          if (auto && term) term.focus();
         });
         rfb.addEventListener('disconnect', function () {
           if (!rfb) return;                // Schliessen-Knopf war der Ausloeser
@@ -529,34 +571,123 @@
       });
     }
 
-    btnDesktop.addEventListener('click', openDesktopWin);
+    /* click-Event NICHT direkt als Handler durchreichen — es wuerde als
+       truthy `auto`-Argument in openDesktopWin landen. */
+    btnDesktop.addEventListener('click', function () { openDesktopWin(false); });
     dtClose.addEventListener('click', closeDesktopWin);
+
+    /* ── GUI-Start automatisch erkennen ──────────────────────────────
+       Beim Druecken von Enter steht die Eingabezeile bereits im xterm-
+       Puffer — inklusive History-Recall (Pfeil hoch) und Tab-Vervoll-
+       staendigung, denn geprueft wird, was die Shell ECHOT, nicht die
+       rohen Tastendruecke. Zeile lesen, Prompt abschneiden, Kommando-
+       woerter gegen die Liste bekannter GUI-Programme pruefen — Treffer
+       holt das Desktop-Fenster automatisch nach vorn, ohne dass man den
+       Knopf "Desktop" druecken muss. Bewusst nur eine Heuristik: per apt
+       nachinstallierte Exoten kennt die Liste nicht, dafuer gibt es den
+       Knopf weiterhin. */
+    const GUI_APPS = new Set([
+      // vorinstalliert (shellvm/Dockerfile): librewolf + firefox-Alias,
+      // xterm, x11-apps
+      'librewolf', 'firefox', 'xterm',
+      'xeyes', 'xclock', 'xcalc', 'xmessage', 'xlogo', 'xmag', 'xman',
+      'xload', 'xedit', 'xfontsel', 'xkill', 'xdg-open',
+      // gaengige Kandidaten fuer "sudo apt install …"
+      'chromium', 'chromium-browser', 'gimp', 'mousepad', 'gedit',
+      'geany', 'leafpad', 'pcmanfm', 'thunar', 'nautilus', 'feh',
+      'mpv', 'vlc', 'galculator', 'xarchiver', 'lxterminal', 'obconf',
+    ]);
+    // Praefixe, hinter denen das eigentliche Kommando erst noch kommt
+    const CMD_WRAPPERS = new Set(['sudo', 'nohup', 'exec', 'time', 'setsid', 'env', 'command']);
+
+    function hasGuiCommand(cmdline) {
+      // Segmente: "xeyes & xclock", "sleep 1; librewolf", "a && b", "a | b"
+      const segs = cmdline.split(/[;|&]+/);
+      for (let s = 0; s < segs.length; s++) {
+        const toks = segs[s].trim().split(/\s+/);
+        for (let i = 0; i < toks.length; i++) {
+          const t = toks[i];
+          if (!t) continue;
+          if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue;   // VAR=wert-Praefix
+          if (CMD_WRAPPERS.has(t)) continue;                  // sudo, nohup, …
+          if (t.charAt(0) === '-') continue;                  // Optionen der Wrapper
+          if (GUI_APPS.has(t.split('/').pop())) return true;  // auch /usr/bin/xeyes
+          break;   // erstes echtes Kommandowort ist kein GUI-Programm -> naechstes Segment
+        }
+      }
+      return false;
+    }
+
+    const PROMPT_RE = /^[^@\s]+@[^:\s]+:[^#$]*[#$]\s?(.*)$/;
+
+    /* Logische Zeile ab Pufferindex y lesen — umgebrochene (gewrappte)
+       Fortsetzungszeilen gehoeren mit dazu — und auf GUI-Start pruefen. */
+    function checkLineForGui(y) {
+      if (!term) return;
+      const buf = term.buffer.active;
+      let text = '';
+      for (let line = buf.getLine(y); line; line = buf.getLine(++y)) {
+        if (text && !line.isWrapped) break;
+        text += line.translateToString(true);
+      }
+      const m = text.match(PROMPT_RE);
+      if (m && hasGuiCommand(m[1])) openDesktopWin(true);
+    }
+
+    function maybeAutoOpenDesktop() {
+      /* Alternate Screen (htop, nano, …) heisst: Enter ging an ein
+         Vollbildprogramm, nicht an den Shell-Prompt — nichts pruefen. */
+      if (!term || term.buffer.active.type !== 'normal') return;
+      const buf = term.buffer.active;
+      let y = buf.baseY + buf.cursorY;
+      while (y > 0 && buf.getLine(y) && buf.getLine(y).isWrapped) y--;
+      /* Zweimal pruefen: sofort (beim normalen Tippen ist das Echo der
+         Zeichen laengst da) UND nach kurzer Frist nochmal dieselbe
+         Zeile — beim Einfuegen/Blitz-Tippen haengt das Echo der letzten
+         Zeichen noch im WebSocket-Roundtrip. Der Zeilenindex wird JETZT
+         festgehalten, denn nach dem Enter wandert der Cursor weiter. */
+      checkLineForGui(y);
+      setTimeout(function () { checkLineForGui(y); }, 250);
+    }
+
+    /* ── Fenster nach vorn holen ─────────────────────────────────────
+       Klick (oder Auto-Oeffnen) hebt das jeweilige Fenster ueber das
+       andere. Beim Terminal muss der z-index auf .shell-wrap sitzen:
+       die bildet mit z-index:1 einen eigenen Stacking-Context, innerhalb
+       dessen kaeme #shellwin nie ueber das position:fixed-Desktop-Fenster. */
+    let zTop = 60;   // Startwert = z-index von #desktopWin im CSS
+    function bringToFront(el) { zTop += 1; el.style.zIndex = String(zTop); }
+    shellwin.addEventListener('pointerdown', function () { bringToFront(shellWrap); });
+    desktopWin.addEventListener('pointerdown', function () { bringToFront(desktopWin); });
 
     /* Verschieben — exakt das Muster aus terminal.html: Titelleiste
        ziehen (Pointer-Capture), Doppelklick setzt auf die Startposition
        zurueck. transform statt left/top: kein Layout-Reflow, und das
-       CSS-resize-Handle unten rechts funktioniert unabhaengig weiter. */
-    (function () {
+       CSS-resize-Handle unten rechts funktioniert unabhaengig weiter.
+       Gilt fuer BEIDE Fenster: Terminal und VM-Desktop. */
+    function makeDraggable(win, bar, ignoreBtn) {
       let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
-      dtBar.addEventListener('pointerdown', function (e) {
-        if (e.target === dtClose) return;   // Schliessen-Klick ist kein Drag
+      bar.addEventListener('pointerdown', function (e) {
+        if (e.target === ignoreBtn) return;   // Knopf-Klick ist kein Drag
         dragging = true;
         sx = e.clientX - ox; sy = e.clientY - oy;
-        try { dtBar.setPointerCapture(e.pointerId); } catch (err) {}
+        try { bar.setPointerCapture(e.pointerId); } catch (err) {}
         e.preventDefault();
       });
-      dtBar.addEventListener('pointermove', function (e) {
+      bar.addEventListener('pointermove', function (e) {
         if (!dragging) return;
         ox = e.clientX - sx; oy = e.clientY - sy;
-        desktopWin.style.transform = 'translate(' + ox + 'px,' + oy + 'px)';
+        win.style.transform = 'translate(' + ox + 'px,' + oy + 'px)';
       });
       function stopDrag() { dragging = false; }
-      dtBar.addEventListener('pointerup', stopDrag);
-      dtBar.addEventListener('pointercancel', stopDrag);
-      dtBar.addEventListener('dblclick', function () {
-        ox = 0; oy = 0; desktopWin.style.transform = '';
+      bar.addEventListener('pointerup', stopDrag);
+      bar.addEventListener('pointercancel', stopDrag);
+      bar.addEventListener('dblclick', function () {
+        ox = 0; oy = 0; win.style.transform = '';
       });
-    })();
+    }
+    makeDraggable(desktopWin, dtBar, dtClose);
+    makeDraggable(shellwin, shellBar, btnDesktop);
 
     /* Auto-Connect mit dem aus terminal.html mitgebrachten Passwort — das
        manuelle Formular bleibt dabei komplett unsichtbar. */
