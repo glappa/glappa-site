@@ -142,7 +142,9 @@ _docker/
 ├── searxng/
 │   └── settings.yml           # SearXNG-Config (secret_key wird automatisch gesetzt)
 ├── searxng-static/
-│   ├── glappa-style.css       # 90er-Style-Override (wird injiziert)
+│   ├── glappa-style.css       # 90er-Retro-Theme, Default (wird injiziert)
+│   ├── glappa-clean.css       # Cleane Themes: Dunkel + Hell (wird injiziert)
+│   ├── glappa-theme.js        # Design-Umschalter (localStorage) + Panel auf /preferences
 │   └── glappa-search.js       # Dateiformat-Filter fuer Bilder-Suche
 ├── run-search-local.sh              # LOKALES Testen (kein VPS/Domain/TLS)
 ├── docker-compose.search-local.yml  # searxng + nginx-Proxy nur lokal

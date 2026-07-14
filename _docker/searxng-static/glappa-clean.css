@@ -1,0 +1,207 @@
+/* glappa-clean.css — cleane Looks (Dunkel/Hell) fuer search.glappa.de.
+ *
+ * Gegenstueck zu glappa-style.css (90er-Retro). Wird IMMER mit injiziert,
+ * ist aber ohne html[data-glappa-theme="dark"|"light"] komplett wirkungslos
+ * — das Attribut setzt glappa-theme.js anhand von localStorage. Ohne
+ * JavaScript bleibt daher alles beim Retro-Default.
+ *
+ * Grundidee: die cleanen Modi nutzen SearXNGs NATIVES simple-theme —
+ * glappa-theme.js schaltet die html-Klasse theme_dark/theme_light um, damit
+ * die eingebaute Palette (auch Einstellungsseite, Dialoge, Tabellen) passt.
+ * Diese Datei ergaenzt nur:
+ *   1. Styling fuer die injizierten Glappa-Extras, die sonst nackt
+ *      daherkaemen: HOME-Button, Dateiformat-Filter, Design-Panel.
+ *   2. Fuer HELL eine Absicherung der wichtigsten Farbvariablen/Flaechen,
+ *      falls ein SearXNG-Update die theme_light-Klasse mal umbenennt
+ *      (der Server rendert default dark, siehe settings.yml simple_style).
+ */
+
+/* ── Farb-Schema-Basis ─────────────────────────────────────────── */
+html[data-glappa-theme="dark"]  { color-scheme: dark; }
+html[data-glappa-theme="light"] { color-scheme: light; }
+
+/* ── HELL: Absicherung der Kern-Palette ──────────────────────────
+ * Greift zusaetzlich zur nativen theme_light-Klasse. Werte bewusst nah am
+ * nativen Light-Look, damit sich beide Quellen nie sichtbar widersprechen. */
+html[data-glappa-theme="light"] {
+  --color-base-background: #fafbfc !important;
+  --color-base-font: #1f2328 !important;
+  --color-header-background: #f2f4f7 !important;
+  --color-toolbar-background: #fafbfc !important;
+  --color-footer-background: #f2f4f7 !important;
+  --color-result-background: #ffffff !important;
+  --color-result-link-font: #1a4fba !important;
+  --color-result-link-visited-font: #7d3bbd !important;
+  --color-result-url-font: #0b7a3e !important;
+  --color-result-description-font: #474d56 !important;
+  --color-search-background: #ffffff !important;
+  --color-search-border: #c6ccd4 !important;
+  --color-search-font: #1f2328 !important;
+}
+
+/* Dominante Flaechen hell erzwingen (harmlos, wenn native Light eh aktiv). */
+html[data-glappa-theme="light"],
+html[data-glappa-theme="light"] body {
+  background: #fafbfc !important;
+  color: #1f2328 !important;
+}
+html[data-glappa-theme="light"] #q,
+html[data-glappa-theme="light"] .search_box input[type="search"],
+html[data-glappa-theme="light"] .search_box input[type="text"] {
+  background: #ffffff !important;
+  color: #1f2328 !important;
+}
+
+/* ── HOME-Button (injiziert vor </body>) ─────────────────────────
+ * Im Retro-Look sitzt er oben links; die cleanen Modi haben dort auf der
+ * Ergebnisseite das SearXNG-Logo -> unten links, als dezente Pille. */
+html[data-glappa-theme="dark"] #glappa-home,
+html[data-glappa-theme="light"] #glappa-home {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+html[data-glappa-theme="dark"] #glappa-home {
+  background: rgba(40, 42, 50, 0.94);
+  color: #e6e8ee;
+  border-color: #4a4d57;
+}
+html[data-glappa-theme="dark"] #glappa-home:hover,
+html[data-glappa-theme="dark"] #glappa-home:focus {
+  background: #34373f;
+  border-color: #767b88;
+}
+html[data-glappa-theme="light"] #glappa-home {
+  background: #ffffff;
+  color: #333333;
+  border-color: #c6ccd4;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+html[data-glappa-theme="light"] #glappa-home:hover,
+html[data-glappa-theme="light"] #glappa-home:focus {
+  background: #eef1f5;
+  border-color: #9aa2ad;
+}
+/* sehr schmale Schirme: nur das Haus-Icon, Text weg (wie im Retro-Look) */
+@media (max-width: 460px) {
+  html[data-glappa-theme="dark"] #glappa-home .ghome-text,
+  html[data-glappa-theme="light"] #glappa-home .ghome-text { display: none; }
+}
+
+/* ── Dateiformat-Filter (Bilder-Suche, injiziert via glappa-search.js) ──
+ * Nur sauber einreihen — Farben/Optik kommen vom nativen Theme. */
+html[data-glappa-theme="dark"] .glappa-format-filter,
+html[data-glappa-theme="light"] .glappa-format-filter,
+html[data-glappa-theme="dark"] .glappa-format-label,
+html[data-glappa-theme="light"] .glappa-format-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+html[data-glappa-theme="dark"] .glappa-format-count,
+html[data-glappa-theme="light"] .glappa-format-count {
+  font-size: 0.85em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+/* ── Design-Panel (/preferences, injiziert via glappa-theme.js) ── */
+html[data-glappa-theme="dark"] .glappa-theme-panel,
+html[data-glappa-theme="light"] .glappa-theme-panel {
+  margin: 1rem auto;
+  padding: 12px 16px 16px;
+  max-width: 60rem;
+  border: 1px solid;
+  border-radius: 10px;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel {
+  background: #26282f;
+  border-color: #45484f;
+  color: #e6e8ee;
+}
+html[data-glappa-theme="light"] .glappa-theme-panel {
+  background: #ffffff;
+  border-color: #d5dae1;
+  color: #1f2328;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel legend,
+html[data-glappa-theme="light"] .glappa-theme-panel legend {
+  padding: 0 8px;
+  font-weight: 700;
+  font-size: 1.05em;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-hint,
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-hint {
+  margin: 2px 0 12px;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-options,
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option,
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-option {
+  flex: 1 1 200px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option {
+  background: #1e2026;
+  border-color: #45484f;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option:hover {
+  border-color: #767b88;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option.gt-active {
+  background: rgba(70, 130, 220, 0.18);
+  border-color: #7ab1ff;
+}
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-option {
+  background: #fafbfc;
+  border-color: #d5dae1;
+}
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-option:hover {
+  border-color: #9aa2ad;
+}
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-option.gt-active {
+  background: #eaf1ff;
+  border-color: #2563eb;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-icon,
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-icon {
+  font-size: 1.5em;
+  line-height: 1;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-text,
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+html[data-glappa-theme="dark"] .glappa-theme-panel .gt-desc,
+html[data-glappa-theme="light"] .glappa-theme-panel .gt-desc {
+  font-size: 0.8em;
+  opacity: 0.7;
+}

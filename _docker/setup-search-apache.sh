@@ -218,18 +218,21 @@ ok "Module aktiv"
 sudo mkdir -p /var/www/html/.well-known/acme-challenge
 sudo chown -R www-data:www-data /var/www/html/.well-known
 
-# Statische Assets: glappa-style.css (90er Override) + glappa-search.js
-# (Dateiformat-Filter fuer die Bilder-Suche). Beide werden per mod_substitute
-# in jede SearXNG-HTML-Response injiziert.
+# Statische Assets, die per mod_substitute in jede SearXNG-HTML-Response
+# injiziert werden:
+#   glappa-style.css  90er-Retro-Theme (Default)
+#   glappa-clean.css  cleane Themes (Dunkel + Hell)
+#   glappa-theme.js   Design-Umschalter (localStorage) + Panel auf /preferences
+#   glappa-search.js  Dateiformat-Filter fuer die Bilder-Suche
 sudo mkdir -p /var/www/search-static
-if [ -f "$PROJECT/searxng-static/glappa-style.css" ]; then
-    sudo cp "$PROJECT/searxng-static/glappa-style.css" /var/www/search-static/
-    ok "glappa-style.css nach /var/www/search-static/ deployed"
-fi
-if [ -f "$PROJECT/searxng-static/glappa-search.js" ]; then
-    sudo cp "$PROJECT/searxng-static/glappa-search.js" /var/www/search-static/
-    ok "glappa-search.js nach /var/www/search-static/ deployed"
-fi
+for asset in glappa-style.css glappa-clean.css glappa-theme.js glappa-search.js; do
+    if [ -f "$PROJECT/searxng-static/$asset" ]; then
+        sudo cp "$PROJECT/searxng-static/$asset" /var/www/search-static/
+        ok "$asset nach /var/www/search-static/ deployed"
+    else
+        warn "FEHLT: $PROJECT/searxng-static/$asset — Theme-Umschalter braucht alle 4 Assets"
+    fi
+done
 sudo chown -R www-data:www-data /var/www/search-static
 
 # ── 5) Initialer :80-only vhost (fuer ACME) ────────────────────────
