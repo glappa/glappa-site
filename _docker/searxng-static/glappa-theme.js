@@ -64,10 +64,29 @@
     return m ? m[1] : null;
   }
 
-  /* Theme scharf schalten: data-Attribut + native Theme-Klasse setzen und die
-   * beiden injizierten Stylesheets per .disabled umschalten. Laeuft einmal
-   * synchron im <head> (vor dem ersten Paint) und danach bei jedem Wechsel
-   * im Design-Panel (sofort, ohne Reload). */
+  /* Ein injiziertes Stylesheet an-/abschalten — BULLETPROOF ueber drei Wege
+   * gleichzeitig: IDL-Property, disabled-Content-Attribut UND media-Attribut.
+   * Grund (Live-Bug 2026-07-14, Firefox): .disabled allein geht verloren,
+   * wenn es gesetzt wird, waehrend das Stylesheet noch LAEDT — lokal (0ms
+   * Latenz) nie reproduzierbar, live mit echter Netz-Latenz schon. Das
+   * media-Attribut ("not all" = aus, "all" = an) wird dagegen von jeder
+   * Engine in jedem Ladezustand neu ausgewertet. */
+  function setSheet(link, on) {
+    if (!link) { return; }
+    link.disabled = !on;
+    if (on) {
+      link.removeAttribute("disabled");
+      link.setAttribute("media", "all");
+    } else {
+      link.setAttribute("disabled", "");
+      link.setAttribute("media", "not all");
+    }
+  }
+
+  /* Theme scharf schalten: data-Attribut + native Theme-Klasse setzen und
+   * die beiden injizierten Stylesheets umschalten. Laeuft einmal synchron
+   * im <head> (vor dem ersten Paint) und danach bei jedem Wechsel im
+   * Design-Panel (sofort, ohne Reload). */
   function applyMode(mode) {
     var root = document.documentElement;
     root.setAttribute("data-glappa-theme", mode);
@@ -86,10 +105,8 @@
       .trim() + " theme-" + native + " theme_" + native;
     root.style.colorScheme = native; /* native Form-Controls + Scrollbars */
 
-    var retroCss = document.getElementById("glappa-css-retro");
-    var cleanCss = document.getElementById("glappa-css-clean");
-    if (retroCss) { retroCss.disabled = (mode !== "retro"); }
-    if (cleanCss) { cleanCss.disabled = (mode === "retro"); }
+    setSheet(document.getElementById("glappa-css-retro"), mode === "retro");
+    setSheet(document.getElementById("glappa-css-clean"), mode !== "retro");
   }
 
   /* ── Design-Panel auf der Einstellungsseite (/preferences) ──────────── */
