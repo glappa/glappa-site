@@ -37,7 +37,7 @@
   --color-result-link-font:#00ffff !important;
   --color-result-link-visited-font:#ffff00 !important;
   --color-result-url-font:#ff00ff !important;
-  --color-result-description-font:#cccccc !important;
+  --color-result-description-font:#e8e8ea !important;
   --color-search-background:#000 !important;
   --color-search-border:var(--neon-cyan) !important;
   --color-search-font:var(--neon-green) !important;
@@ -153,7 +153,8 @@ input[type="text"],
   font-family: var(--font-mono) !important;
   font-size: 1.1em !important;
   border: 3px inset #888 !important;
-  text-shadow: 0 0 6px var(--neon-green);
+  /* Glow nur als Hauch — volle 6px machen den Eingabetext unscharf. */
+  text-shadow: 0 0 5px rgba(0, 255, 0, 0.45);
   caret-color: var(--neon-green) !important;
   padding: 8px 12px !important;
   letter-spacing: 1px !important;
@@ -166,7 +167,7 @@ input[type="text"]:focus,
   outline: none !important;
 }
 input::placeholder {
-  color: #2a5a2a !important;
+  color: #3f9c3f !important;   /* dunkles Neon-Gruen, aber wirklich lesbar */
 }
 
 /* ── Buttons (Submit, Filter) ────────────────────────────────── */
@@ -328,7 +329,7 @@ label.tooltips,
 }
 .result_content, .content, .result p {
   font-size: 1.05rem !important;
-  line-height: 1.5 !important;
+  line-height: 1.55 !important;
 }
 .result_url, .url, .result .url {
   font-size: 0.95rem !important;
@@ -349,6 +350,16 @@ footer, .footer, #footer {
   align-items: center !important;
   justify-content: center !important;
   padding: 6px 10px !important;
+}
+
+/* SearXNG versteckt den Clear-Button per Klasse .empty, solange das
+ * Suchfeld leer ist. Unser display:inline-flex oben wuerde ihn sonst als
+ * LEEREN pinken Kasten erzwingen (genau der Bug auf der Startseite).
+ * .empty muss deshalb IMMER gewinnen — beim Tippen entfernt SearXNGs JS
+ * die Klasse und der Button erscheint mit ×-Icon. */
+#clear_search.empty,
+.clear_search.empty {
+  display: none !important;
 }
 
 /* Fallback fuer Clear-Button: falls Icon fehlt, zeige ein "×".
@@ -499,6 +510,19 @@ select.safesearch {
   flex: 0 0 auto !important;
   text-overflow: ellipsis !important;
   overflow: hidden !important;
+  /* Retro-Optik wie das Suchfeld: vorher transparenter BG + Comic-Font,
+   * auf dem Sternenfeld schlecht lesbar. */
+  background: #000 !important;
+  color: var(--neon-green) !important;
+  border: 2px inset #777 !important;
+  font-family: var(--font-mono) !important;
+  padding: 3px 6px !important;
+  cursor: pointer !important;
+}
+#search .search_filters select option,
+.search_filters select option {
+  background: #000 !important;
+  color: var(--neon-green) !important;
 }
 
 /* Sprachauswahl speziell: die Sprachliste hat SEHR lange Options, dadurch
@@ -611,7 +635,8 @@ article.result:hover,
 .result a,
 article.result h3 a {
   color: var(--neon-cyan) !important;
-  text-shadow: 0 0 5px var(--neon-cyan);
+  /* Halo statt Vollglow: rgba-Schatten laesst die Glyphen scharf. */
+  text-shadow: 0 0 7px rgba(0, 255, 255, 0.4);
   font-family: var(--font-display) !important;
   font-weight: bold !important;
   text-decoration: none !important;
@@ -620,48 +645,67 @@ article.result h3 a {
 .result_header a:visited,
 article.result a:visited {
   color: var(--neon-yellow) !important;
-  text-shadow: 0 0 5px var(--neon-yellow);
+  text-shadow: 0 0 7px rgba(255, 255, 0, 0.35);
 }
 .result h3 a:hover,
 article.result a:hover {
   text-decoration: underline !important;
   color: var(--neon-pink) !important;
-  text-shadow: 0 0 8px var(--neon-pink) !important;
+  text-shadow: 0 0 8px rgba(255, 0, 255, 0.55) !important;
 }
 
-/* Result-URL */
+/* Result-URL — aufgehelltes Pink: reines #f0f ist auf Schwarz zu dunkel
+ * fuer die kleine Mono-Schrift. */
 .result_url,
 .url,
 .result .url {
-  color: var(--neon-pink) !important;
+  color: #ff66ff !important;
   font-family: var(--font-mono) !important;
-  font-size: 0.85em !important;
+  font-size: 0.9em !important;
   word-break: break-all;
 }
 
-/* Result-Content */
+/* Result-Content — heller + luftiger als vorher (Lesbarkeit),
+ * Werte bewusst identisch mit dem Lesbarkeits-Block weiter oben. */
 .result_content,
 .content,
 .result p {
-  color: #ddd !important;
+  color: #e8e8ea !important;
   font-family: var(--font-display) !important;
-  font-size: 0.95em !important;
-  line-height: 1.4 !important;
+  font-size: 1.05rem !important;
+  line-height: 1.55 !important;
 }
 
-/* ── Tabs (Allgemein, Bilder, Videos, etc.) ─────────────────── */
+/* Suchbegriff-Hervorhebung in den Beschreibungen: neon-gelb statt
+ * default-weiss — springt ins Auge, bleibt aber scharf (kein Glow). */
+.result .highlight,
+.result .content .highlight,
+.result_content .highlight {
+  color: var(--neon-yellow) !important;
+  font-weight: bold !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+
+/* ── Tabs (Allgemein, Bilder, Videos, etc.) ───────────────────
+ * ACHTUNG DOM-Wechsel: neuere SearXNG-Versionen rendern Kategorien als
+ * <button class="category category_button [selected]"> — NICHT mehr als
+ * input+label. `.category` sitzt dabei AUF dem Button selbst, darum darf
+ * die Transparent-Regel nur noch Wrapper-DIVs (altes DOM) treffen, sonst
+ * wird der Button durchsichtig (Bug: schwarzer Kasten). */
 #categories,
 .tabs,
 .tabs a,
-.category {
+div.category {
   background: transparent !important;
 }
 
 #categories label,
 .tabs label,
 .category label,
+html body #categories button.category_button,
 .tab {
-  background: #000 !important;
+  background: rgba(0, 0, 0, 0.78) !important;
   border: 2px outset var(--neon-cyan) !important;
   color: var(--neon-cyan) !important;
   font-family: var(--font-display) !important;
@@ -669,12 +713,36 @@ article.result a:hover {
   padding: 4px 12px !important;
   margin: 2px !important;
   cursor: pointer !important;
+  box-shadow: 0 0 7px rgba(0, 255, 255, 0.35) !important;
+  text-shadow: none !important;
 }
+
+/* Hover: gelb — Text + Icon dabei EXPLIZIT schwarz (die cyan-Regeln oben
+ * haben hohe Spezifitaet, ein einfaches :hover wuerde verlieren). */
+html body #categories button.category_button:hover,
+html body #categories label:hover {
+  background: var(--neon-yellow) !important;
+  border-color: var(--neon-yellow) !important;
+  box-shadow: 0 0 12px var(--neon-yellow) !important;
+}
+html body #categories button.category_button:hover .category_name,
+html body #categories button.category_button:hover svg,
+html body #categories label:hover .category_name,
+html body #categories label:hover svg {
+  color: #000 !important;
+}
+
+/* AKTIV — altes DOM (input:checked+label) UND neues DOM (button.selected):
+ * pinker BG + schwarzer Text. MUSS nach der Hover-Regel stehen (gleiche
+ * Spezifitaet -> Reihenfolge entscheidet), damit der aktive Tab beim
+ * Hovern pink bleibt statt gelb zu flackern. */
 #categories input:checked + label,
 .tabs input:checked + label,
+html body #categories button.category_button.selected,
 .tab.active {
   background: var(--neon-pink) !important;
   border-color: var(--neon-pink) !important;
+  border-style: inset !important;
   color: #000 !important;
   box-shadow: 0 0 10px var(--neon-pink) !important;
 }
@@ -758,7 +826,7 @@ aside {
 .engines, .engine_name {
   color: var(--neon-yellow) !important;
   font-family: var(--font-mono) !important;
-  font-size: 0.75em !important;
+  font-size: 0.8em !important;
   letter-spacing: 1px;
 }
 .engines span, .engine_name span {
@@ -873,7 +941,8 @@ article.result:not(.result-images),
   }
   #sidebar { order: 2 !important; }
   #categories label,
-  .search_categories label {
+  .search_categories label,
+  html body #categories button.category_button {
     font-size: 0.85em !important;
     padding: 4px 8px !important;
   }
