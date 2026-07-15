@@ -1014,77 +1014,19 @@ html body .detail img {
   #glappa-home { padding: 4px 7px !important; }
 }
 
-/* ── Design-Panel (/preferences, injiziert via glappa-theme.js) ──────
- * Der Theme-Umschalter (Retro / Dunkel / Hell) sitzt ganz oben auf der
- * Einstellungsseite. Hier der Retro-Look des Panels; die cleanen Modi
- * stylen es in glappa-clean.css. */
-.glappa-theme-panel {
-  border: 4px ridge var(--neon-cyan) !important;
-  background: rgba(0, 0, 0, 0.7) !important;
-  box-shadow: 0 0 18px var(--neon-cyan), inset 0 0 24px rgba(0, 255, 255, 0.12) !important;
-  margin: 16px auto !important;
-  padding: 12px 16px 16px !important;
-  max-width: 60rem !important;
-  border-radius: 0 !important;
-}
-.glappa-theme-panel legend {
-  font-family: var(--font-display) !important;
-  color: var(--neon-pink) !important;
-  text-shadow: 0 0 8px var(--neon-pink) !important;
-  font-size: 1.3em !important;
-  font-weight: bold !important;
-  letter-spacing: 0.08em !important;
-  padding: 0 10px !important;
-}
-.glappa-theme-panel .gt-hint {
-  color: var(--neon-yellow) !important;
-  font-family: var(--font-mono) !important;
-  font-size: 0.9em !important;
-  margin: 2px 0 12px !important;
-}
-.glappa-theme-panel .gt-options {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 10px !important;
-}
-.glappa-theme-panel .gt-option {
-  flex: 1 1 200px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  background: #000 !important;
+/* ── Design-Umschalter (/preferences, injiziert via glappa-theme.js) ──
+ * Kompaktes Dropdown in der nativen "Designstil"-Zeile. Die Grund-Optik
+ * erbt es von den anderen Einstellungs-Selects; hier nur ein dezenter
+ * Neon-Akzent, damit klar ist, dass das der Glappa-Schalter ist. */
+#glappa-theme-select {
   border: 2px outset var(--neon-cyan) !important;
+  background: #000 !important;
   color: var(--neon-cyan) !important;
-  padding: 10px 14px !important;
-  cursor: pointer !important;
+  font-family: var(--font-mono) !important;
   border-radius: 0 !important;
 }
-.glappa-theme-panel .gt-option:hover {
+#glappa-theme-select:focus,
+#glappa-theme-select:hover {
   border-color: var(--neon-yellow) !important;
   box-shadow: 0 0 10px var(--neon-yellow) !important;
-}
-.glappa-theme-panel .gt-option.gt-active {
-  background: var(--neon-pink) !important;
-  border-color: var(--neon-pink) !important;
-  border-style: inset !important;
-  color: #000 !important;
-  box-shadow: 0 0 12px var(--neon-pink) !important;
-}
-.glappa-theme-panel .gt-icon {
-  font-size: 1.5em !important;
-  line-height: 1 !important;
-}
-.glappa-theme-panel .gt-text {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 2px !important;
-}
-.glappa-theme-panel .gt-name {
-  font-family: var(--font-display) !important;
-  font-weight: bold !important;
-}
-.glappa-theme-panel .gt-desc {
-  font-family: var(--font-mono) !important;
-  font-size: 0.8em !important;
-  opacity: 0.85 !important;
 }

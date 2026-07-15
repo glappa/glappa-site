@@ -53,21 +53,24 @@ html[data-glappa-theme="light"] .search_box input[type="text"] {
 }
 
 /* ── HOME-Button (injiziert vor </body>) ─────────────────────────
- * Im Retro-Look sitzt er oben links; die cleanen Modi haben dort auf der
- * Ergebnisseite das SearXNG-Logo -> unten links, als dezente Pille. */
+ * Oben links, wie im Retro-Look (Besucher-Wunsch 2026-07-15). Auf dem
+ * Desktop passt die Pille VOR das SearXNG-Logo des Results-Headers
+ * (Logo beginnt erst bei x=101, verifiziert); auf schmalen Schirmen
+ * sitzt das Logo ganz links -> dort wird es ausgeblendet und die Pille
+ * (nur Haus-Icon) uebernimmt seinen Platz. */
 html[data-glappa-theme="dark"] #glappa-home,
 html[data-glappa-theme="light"] #glappa-home {
   position: fixed;
-  bottom: 14px;
-  left: 14px;
+  top: 8px;
+  left: 8px;
   z-index: 99999;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 15px;
+  gap: 5px;
+  padding: 4px 11px;
   border-radius: 999px;
   border: 1px solid;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
@@ -94,10 +97,17 @@ html[data-glappa-theme="light"] #glappa-home:focus {
   background: #eef1f5;
   border-color: #9aa2ad;
 }
-/* sehr schmale Schirme: nur das Haus-Icon, Text weg (wie im Retro-Look) */
-@media (max-width: 460px) {
+/* Schmale Schirme (natives Phone-Layout, gleicher Breakpoint wie SearXNG):
+ * das Results-Logo sitzt hier ganz oben links — ausblenden (visibility
+ * statt display, damit das Suchfeld nicht unter die Pille rutscht) und
+ * die Pille auf das Haus-Icon verkuerzen. */
+@media (max-width: 50em) {
   html[data-glappa-theme="dark"] #glappa-home .ghome-text,
   html[data-glappa-theme="light"] #glappa-home .ghome-text { display: none; }
+  html[data-glappa-theme="dark"] #glappa-home,
+  html[data-glappa-theme="light"] #glappa-home { padding: 4px 9px; }
+  html[data-glappa-theme="dark"] #search_logo,
+  html[data-glappa-theme="light"] #search_logo { visibility: hidden; }
 }
 
 /* ── Dateiformat-Filter (Bilder-Suche, injiziert via glappa-search.js) ──
@@ -118,90 +128,7 @@ html[data-glappa-theme="light"] .glappa-format-count {
   white-space: nowrap;
 }
 
-/* ── Design-Panel (/preferences, injiziert via glappa-theme.js) ── */
-html[data-glappa-theme="dark"] .glappa-theme-panel,
-html[data-glappa-theme="light"] .glappa-theme-panel {
-  margin: 1rem auto;
-  padding: 12px 16px 16px;
-  max-width: 60rem;
-  border: 1px solid;
-  border-radius: 10px;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel {
-  background: #26282f;
-  border-color: #45484f;
-  color: #e6e8ee;
-}
-html[data-glappa-theme="light"] .glappa-theme-panel {
-  background: #ffffff;
-  border-color: #d5dae1;
-  color: #1f2328;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel legend,
-html[data-glappa-theme="light"] .glappa-theme-panel legend {
-  padding: 0 8px;
-  font-weight: 700;
-  font-size: 1.05em;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-hint,
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-hint {
-  margin: 2px 0 12px;
-  font-size: 0.85em;
-  opacity: 0.75;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-options,
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option,
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-option {
-  flex: 1 1 200px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option {
-  background: #1e2026;
-  border-color: #45484f;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option:hover {
-  border-color: #767b88;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-option.gt-active {
-  background: rgba(70, 130, 220, 0.18);
-  border-color: #7ab1ff;
-}
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-option {
-  background: #fafbfc;
-  border-color: #d5dae1;
-}
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-option:hover {
-  border-color: #9aa2ad;
-}
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-option.gt-active {
-  background: #eaf1ff;
-  border-color: #2563eb;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-icon,
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-icon {
-  font-size: 1.5em;
-  line-height: 1;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-text,
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-html[data-glappa-theme="dark"] .glappa-theme-panel .gt-desc,
-html[data-glappa-theme="light"] .glappa-theme-panel .gt-desc {
-  font-size: 0.8em;
-  opacity: 0.7;
-}
+/* ── Design-Umschalter (/preferences, injiziert via glappa-theme.js) ──
+ * Kompaktes Dropdown IN der nativen "Designstil"-Zeile — Optik kommt
+ * komplett vom nativen Theme (das Select steht im selben .value-Container
+ * wie die anderen Einstellungs-Dropdowns). Hier ist nichts zu stylen. */
