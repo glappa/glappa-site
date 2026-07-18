@@ -1843,6 +1843,27 @@ SHORT_LOG_KEEP = 2000
 STATS_HASH = (os.environ.get('STATS_PASSWORD_HASH')
               or os.environ.get('SHELL_PASSWORD_HASH') or '').strip().lower()
 
+# ── GeoIP: IP -> Laendercode, komplett offline ────────────────────────
+# DB-IP Country Lite (mmdb) laedt der Dockerfile-Build nach /app/geoip.
+# Fehlt DB oder maxminddb (z.B. lokaler Dev ohne pip install), laeuft
+# alles weiter — nur eben ohne Land.
+try:
+    import maxminddb
+    _GEO_DB = maxminddb.open_database(
+        os.environ.get('GEOIP_DB', '/app/geoip/dbip-country-lite.mmdb'))
+except Exception:
+    _GEO_DB = None
+
+def _geo_country(ip: str):
+    """ISO-Laendercode ('DE') zu einer IP oder None — wirft nie."""
+    if not _GEO_DB or not ip:
+        return None
+    try:
+        rec = _GEO_DB.get(ip)
+        return ((rec or {}).get('country') or {}).get('iso_code')
+    except Exception:
+        return None
+
 def _short_load():
     try:
         with open(SHORT_FILE, 'r') as f:
@@ -1926,11 +1947,13 @@ def _short_log_click(code: str, url: str):
     """Haengt einen Klick als JSON-Zeile ans Log. Darf den Redirect NIE
     aufhalten — Fehler werden geschluckt. Trimmt das File, wenn es zu
     gross wird (Bots klicken auch)."""
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
     entry = {
         'ts':   datetime.now(_BERLIN_TZ).strftime('%Y-%m-%d %H:%M:%S'),
         'code': code,
         'url':  url,
-        'ip':   request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip(),
+        'ip':   ip,
+        'cc':   _geo_country(ip) or '',   # Laendercode, offline aufgeloest
         'ua':   (request.headers.get('User-Agent') or '')[:200],
         'ref':  (request.headers.get('Referer') or '')[:200],
     }
@@ -1972,6 +1995,7 @@ _STATS_CSS = (
     'td{padding:6px 8px;border-bottom:1px solid #1d2026;vertical-align:top;}'
     'tr:hover td{background:#16181d;}'
     'code{color:#6fd18c;font-family:Consolas,monospace;}'
+    '.fl{vertical-align:-1px;border-radius:2px;margin-right:5px;}'
     '.url{color:#e6e6e6;word-break:break-all;}'
     '.dim{color:#6c7178;}'
     '.num{text-align:right;font-variant-numeric:tabular-nums;}'
@@ -2029,13 +2053,28 @@ def short_stats():
                 h=int(e.get('hits') or 0),
                 lc=_esc(last_click.get(code) or '—')))
 
+    def _flag(cc):
+        # Flaggen-PNG von flagcdn (nur diese Admin-Seite laedt das, nicht
+        # die Besucher); ist das Icon nicht erreichbar, bleibt der
+        # ISO-Code als Text daneben trotzdem lesbar.
+        if not cc:
+            return '<span class="dim">—</span>'
+        low = _esc(cc.lower())
+        return ('<img class="fl" src="https://flagcdn.com/16x12/{l}.png" '
+                'srcset="https://flagcdn.com/32x24/{l}.png 2x" width="16" '
+                'height="12" alt="" loading="lazy">{u}'.format(l=low, u=_esc(cc)))
+
     click_rows = []
     for c in clicks[:150]:
+        # Alte Log-Zeilen (vor dem GeoIP-Feature) haben kein 'cc' —
+        # zur Anzeige nachschlagen, die DB gilt ja auch rueckwirkend.
+        cc = c.get('cc') or _geo_country(c.get('ip')) or ''
         click_rows.append(
             '<tr><td class="dim">{t}</td><td><code>/s/{c}</code></td>'
-            '<td>{ip}</td><td class="dim">{ref}</td><td class="dim">{ua}</td></tr>'.format(
+            '<td>{ip}</td><td>{fl}</td>'
+            '<td class="dim">{ref}</td><td class="dim">{ua}</td></tr>'.format(
                 t=_esc(c.get('ts') or '?'), c=_esc(c.get('code') or '?'),
-                ip=_esc(c.get('ip') or '?'),
+                ip=_esc(c.get('ip') or '?'), fl=_flag(cc),
                 ref=_esc(_cut(c.get('ref'), 40) or '—'),
                 ua=_esc(_cut(c.get('ua'), 60) or '—')))
 
@@ -2051,11 +2090,11 @@ def short_stats():
         '<h2>Links</h2><table><tr><th>Code</th><th>Ziel</th><th>Erstellt</th>'
         '<th>Klicks</th><th>Letzter Klick</th></tr>{lr}</table>'
         '<h2>Letzte Klicks</h2><table><tr><th>Zeit</th><th>Code</th><th>IP</th>'
-        '<th>Herkunft</th><th>Browser</th></tr>{cr}</table>'
+        '<th>Land</th><th>Herkunft</th><th>Browser</th></tr>{cr}</table>'
         '</main></body></html>'.format(
             n=len(links), h=total_hits, k=len(clicks),
             lr=''.join(link_rows) or '<tr><td colspan="5" class="dim">noch keine Links</td></tr>',
-            cr=''.join(click_rows) or '<tr><td colspan="5" class="dim">noch keine Klicks</td></tr>'))
+            cr=''.join(click_rows) or '<tr><td colspan="6" class="dim">noch keine Klicks</td></tr>'))
     resp = Response(page, mimetype='text/html')
     resp.headers['Cache-Control'] = 'no-store'
     return resp

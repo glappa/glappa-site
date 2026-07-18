@@ -7,3 +7,6 @@ gunicorn==23.0.0
 # IANA-Zeitzonen fuer zoneinfo (glappa-chat: Datum/Uhrzeit im System-Prompt).
 # Noetig auf Systemen ohne System-tzdata (Windows-Dev, manche Slim-Images).
 tzdata
+# GeoIP-Reader (Link-Kuerzer-Statistik: IP -> Laendercode, offline).
+# Die Datenbank selbst (DB-IP Country Lite) laedt der Dockerfile-Build.
+maxminddb

@@ -148,7 +148,7 @@ import json, subprocess, sys
 open("/downloads/shortlinks.log", "a").close()
 p = subprocess.Popen(["tail", "-n", "30", "-F", "/downloads/shortlinks.log"],
                      stdout=subprocess.PIPE, text=True)
-fmt = "%-19s  /s/%-6s  %-15s  -> %s"
+fmt = "%-19s  /s/%-6s  %-15s %-2s  -> %s"
 for line in p.stdout:
     line = line.strip()
     if not line:
@@ -159,7 +159,7 @@ for line in p.stdout:
         print(line)
         continue
     print(fmt % (e.get("ts", "?"), e.get("code", "?"),
-                 e.get("ip", "?"), e.get("url", "")[:70]))
+                 e.get("ip", "?"), e.get("cc") or "--", e.get("url", "")[:70]))
     extra = []
     if e.get("ua"):
         extra.append("Browser: " + e.get("ua")[:70])

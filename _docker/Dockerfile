@@ -37,6 +37,20 @@ WORKDIR /app
 COPY _docker/requirements.txt .
 RUN pip install --no-cache-dir --pre -r requirements.txt
 
+# GeoIP-Land-Datenbank (DB-IP Country Lite, CC-BY, ohne Registrierung) fuer
+# die Link-Kuerzer-Statistik (/s/stats): IP -> Laendercode, komplett OFFLINE —
+# keine Anfrage verlaesst zur Laufzeit den Server. Monats-URL: aktueller
+# Monat, Fallback Vormonat (die Datei erscheint jeweils am Monatsanfang).
+# Schlaegt der Download fehl, baut das Image TROTZDEM — app.py zeigt dann
+# schlicht kein Land (try/except beim Oeffnen).
+RUN mkdir -p /app/geoip && ( \
+      curl -fsSL "https://download.db-ip.com/free/dbip-country-lite-$(date +%Y-%m).mmdb.gz" -o /tmp/geo.mmdb.gz \
+      || curl -fsSL "https://download.db-ip.com/free/dbip-country-lite-$(date -d 'last month' +%Y-%m).mmdb.gz" -o /tmp/geo.mmdb.gz \
+    ) \
+ && gunzip -c /tmp/geo.mmdb.gz > /app/geoip/dbip-country-lite.mmdb \
+ && rm -f /tmp/geo.mmdb.gz \
+ || echo "WARNUNG: GeoIP-Download fehlgeschlagen — /s/stats zeigt kein Land."
+
 # Code und statische Seiten in den Container (Build-Context = Projektroot,
 # .dockerignore-Datei hier drueber haelt _docker selbst draussen)
 COPY . /app/glappa-site/
