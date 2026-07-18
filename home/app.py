@@ -2162,9 +2162,15 @@ PGP_FP_RE       = re.compile(r'[0-9A-F]{40}|[0-9A-F]{64}')  # v4- bzw. v6-Key-Fi
 PGP_MAX_ROOMS   = 200
 PGP_MAX_MEMBERS = 20
 PGP_MAX_MSGS    = 200              # pro Raum behalten (Ringpuffer)
-PGP_MAX_BYTES   = 512 * 1024       # Ciphertext-Summe pro Raum
-PGP_MAX_BODY    = 30000            # einzelne armored Nachricht
 PGP_MAX_KEY     = 12000            # armored Public Key
+# Dateien (Drag & Drop) sind auch nur armored PGP-Blobs — aber grosse.
+# Alles ueber PGP_INLINE_MAX wandert als eigene Datei nach PGP_FILES_DIR,
+# damit nicht jeder Heartbeat-Save das JSON samt Megabytes neu schreibt;
+# im JSON steht dann nur {fid, fsize} und /pgp/file/<fid> liefert den Blob.
+PGP_INLINE_MAX  = 12000                # bis hierhin wohnt der Blob im JSON
+PGP_MAX_FILE    = 10 * 1024 * 1024     # groesster armored Blob (~7 MB Rohdatei)
+PGP_ROOM_BYTES  = 40 * 1024 * 1024     # Blob-Summe je Raum (Texte + Dateien)
+PGP_FILES_DIR   = os.path.join(DOWNLOAD_DIR, 'pgpfiles')
 PGP_MAX_NAME    = 24
 PGP_MEMBER_TTL  = 300              # sek ohne Poll -> aus dem Roster
 PGP_ROOM_TTL    = 3 * 86400        # sek ohne Aktivitaet -> Raum geloescht
@@ -2182,6 +2188,19 @@ def _pgp_save(rooms):
         json.dump(rooms, f)
     os.replace(tmp, PGP_FILE)
 
+def _pgp_msg_bytes(m) -> int:
+    return len(m.get('body') or '') + int(m.get('fsize') or 0)
+
+def _pgp_del_file(m):
+    """Blob-Datei einer Nachricht mit entsorgen (falls sie eine hat)."""
+    fid = m.get('fid')
+    if not fid:
+        return
+    try:
+        os.remove(os.path.join(PGP_FILES_DIR, fid + '.asc'))
+    except OSError:
+        pass
+
 def _pgp_prune(rooms) -> bool:
     """Tote Raeume und Mitglieder ohne Heartbeat entsorgen. True = geaendert."""
     now = time.time()
@@ -2189,6 +2208,8 @@ def _pgp_prune(rooms) -> bool:
     for rname in list(rooms):
         room = rooms[rname]
         if now - (room.get('ts') or 0) > PGP_ROOM_TTL:
+            for m in room.get('msgs') or []:
+                _pgp_del_file(m)
             del rooms[rname]
             changed = True
             continue
@@ -2196,6 +2217,16 @@ def _pgp_prune(rooms) -> bool:
             if now - (room['keys'][fp].get('seen') or 0) > PGP_MEMBER_TTL:
                 del room['keys'][fp]
                 changed = True
+    # Waisen-Blobs wegraeumen (Crash zwischen Datei-Write und JSON-Save):
+    # alles, was kein Raum mehr referenziert und aelter als 1h ist.
+    try:
+        have = {m.get('fid') for room in rooms.values()
+                for m in room.get('msgs') or []}
+        for p in glob.glob(os.path.join(PGP_FILES_DIR, '*.asc')):
+            if os.path.basename(p)[:-4] not in have and now - os.path.getmtime(p) > 3600:
+                os.remove(p)
+    except OSError:
+        pass
     return changed
 
 def _pgp_roster(room):
@@ -2314,8 +2345,8 @@ def pgp_send():
     if not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp):
         return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
     if (not body.startswith('-----BEGIN PGP MESSAGE-----')
-            or len(body) > PGP_MAX_BODY):
-        return _cors_resp(jsonify({'error': 'Nur armored PGP-Nachrichten (max. 30 kB).'})), 400
+            or len(body) > PGP_MAX_FILE):
+        return _cors_resp(jsonify({'error': 'Nur armored PGP-Nachrichten (max. ~7 MB Datei).'})), 400
 
     now = time.time()
     with PGP_LOCK:
@@ -2327,20 +2358,46 @@ def pgp_send():
         room['seq'] += 1
         room['keys'][fp]['seen'] = now
         room['ts'] = now
-        room['msgs'].append({
-            'seq':  room['seq'],
+        entry = {
+            'seq': room['seq'],
             # bewusst nur minutengenau — sekundengenaue Zeitstempel braucht
             # niemand, und weniger Metadaten = weniger Korrelierbarkeit
-            'ts':   datetime.now(_BERLIN_TZ).strftime('%Y-%m-%d %H:%M'),
-            'fp':   fp,
-            'body': body,
-        })
-        # Ringpuffer: Anzahl UND Byte-Summe deckeln
-        room['msgs'] = room['msgs'][-PGP_MAX_MSGS:]
-        while len(room['msgs']) > 1 and sum(len(m['body']) for m in room['msgs']) > PGP_MAX_BYTES:
-            room['msgs'].pop(0)
+            'ts':  datetime.now(_BERLIN_TZ).strftime('%Y-%m-%d %H:%M'),
+            'fp':  fp,
+        }
+        if len(body) > PGP_INLINE_MAX:
+            # Datei-Blob: eigene Datei statt JSON (siehe Konstanten oben)
+            os.makedirs(PGP_FILES_DIR, exist_ok=True)
+            fid = secrets.token_hex(16)
+            with open(os.path.join(PGP_FILES_DIR, fid + '.asc'), 'w') as f:
+                f.write(body)
+            entry['fid'] = fid
+            entry['fsize'] = len(body)
+        else:
+            entry['body'] = body
+        room['msgs'].append(entry)
+        # Ringpuffer: Anzahl UND Byte-Summe deckeln — beim Rauswerfen die
+        # Blob-Dateien mit loeschen, sonst sammeln sich Leichen an
+        while len(room['msgs']) > PGP_MAX_MSGS or (
+                len(room['msgs']) > 1 and
+                sum(_pgp_msg_bytes(m) for m in room['msgs']) > PGP_ROOM_BYTES):
+            _pgp_del_file(room['msgs'].pop(0))
         _pgp_save(rooms)
         return _cors_resp(jsonify({'ok': True, 'seq': room['seq']}))
+
+# Blob-Abholung. GET mit zufaelliger 128-bit-ID: nicht erratbar, sagt nichts
+# ueber Raum/Absender aus, und /api/pgp/ steht eh nicht im Access-Log.
+# Inhalt ist ohnehin nur Ciphertext — ohne passenden Private Key wertlos.
+@Downloader.route('/pgp/file/<fid>')
+def pgp_file(fid: str):
+    if not re.fullmatch(r'[0-9a-f]{32}', fid):
+        return _cors_resp(jsonify({'error': 'Kaputte Datei-ID.'})), 400
+    path = os.path.join(PGP_FILES_DIR, fid + '.asc')
+    if not os.path.isfile(path):
+        return _cors_resp(jsonify({'error': 'Blob weg (abgelaufen oder aufgeraeumt).'})), 404
+    with open(path, 'r') as f:
+        data = f.read()
+    return _cors_resp(Response(data, mimetype='text/plain'))
 
 
 @Downloader.errorhandler(Exception)

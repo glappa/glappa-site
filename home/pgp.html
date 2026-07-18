@@ -111,6 +111,18 @@
     .msg .mname { font-weight: bold; }
     .msg .mbody { white-space: pre-wrap; word-break: break-word; margin-top: 1px; }
     .msg--locked .mbody { font-style: italic; }
+    /* Datei-Anhaenge (entschluesselt als Blob-URL gerendert) */
+    .msg .mbody img {
+      display: block;
+      max-width: min(280px, 100%);
+      max-height: 200px;
+      border-radius: 4px;
+      margin-top: 4px;
+      cursor: pointer;
+    }
+    .msg .mbody audio { display: block; width: min(300px, 100%); margin-top: 4px; }
+    .file-dl { font-size: 0.82em; display: inline-block; margin-top: 4px; word-break: break-all; }
+    .chat-box.drag { outline: 2px dashed currentColor; outline-offset: -6px; }
     .mbadge.ok { }
     .mbadge.warn { }
 
@@ -415,10 +427,12 @@
       <div class="chat-box" id="chatBox" aria-live="polite"></div>
       <div class="tool-row">
         <input type="text" id="msgInput" class="grow" maxlength="4000" placeholder="Nachricht &mdash; Enter zum Senden" autocomplete="off">
+        <button type="button" class="tool-btn tool-btn--mini" id="fileBtn" title="Datei senden (verschl&uuml;sselt)">&#128206;</button>
         <button type="button" class="tool-btn" id="sendBtn">Senden</button>
       </div>
+      <input type="file" id="fileInput" multiple style="display:none">
       <div class="tool-status" id="chatStatus" role="status" aria-live="polite"></div>
-      <p class="tool-hint">&#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (du warst beim Absenden nicht im Raum)</p>
+      <p class="tool-hint">Dateien (Bilder, Audio, alles): einfach in den Chat ziehen oder &#128206; &mdash; werden genauso Ende-zu-Ende verschl&uuml;sselt, max. 7 MB. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (du warst beim Absenden nicht im Raum)</p>
     </section>
 
   </main>
@@ -725,6 +739,27 @@
     }
 
     /* ── Nachrichten ────────────────────────────────────────────── */
+    /* Text UND Dateien sind dasselbe Format: ein armored PGP-Blob. Bei
+       Dateien steckt der Dateiname im Literal-Paket (also MIT verschluesselt
+       — der Server sieht ihn nie); daran erkennen wir sie nach dem
+       Entschluesseln. MIME-Typ wird aus der Endung geraten. */
+    const MIME = {
+      mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', opus: 'audio/ogg',
+      m4a: 'audio/mp4', flac: 'audio/flac',
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+      webp: 'image/webp',
+      txt: 'text/plain', pdf: 'application/pdf',
+    };
+    function mimeFor(name) {
+      const ext = (name.split('.').pop() || '').toLowerCase();
+      return MIME[ext] || 'application/octet-stream';
+    }
+    function fmtSize(n) {
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / 1048576).toFixed(1) + ' MB';
+    }
+
     async function handleMsg(m) {
       if (seenSeq[m.seq]) return;
       seenSeq[m.seq] = true;
@@ -733,30 +768,38 @@
       let sender = null;
       for (const x of roster) if (x.fp === m.fp) sender = x;
 
-      let text = null, sigOk = false;
+      let payload = null, filename = '', sigOk = false;
       try {
-        const msg = await openpgp.readMessage({ armoredMessage: m.body });
-        const opts = { message: msg, decryptionKeys: privKey };
+        let armored = m.body;
+        if (!armored && m.fid) {
+          // Datei-Blob liegt separat — nachladen (ist nur Ciphertext)
+          const r = await fetch(apiUrl('/pgp/file/' + m.fid));
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          armored = await r.text();
+        }
+        const msg = await openpgp.readMessage({ armoredMessage: armored });
+        const opts = { message: msg, decryptionKeys: privKey, format: 'binary' };
         const vkey = rosterKeys[m.fp];
         if (vkey) opts.verificationKeys = vkey;
         const res = await openpgp.decrypt(opts);
-        text = res.data;
+        payload = res.data;                 // Uint8Array
+        filename = res.filename || '';
         if (vkey && res.signatures && res.signatures.length) {
           try { await res.signatures[0].verified; sigOk = true; } catch (e) {}
         }
-      } catch (e) { /* nicht an unseren Key verschluesselt */ }
+      } catch (e) { /* nicht an unseren Key verschluesselt (oder Blob weg) */ }
 
-      appendMsg(m, sender, text, sigOk);
+      appendMsg(m, sender, payload, filename, sigOk);
     }
 
-    function appendMsg(m, sender, text, sigOk) {
+    function appendMsg(m, sender, payload, filename, sigOk) {
       const box = el('chatBox');
       const nearBottom = box.scrollTop + box.clientHeight > box.scrollHeight - 60;
 
       const div = document.createElement('div');
       div.className = 'msg'
         + (me && m.fp === me.fp ? ' msg--me' : '')
-        + (text === null ? ' msg--locked' : '');
+        + (payload === null ? ' msg--locked' : '');
 
       const head = document.createElement('div');
       head.className = 'mhead';
@@ -769,7 +812,7 @@
       time.title = m.ts || '';
       const badge = document.createElement('span');
       badge.className = 'mbadge';
-      if (text === null) {
+      if (payload === null) {
         badge.textContent = '🔒';
         badge.title = 'Nicht für deinen Schlüssel verschlüsselt';
       } else if (sigOk) {
@@ -785,13 +828,68 @@
 
       const body = document.createElement('div');
       body.className = 'mbody';
-      body.textContent = (text === null)
-        ? 'verschlüsselt — du warst beim Absenden nicht im Raum'
-        : text;
+      if (payload === null) {
+        body.textContent = 'verschlüsselt — du warst beim Absenden nicht im Raum';
+      } else if (filename) {
+        // Datei: als Blob-URL rendern (bleibt komplett im Browser)
+        const mime = mimeFor(filename);
+        const url = URL.createObjectURL(new Blob([payload], { type: mime }));
+        if (mime.startsWith('image/')) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = filename;
+          img.addEventListener('click', () => window.open(url, '_blank'));
+          body.appendChild(img);
+        } else if (mime.startsWith('audio/')) {
+          const au = document.createElement('audio');
+          au.controls = true;
+          au.preload = 'metadata';
+          au.src = url;
+          body.appendChild(au);
+        }
+        const a = document.createElement('a');
+        a.className = 'file-dl';
+        a.href = url;
+        a.download = filename;
+        a.textContent = '💾 ' + filename + ' (' + fmtSize(payload.length) + ')';
+        body.appendChild(a);
+      } else {
+        body.textContent = new TextDecoder().decode(payload);
+      }
 
       div.appendChild(head); div.appendChild(body);
       box.appendChild(div);
       if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    /* ── Datei senden: verschluesseln wie Text, nur binaer + Dateiname ── */
+    const FILE_RAW_MAX = 7 * 1024 * 1024;
+
+    async function sendFile(file) {
+      if (!roomId || !me) { st('chatStatus', 'Erst einem Raum beitreten.', true); return; }
+      if (file.size > FILE_RAW_MAX) {
+        st('chatStatus', file.name + ': zu groß (max. 7 MB).', true);
+        return;
+      }
+      const keys = [];
+      for (const x of roster) if (rosterKeys[x.fp]) keys.push(rosterKeys[x.fp]);
+      if (!keys.length) { st('chatStatus', 'Keine Empfänger-Schlüssel im Raum.', true); return; }
+      try {
+        st('chatStatus', 'Verschlüssle ' + file.name + '…');
+        const data = new Uint8Array(await file.arrayBuffer());
+        const armored = await openpgp.encrypt({
+          // Dateiname wandert ins Literal-Paket -> ist mitverschluesselt
+          message: await openpgp.createMessage({ binary: data, filename: file.name }),
+          encryptionKeys: keys,
+          signingKeys: privKey,
+        });
+        st('chatStatus', 'Lade ' + file.name + ' hoch…');
+        await api('/pgp/send', { room: roomId, fp: me.fp, body: armored });
+        st('chatStatus', '');
+        doPoll();
+      } catch (e) {
+        st('chatStatus', 'Senden fehlgeschlagen: ' + e.message, true);
+      }
     }
 
     async function sendMsg() {
@@ -850,6 +948,26 @@
       el('leaveBtn').addEventListener('click', () => leaveRoom('Raum verlassen.'));
       el('sendBtn').addEventListener('click', sendMsg);
       el('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
+
+      /* Dateien: Drag & Drop auf die Chat-Karte + 📎-Button (Handy) */
+      const chatCard = el('chatCard');
+      chatCard.addEventListener('dragover', e => {
+        e.preventDefault();
+        el('chatBox').classList.add('drag');
+      });
+      chatCard.addEventListener('dragleave', () => el('chatBox').classList.remove('drag'));
+      chatCard.addEventListener('drop', async e => {
+        e.preventDefault();
+        el('chatBox').classList.remove('drag');
+        const files = Array.from(e.dataTransfer ? e.dataTransfer.files : []).slice(0, 5);
+        for (const f of files) await sendFile(f);
+      });
+      el('fileBtn').addEventListener('click', () => el('fileInput').click());
+      el('fileInput').addEventListener('change', async () => {
+        const files = Array.from(el('fileInput').files).slice(0, 5);
+        el('fileInput').value = '';
+        for (const f of files) await sendFile(f);
+      });
 
       me = loadId();
       if (me) {
