@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Werkzeuge &mdash; Glappa Home</title>
+  <meta name="keywords" content="Glappa Werkzeuge Uebersetzer Zusammenfasser Link-Kuerzer Speedtest">
+  <meta name="description" content="GLAPPA-Werkzeugkasten: KI-&Uuml;bersetzer, Zusammenfasser, Link-K&uuml;rzer und Speedtest — alles self-hosted, keine Cloud.">
+  <link rel="icon" href="../favicon.ico">
+  <!-- Theme-Bootstrap VOR dem Stylesheet: gespeicherte Wahl setzen, bevor
+       irgendwas rendert — kein Flackern (gleiches Prinzip wie beim
+       search.glappa.de-Theme-Umschalter). Default: schlicht/dunkel. -->
+  <script>
+    (function () {
+      var t = 'clean';
+      try { t = localStorage.getItem('glappa-tools-theme') || 'clean'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t === 'retro' ? 'retro' : 'clean');
+    })();
+  </script>
+  <link rel="stylesheet" href="home.css?v=11">
+  <style>
+    /* ════════════════════════════════════════════════════════════════
+       Zwei Stile, umschaltbar (Knopf oben rechts, localStorage):
+       clean (DEFAULT) — schlicht, dunkel, gut lesbar, keine Deko.
+       retro           — der 90er-Look vom Rest der Seite (home.css).
+       Alles Clean-spezifische haengt an html[data-theme="clean"] und
+       ueberstimmt so home.css; Retro nutzt home.css einfach mit.
+       ════════════════════════════════════════════════════════════════ */
+
+    /* ── Gemeinsames Grundgeruest ── */
+    .tools-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 14px auto 4px;
+      padding: 0 16px;
+    }
+    .tools-topbar .back { text-decoration: none; font-size: 0.95em; }
+    #themeBtn { cursor: pointer; }
+
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 18px;
+      max-width: 1000px;
+      margin: 18px auto 48px;
+      padding: 0 16px;
+    }
+    .tool-card { border-radius: 6px; padding: 16px; }
+    .tool-card h2 { margin: 0 0 4px; font-size: 1.05em; }
+    .tool-card .tsub { margin: 0 0 12px; font-size: 0.82em; }
+    .tool-card label {
+      display: block;
+      font-size: 0.78em;
+      margin: 10px 0 4px;
+      letter-spacing: 0.04em;
+    }
+    .tool-card textarea,
+    .tool-card input[type="url"],
+    .tool-card select {
+      width: 100%;
+      border-radius: 4px;
+      font-size: 0.92em;
+      padding: 8px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .tool-card textarea { resize: vertical; min-height: 100px; }
+    .tool-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+    .tool-row .grow { flex: 1 1 140px; width: auto; }
+    .tool-btn {
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      padding: 9px 16px;
+      cursor: pointer;
+    }
+    .tool-btn:disabled { opacity: 0.5; cursor: wait; }
+    .tool-btn--mini { padding: 4px 10px; font-size: 0.78em; }
+    .tool-out {
+      margin-top: 12px;
+      border-radius: 4px;
+      padding: 10px;
+      min-height: 44px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 0.9em;
+      display: none;
+    }
+    .tool-out.show { display: block; }
+    .tool-status { margin-top: 10px; font-size: 0.82em; min-height: 1.3em; }
+    .tool-status .blink { animation: toolblink 1s steps(1) infinite; }
+    @keyframes toolblink { 50% { opacity: 0; } }
+    .tool-hint { font-size: 0.75em; margin-top: 10px; }
+    .short-result a { font-weight: bold; word-break: break-all; }
+    .speed-card { text-align: center; }
+    .speed-go {
+      display: inline-block;
+      margin: 12px 0 4px;
+      text-decoration: none;
+      border-radius: 4px;
+      padding: 11px 24px;
+      font-weight: bold;
+      letter-spacing: 0.08em;
+    }
+
+    /* ── CLEAN (Default): schlicht, dunkel, lesbar ── */
+    /* Auch das html-Element einfaerben: wo der body endet, wuerde sonst
+       der Sternen-Hintergrund aus home.css durchblitzen. */
+    html[data-theme="clean"] {
+      background: #0e0f12;
+      background-image: none;
+    }
+    html[data-theme="clean"] body {
+      background: #0e0f12;
+      background-image: none;
+      color: #e6e6e6;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      cursor: auto;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    /* Retro-Deko komplett weg */
+    html[data-theme="clean"] .marquee,
+    html[data-theme="clean"] .header,
+    html[data-theme="clean"] .construction,
+    html[data-theme="clean"] .retro-only { display: none !important; }
+
+    html[data-theme="clean"] a { color: #6fd18c; }
+    html[data-theme="clean"] a:visited { color: #6fd18c; }
+
+    html[data-theme="clean"] .tools-topbar { margin-top: 22px; }
+    html[data-theme="clean"] .tools-title {
+      margin: 0;
+      font-size: 1.45em;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    html[data-theme="clean"] .tools-topbar .back { color: #9aa0a6; }
+    html[data-theme="clean"] .tools-topbar .back:hover { color: #fff; }
+
+    /* Nav (von script.js befuellt) in dezent */
+    html[data-theme="clean"] .nav {
+      background: none;
+      border: none;
+      box-shadow: none;
+      text-align: center;
+      font-size: 0.85em;
+      margin: 6px auto 0;
+      padding: 0 16px;
+    }
+    html[data-theme="clean"] .nav a {
+      color: #9aa0a6;
+      text-decoration: none;
+      text-shadow: none;
+      margin: 0 2px;
+    }
+    html[data-theme="clean"] .nav a:hover { color: #fff; }
+    html[data-theme="clean"] .nav a.current { color: #6fd18c; }
+    html[data-theme="clean"] .nav .sep { color: #33363b; margin: 0 4px; }
+
+    html[data-theme="clean"] .tool-card {
+      background: #16181d;
+      border: 1px solid #2a2d34;
+    }
+    html[data-theme="clean"] .tool-card h2 { color: #fff; font-weight: 600; }
+    html[data-theme="clean"] .tool-card .tsub { color: #9aa0a6; }
+    html[data-theme="clean"] .tool-card label { color: #9aa0a6; text-transform: uppercase; }
+    html[data-theme="clean"] .tool-card textarea,
+    html[data-theme="clean"] .tool-card input[type="url"],
+    html[data-theme="clean"] .tool-card select {
+      background: #0e0f12;
+      color: #e6e6e6;
+      border: 1px solid #33363b;
+    }
+    html[data-theme="clean"] .tool-card textarea:focus-visible,
+    html[data-theme="clean"] .tool-card input:focus-visible,
+    html[data-theme="clean"] .tool-card select:focus-visible {
+      outline: 2px solid #6fd18c;
+      outline-offset: 0;
+      border-color: #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn {
+      background: #6fd18c;
+      color: #0e0f12;
+      border: 1px solid #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn:hover:not(:disabled) { background: #8ee2a6; }
+    html[data-theme="clean"] .tool-btn--mini {
+      background: none;
+      color: #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn--mini:hover:not(:disabled) { background: #1d2026; }
+    html[data-theme="clean"] #themeBtn {
+      background: none;
+      color: #9aa0a6;
+      border: 1px solid #33363b;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 0.8em;
+      font-family: inherit;
+    }
+    html[data-theme="clean"] #themeBtn:hover { color: #fff; border-color: #9aa0a6; }
+    html[data-theme="clean"] .tool-out {
+      background: #0e0f12;
+      border: 1px solid #2a2d34;
+      color: #e6e6e6;
+    }
+    html[data-theme="clean"] .tool-status { color: #c9a848; }
+    html[data-theme="clean"] .tool-status .tool-err { color: #e5715f; }
+    html[data-theme="clean"] .tool-hint { color: #6c7178; }
+    html[data-theme="clean"] .speed-go {
+      background: none;
+      color: #6fd18c;
+      border: 1px solid #6fd18c;
+    }
+    html[data-theme="clean"] .speed-go:hover { background: #6fd18c; color: #0e0f12; }
+    html[data-theme="clean"] .footer {
+      background: none;
+      border: none;
+      text-align: center;
+      color: #6c7178;
+      font-size: 0.8em;
+      padding-bottom: 24px;
+    }
+    html[data-theme="clean"] .speed-card img { display: none; }
+    html[data-theme="clean"] .copyright {
+      color: #6c7178;            /* home.css macht das sonst rot */
+      text-shadow: none;
+      font-family: inherit;
+    }
+
+    /* ── RETRO: Neon-Karten passend zu home.css ── */
+    html[data-theme="retro"] .tools-title,
+    html[data-theme="retro"] .tools-topbar .back { display: none; }
+    html[data-theme="retro"] .tools-topbar { justify-content: flex-end; }
+    html[data-theme="retro"] #themeBtn {
+      background: #000;
+      color: var(--neon-yellow, #ffff00);
+      border: 2px solid var(--neon-yellow, #ffff00);
+      border-radius: 2px;
+      padding: 6px 12px;
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      font-size: 0.8em;
+      text-shadow: 0 0 6px var(--neon-yellow, #ffff00);
+    }
+    html[data-theme="retro"] .tool-card {
+      background: rgba(0,0,0,0.82);
+      border: 2px solid var(--tc, #00ffff);
+      border-radius: 4px;
+      box-shadow: 0 0 14px var(--tc, #00ffff);
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .tool-card--cyan   { --tc: #00ffff; }
+    html[data-theme="retro"] .tool-card--green  { --tc: #00ff00; }
+    html[data-theme="retro"] .tool-card--yellow { --tc: #ffff00; }
+    html[data-theme="retro"] .tool-card--pink   { --tc: #ff00ff; }
+    html[data-theme="retro"] .tool-card h2 {
+      color: var(--tc);
+      text-shadow: 0 0 8px var(--tc);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    html[data-theme="retro"] .tool-card .tsub,
+    html[data-theme="retro"] .tool-card label { color: #aaa; }
+    html[data-theme="retro"] .tool-card textarea,
+    html[data-theme="retro"] .tool-card input[type="url"],
+    html[data-theme="retro"] .tool-card select {
+      background: #000;
+      color: #00ff00;
+      border: 1px solid #444;
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .tool-card select { color: #00ffff; }
+    html[data-theme="retro"] .tool-card textarea:focus,
+    html[data-theme="retro"] .tool-card input:focus,
+    html[data-theme="retro"] .tool-card select:focus {
+      outline: none;
+      border-color: var(--tc);
+      box-shadow: 0 0 6px var(--tc);
+    }
+    html[data-theme="retro"] .tool-btn {
+      background: #000;
+      color: var(--tc, #00ffff);
+      border: 2px solid var(--tc, #00ffff);
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 6px var(--tc, #00ffff);
+    }
+    html[data-theme="retro"] .tool-btn:hover:not(:disabled) {
+      background: var(--tc, #00ffff);
+      color: #000;
+      text-shadow: none;
+    }
+    html[data-theme="retro"] .tool-out {
+      background: #000;
+      border: 1px dashed #444;
+      border-radius: 2px;
+      color: #eee;
+    }
+    html[data-theme="retro"] .tool-status { color: #ffff00; }
+    html[data-theme="retro"] .tool-status .tool-err { color: #ff5555; }
+    html[data-theme="retro"] .tool-hint { color: #888; }
+    html[data-theme="retro"] .short-result a { color: #ffff00; }
+    html[data-theme="retro"] .speed-go {
+      color: #ff00ff;
+      border: 2px solid #ff00ff;
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 8px #ff00ff;
+    }
+    html[data-theme="retro"] .speed-go:hover { background: #ff00ff; color: #000; text-shadow: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Retro-Deko (im Clean-Modus komplett ausgeblendet) -->
+  <div class="marquee marquee--top">
+    <span>&#9733; GLAPPA WERKZEUGKASTEN &#9733; 100% SELF-HOSTED &#9733; KEINE CLOUD, KEIN TRACKING &#9733; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
+    <div class="page-banner green">
+      <h2>&#128295; WERKZEUGE &#128295;</h2>
+<pre>
+ _  _  ____  ____  __    ____
+/ )( \(  __)(  _ \(  )  (__  )
+\ /\ / ) _)  )   / )(__  / _/
+(_/\_)(____)(__\_)(____)(____)
+</pre>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
+  </header>
+
+  <!-- Kopfzeile: zurueck + Titel (clean) / nur Umschalter (retro) -->
+  <div class="tools-topbar">
+    <a class="back" href="index.html">&larr; Home</a>
+    <h1 class="tools-title">Werkzeuge</h1>
+    <button type="button" id="themeBtn" title="Design umschalten"></button>
+  </div>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="../page1.html">Video</a><span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="../home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction retro-only">
+    <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main class="tools-grid">
+
+    <!-- ── KI-Uebersetzer ── -->
+    <section class="tool-card tool-card--cyan" aria-labelledby="trHead">
+      <h2 id="trHead">KI-&Uuml;bersetzer</h2>
+      <p class="tsub">L&auml;uft auf der eigenen GLAPPA-KI (Ollama) &mdash; nichts geht in die Cloud.</p>
+      <label for="trText">Text (max. 2500 Zeichen)</label>
+      <textarea id="trText" maxlength="2500" placeholder="Text hier reinwerfen..."></textarea>
+      <div class="tool-row">
+        <select id="trLang" class="grow" aria-label="Zielsprache">
+          <option value="Deutsch">&rarr; Deutsch</option>
+          <option value="Englisch">&rarr; Englisch</option>
+          <option value="Franzoesisch">&rarr; Franz&ouml;sisch</option>
+          <option value="Spanisch">&rarr; Spanisch</option>
+          <option value="Italienisch">&rarr; Italienisch</option>
+          <option value="Polnisch">&rarr; Polnisch</option>
+          <option value="Tuerkisch">&rarr; T&uuml;rkisch</option>
+          <option value="Russisch">&rarr; Russisch</option>
+          <option value="Portugiesisch">&rarr; Portugiesisch</option>
+          <option value="Niederlaendisch">&rarr; Niederl&auml;ndisch</option>
+          <option value="Japanisch">&rarr; Japanisch</option>
+          <option value="Latein">&rarr; Latein</option>
+        </select>
+        <select id="trQuality" class="grow" aria-label="Modellwahl">
+          <option value="fast">Schnell (4B)</option>
+          <option value="smart">Gr&uuml;ndlich (14B, langsamer)</option>
+        </select>
+        <button type="button" class="tool-btn" id="trBtn">&Uuml;bersetzen</button>
+      </div>
+      <div class="tool-status" id="trStatus" role="status" aria-live="polite"></div>
+      <div class="tool-out" id="trOut" aria-label="&Uuml;bersetzung"></div>
+      <div class="tool-row">
+        <button type="button" class="tool-btn tool-btn--mini" id="trCopy" style="display:none">Kopieren</button>
+      </div>
+    </section>
+
+    <!-- ── KI-Zusammenfasser ── -->
+    <section class="tool-card tool-card--green" aria-labelledby="suHead">
+      <h2 id="suHead">Zusammenfasser</h2>
+      <p class="tsub">Langer Text rein &mdash; Kernaussage + Stichpunkte raus.</p>
+      <label for="suText">Text (max. 8000 Zeichen)</label>
+      <textarea id="suText" maxlength="8000" style="min-height:150px" placeholder="Artikel, Mail, Wall-of-Text..."></textarea>
+      <div class="tool-row">
+        <select id="suQuality" class="grow" aria-label="Modellwahl">
+          <option value="fast">Schnell (4B)</option>
+          <option value="smart">Gr&uuml;ndlich (14B, langsamer)</option>
+        </select>
+        <button type="button" class="tool-btn" id="suBtn">Zusammenfassen</button>
+      </div>
+      <div class="tool-status" id="suStatus" role="status" aria-live="polite"></div>
+      <div class="tool-out" id="suOut" aria-label="Zusammenfassung"></div>
+      <div class="tool-row">
+        <button type="button" class="tool-btn tool-btn--mini" id="suCopy" style="display:none">Kopieren</button>
+      </div>
+    </section>
+
+    <!-- ── Link-Kuerzer ── -->
+    <section class="tool-card tool-card--yellow" aria-labelledby="shHead">
+      <h2 id="shHead">Link-K&uuml;rzer</h2>
+      <p class="tsub">Aus Monster-URL wird home.glappa.de/s/xxxxx</p>
+      <label for="shUrl">Lange URL</label>
+      <input type="url" id="shUrl" maxlength="2048" placeholder="https://irgendwas.ganz/langes?mit=parametern...">
+      <div class="tool-row">
+        <button type="button" class="tool-btn" id="shBtn">K&uuml;rzen</button>
+      </div>
+      <div class="tool-status" id="shStatus" role="status" aria-live="polite"></div>
+      <div class="tool-out short-result" id="shOut" aria-label="Kurzlink"></div>
+      <div class="tool-row">
+        <button type="button" class="tool-btn tool-btn--mini" id="shCopy" style="display:none">Kopieren</button>
+      </div>
+      <p class="tool-hint">Dieselbe URL bekommt immer denselben Code.</p>
+    </section>
+
+    <!-- ── Speedtest ── -->
+    <section class="tool-card tool-card--pink speed-card" aria-labelledby="spHead">
+      <h2 id="spHead">Speedtest</h2>
+      <p class="tsub">LibreSpeed gegen die GLAPPA-VPS &mdash; ohne Werbung, ohne Tracking.</p>
+      <img src="../img/gif/rocket3.gif" alt="" aria-hidden="true" height="40">
+      <br>
+      <a class="speed-go" id="speedLink" href="https://home.glappa.de/speed/" target="_blank" rel="noopener">&#9889; Test starten</a>
+      <p class="tool-hint">Misst Download, Upload und Ping zwischen dir und der VPS.</p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+    <div class="marquee marquee--bottom">
+      <span>&#9733; ALLE WERKZEUGE LAUFEN AUF DER EIGENEN VPS &#9733; PENTIUM POWER &#9733; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=17"></script>
+  <script>
+    /* ── Design-Umschalter: clean (Default) <-> retro, localStorage ── */
+    (function () {
+      var KEY = 'glappa-tools-theme';
+      var btn = document.getElementById('themeBtn');
+      function refresh() {
+        var retro = document.documentElement.getAttribute('data-theme') === 'retro';
+        btn.textContent = retro ? '● Schlicht-Modus' : '★ 90er-Modus';
+        btn.setAttribute('aria-pressed', retro ? 'true' : 'false');
+      }
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'retro' ? 'clean' : 'retro';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem(KEY, next); } catch (e) {}
+        refresh();
+      });
+      refresh();
+    })();
+
+    /* ── API-Endpunkte: gleiche Logik wie chatEndpoint() im Terminal ──
+       home/search.glappa.de -> same-origin ueber Apache /api-Proxy,
+       glappa.de (Webhoster ohne Backend) -> cross-origin zur VPS (CORS),
+       localhost/LAN -> direkt zur dev-app.py auf :8080. */
+    function apiUrl(path) {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return location.protocol + '//' + h + ':8080' + path;
+      if (h === 'home.glappa.de' || h === 'search.glappa.de') return '/api' + path;
+      return 'https://home.glappa.de/api' + path;
+    }
+
+    /* Speedtest-Link: lokal direkt auf den Container-Port statt /speed/ */
+    (function () {
+      const h = location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.')) {
+        document.getElementById('speedLink').href = 'http://' + h + ':8890/';
+      }
+    })();
+
+    /* ── SSE-Stream lesen (wie chatRequest() im Terminal, kompakt) ──
+       Server streamt 'data: {"t":"..."}'-Events; onDelta bekommt den
+       Text-Zuwachs. JSON-Antwort (Fehler/kein Stream) -> Fallback. */
+    async function kiRequest(payload, onDelta) {
+      const resp = await fetch(apiUrl('/ki'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ stream: true }, payload)),
+      });
+      const ctype = (resp.headers.get('Content-Type') || '');
+      if (!ctype.includes('text/event-stream')) {
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+        onDelta(data.reply || '');
+        return;
+      }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(6)); } catch (e) { continue; }
+          if (ev.err) throw new Error(ev.err);
+          if (ev.t) onDelta(ev.t);
+          if (ev.done) return;
+        }
+      }
+    }
+
+    /* ── Ein KI-Werkzeug an Buttons/Felder klemmen ── */
+    function wireKiTool(opts) {
+      const btn    = document.getElementById(opts.btn);
+      const status = document.getElementById(opts.status);
+      const out    = document.getElementById(opts.out);
+      const copy   = document.getElementById(opts.copy);
+
+      btn.addEventListener('click', async () => {
+        const payload = opts.payload();
+        if (!payload) return;
+        btn.disabled = true;
+        copy.style.display = 'none';
+        out.textContent = '';
+        out.classList.add('show');
+        status.innerHTML = 'GLAPPA-KI rechnet<span class="blink">_</span> (CPU, kein Turbo &mdash; Geduld)';
+        try {
+          await kiRequest(payload, piece => { out.textContent += piece; });
+          status.textContent = 'Fertig.';
+          if (out.textContent.trim()) copy.style.display = 'inline-block';
+        } catch (e) {
+          status.innerHTML = '<span class="tool-err">' + (e.message || 'Fehler — nochmal versuchen.') + '</span>';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(out.textContent).then(() => {
+          copy.textContent = '✓ Kopiert';
+          setTimeout(() => { copy.textContent = 'Kopieren'; }, 1500);
+        });
+      });
+    }
+
+    wireKiTool({
+      btn: 'trBtn', status: 'trStatus', out: 'trOut', copy: 'trCopy',
+      payload() {
+        const text = document.getElementById('trText').value.trim();
+        if (!text) { document.getElementById('trText').focus(); return null; }
+        return { tool: 'translate', text: text,
+                 target: document.getElementById('trLang').value,
+                 quality: document.getElementById('trQuality').value };
+      },
+    });
+
+    wireKiTool({
+      btn: 'suBtn', status: 'suStatus', out: 'suOut', copy: 'suCopy',
+      payload() {
+        const text = document.getElementById('suText').value.trim();
+        if (!text) { document.getElementById('suText').focus(); return null; }
+        return { tool: 'summarize', text: text,
+                 quality: document.getElementById('suQuality').value };
+      },
+    });
+
+    /* ── Link-Kuerzer ── */
+    (function () {
+      const btn    = document.getElementById('shBtn');
+      const input  = document.getElementById('shUrl');
+      const status = document.getElementById('shStatus');
+      const out    = document.getElementById('shOut');
+      const copy   = document.getElementById('shCopy');
+      let shortUrl = '';
+
+      async function shorten() {
+        const url = input.value.trim();
+        if (!url) { input.focus(); return; }
+        btn.disabled = true;
+        copy.style.display = 'none';
+        out.classList.remove('show');
+        status.innerHTML = 'K&uuml;rze<span class="blink">_</span>';
+        try {
+          const resp = await fetch(apiUrl('/short'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+          shortUrl = data.short;
+          out.innerHTML = '&rarr; <a href="' + shortUrl + '" target="_blank" rel="noopener"></a>';
+          out.querySelector('a').textContent = shortUrl;
+          out.classList.add('show');
+          status.textContent = 'Fertig.';
+          copy.style.display = 'inline-block';
+        } catch (e) {
+          status.innerHTML = '<span class="tool-err">' + (e.message || 'Fehler — nochmal versuchen.') + '</span>';
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      btn.addEventListener('click', shorten);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') shorten(); });
+      copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(shortUrl).then(() => {
+          copy.textContent = '✓ Kopiert';
+          setTimeout(() => { copy.textContent = 'Kopieren'; }, 1500);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
