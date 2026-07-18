@@ -120,9 +120,37 @@
       margin-top: 4px;
       cursor: pointer;
     }
-    .msg .mbody audio { display: block; width: min(300px, 100%); margin-top: 4px; }
     .file-dl { font-size: 0.82em; display: inline-block; margin-top: 4px; word-break: break-all; }
     .chat-box.drag { outline: 2px dashed currentColor; outline-offset: -6px; }
+    /* Eigener Audio-Player (Lautstaerke 0-100 mit %-Anzeige) */
+    .aplayer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      padding: 7px 10px;
+      border-radius: 4px;
+      max-width: 460px;
+    }
+    .aplayer .ap-btn {
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 1em;
+      padding: 0 2px;
+      line-height: 1;
+    }
+    .aplayer .ap-seek { flex: 1 1 110px; min-width: 70px; }
+    .aplayer .ap-vol  { flex: 0 1 90px;  min-width: 60px; }
+    .aplayer .ap-time,
+    .aplayer .ap-pct {
+      font-size: 0.78em;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .aplayer .ap-pct { min-width: 4ch; text-align: right; }
+    .aplayer input[type="range"] { margin: 0; padding: 0; }
     .mbadge.ok { }
     .mbadge.warn { }
 
@@ -237,6 +265,14 @@
     html[data-theme="clean"] .msg--locked .mbody { color: #6c7178; }
     html[data-theme="clean"] .mbadge.ok { color: #6fd18c; }
     html[data-theme="clean"] .mbadge.warn { color: #c9a848; }
+    html[data-theme="clean"] .aplayer {
+      background: #1d2026;
+      border: 1px solid #33363b;
+    }
+    html[data-theme="clean"] .aplayer .ap-btn { color: #6fd18c; }
+    html[data-theme="clean"] .aplayer .ap-time,
+    html[data-theme="clean"] .aplayer .ap-pct { color: #9aa0a6; }
+    html[data-theme="clean"] .aplayer input[type="range"] { accent-color: #6fd18c; }
     html[data-theme="clean"] .footer {
       background: none;
       border: none;
@@ -335,6 +371,16 @@
     html[data-theme="retro"] .msg--locked .mbody { color: #777; }
     html[data-theme="retro"] .mbadge.ok { color: #00ff00; }
     html[data-theme="retro"] .mbadge.warn { color: #ffff00; }
+    html[data-theme="retro"] .aplayer {
+      background: #000;
+      border: 1px solid #444;
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .aplayer .ap-btn { color: #00ff00; text-shadow: 0 0 6px #00ff00; }
+    html[data-theme="retro"] .aplayer .ap-time,
+    html[data-theme="retro"] .aplayer .ap-pct { color: #00ffff; }
+    html[data-theme="retro"] .aplayer input[type="range"] { accent-color: #00ff00; }
   </style>
 </head>
 <body>
@@ -760,6 +806,92 @@
       return (n / 1048576).toFixed(1) + ' MB';
     }
 
+    /* ── Eigener Audio-Player ────────────────────────────────────────
+       Statt <audio controls>: der native Lautstaerke-Regler ist je nach
+       Browser winzig/kaputt. Hier: Play/Pause, Spulleiste, Zeit und ein
+       ordentlicher Lautstaerke-Slider 0-100 mit %-Anzeige. Die gewaehlte
+       Lautstaerke wird gemerkt (localStorage) und gilt fuer alle Player. */
+    const VOL_KEY = 'glappa-pgp-vol';
+
+    function fmtTime(s) {
+      if (!isFinite(s)) return '–:––';
+      s = Math.round(s);
+      return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }
+
+    function makeAudioPlayer(url) {
+      const au = new Audio(url);
+      au.preload = 'metadata';
+      let vol = parseInt((function () {
+        try { return localStorage.getItem(VOL_KEY); } catch (e) { return null; }
+      })(), 10);
+      if (isNaN(vol) || vol < 0 || vol > 100) vol = 100;
+      au.volume = vol / 100;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'aplayer';
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'ap-btn'; btn.textContent = '▶';
+      btn.title = 'Abspielen/Pause';
+      const time = document.createElement('span');
+      time.className = 'ap-time'; time.textContent = '0:00 / –:––';
+      const seek = document.createElement('input');
+      seek.type = 'range'; seek.className = 'ap-seek';
+      seek.min = 0; seek.max = 1000; seek.value = 0;
+      seek.setAttribute('aria-label', 'Position');
+      const ico = document.createElement('button');
+      ico.type = 'button'; ico.className = 'ap-btn'; ico.title = 'Stumm an/aus';
+      const volIn = document.createElement('input');
+      volIn.type = 'range'; volIn.className = 'ap-vol';
+      volIn.min = 0; volIn.max = 100; volIn.value = vol;
+      volIn.setAttribute('aria-label', 'Lautstärke');
+      const pct = document.createElement('span');
+      pct.className = 'ap-pct';
+
+      let volBeforeMute = vol || 100;
+      function refreshVol() {
+        const v = parseInt(volIn.value, 10) || 0;
+        au.volume = v / 100;
+        pct.textContent = v + '%';
+        ico.textContent = v === 0 ? '🔇' : (v < 50 ? '🔉' : '🔊');
+      }
+      refreshVol();
+
+      btn.addEventListener('click', () => { au.paused ? au.play() : au.pause(); });
+      au.addEventListener('play',  () => { btn.textContent = '⏸'; });
+      au.addEventListener('pause', () => { btn.textContent = '▶'; });
+      au.addEventListener('ended', () => { btn.textContent = '▶'; });
+      au.addEventListener('loadedmetadata', () => {
+        time.textContent = '0:00 / ' + fmtTime(au.duration);
+      });
+      au.addEventListener('timeupdate', () => {
+        time.textContent = fmtTime(au.currentTime) + ' / ' + fmtTime(au.duration);
+        if (isFinite(au.duration) && au.duration > 0) {
+          seek.value = Math.round(au.currentTime / au.duration * 1000);
+        }
+      });
+      seek.addEventListener('input', () => {
+        if (isFinite(au.duration) && au.duration > 0) {
+          au.currentTime = seek.value / 1000 * au.duration;
+        }
+      });
+      volIn.addEventListener('input', () => {
+        const v = parseInt(volIn.value, 10) || 0;
+        if (v > 0) volBeforeMute = v;
+        refreshVol();
+        try { localStorage.setItem(VOL_KEY, String(v)); } catch (e) {}
+      });
+      ico.addEventListener('click', () => {
+        volIn.value = parseInt(volIn.value, 10) > 0 ? 0 : volBeforeMute;
+        refreshVol();
+      });
+
+      wrap.appendChild(btn); wrap.appendChild(time); wrap.appendChild(seek);
+      wrap.appendChild(ico); wrap.appendChild(volIn); wrap.appendChild(pct);
+      wrap.appendChild(au);   // ohne controls unsichtbar, haelt die Referenz
+      return wrap;
+    }
+
     async function handleMsg(m) {
       if (seenSeq[m.seq]) return;
       seenSeq[m.seq] = true;
@@ -841,11 +973,7 @@
           img.addEventListener('click', () => window.open(url, '_blank'));
           body.appendChild(img);
         } else if (mime.startsWith('audio/')) {
-          const au = document.createElement('audio');
-          au.controls = true;
-          au.preload = 'metadata';
-          au.src = url;
-          body.appendChild(au);
+          body.appendChild(makeAudioPlayer(url));
         }
         const a = document.createElement('a');
         a.className = 'file-dl';
