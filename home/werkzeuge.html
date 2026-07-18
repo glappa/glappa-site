@@ -38,7 +38,6 @@
       margin: 14px auto 4px;
       padding: 0 16px;
     }
-    .tools-topbar .back { text-decoration: none; font-size: 0.95em; }
     #themeBtn { cursor: pointer; }
 
     .tools-grid {
@@ -141,9 +140,6 @@
       color: #fff;
       letter-spacing: 0.02em;
     }
-    html[data-theme="clean"] .tools-topbar .back { color: #9aa0a6; }
-    html[data-theme="clean"] .tools-topbar .back:hover { color: #fff; }
-
     /* Nav (von script.js befuellt) in dezent */
     html[data-theme="clean"] .nav {
       background: none;
@@ -236,15 +232,9 @@
     }
 
     /* ── RETRO: Neon-Karten passend zu home.css ── */
-    /* Titel uebernimmt das Banner — der Zurueck-Link bleibt aber sichtbar
-       (Ruecksprung zu Home soll in BEIDEN Modi einen Klick kosten). */
+    /* Titel uebernimmt das Banner — in der Topbar bleibt nur der Umschalter. */
     html[data-theme="retro"] .tools-title { display: none; }
-    html[data-theme="retro"] .tools-topbar .back {
-      color: var(--neon-cyan, #00ffff);
-      font-family: "Courier New", monospace;
-      font-weight: bold;
-      text-shadow: 0 0 6px var(--neon-cyan, #00ffff);
-    }
+    html[data-theme="retro"] .tools-topbar { justify-content: flex-end; }
     html[data-theme="retro"] #themeBtn {
       background: #000;
       color: var(--neon-yellow, #ffff00);
@@ -346,9 +336,9 @@
     <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
   </header>
 
-  <!-- Kopfzeile: zurueck + Titel (clean) / nur Umschalter (retro) -->
+  <!-- Kopfzeile: Titel (clean) + Design-Umschalter. KEIN extra Home-Link —
+       die Nav direkt darunter hat schon einen (war doppelt). -->
   <div class="tools-topbar">
-    <a class="back" href="index.html">&larr; Home</a>
     <h1 class="tools-title">Werkzeuge</h1>
     <button type="button" id="themeBtn" title="Design umschalten"></button>
   </div>

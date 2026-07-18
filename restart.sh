@@ -14,6 +14,10 @@
 #   bash restart.sh --no-cron  (den taeglichen Auto-Restart-Cron nicht setzen)
 #   bash restart.sh -logs      (NICHTS neu starten — nur die Live-Logs
 #                               ALLER laufenden Container zeigen)
+#   bash restart.sh --log-link (NICHTS neu starten — Klick-Log des
+#                               Link-Kuerzers live verfolgen: wer hat wann
+#                               welchen /s/-Link gedrueckt. Webansicht mit
+#                               denselben Daten: https://home.glappa.de/s/stats)
 #
 # Nach jedem Restart (und im -logs-Modus) folgt das Skript den Logs *aller*
 # laufenden Container — nicht nur dem eigenen Compose-Stack. So sieht man auch
@@ -83,6 +87,7 @@ BUILD="--build"
 PULL=0
 CRON=1
 LOGS_ONLY=0
+LOG_LINK=0
 for arg in "$@"; do
     case "$arg" in
         --local)      COMPOSE="docker-compose.yml" ;;
@@ -91,6 +96,7 @@ for arg in "$@"; do
         --pull)       PULL=1 ;;
         --no-cron)    CRON=0 ;;
         -logs|--logs) LOGS_ONLY=1 ;;
+        --log-link|-log-link) LOG_LINK=1 ;;
         *)            echo "Unbekanntes Flag: $arg" >&2; exit 1 ;;
     esac
 done
@@ -122,6 +128,47 @@ fi
 HOST_SUDO=""
 if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
     HOST_SUDO="sudo"
+fi
+
+# ── --log-link: Klick-Log des Link-Kuerzers live verfolgen ──────────
+# Formatierung laeuft IM Container (python ist dort sicher da, auf dem
+# Host nicht unbedingt). tail -F uebersteht auch das Log-Trimmen von
+# app.py (_short_log_click ersetzt das File per os.replace).
+if [ "$LOG_LINK" = "1" ]; then
+    if ! $SUDO docker ps --format '{{.Names}}' | grep -qx glappa; then
+        err "Container 'glappa' laeuft nicht — erst 'bash restart.sh' ausfuehren."
+        exit 1
+    fi
+    echo
+    echo -e "${B}── Link-Kuerzer Klick-Log (live, Ctrl+C zum Beenden) ──${X}"
+    echo -e "Webansicht mit Passwort: ${C}https://home.glappa.de/s/stats${X}"
+    echo
+    exec $SUDO docker exec -it glappa python -u -c '
+import json, subprocess, sys
+open("/downloads/shortlinks.log", "a").close()
+p = subprocess.Popen(["tail", "-n", "30", "-F", "/downloads/shortlinks.log"],
+                     stdout=subprocess.PIPE, text=True)
+fmt = "%-19s  /s/%-6s  %-15s  -> %s"
+for line in p.stdout:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        e = json.loads(line)
+    except ValueError:
+        print(line)
+        continue
+    print(fmt % (e.get("ts", "?"), e.get("code", "?"),
+                 e.get("ip", "?"), e.get("url", "")[:70]))
+    extra = []
+    if e.get("ua"):
+        extra.append("Browser: " + e.get("ua")[:70])
+    if e.get("ref"):
+        extra.append("Von: " + e.get("ref")[:70])
+    if extra:
+        print(" " * 24 + " | ".join(extra))
+    sys.stdout.flush()
+'
 fi
 
 # ── -logs: nichts neu starten, nur die Logs ALLER Container folgen ──

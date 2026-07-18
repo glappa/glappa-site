@@ -27,6 +27,11 @@ services:
       # Web-Suche fuer den Chat: interner Container-Weg zu SearXNG (nicht der
       # oeffentliche search.glappa.de-Weg ueber Apache). Kein API-Key, kein Tracking.
       - SEARXNG_URL=http://searxng:8080
+      # Link-Kuerzer-Statistik /s/stats (Basic-Auth): SHA-256-Hash des
+      # Passworts. Ohne eigenen STATS_PASSWORD_HASH gilt das real-shell-
+      # Passwort mit (beide aus _docker/.env). Keins gesetzt -> Seite zu.
+      - STATS_PASSWORD_HASH=${STATS_PASSWORD_HASH:-}
+      - SHELL_PASSWORD_HASH=${SHELL_PASSWORD_HASH:-}
     depends_on:
       - ollama
       - searxng

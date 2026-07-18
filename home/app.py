@@ -1829,6 +1829,20 @@ SHORT_MAX_LINKS = 5000     # Notbremse gegen Bot-Spam ins JSON-File
 SHORT_MAX_URL   = 2048
 SHORT_BASE      = os.environ.get('SHORT_BASE_URL', 'https://home.glappa.de/s').rstrip('/')
 
+# Klick-Log: eine JSON-Zeile pro Redirect (wer hat wann welchen Kurzlink
+# gedrueckt). Liegt wie counter.json im /downloads-Volume -> ueberlebt
+# Restarts. Live ansehen: bash restart.sh --log-link. Webansicht: /s/stats.
+SHORT_LOG      = os.path.join(DOWNLOAD_DIR, 'shortlinks.log')
+SHORT_LOG_MAX  = 2 * 1024 * 1024   # ab ~2 MB auf die letzten Zeilen eindampfen
+SHORT_LOG_KEEP = 2000
+
+# Statistikseite /s/stats (HTTP Basic Auth ueber TLS). Eigenes Passwort via
+# STATS_PASSWORD_HASH (SHA-256-Hex), sonst gilt das real-shell-Passwort
+# (SHELL_PASSWORD_HASH) mit — beide kommen aus _docker/.env via Compose.
+# Ist keins von beiden gesetzt, bleibt die Seite komplett zu (403).
+STATS_HASH = (os.environ.get('STATS_PASSWORD_HASH')
+              or os.environ.get('SHELL_PASSWORD_HASH') or '').strip().lower()
+
 def _short_load():
     try:
         with open(SHORT_FILE, 'r') as f:
@@ -1898,7 +1912,8 @@ def short_create():
             return _cors_resp(jsonify({'error': 'Kurzlink-Speicher voll.'})), 507
         for _ in range(20):
             code = ''.join(secrets.choice(SHORT_ALPHABET) for _ in range(SHORT_CODE_LEN))
-            if code not in links:
+            # 'stats' ist als Code tabu — /short/stats ist die Statistikseite.
+            if code != 'stats' and code not in links:
                 break
         else:
             return _cors_resp(jsonify({'error': 'Kein freier Code gefunden.'})), 500
@@ -1906,6 +1921,145 @@ def short_create():
                        'hits': 0}
         _short_save(links)
     return _cors_resp(jsonify({'code': code, 'short': f'{SHORT_BASE}/{code}'}))
+
+def _short_log_click(code: str, url: str):
+    """Haengt einen Klick als JSON-Zeile ans Log. Darf den Redirect NIE
+    aufhalten — Fehler werden geschluckt. Trimmt das File, wenn es zu
+    gross wird (Bots klicken auch)."""
+    entry = {
+        'ts':   datetime.now(_BERLIN_TZ).strftime('%Y-%m-%d %H:%M:%S'),
+        'code': code,
+        'url':  url,
+        'ip':   request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip(),
+        'ua':   (request.headers.get('User-Agent') or '')[:200],
+        'ref':  (request.headers.get('Referer') or '')[:200],
+    }
+    with SHORT_LOCK:
+        try:
+            with open(SHORT_LOG, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+            if os.path.getsize(SHORT_LOG) > SHORT_LOG_MAX:
+                with open(SHORT_LOG, 'r', encoding='utf-8', errors='replace') as f:
+                    keep = f.readlines()[-SHORT_LOG_KEEP:]
+                tmp = SHORT_LOG + '.tmp'
+                with open(tmp, 'w', encoding='utf-8') as f:
+                    f.writelines(keep)
+                os.replace(tmp, SHORT_LOG)
+        except OSError:
+            pass
+
+
+# ── Statistikseite: /s/stats (Apache proxied /s/ -> /short/) ──────────
+# Werkzeug bevorzugt feste Routen vor <code>-Platzhaltern, darum faengt
+# /short/stats hier und faellt nie in short_resolve.
+from html import escape as _esc
+
+def _stats_auth_ok() -> bool:
+    auth = request.authorization
+    return bool(auth and auth.password and
+                hashlib.sha256(auth.password.encode('utf-8')).hexdigest() == STATS_HASH)
+
+_STATS_CSS = (
+    'body{background:#0e0f12;color:#e6e6e6;font-family:"Segoe UI",system-ui,'
+    'sans-serif;margin:0;padding:28px 16px;}'
+    'main{max-width:1000px;margin:0 auto;}'
+    'h1{font-size:1.4em;font-weight:600;margin:0 0 4px;}'
+    '.sub{color:#9aa0a6;font-size:0.85em;margin:0 0 22px;}'
+    'h2{font-size:1.05em;font-weight:600;margin:26px 0 8px;}'
+    'table{width:100%;border-collapse:collapse;font-size:0.85em;}'
+    'th{text-align:left;color:#9aa0a6;font-weight:600;padding:6px 8px;'
+    'border-bottom:1px solid #33363b;white-space:nowrap;}'
+    'td{padding:6px 8px;border-bottom:1px solid #1d2026;vertical-align:top;}'
+    'tr:hover td{background:#16181d;}'
+    'code{color:#6fd18c;font-family:Consolas,monospace;}'
+    '.url{color:#e6e6e6;word-break:break-all;}'
+    '.dim{color:#6c7178;}'
+    '.num{text-align:right;font-variant-numeric:tabular-nums;}'
+    'a{color:#6fd18c;text-decoration:none;}a:hover{text-decoration:underline;}'
+)
+
+@Downloader.route('/short/stats')
+def short_stats():
+    if not STATS_HASH:
+        return Response(
+            'Statistik nicht konfiguriert: STATS_PASSWORD_HASH (oder '
+            'SHELL_PASSWORD_HASH) in _docker/.env setzen und Container neu starten.',
+            status=403, mimetype='text/plain')
+    if not _stats_auth_ok():
+        # Browser fragt per Basic-Auth-Dialog nach — laeuft nur ueber TLS
+        # (Apache), das Passwort geht also nie im Klartext uebers Netz.
+        return Response('Passwort noetig.', status=401, headers={
+            'WWW-Authenticate': 'Basic realm="GLAPPA Link-Statistik", charset="UTF-8"'})
+
+    with SHORT_LOCK:
+        links = _short_load()
+        try:
+            with open(SHORT_LOG, 'r', encoding='utf-8', errors='replace') as f:
+                raw_lines = f.readlines()[-300:]
+        except OSError:
+            raw_lines = []
+
+    clicks = []
+    for raw in raw_lines:
+        try:
+            clicks.append(json.loads(raw))
+        except ValueError:
+            continue
+    clicks.reverse()                      # neueste zuerst
+    last_click = {}
+    for c in clicks:                      # erster Treffer = juengster Klick
+        last_click.setdefault(c.get('code'), c.get('ts'))
+
+    total_hits = sum(int(e.get('hits') or 0) for e in links.values())
+
+    def _cut(s, n):
+        s = s or ''
+        return s if len(s) <= n else s[:n - 1] + '…'
+
+    link_rows = []
+    for code, e in sorted(links.items(), key=lambda kv: kv[1].get('ts') or '', reverse=True):
+        link_rows.append(
+            '<tr><td><code>/s/{c}</code></td>'
+            '<td class="url"><a href="{u}" rel="noopener">{ud}</a></td>'
+            '<td class="dim">{t}</td><td class="num">{h}</td>'
+            '<td class="dim">{lc}</td></tr>'.format(
+                c=_esc(code), u=_esc(e.get('url') or ''),
+                ud=_esc(_cut(e.get('url'), 70)),
+                t=_esc((e.get('ts') or '')[:10]),
+                h=int(e.get('hits') or 0),
+                lc=_esc(last_click.get(code) or '—')))
+
+    click_rows = []
+    for c in clicks[:150]:
+        click_rows.append(
+            '<tr><td class="dim">{t}</td><td><code>/s/{c}</code></td>'
+            '<td>{ip}</td><td class="dim">{ref}</td><td class="dim">{ua}</td></tr>'.format(
+                t=_esc(c.get('ts') or '?'), c=_esc(c.get('code') or '?'),
+                ip=_esc(c.get('ip') or '?'),
+                ref=_esc(_cut(c.get('ref'), 40) or '—'),
+                ua=_esc(_cut(c.get('ua'), 60) or '—')))
+
+    page = (
+        '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta http-equiv="refresh" content="60">'
+        '<title>Link-Statistik — Glappa</title>'
+        '<style>' + _STATS_CSS + '</style></head><body><main>'
+        '<h1>Link-K&uuml;rzer — Statistik</h1>'
+        '<p class="sub">{n} Links · {h} Klicks insgesamt · Seite aktualisiert '
+        'sich jede Minute · Log: die letzten {k} Klicks</p>'
+        '<h2>Links</h2><table><tr><th>Code</th><th>Ziel</th><th>Erstellt</th>'
+        '<th>Klicks</th><th>Letzter Klick</th></tr>{lr}</table>'
+        '<h2>Letzte Klicks</h2><table><tr><th>Zeit</th><th>Code</th><th>IP</th>'
+        '<th>Herkunft</th><th>Browser</th></tr>{cr}</table>'
+        '</main></body></html>'.format(
+            n=len(links), h=total_hits, k=len(clicks),
+            lr=''.join(link_rows) or '<tr><td colspan="5" class="dim">noch keine Links</td></tr>',
+            cr=''.join(click_rows) or '<tr><td colspan="5" class="dim">noch keine Klicks</td></tr>'))
+    resp = Response(page, mimetype='text/html')
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
 
 _SHORT_404_HTML = (
     '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
@@ -1929,6 +2083,7 @@ def short_resolve(code: str):
             _short_save(links)
     if not entry:
         return Response(_SHORT_404_HTML, status=404, mimetype='text/html')
+    _short_log_click(code, entry['url'])   # wer/wann/woher — fuer --log-link + /s/stats
     # 302 (temporaer), nicht 301: Browser cachen 301 aggressiv — geloeschte/
     # geaenderte Links waeren sonst clientseitig fuer immer eingebrannt.
     resp = Response(status=302)
