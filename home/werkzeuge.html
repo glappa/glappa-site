@@ -236,9 +236,15 @@
     }
 
     /* ── RETRO: Neon-Karten passend zu home.css ── */
-    html[data-theme="retro"] .tools-title,
-    html[data-theme="retro"] .tools-topbar .back { display: none; }
-    html[data-theme="retro"] .tools-topbar { justify-content: flex-end; }
+    /* Titel uebernimmt das Banner — der Zurueck-Link bleibt aber sichtbar
+       (Ruecksprung zu Home soll in BEIDEN Modi einen Klick kosten). */
+    html[data-theme="retro"] .tools-title { display: none; }
+    html[data-theme="retro"] .tools-topbar .back {
+      color: var(--neon-cyan, #00ffff);
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      text-shadow: 0 0 6px var(--neon-cyan, #00ffff);
+    }
     html[data-theme="retro"] #themeBtn {
       background: #000;
       color: var(--neon-yellow, #ffff00);
@@ -442,7 +448,9 @@
       <p class="tsub">LibreSpeed gegen die GLAPPA-VPS &mdash; ohne Werbung, ohne Tracking.</p>
       <img src="../img/gif/rocket3.gif" alt="" aria-hidden="true" height="40">
       <br>
-      <a class="speed-go" id="speedLink" href="https://home.glappa.de/speed/" target="_blank" rel="noopener">&#9889; Test starten</a>
+      <!-- Gleicher Tab, KEIN target=_blank: der Zurueck-Pfeil auf der
+           Speedtest-Seite (glappa-back.js) macht history.back() hierher. -->
+      <a class="speed-go" id="speedLink" href="https://home.glappa.de/speed/">&#9889; Test starten</a>
       <p class="tool-hint">Misst Download, Upload und Ping zwischen dir und der VPS.</p>
     </section>
 

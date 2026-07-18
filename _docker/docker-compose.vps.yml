@@ -83,6 +83,14 @@ services:
       - MODE=standalone
       - TITLE=GLAPPA Speedtest
       - TELEMETRY=false
+    # Zurueck-Pfeil oben links (librespeed/glappa-back.js): Datei wird nach
+    # /speedtest gemountet (Entrypoint kopiert alle *.js ins Webroot), und
+    # VOR dem Original-Entrypoint haengt sed ein <script>-Tag vor jedes
+    # </body> der Vendor-Seiten — so bleibt das Vendor-HTML ungeforkt und
+    # Image-Updates laufen weiter durch.
+    volumes:
+      - ./librespeed/glappa-back.js:/speedtest/glappa-back.js:ro
+    command: ["bash", "-c", "sed -i 's#</body>#<script src=glappa-back.js></script></body>#' /speedtest/*.html && exec bash /entrypoint.sh"]
     restart: unless-stopped
     logging:
       driver: json-file

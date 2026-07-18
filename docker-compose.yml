@@ -34,6 +34,10 @@ services:
       - MODE=standalone
       - TITLE=GLAPPA Speedtest
       - TELEMETRY=false
+    # Zurueck-Pfeil wie auf dem VPS (Erklaerung: _docker/docker-compose.vps.yml)
+    volumes:
+      - ./_docker/librespeed/glappa-back.js:/speedtest/glappa-back.js:ro
+    command: ["bash", "-c", "sed -i 's#</body>#<script src=glappa-back.js></script></body>#' /speedtest/*.html && exec bash /entrypoint.sh"]
     restart: unless-stopped
 
 volumes:
