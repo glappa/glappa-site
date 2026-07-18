@@ -75,6 +75,7 @@ if (yearEl) yearEl.textContent = new Date().getFullYear();
     { label: 'Terminal',          href: 'terminal.html' },
     { label: 'Video',             href: 'page1.html' },
     { label: 'Bounce',            href: 'bounce.html' },
+    { label: 'Werkzeuge',         href: 'werkzeuge.html' },
     { label: 'Home',              href: 'home/index.html' },
     { label: 'Search',            href: 'https://search.glappa.de/', external: true },
     { label: 'SUPER Secret Page', href: 'secret/pilzskip.html' },

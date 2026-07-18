@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Werkzeuge &mdash; Glappa</title>
+  <meta name="keywords" content="Glappa Werkzeuge Uebersetzer Zusammenfasser Link-Kuerzer Speedtest">
+  <meta name="description" content="GLAPPA-Werkzeugkasten: KI-&Uuml;bersetzer, Zusammenfasser, Link-K&uuml;rzer und Speedtest — alles self-hosted, keine Cloud.">
+  <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css?v=18">
+  <style>
+    /* ── Werkzeugkasten: Neon-Karten im Terminal-Look ── */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 22px;
+      max-width: 1100px;
+      margin: 24px auto 40px;
+      padding: 0 14px;
+    }
+    .tool-card {
+      background: rgba(0,0,0,0.82);
+      border: 2px solid var(--tc, var(--neon-cyan));
+      border-radius: 4px;
+      box-shadow: 0 0 14px var(--tc, var(--neon-cyan));
+      padding: 14px;
+      font-family: "Courier New", monospace;
+    }
+    .tool-card h2 {
+      margin: 0 0 4px;
+      color: var(--tc, var(--neon-cyan));
+      text-shadow: 0 0 8px var(--tc, var(--neon-cyan));
+      font-size: 1.15em;
+      letter-spacing: 0.08em;
+    }
+    .tool-card .tsub { color: #aaa; font-size: 0.78em; margin: 0 0 10px; }
+    .tool-card--cyan   { --tc: var(--neon-cyan); }
+    .tool-card--green  { --tc: var(--neon-green); }
+    .tool-card--yellow { --tc: var(--neon-yellow); }
+    .tool-card--pink   { --tc: var(--neon-pink); }
+
+    .tool-card textarea,
+    .tool-card input[type="text"],
+    .tool-card input[type="url"],
+    .tool-card select {
+      width: 100%;
+      background: #000;
+      color: var(--neon-green);
+      border: 1px solid #444;
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+      font-size: 0.9em;
+      padding: 7px;
+      cursor: text;
+    }
+    .tool-card select { cursor: pointer; color: var(--neon-cyan); }
+    .tool-card textarea { resize: vertical; min-height: 96px; }
+    .tool-card textarea:focus,
+    .tool-card input:focus,
+    .tool-card select:focus {
+      outline: none;
+      border-color: var(--tc, var(--neon-cyan));
+      box-shadow: 0 0 6px var(--tc, var(--neon-cyan));
+    }
+    .tool-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+    .tool-row select { width: auto; flex: 1 1 130px; }
+
+    .tool-btn {
+      background: #000;
+      color: var(--tc, var(--neon-cyan));
+      border: 2px solid var(--tc, var(--neon-cyan));
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      font-size: 0.9em;
+      letter-spacing: 0.1em;
+      padding: 7px 14px;
+      cursor: pointer;
+      text-shadow: 0 0 6px var(--tc, var(--neon-cyan));
+    }
+    .tool-btn:hover:not(:disabled) {
+      background: var(--tc, var(--neon-cyan));
+      color: #000;
+      text-shadow: none;
+    }
+    .tool-btn:disabled { opacity: 0.45; cursor: wait; }
+    .tool-btn--mini { padding: 3px 8px; font-size: 0.75em; border-width: 1px; }
+
+    .tool-out {
+      margin-top: 10px;
+      background: #000;
+      border: 1px dashed #444;
+      border-radius: 2px;
+      padding: 8px;
+      min-height: 40px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #eee;
+      font-size: 0.88em;
+      display: none;
+    }
+    .tool-out.show { display: block; }
+    .tool-status { margin-top: 8px; font-size: 0.8em; color: var(--neon-yellow); min-height: 1.2em; }
+    .tool-status .blink { animation: toolblink 1s steps(1) infinite; }
+    @keyframes toolblink { 50% { opacity: 0; } }
+    .tool-err { color: #ff5555; }
+    .tool-hint { color: #888; font-size: 0.72em; margin-top: 8px; }
+    .short-result a { color: var(--neon-yellow); font-weight: bold; word-break: break-all; }
+
+    .speed-card { text-align: center; }
+    .speed-card .speed-go {
+      display: inline-block;
+      margin: 14px 0 6px;
+      font-size: 1.05em;
+      text-decoration: none;
+      color: var(--neon-pink);
+      border: 2px solid var(--neon-pink);
+      border-radius: 2px;
+      padding: 10px 22px;
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      text-shadow: 0 0 8px var(--neon-pink);
+    }
+    .speed-card .speed-go:hover { background: var(--neon-pink); color: #000; text-shadow: none; }
+  </style>
+</head>
+<body>
+
+  <!-- Laufschrift oben -->
+  <div class="marquee marquee--top">
+    <span>&#9733; GLAPPA WERKZEUGKASTEN &#9733; 100% SELF-HOSTED &#9733; KEINE CLOUD, KEIN TRACKING &#9733; </span>
+  </div>
+
+  <!-- Kopfbereich -->
+  <header class="header">
+    <img class="alien" src="img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <img class="welcome-img" src="img/gif/welcome.gif" alt="Welcome">
+    <img class="alien" src="img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <h1 class="title">GLAPPA Werkzeuge</h1>
+
+  <!-- Navigation (hardcoded Fallback, script.js ueberschreibt zentral) -->
+  <nav class="nav" data-glappa-nav>
+    <a href="index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="page1.html">Video</a><span class="sep">|</span>
+    <a href="bounce.html">Bounce</a><span class="sep">|</span>
+    <a class="current" href="werkzeuge.html">Werkzeuge</a><span class="sep">|</span>
+    <a href="home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <main class="tools-grid">
+
+    <!-- ── KI-Uebersetzer ── -->
+    <section class="tool-card tool-card--cyan">
+      <h2>&#9733; KI-&Uuml;BERSETZER</h2>
+      <p class="tsub">GLAPPA-KI (Ollama, self-hosted) &mdash; nix geht in die Cloud.</p>
+      <textarea id="trText" maxlength="2500" placeholder="Text hier reinwerfen... (max. 2500 Zeichen)"></textarea>
+      <div class="tool-row">
+        <select id="trLang" title="Zielsprache">
+          <option value="Deutsch">&rarr; Deutsch</option>
+          <option value="Englisch">&rarr; Englisch</option>
+          <option value="Franzoesisch">&rarr; Franz&ouml;sisch</option>
+          <option value="Spanisch">&rarr; Spanisch</option>
+          <option value="Italienisch">&rarr; Italienisch</option>
+          <option value="Polnisch">&rarr; Polnisch</option>
+          <option value="Tuerkisch">&rarr; T&uuml;rkisch</option>
+          <option value="Russisch">&rarr; Russisch</option>
+          <option value="Portugiesisch">&rarr; Portugiesisch</option>
+          <option value="Niederlaendisch">&rarr; Niederl&auml;ndisch</option>
+          <option value="Japanisch">&rarr; Japanisch</option>
+          <option value="Latein">&rarr; Latein</option>
+        </select>
+        <select id="trQuality" title="Modellwahl">
+          <option value="fast">Schnell (4B)</option>
+          <option value="smart">Gr&uuml;ndlich (14B, langsamer)</option>
+        </select>
+        <button class="tool-btn" id="trBtn">&Uuml;BERSETZEN</button>
+      </div>
+      <div class="tool-status" id="trStatus"></div>
+      <div class="tool-out" id="trOut"></div>
+      <div class="tool-row">
+        <button class="tool-btn tool-btn--mini" id="trCopy" style="display:none">&#128203; KOPIEREN</button>
+      </div>
+    </section>
+
+    <!-- ── KI-Zusammenfasser ── -->
+    <section class="tool-card tool-card--green">
+      <h2>&#9733; ZUSAMMENFASSER</h2>
+      <p class="tsub">Langer Text rein &mdash; Kernaussage + Stichpunkte raus.</p>
+      <textarea id="suText" maxlength="8000" style="min-height:150px" placeholder="Artikel, Mail, Wall-of-Text... (max. 8000 Zeichen)"></textarea>
+      <div class="tool-row">
+        <select id="suQuality" title="Modellwahl">
+          <option value="fast">Schnell (4B)</option>
+          <option value="smart">Gr&uuml;ndlich (14B, langsamer)</option>
+        </select>
+        <button class="tool-btn" id="suBtn">ZUSAMMENFASSEN</button>
+      </div>
+      <div class="tool-status" id="suStatus"></div>
+      <div class="tool-out" id="suOut"></div>
+      <div class="tool-row">
+        <button class="tool-btn tool-btn--mini" id="suCopy" style="display:none">&#128203; KOPIEREN</button>
+      </div>
+    </section>
+
+    <!-- ── Link-Kuerzer ── -->
+    <section class="tool-card tool-card--yellow">
+      <h2>&#9733; LINK-K&Uuml;RZER</h2>
+      <p class="tsub">Aus Monster-URL wird home.glappa.de/s/xxxxx</p>
+      <input type="url" id="shUrl" maxlength="2048" placeholder="https://irgendwas.ganz/langes?mit=parametern...">
+      <div class="tool-row">
+        <button class="tool-btn" id="shBtn">K&Uuml;RZEN!</button>
+      </div>
+      <div class="tool-status" id="shStatus"></div>
+      <div class="tool-out short-result" id="shOut"></div>
+      <div class="tool-row">
+        <button class="tool-btn tool-btn--mini" id="shCopy" style="display:none">&#128203; KOPIEREN</button>
+      </div>
+      <p class="tool-hint">Dieselbe URL bekommt immer denselben Code. Links bleiben, bis der Speicher explodiert.</p>
+    </section>
+
+    <!-- ── Speedtest ── -->
+    <section class="tool-card tool-card--pink speed-card">
+      <h2>&#9733; SPEEDTEST</h2>
+      <p class="tsub">LibreSpeed gegen die GLAPPA-VPS &mdash; ohne Werbung, ohne Tracking.</p>
+      <img src="img/gif/rocket3.gif" alt="" aria-hidden="true" height="40">
+      <br>
+      <a class="speed-go" id="speedLink" href="https://home.glappa.de/speed/" target="_blank" rel="noopener">&#9889; TEST STARTEN</a>
+      <p class="tool-hint">Misst Download/Upload/Ping zwischen DIR und der VPS in Frankfurt.<br>56k-Modem-Nostalgiker bitte hinsetzen.</p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="footer-actions">
+      <a href="index.html">
+        <img src="img/gif/anihome1.gif" alt="Home" width="88" height="31">
+      </a>
+    </div>
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+    <div class="marquee marquee--bottom">
+      <span>&#9733; ALLE WERKZEUGE LAUFEN AUF DER EIGENEN VPS &#9733; PENTIUM POWER &#9733; </span>
+    </div>
+  </footer>
+
+  <script src="script.js?v=17"></script>
+  <script>
+    /* ── API-Endpunkte: gleiche Logik wie chatEndpoint() im Terminal ──
+       home/search.glappa.de -> same-origin ueber Apache /api-Proxy,
+       glappa.de (Webhoster ohne Backend) -> cross-origin zur VPS (CORS),
+       localhost/LAN -> direkt zur dev-app.py auf :8080. */
+    function apiUrl(path) {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return location.protocol + '//' + h + ':8080' + path;
+      if (h === 'home.glappa.de' || h === 'search.glappa.de') return '/api' + path;
+      return 'https://home.glappa.de/api' + path;
+    }
+
+    /* Speedtest-Link: lokal direkt auf den Container-Port statt /speed/ */
+    (function () {
+      const h = location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.')) {
+        document.getElementById('speedLink').href = 'http://' + h + ':8890/';
+      }
+    })();
+
+    /* ── SSE-Stream lesen (wie chatRequest() im Terminal, kompakt) ──
+       Server streamt 'data: {"t":"..."}'-Events; onDelta bekommt den
+       Text-Zuwachs. JSON-Antwort (Fehler/kein Stream) -> Fallback. */
+    async function kiRequest(payload, onDelta) {
+      const resp = await fetch(apiUrl('/ki'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ stream: true }, payload)),
+      });
+      const ctype = (resp.headers.get('Content-Type') || '');
+      if (!ctype.includes('text/event-stream')) {
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+        onDelta(data.reply || '');
+        return;
+      }
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data: ')) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(6)); } catch (e) { continue; }
+          if (ev.err) throw new Error(ev.err);
+          if (ev.t) onDelta(ev.t);
+          if (ev.done) return;
+        }
+      }
+    }
+
+    /* ── Ein KI-Werkzeug an Buttons/Felder klemmen ── */
+    function wireKiTool(opts) {
+      const btn    = document.getElementById(opts.btn);
+      const status = document.getElementById(opts.status);
+      const out    = document.getElementById(opts.out);
+      const copy   = document.getElementById(opts.copy);
+
+      btn.addEventListener('click', async () => {
+        const payload = opts.payload();
+        if (!payload) return;
+        btn.disabled = true;
+        copy.style.display = 'none';
+        out.textContent = '';
+        out.classList.add('show');
+        status.innerHTML = 'GLAPPA-KI rechnet<span class="blink">_</span> (CPU, kein Turbo &mdash; Geduld)';
+        try {
+          await kiRequest(payload, piece => { out.textContent += piece; });
+          status.textContent = 'Fertig. :)';
+          if (out.textContent.trim()) copy.style.display = 'inline-block';
+        } catch (e) {
+          status.innerHTML = '<span class="tool-err">' + (e.message || 'Fehler — nochmal versuchen.') + '</span>';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(out.textContent).then(() => {
+          copy.textContent = '✓ KOPIERT';
+          setTimeout(() => { copy.innerHTML = '&#128203; KOPIEREN'; }, 1500);
+        });
+      });
+    }
+
+    wireKiTool({
+      btn: 'trBtn', status: 'trStatus', out: 'trOut', copy: 'trCopy',
+      payload() {
+        const text = document.getElementById('trText').value.trim();
+        if (!text) { document.getElementById('trText').focus(); return null; }
+        return { tool: 'translate', text: text,
+                 target: document.getElementById('trLang').value,
+                 quality: document.getElementById('trQuality').value };
+      },
+    });
+
+    wireKiTool({
+      btn: 'suBtn', status: 'suStatus', out: 'suOut', copy: 'suCopy',
+      payload() {
+        const text = document.getElementById('suText').value.trim();
+        if (!text) { document.getElementById('suText').focus(); return null; }
+        return { tool: 'summarize', text: text,
+                 quality: document.getElementById('suQuality').value };
+      },
+    });
+
+    /* ── Link-Kuerzer ── */
+    (function () {
+      const btn    = document.getElementById('shBtn');
+      const input  = document.getElementById('shUrl');
+      const status = document.getElementById('shStatus');
+      const out    = document.getElementById('shOut');
+      const copy   = document.getElementById('shCopy');
+      let shortUrl = '';
+
+      async function shorten() {
+        const url = input.value.trim();
+        if (!url) { input.focus(); return; }
+        btn.disabled = true;
+        copy.style.display = 'none';
+        out.classList.remove('show');
+        status.innerHTML = 'K&uuml;rze<span class="blink">_</span>';
+        try {
+          const resp = await fetch(apiUrl('/short'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+          shortUrl = data.short;
+          out.innerHTML = '&rarr; <a href="' + shortUrl + '" target="_blank" rel="noopener"></a>';
+          out.querySelector('a').textContent = shortUrl;
+          out.classList.add('show');
+          status.textContent = 'Fertig. :)';
+          copy.style.display = 'inline-block';
+        } catch (e) {
+          status.innerHTML = '<span class="tool-err">' + (e.message || 'Fehler — nochmal versuchen.') + '</span>';
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      btn.addEventListener('click', shorten);
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') shorten(); });
+      copy.addEventListener('click', () => {
+        navigator.clipboard.writeText(shortUrl).then(() => {
+          copy.textContent = '✓ KOPIERT';
+          setTimeout(() => { copy.innerHTML = '&#128203; KOPIEREN'; }, 1500);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

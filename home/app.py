@@ -1248,7 +1248,8 @@ def counter_visits():
 #                           oeffentliche search.glappa.de-Weg ueber Apache)
 import urllib.request
 import urllib.error
-from urllib.parse import urlencode
+import secrets
+from urllib.parse import urlencode, urlsplit
 from datetime import datetime, timedelta, timezone
 
 OLLAMA_URL       = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/')
@@ -1712,6 +1713,228 @@ def chat():
     if not reply:
         return _cors_resp(jsonify({'error': 'GLAPPA-BOT hat nur geschwiegen. Nochmal versuchen.'})), 502
     return _cors_resp(jsonify({'reply': reply, 'model': model}))
+
+
+# ── GLAPPA-KI-Werkzeuge (werkzeuge.html): Uebersetzer + Zusammenfasser ──
+# Gleiche Ollama-Pipeline wie /chat (Streaming via _chat_stream_response),
+# aber ohne Persona: hier zaehlt nur das Ergebnis. Die Seite schickt
+# {tool, text, target?, quality, stream:true}; quality waehlt zwischen dem
+# schnellen 4b- und dem gruendlichen 14b-Modell — CPU-Inferenz, der User
+# soll selbst entscheiden duerfen, ob er auf Qualitaet warten will.
+KI_MAX_LEN = {'translate': 2500, 'summarize': 8000}   # Zeichen Input pro Tool
+# Whitelist statt freiem target-String: der Wert landet im System-Prompt,
+# freier Text waere eine Prompt-Injection-Tuer ("nach Klingonisch. Ausserdem...").
+KI_LANGS = ('Deutsch', 'Englisch', 'Franzoesisch', 'Spanisch', 'Italienisch',
+            'Polnisch', 'Tuerkisch', 'Russisch', 'Portugiesisch', 'Niederlaendisch',
+            'Japanisch', 'Latein')
+
+_KI_PROMPTS = {
+    'translate': (
+        'Du bist ein praeziser Uebersetzer. Uebersetze den Text des Users '
+        'nach {target}. Gib AUSSCHLIESSLICH die Uebersetzung aus — keine '
+        'Anmerkungen, keine Anfuehrungszeichen drumherum, keine Erklaerungen, '
+        'keine Rueckfragen. Behalte Ton, Absaetze und Zeilenumbrueche bei. '
+        'Ist der Text bereits vollstaendig auf {target}, gib ihn unveraendert '
+        'zurueck.'
+    ),
+    'summarize': (
+        'Du fasst Texte zusammen. Fasse den Text des Users auf Deutsch '
+        'kompakt zusammen: zuerst EIN Satz mit der Kernaussage, dann 3 bis 5 '
+        'Stichpunkte, jeder beginnt mit "- ". Erfinde nichts dazu — nur, was '
+        'wirklich im Text steht. Reiner Text, keine Markdown-Ueberschriften, '
+        'keine Einleitung wie "Hier ist die Zusammenfassung".'
+    ),
+}
+
+@Downloader.route('/ki', methods=['POST', 'OPTIONS'])
+def ki_tool():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    # Eigener Rate-Bucket ('ki:'-Praefix), damit Werkzeug-Nutzung nicht das
+    # Chat-Kontingent frisst (und umgekehrt). 6/min: die Antworten sind
+    # laenger als Chat-Zeilen, CPU-Zeit ist das knappe Gut.
+    if not _chat_rate_ok(f'ki:{ip}', limit=6):
+        return _cors_resp(jsonify({'error': 'Langsam! Max. 6 Anfragen pro Minute.'})), 429
+
+    data = request.get_json(force=True, silent=True) or {}
+    tool = (data.get('tool') or '').strip().lower()
+    if tool not in _KI_PROMPTS:
+        return _cors_resp(jsonify({'error': 'Unbekanntes Werkzeug.'})), 400
+    text = (data.get('text') or '').strip()
+    if not text:
+        return _cors_resp(jsonify({'error': 'Kein Text uebergeben.'})), 400
+    text = text[:KI_MAX_LEN[tool]]
+
+    sys_prompt = _KI_PROMPTS[tool]
+    if tool == 'translate':
+        target = (data.get('target') or 'Deutsch').strip()
+        if target not in KI_LANGS:
+            return _cors_resp(jsonify({'error': 'Unbekannte Zielsprache.'})), 400
+        sys_prompt = sys_prompt.format(target=target)
+
+    model = CHAT_MODEL_SMART if (data.get('quality') == 'smart') else CHAT_MODEL_FAST
+    if tool == 'translate':
+        # Uebersetzung ist etwa so lang wie der Input (~3 Zeichen/Token,
+        # etwas Luft) — Zusammenfassung ist per Definition kurz.
+        num_predict = min(1200, max(220, len(text) // 2))
+    else:
+        num_predict = 350
+
+    body = {
+        'model': model,
+        'messages': [{'role': 'system', 'content': sys_prompt},
+                     {'role': 'user', 'content': text}],
+        'stream': bool(data.get('stream')),
+        # Niedrige Temperatur: Werkzeug, nicht Kreativpartner.
+        'options': {'num_predict': num_predict, 'temperature': 0.2},
+        'keep_alive': '24h',   # gleiche Pinning-Logik wie /chat
+    }
+    req = urllib.request.Request(
+        f'{OLLAMA_URL}/api/chat', data=json.dumps(body).encode('utf-8'),
+        headers={'Content-Type': 'application/json'}, method='POST')
+
+    if body['stream']:
+        return _chat_stream_response(req, model)
+
+    try:
+        with urllib.request.urlopen(req, timeout=CHAT_TIMEOUT) as r:
+            result = json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        return _cors_resp(jsonify({'error': f'GLAPPA-KI Stoerung (HTTP {e.code}).'})), 502
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return _cors_resp(jsonify({'error': 'GLAPPA-KI ist offline. (Ollama nicht erreichbar '
+                                            '— laeuft der Container?)'})), 503
+    reply = ((result.get('message') or {}).get('content') or '').strip()
+    if not reply:
+        return _cors_resp(jsonify({'error': 'GLAPPA-KI hat nur geschwiegen. Nochmal versuchen.'})), 502
+    return _cors_resp(jsonify({'reply': reply, 'model': model}))
+
+
+# ── Link-Kuerzer (werkzeuge.html): https://home.glappa.de/s/<code> ──
+# Bewusst selbstgebaut statt Shlink & Co.: ein JSON-File im selben Volume
+# wie der Besucher-Counter reicht fuer eine private Seite voellig, kein
+# eigener Container, keine DB. Apache proxied /api/short (erstellen) und
+# /s/ (aufloesen) hierher.
+SHORT_FILE      = os.path.join(DOWNLOAD_DIR, 'shortlinks.json')
+SHORT_LOCK      = threading.Lock()
+# Ohne Verwechsler (0/o, 1/l/i) — die Codes sollen vorlesbar sein.
+SHORT_ALPHABET  = 'abcdefghjkmnpqrstuvwxyz23456789'
+SHORT_CODE_LEN  = 5
+SHORT_MAX_LINKS = 5000     # Notbremse gegen Bot-Spam ins JSON-File
+SHORT_MAX_URL   = 2048
+SHORT_BASE      = os.environ.get('SHORT_BASE_URL', 'https://home.glappa.de/s').rstrip('/')
+
+def _short_load():
+    try:
+        with open(SHORT_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _short_save(data):
+    tmp = SHORT_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(data, f)
+    os.replace(tmp, SHORT_FILE)
+
+def _short_valid_url(url: str):
+    """Gibt die normalisierte URL zurueck oder None. Nur http(s) mit Host —
+    keine javascript:/data:-Spielereien, keine Steuerzeichen."""
+    if not url or len(url) > SHORT_MAX_URL:
+        return None
+    if any(c.isspace() for c in url) or any(ord(c) < 32 for c in url):
+        return None
+    if '://' not in url:
+        url = 'https://' + url        # "glappa.de/foo" soll einfach klappen
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or ''
+        _ = parts.port                # wirft ValueError bei Muell-"Ports"
+    except ValueError:
+        return None
+    if parts.scheme not in ('http', 'https') or not host:
+        return None
+    # Echter Hostname, kein Ueberbleibsel wie "javascript" (aus dem
+    # https://-Praefix oben wuerde sonst https://javascript:... werden).
+    if not re.fullmatch(r'[a-z0-9._-]+|\[[0-9a-f:.]+\]', host):
+        return None
+    if '.' not in host and host != 'localhost':
+        return None
+    # Keine Kurzlink-Ketten auf uns selbst (waere eine Redirect-Schleife).
+    if parts.netloc.lower() in ('home.glappa.de',) and parts.path.startswith('/s/'):
+        return None
+    return url
+
+@Downloader.route('/short', methods=['POST', 'OPTIONS'])
+def short_create():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    if not _chat_rate_ok(f'short:{ip}', limit=10):
+        return _cors_resp(jsonify({'error': 'Langsam! Max. 10 Links pro Minute.'})), 429
+
+    data = request.get_json(force=True, silent=True) or {}
+    url = _short_valid_url((data.get('url') or '').strip())
+    if not url:
+        return _cors_resp(jsonify({'error': 'Das ist keine brauchbare http(s)-URL.'})), 400
+
+    with SHORT_LOCK:
+        links = _short_load()
+        # Dedupe: dieselbe URL bekommt denselben Code (haelt das File klein
+        # und macht wiederholtes Kuerzen idempotent).
+        for code, entry in links.items():
+            if entry.get('url') == url:
+                return _cors_resp(jsonify({'code': code, 'short': f'{SHORT_BASE}/{code}'}))
+        if len(links) >= SHORT_MAX_LINKS:
+            return _cors_resp(jsonify({'error': 'Kurzlink-Speicher voll.'})), 507
+        for _ in range(20):
+            code = ''.join(secrets.choice(SHORT_ALPHABET) for _ in range(SHORT_CODE_LEN))
+            if code not in links:
+                break
+        else:
+            return _cors_resp(jsonify({'error': 'Kein freier Code gefunden.'})), 500
+        links[code] = {'url': url, 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                       'hits': 0}
+        _short_save(links)
+    return _cors_resp(jsonify({'code': code, 'short': f'{SHORT_BASE}/{code}'}))
+
+_SHORT_404_HTML = (
+    '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
+    '<title>404 — Glappa</title></head>'
+    '<body style="background:#000;color:#0f0;font-family:Courier New,monospace;'
+    'text-align:center;padding-top:18vh">'
+    '<h1>404 — Kurzlink unbekannt</h1>'
+    '<p>Diesen Code kennt der GLAPPA-Kuerzer nicht (mehr).</p>'
+    '<p><a style="color:#0ff" href="https://glappa.de/werkzeuge.html">'
+    '&larr; zurueck zu den Werkzeugen</a></p></body></html>'
+)
+
+@Downloader.route('/short/<code>')
+def short_resolve(code: str):
+    code = code.strip().lower()
+    with SHORT_LOCK:
+        links = _short_load()
+        entry = links.get(code)
+        if entry:
+            entry['hits'] = int(entry.get('hits') or 0) + 1
+            _short_save(links)
+    if not entry:
+        return Response(_SHORT_404_HTML, status=404, mimetype='text/html')
+    # 302 (temporaer), nicht 301: Browser cachen 301 aggressiv — geloeschte/
+    # geaenderte Links waeren sonst clientseitig fuer immer eingebrannt.
+    resp = Response(status=302)
+    resp.headers['Location'] = entry['url']
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @Downloader.errorhandler(Exception)
