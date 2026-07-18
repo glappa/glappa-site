@@ -305,14 +305,15 @@
     html[data-theme="retro"] .tool-status .tool-err { color: #ff5555; }
     html[data-theme="retro"] .tool-hint { color: #888; }
     html[data-theme="retro"] .short-result a { color: #ffff00; }
+    /* Farbe kommt von der Karte (--tc): Speedtest pink, PGP-Chat gruen */
     html[data-theme="retro"] .speed-go {
-      color: #ff00ff;
-      border: 2px solid #ff00ff;
+      color: var(--tc, #ff00ff);
+      border: 2px solid var(--tc, #ff00ff);
       border-radius: 2px;
       font-family: "Courier New", monospace;
-      text-shadow: 0 0 8px #ff00ff;
+      text-shadow: 0 0 8px var(--tc, #ff00ff);
     }
-    html[data-theme="retro"] .speed-go:hover { background: #ff00ff; color: #000; text-shadow: none; }
+    html[data-theme="retro"] .speed-go:hover { background: var(--tc, #ff00ff); color: #000; text-shadow: none; }
   </style>
 </head>
 <body>
@@ -442,6 +443,18 @@
            Speedtest-Seite (glappa-back.js) macht history.back() hierher. -->
       <a class="speed-go" id="speedLink" href="https://home.glappa.de/speed/">&#9889; Test starten</a>
       <p class="tool-hint">Misst Download, Upload und Ping zwischen dir und der VPS.</p>
+    </section>
+
+    <!-- ── PGP-Chat ── -->
+    <!-- Bewusst NUR hier verlinkt (nicht auf Home o.ae.) — der Chat soll
+         nur ueber den Werkzeugkasten auffindbar sein. -->
+    <section class="tool-card tool-card--green speed-card" aria-labelledby="pgHead">
+      <h2 id="pgHead">PGP-Chat</h2>
+      <p class="tsub">Ende-zu-Ende-verschl&uuml;sselter Raum-Chat &mdash; anonym, der Server sieht nur Ciphertext.</p>
+      <img src="../img/gif/hacker.gif" alt="" aria-hidden="true" height="40">
+      <br>
+      <a class="speed-go" href="pgp.html">&#128274; Chat &ouml;ffnen</a>
+      <p class="tool-hint">Schl&uuml;ssel entstehen im Browser, Pseudonym statt Klarname, kein Log. Raumname teilen = einladen.</p>
     </section>
 
   </main>

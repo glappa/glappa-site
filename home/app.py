@@ -2131,6 +2131,218 @@ def short_resolve(code: str):
     return resp
 
 
+# ══════════════════════════════════════════════════════════════════
+# PGP-CHAT — Ende-zu-Ende-verschluesselter Raum-Chat (home/pgp.html)
+#
+# Der Server ist hier NUR Briefkasten: Die Clients erzeugen ihre
+# Schluesselpaare im Browser (OpenPGP.js, lokal gehostet), verschluesseln
+# jede Nachricht an alle Public Keys im Raum und schicken ausschliesslich
+# den armored Ciphertext hoch. Hier wird nichts entschluesselt und nichts
+# Entschluesselbares gespeichert — nur das Roster (Name + Public Key +
+# Heartbeat) und Ciphertext-Blobs mit Laufnummer fuers Polling.
+#
+# Raeume entstehen implizit beim ersten Beitritt; wer den Raumnamen kennt,
+# kann beitreten (das ist das Zugangsmodell — der Raumname ist das geteilte
+# Geheimnis). Wichtig fuer die Vertraulichkeit: Nachrichten werden nur an
+# die Keys verschluesselt, die BEIM ABSENDEN im Roster stehen — wer spaeter
+# joint, kann alte Nachrichten nicht lesen (Clients zeigen dafuer ein
+# Schloss-Placeholder).
+#
+# Anonymitaet: Der Klartext-Raumname erreicht den Server NIE — der Client
+# schickt nur SHA-256("glappa-pgp-room:v1:" + name). Alle /pgp-Requests
+# sind POSTs (nichts Identifizierendes in URLs/Query-Strings), IPs werden
+# nirgends persistiert (nur fluechtig im RAM fuers Rate-Limit), und der
+# Apache-vhost nimmt /api/pgp/ komplett aus dem Access-Log. Namen sind
+# frei gewaehlte Pseudonyme, Zeitstempel nur minutengenau.
+# ══════════════════════════════════════════════════════════════════
+PGP_FILE        = os.path.join(DOWNLOAD_DIR, 'pgpchat.json')
+PGP_LOCK        = threading.Lock()
+PGP_ROOM_RE     = re.compile(r'[0-9a-f]{64}')   # SHA-256-Hash des Raumnamens
+PGP_FP_RE       = re.compile(r'[0-9A-F]{40}|[0-9A-F]{64}')  # v4- bzw. v6-Key-Fingerprint
+PGP_MAX_ROOMS   = 200
+PGP_MAX_MEMBERS = 20
+PGP_MAX_MSGS    = 200              # pro Raum behalten (Ringpuffer)
+PGP_MAX_BYTES   = 512 * 1024       # Ciphertext-Summe pro Raum
+PGP_MAX_BODY    = 30000            # einzelne armored Nachricht
+PGP_MAX_KEY     = 12000            # armored Public Key
+PGP_MAX_NAME    = 24
+PGP_MEMBER_TTL  = 300              # sek ohne Poll -> aus dem Roster
+PGP_ROOM_TTL    = 3 * 86400        # sek ohne Aktivitaet -> Raum geloescht
+
+def _pgp_load():
+    try:
+        with open(PGP_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def _pgp_save(rooms):
+    tmp = PGP_FILE + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(rooms, f)
+    os.replace(tmp, PGP_FILE)
+
+def _pgp_prune(rooms) -> bool:
+    """Tote Raeume und Mitglieder ohne Heartbeat entsorgen. True = geaendert."""
+    now = time.time()
+    changed = False
+    for rname in list(rooms):
+        room = rooms[rname]
+        if now - (room.get('ts') or 0) > PGP_ROOM_TTL:
+            del rooms[rname]
+            changed = True
+            continue
+        for fp in list(room.get('keys') or {}):
+            if now - (room['keys'][fp].get('seen') or 0) > PGP_MEMBER_TTL:
+                del room['keys'][fp]
+                changed = True
+    return changed
+
+def _pgp_roster(room):
+    return [{'fp': fp, 'name': m.get('name') or '?', 'key': m.get('key') or ''}
+            for fp, m in sorted((room.get('keys') or {}).items(),
+                                key=lambda kv: kv[1].get('joined') or 0)]
+
+@Downloader.route('/pgp/join', methods=['POST', 'OPTIONS'])
+def pgp_join():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    if not _chat_rate_ok(f'pgpjoin:{ip}', limit=12):
+        return _cors_resp(jsonify({'error': 'Langsam! Max. 12 Beitritte pro Minute.'})), 429
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = (data.get('room') or '').strip().lower()
+    name  = ' '.join((data.get('name') or '').split())[:PGP_MAX_NAME]
+    fp    = (data.get('fp') or '').strip().upper()
+    key   = (data.get('key') or '').strip()
+    if not PGP_ROOM_RE.fullmatch(rname):
+        return _cors_resp(jsonify({'error': 'Kaputte Raum-ID.'})), 400
+    if not name:
+        return _cors_resp(jsonify({'error': 'Name fehlt.'})), 400
+    if not PGP_FP_RE.fullmatch(fp):
+        return _cors_resp(jsonify({'error': 'Kaputter Fingerprint.'})), 400
+    if (not key.startswith('-----BEGIN PGP PUBLIC KEY BLOCK-----')
+            or len(key) > PGP_MAX_KEY):
+        return _cors_resp(jsonify({'error': 'Das ist kein armored Public Key.'})), 400
+
+    now = time.time()
+    with PGP_LOCK:
+        rooms = _pgp_load()
+        _pgp_prune(rooms)
+        room = rooms.get(rname)
+        if room is None:
+            if len(rooms) >= PGP_MAX_ROOMS:
+                return _cors_resp(jsonify({'error': 'Alle Raeume belegt. Spaeter nochmal.'})), 507
+            room = rooms[rname] = {'seq': 0, 'ts': now, 'keys': {}, 'msgs': []}
+        entry = room['keys'].get(fp)
+        # Schluessel-Bindung: derselbe Fingerprint darf NIE mit einem anderen
+        # Key ueberschrieben werden — sonst koennte ein Angreifer einen
+        # Empfaenger-Slot kapern und kuenftige Nachrichten an sich umleiten.
+        if entry and entry.get('key') != key:
+            return _cors_resp(jsonify({'error': 'Dieser Fingerprint ist schon mit einem anderen Schluessel im Raum.'})), 409
+        if entry is None and len(room['keys']) >= PGP_MAX_MEMBERS:
+            return _cors_resp(jsonify({'error': f'Raum voll (max. {PGP_MAX_MEMBERS} Leute).'})), 507
+        room['keys'][fp] = {'name': name, 'key': key, 'seen': now,
+                            'joined': (entry or {}).get('joined') or now}
+        room['ts'] = now
+        _pgp_save(rooms)
+        return _cors_resp(jsonify({'ok': True, 'seq': room['seq'],
+                                   'roster': _pgp_roster(room)}))
+
+# POST statt GET, obwohl es "nur lesen" ist: Raum-ID und Fingerprint sollen
+# in keinem Request-Log (URL/Query-String) landen — POST-Bodies loggt keiner.
+@Downloader.route('/pgp/poll', methods=['POST', 'OPTIONS'])
+def pgp_poll():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = (data.get('room') or '').strip().lower()
+    fp    = (data.get('fp') or '').strip().upper()
+    try:
+        since = int(data.get('since') or 0)
+    except (TypeError, ValueError):
+        since = 0
+    if not PGP_ROOM_RE.fullmatch(rname):
+        return _cors_resp(jsonify({'error': 'Kaputte Raum-ID.'})), 400
+
+    now = time.time()
+    with PGP_LOCK:
+        rooms = _pgp_load()
+        changed = _pgp_prune(rooms)
+        room = rooms.get(rname)
+        if room is None:
+            if changed:
+                _pgp_save(rooms)
+            return _cors_resp(jsonify({'error': 'Raum existiert nicht (mehr).'})), 404
+        me = room['keys'].get(fp)
+        if me is not None and now - (me.get('seen') or 0) > 45:
+            # Heartbeat nur alle ~45s auf Platte — sonst schreibt jeder Poll
+            # (alle paar Sekunden pro Mitglied) das ganze JSON neu.
+            me['seen'] = now
+            changed = True
+        if changed:
+            _pgp_save(rooms)
+        msgs = [m for m in room['msgs'] if m['seq'] > since]
+        return _cors_resp(jsonify({'seq': room['seq'], 'member': me is not None,
+                                   'roster': _pgp_roster(room), 'msgs': msgs}))
+
+@Downloader.route('/pgp/send', methods=['POST', 'OPTIONS'])
+def pgp_send():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    if not _chat_rate_ok(f'pgpsend:{ip}', limit=30):
+        return _cors_resp(jsonify({'error': 'Langsam! Max. 30 Nachrichten pro Minute.'})), 429
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = (data.get('room') or '').strip().lower()
+    fp    = (data.get('fp') or '').strip().upper()
+    body  = (data.get('body') or '').strip()
+    if not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+    if (not body.startswith('-----BEGIN PGP MESSAGE-----')
+            or len(body) > PGP_MAX_BODY):
+        return _cors_resp(jsonify({'error': 'Nur armored PGP-Nachrichten (max. 30 kB).'})), 400
+
+    now = time.time()
+    with PGP_LOCK:
+        rooms = _pgp_load()
+        _pgp_prune(rooms)
+        room = rooms.get(rname)
+        if room is None or fp not in room['keys']:
+            return _cors_resp(jsonify({'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'})), 403
+        room['seq'] += 1
+        room['keys'][fp]['seen'] = now
+        room['ts'] = now
+        room['msgs'].append({
+            'seq':  room['seq'],
+            # bewusst nur minutengenau — sekundengenaue Zeitstempel braucht
+            # niemand, und weniger Metadaten = weniger Korrelierbarkeit
+            'ts':   datetime.now(_BERLIN_TZ).strftime('%Y-%m-%d %H:%M'),
+            'fp':   fp,
+            'body': body,
+        })
+        # Ringpuffer: Anzahl UND Byte-Summe deckeln
+        room['msgs'] = room['msgs'][-PGP_MAX_MSGS:]
+        while len(room['msgs']) > 1 and sum(len(m['body']) for m in room['msgs']) > PGP_MAX_BYTES:
+            room['msgs'].pop(0)
+        _pgp_save(rooms)
+        return _cors_resp(jsonify({'ok': True, 'seq': room['seq']}))
+
+
 @Downloader.errorhandler(Exception)
 def handle_error(e):
     # HTTPException (z.B. 404 fuer unbekannte Routen, ausgeloest von den

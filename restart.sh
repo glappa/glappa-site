@@ -301,9 +301,10 @@ sync_apache_vhost() {
     say "synce Apache-vhost (home.glappa.de) + Module..."
     $HOST_SUDO cp "$vhost_src" /etc/apache2/sites-available/home.glappa.de.conf
     $HOST_SUDO a2ensite home.glappa.de.conf >/dev/null 2>&1 || true
-    # proxy_wstunnel: fuer /api/shell/ws (real-shell). a2enmod ist idempotent
+    # proxy_wstunnel: fuer /api/shell/ws (real-shell). setenvif: fuer das
+    # Log-Opt-out des PGP-Chats (SetEnvIf pgp_dontlog). a2enmod ist idempotent
     # — bereits aktive Module hier nochmal zu nennen ist ein No-Op.
-    $HOST_SUDO a2enmod ssl headers rewrite expires proxy proxy_http proxy_wstunnel >/dev/null 2>&1 || true
+    $HOST_SUDO a2enmod ssl headers rewrite expires proxy proxy_http proxy_wstunnel setenvif >/dev/null 2>&1 || true
 
     if $HOST_SUDO apache2ctl configtest 2>&1 | grep -q "Syntax OK"; then
         $HOST_SUDO systemctl reload apache2 && ok "Apache-vhost synced + reloaded"

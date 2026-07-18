@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PGP-Chat &mdash; Glappa Home</title>
+  <meta name="keywords" content="Glappa PGP Chat Ende-zu-Ende verschluesselt OpenPGP">
+  <meta name="description" content="Ende-zu-Ende-verschl&uuml;sselter Raum-Chat mit OpenPGP &mdash; Schl&uuml;ssel entstehen im Browser, der Server sieht nur Ciphertext.">
+  <link rel="icon" href="../favicon.ico">
+  <!-- Theme-Bootstrap VOR dem Stylesheet (gleiches Prinzip wie werkzeuge.html):
+       gespeicherte Wahl setzen, bevor irgendwas rendert — kein Flackern. -->
+  <script>
+    (function () {
+      var t = 'clean';
+      try { t = localStorage.getItem('glappa-tools-theme') || 'clean'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t === 'retro' ? 'retro' : 'clean');
+    })();
+  </script>
+  <link rel="stylesheet" href="home.css?v=11">
+  <style>
+    /* ════════════════════════════════════════════════════════════════
+       Zwei Stile, umschaltbar (Knopf oben rechts, localStorage) —
+       identisch zum Werkzeugkasten:
+       clean (DEFAULT) — schlicht, dunkel, gut lesbar.
+       retro           — der 90er-Look vom Rest der Seite (home.css).
+       ════════════════════════════════════════════════════════════════ */
+
+    /* ── Gemeinsames Grundgeruest ── */
+    .tools-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 14px auto 4px;
+      padding: 0 16px;
+    }
+    #themeBtn { cursor: pointer; }
+
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 18px;
+      max-width: 1000px;
+      margin: 18px auto 48px;
+      padding: 0 16px;
+    }
+    .tool-card { border-radius: 6px; padding: 16px; }
+    .tool-card h2 { margin: 0 0 4px; font-size: 1.05em; }
+    .tool-card .tsub { margin: 0 0 12px; font-size: 0.82em; }
+    .tool-card label {
+      display: block;
+      font-size: 0.78em;
+      margin: 10px 0 4px;
+      letter-spacing: 0.04em;
+    }
+    .tool-card input[type="text"] {
+      width: 100%;
+      border-radius: 4px;
+      font-size: 0.92em;
+      padding: 8px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .tool-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+    .tool-row .grow { flex: 1 1 140px; width: auto; }
+    .tool-btn {
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      padding: 9px 16px;
+      cursor: pointer;
+    }
+    .tool-btn:disabled { opacity: 0.5; cursor: wait; }
+    .tool-btn--mini { padding: 4px 10px; font-size: 0.78em; }
+    .tool-status { margin-top: 10px; font-size: 0.82em; min-height: 1.3em; }
+    .tool-hint { font-size: 0.75em; margin-top: 10px; }
+
+    /* ── PGP-spezifisch ── */
+    .fp-box {
+      font-family: "Courier New", Consolas, monospace;
+      font-size: 0.82em;
+      word-break: break-all;
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 2px;
+      user-select: all;
+    }
+    .id-line { font-size: 0.9em; margin: 6px 0 2px; }
+    .roster { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .roster .pill {
+      font-size: 0.76em;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-family: "Courier New", Consolas, monospace;
+      white-space: nowrap;
+    }
+    .chat-card { grid-column: 1 / -1; }
+    .chat-box {
+      height: 380px;
+      overflow-y: auto;
+      border-radius: 4px;
+      padding: 10px;
+      margin-top: 8px;
+      font-size: 0.9em;
+    }
+    .msg { margin: 0 0 10px; }
+    .msg .mhead { font-size: 0.76em; display: flex; gap: 8px; align-items: baseline; }
+    .msg .mname { font-weight: bold; }
+    .msg .mbody { white-space: pre-wrap; word-break: break-word; margin-top: 1px; }
+    .msg--locked .mbody { font-style: italic; }
+    .mbadge.ok { }
+    .mbadge.warn { }
+
+    /* ── CLEAN (Default): schlicht, dunkel, lesbar ── */
+    html[data-theme="clean"] {
+      background: #0e0f12;
+      background-image: none;
+    }
+    html[data-theme="clean"] body {
+      background: #0e0f12;
+      background-image: none;
+      color: #e6e6e6;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      cursor: auto;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    html[data-theme="clean"] .marquee,
+    html[data-theme="clean"] .header,
+    html[data-theme="clean"] .construction,
+    html[data-theme="clean"] .retro-only { display: none !important; }
+
+    html[data-theme="clean"] a { color: #6fd18c; }
+    html[data-theme="clean"] a:visited { color: #6fd18c; }
+
+    html[data-theme="clean"] .tools-topbar { margin-top: 22px; }
+    html[data-theme="clean"] .tools-title {
+      margin: 0;
+      font-size: 1.45em;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    html[data-theme="clean"] .nav {
+      background: none;
+      border: none;
+      box-shadow: none;
+      text-align: center;
+      font-size: 0.85em;
+      margin: 6px auto 0;
+      padding: 0 16px;
+    }
+    html[data-theme="clean"] .nav a {
+      color: #9aa0a6;
+      text-decoration: none;
+      text-shadow: none;
+      margin: 0 2px;
+    }
+    html[data-theme="clean"] .nav a:hover { color: #fff; }
+    html[data-theme="clean"] .nav a.current { color: #6fd18c; }
+    html[data-theme="clean"] .nav .sep { color: #33363b; margin: 0 4px; }
+
+    html[data-theme="clean"] .tool-card {
+      background: #16181d;
+      border: 1px solid #2a2d34;
+    }
+    html[data-theme="clean"] .tool-card h2 { color: #fff; font-weight: 600; }
+    html[data-theme="clean"] .tool-card .tsub { color: #9aa0a6; }
+    html[data-theme="clean"] .tool-card label { color: #9aa0a6; text-transform: uppercase; }
+    html[data-theme="clean"] .tool-card input[type="text"] {
+      background: #0e0f12;
+      color: #e6e6e6;
+      border: 1px solid #33363b;
+    }
+    html[data-theme="clean"] .tool-card input:focus-visible {
+      outline: 2px solid #6fd18c;
+      outline-offset: 0;
+      border-color: #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn {
+      background: #6fd18c;
+      color: #0e0f12;
+      border: 1px solid #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn:hover:not(:disabled) { background: #8ee2a6; }
+    html[data-theme="clean"] .tool-btn--mini {
+      background: none;
+      color: #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn--mini:hover:not(:disabled) { background: #1d2026; }
+    html[data-theme="clean"] #themeBtn {
+      background: none;
+      color: #9aa0a6;
+      border: 1px solid #33363b;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 0.8em;
+      font-family: inherit;
+    }
+    html[data-theme="clean"] #themeBtn:hover { color: #fff; border-color: #9aa0a6; }
+    html[data-theme="clean"] .tool-status { color: #c9a848; }
+    html[data-theme="clean"] .tool-status.err { color: #e5715f; }
+    html[data-theme="clean"] .tool-hint { color: #6c7178; }
+    html[data-theme="clean"] .fp-box {
+      background: #0e0f12;
+      border: 1px solid #2a2d34;
+      color: #6fd18c;
+    }
+    html[data-theme="clean"] .roster .pill {
+      background: #1d2026;
+      border: 1px solid #33363b;
+      color: #9aa0a6;
+    }
+    html[data-theme="clean"] .roster .pill--me { border-color: #6fd18c; color: #6fd18c; }
+    html[data-theme="clean"] .chat-box {
+      background: #0e0f12;
+      border: 1px solid #2a2d34;
+    }
+    html[data-theme="clean"] .msg .mhead { color: #6c7178; }
+    html[data-theme="clean"] .msg .mname { color: #9aa0a6; }
+    html[data-theme="clean"] .msg--me .mname { color: #6fd18c; }
+    html[data-theme="clean"] .msg--locked .mbody { color: #6c7178; }
+    html[data-theme="clean"] .mbadge.ok { color: #6fd18c; }
+    html[data-theme="clean"] .mbadge.warn { color: #c9a848; }
+    html[data-theme="clean"] .footer {
+      background: none;
+      border: none;
+      text-align: center;
+      color: #6c7178;
+      font-size: 0.8em;
+      padding-bottom: 24px;
+    }
+    html[data-theme="clean"] .copyright {
+      color: #6c7178;
+      text-shadow: none;
+      font-family: inherit;
+    }
+
+    /* ── RETRO: Neon-Karten passend zu home.css ── */
+    html[data-theme="retro"] .tools-title { display: none; }
+    html[data-theme="retro"] .tools-topbar { justify-content: flex-end; }
+    html[data-theme="retro"] #themeBtn {
+      background: #000;
+      color: var(--neon-yellow, #ffff00);
+      border: 2px solid var(--neon-yellow, #ffff00);
+      border-radius: 2px;
+      padding: 6px 12px;
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      font-size: 0.8em;
+      text-shadow: 0 0 6px var(--neon-yellow, #ffff00);
+    }
+    html[data-theme="retro"] .tool-card {
+      background: rgba(0,0,0,0.82);
+      border: 2px solid var(--tc, #00ffff);
+      border-radius: 4px;
+      box-shadow: 0 0 14px var(--tc, #00ffff);
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .tool-card--cyan   { --tc: #00ffff; }
+    html[data-theme="retro"] .tool-card--green  { --tc: #00ff00; }
+    html[data-theme="retro"] .tool-card--pink   { --tc: #ff00ff; }
+    html[data-theme="retro"] .tool-card h2 {
+      color: var(--tc);
+      text-shadow: 0 0 8px var(--tc);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    html[data-theme="retro"] .tool-card .tsub,
+    html[data-theme="retro"] .tool-card label { color: #aaa; }
+    html[data-theme="retro"] .tool-card input[type="text"] {
+      background: #000;
+      color: #00ff00;
+      border: 1px solid #444;
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .tool-card input:focus {
+      outline: none;
+      border-color: var(--tc);
+      box-shadow: 0 0 6px var(--tc);
+    }
+    html[data-theme="retro"] .tool-btn {
+      background: #000;
+      color: var(--tc, #00ffff);
+      border: 2px solid var(--tc, #00ffff);
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 6px var(--tc, #00ffff);
+    }
+    html[data-theme="retro"] .tool-btn:hover:not(:disabled) {
+      background: var(--tc, #00ffff);
+      color: #000;
+      text-shadow: none;
+    }
+    html[data-theme="retro"] .tool-status { color: #ffff00; }
+    html[data-theme="retro"] .tool-status.err { color: #ff5555; }
+    html[data-theme="retro"] .tool-hint { color: #888; }
+    html[data-theme="retro"] .fp-box {
+      background: #000;
+      border: 1px dashed #444;
+      border-radius: 2px;
+      color: #00ff00;
+    }
+    html[data-theme="retro"] .roster .pill {
+      background: #000;
+      border: 1px solid #444;
+      color: #00ffff;
+    }
+    html[data-theme="retro"] .roster .pill--me { border-color: #00ff00; color: #00ff00; }
+    html[data-theme="retro"] .chat-box {
+      background: #000;
+      border: 1px dashed #444;
+      border-radius: 2px;
+      color: #eee;
+    }
+    html[data-theme="retro"] .msg .mhead { color: #888; }
+    html[data-theme="retro"] .msg .mname { color: #00ffff; }
+    html[data-theme="retro"] .msg--me .mname { color: #00ff00; }
+    html[data-theme="retro"] .msg--locked .mbody { color: #777; }
+    html[data-theme="retro"] .mbadge.ok { color: #00ff00; }
+    html[data-theme="retro"] .mbadge.warn { color: #ffff00; }
+  </style>
+</head>
+<body>
+
+  <!-- Retro-Deko (im Clean-Modus komplett ausgeblendet) -->
+  <div class="marquee marquee--top">
+    <span>&#9733; PGP-CHAT &#9733; ENDE-ZU-ENDE VERSCHL&Uuml;SSELT &#9733; DER SERVER LIEST NICHT MIT &#9733; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
+    <div class="page-banner green">
+      <h2>&#128274; PGP-CHAT &#128274;</h2>
+<pre>
+ ____   ___  ____
+(  _ \ / __)(  _ \
+ ) __/( (_ \ ) __/
+(__)   \___/(__)
+</pre>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
+  </header>
+
+  <div class="tools-topbar">
+    <h1 class="tools-title">PGP-Chat</h1>
+    <button type="button" id="themeBtn" title="Design umschalten"></button>
+  </div>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="../page1.html">Video</a><span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="../home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction retro-only">
+    <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main class="tools-grid">
+
+    <!-- ── Identitaet ── -->
+    <section class="tool-card tool-card--cyan" aria-labelledby="idHead">
+      <h2 id="idHead">Deine Identit&auml;t</h2>
+      <p class="tsub">Schl&uuml;sselpaar entsteht HIER im Browser (OpenPGP, Curve25519).</p>
+      <div id="idCreate">
+        <label for="idName">Pseudonym (Pflicht &mdash; nimm NICHT deinen echten Namen)</label>
+        <input type="text" id="idName" maxlength="24" placeholder="z.B. KryptoOtter73" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="tool-row">
+          <button type="button" class="tool-btn tool-btn--mini" id="idDiceBtn" title="Zuf&auml;lliges Pseudonym w&uuml;rfeln">&#127922; Zufallsname</button>
+          <button type="button" class="tool-btn" id="idGenBtn">Schl&uuml;ssel erzeugen</button>
+        </div>
+      </div>
+      <div id="idShow" style="display:none">
+        <div class="id-line">Name: <b id="idShowName"></b></div>
+        <label>Dein Fingerprint (zum Vergleichen)</label>
+        <div class="fp-box" id="idFp"></div>
+        <div class="tool-row">
+          <button type="button" class="tool-btn tool-btn--mini" id="idCopyBtn">Public Key kopieren</button>
+          <button type="button" class="tool-btn tool-btn--mini" id="idResetBtn">Identit&auml;t l&ouml;schen</button>
+        </div>
+      </div>
+      <div class="tool-status" id="idStatus" role="status" aria-live="polite"></div>
+      <p class="tool-hint">Alles l&auml;uft unter frei erfundenem Pseudonym &mdash; echte Namen haben hier nichts verloren. Der private Schl&uuml;ssel liegt NUR in diesem Browser (localStorage) und geht nie zum Server. Browserdaten l&ouml;schen = Schl&uuml;ssel weg.</p>
+    </section>
+
+    <!-- ── Raum ── -->
+    <section class="tool-card tool-card--green" aria-labelledby="roomHead">
+      <h2 id="roomHead">Raum</h2>
+      <p class="tsub">Wer den Raumnamen kennt, kann beitreten &mdash; behandle ihn wie ein Passwort.</p>
+      <label for="roomName">Raumname</label>
+      <input type="text" id="roomName" maxlength="32" placeholder="z.B. geheimtreff-42" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="tool-row">
+        <button type="button" class="tool-btn" id="joinBtn">Beitreten</button>
+        <button type="button" class="tool-btn tool-btn--mini" id="leaveBtn" style="display:none">Verlassen</button>
+      </div>
+      <div class="tool-status" id="roomStatus" role="status" aria-live="polite"></div>
+      <div class="roster" id="roster"></div>
+      <p class="tool-hint">Der Raumname verl&auml;sst deinen Browser nur als SHA-256-Hash &mdash; der Server kennt ihn nie im Klartext und f&uuml;hrt kein Log, wer wann chattet. Jede Nachricht wird an alle verschl&uuml;sselt, die beim Absenden im Raum sind; wer sp&auml;ter kommt, kann Altes nicht lesen. Fingerprints am besten &uuml;ber einen zweiten Kanal (Anruf, Discord) vergleichen.</p>
+    </section>
+
+    <!-- ── Chat ── -->
+    <section class="tool-card tool-card--pink chat-card" aria-labelledby="chatHead" id="chatCard" style="display:none">
+      <h2 id="chatHead">Chat</h2>
+      <div class="chat-box" id="chatBox" aria-live="polite"></div>
+      <div class="tool-row">
+        <input type="text" id="msgInput" class="grow" maxlength="4000" placeholder="Nachricht &mdash; Enter zum Senden" autocomplete="off">
+        <button type="button" class="tool-btn" id="sendBtn">Senden</button>
+      </div>
+      <div class="tool-status" id="chatStatus" role="status" aria-live="polite"></div>
+      <p class="tool-hint">&#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (du warst beim Absenden nicht im Raum)</p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+    <div class="marquee marquee--bottom">
+      <span>&#9733; TRUST NO SERVER &#9733; VERIFY FINGERPRINTS &#9733; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=17"></script>
+  <script src="openpgp.min.js"></script>
+  <script>
+    /* ── Design-Umschalter: clean (Default) <-> retro, localStorage ──
+       gleicher Schluessel wie werkzeuge.html, damit die Wahl fuer alle
+       Unterseiten gilt. */
+    (function () {
+      var KEY = 'glappa-tools-theme';
+      var btn = document.getElementById('themeBtn');
+      function refresh() {
+        var retro = document.documentElement.getAttribute('data-theme') === 'retro';
+        btn.textContent = retro ? '● Schlicht-Modus' : '★ 90er-Modus';
+        btn.setAttribute('aria-pressed', retro ? 'true' : 'false');
+      }
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'retro' ? 'clean' : 'retro';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem(KEY, next); } catch (e) {}
+        refresh();
+      });
+      refresh();
+    })();
+
+    /* ── API-Endpunkte: gleiche Logik wie werkzeuge.html ──
+       home/search.glappa.de -> same-origin ueber Apache /api-Proxy,
+       glappa.de (Webhoster ohne Backend) -> cross-origin zur VPS (CORS),
+       localhost/LAN -> direkt zur dev-app.py auf :8080. */
+    function apiUrl(path) {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return location.protocol + '//' + h + ':8080' + path;
+      if (h === 'home.glappa.de' || h === 'search.glappa.de') return '/api' + path;
+      return 'https://home.glappa.de/api' + path;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       PGP-Chat-Logik. Grundsatz: ALLES Kryptographische passiert hier
+       im Browser (OpenPGP.js, lokal gehostet). Zum Server gehen nur
+       Public Keys und armored Ciphertext; zurueck kommen dieselben.
+       ════════════════════════════════════════════════════════════════ */
+    const LS_ID   = 'glappa-pgp-id';
+    const POLL_MS = 3000;
+
+    let me = null;          // {name, priv, pub, fp} aus localStorage
+    let privKey = null;     // geparster privater Schluessel
+    let room = null;        // aktueller Raumname (bleibt NUR im Browser)
+    let roomId = null;      // SHA-256 des Raumnamens — nur DAS geht zum Server
+    let lastSeq = 0;        // hoechste gesehene Nachrichten-Laufnummer
+    let roster = [];        // [{fp, name, key, realFp}]
+    let rosterKeys = {};    // fp -> geparster Public Key
+    let seenSeq = {};       // Dedupe fuers Polling
+    let pollTimer = null;
+    let polling = false;
+
+    function el(id) { return document.getElementById(id); }
+    function st(id, msg, isErr) {
+      var e = el(id);
+      e.textContent = msg || '';
+      e.classList.toggle('err', !!isErr);
+    }
+    function fmtFp(fp) { return (fp || '').replace(/(.{4})/g, '$1 ').trim(); }
+
+    async function api(path, body) {
+      const opts = body
+        ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+        : {};
+      const r = await fetch(apiUrl(path), opts);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) {
+        const e = new Error(d.error || ('HTTP ' + r.status));
+        e.status = r.status;
+        throw e;
+      }
+      return d;
+    }
+
+    /* ── Raum-ID: SHA-256 des Raumnamens ────────────────────────────
+       Anonymitaet: Der Klartext-Raumname verlaesst den Browser NIE —
+       Server, Proxy und Logs sehen nur den Hash. crypto.subtle gibt es
+       nur im Secure Context (https/localhost); fuer http://-LAN-Dev
+       rechnet der kompakte Fallback darunter dasselbe Ergebnis. */
+    async function roomHash(name) {
+      const s = 'glappa-pgp-room:v1:' + name;
+      if (crypto.subtle) {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      return sha256Hex(s);
+    }
+
+    function sha256Hex(str) {
+      function rr(x, n) { return (x >>> n) | (x << (32 - n)); }
+      const K = [
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+      const H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+      const bytes = new TextEncoder().encode(str);
+      const l = bytes.length, bitLen = l * 8;
+      const padded = new Uint8Array((((l + 8) >> 6) << 6) + 64);
+      padded.set(bytes);
+      padded[l] = 0x80;
+      const dv = new DataView(padded.buffer);
+      dv.setUint32(padded.length - 8, Math.floor(bitLen / 0x100000000));
+      dv.setUint32(padded.length - 4, bitLen >>> 0);
+      const w = new Array(64);
+      for (let off = 0; off < padded.length; off += 64) {
+        for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+        for (let i = 16; i < 64; i++) {
+          const s0 = rr(w[i-15], 7) ^ rr(w[i-15], 18) ^ (w[i-15] >>> 3);
+          const s1 = rr(w[i-2], 17) ^ rr(w[i-2], 19) ^ (w[i-2] >>> 10);
+          w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+        }
+        let [a, b, c, d, e, f, g, h] = H;
+        for (let i = 0; i < 64; i++) {
+          const S1 = rr(e, 6) ^ rr(e, 11) ^ rr(e, 25);
+          const ch = (e & f) ^ (~e & g);
+          const t1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+          const S0 = rr(a, 2) ^ rr(a, 13) ^ rr(a, 22);
+          const maj = (a & b) ^ (a & c) ^ (b & c);
+          const t2 = (S0 + maj) >>> 0;
+          h = g; g = f; f = e; e = (d + t1) >>> 0;
+          d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+        }
+        H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0;
+        H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+        H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0;
+        H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+      }
+      return H.map(x => x.toString(16).padStart(8, '0')).join('');
+    }
+
+    /* ── Zufalls-Pseudonyme — hier tippt niemand seinen echten Namen ── */
+    const ANON_A = ['Anon', 'Inkognito', 'Phantom', 'Schatten', 'Nebel', 'Krypto',
+                    'Pixel', 'Retro', 'Mitternachts', 'Zufalls', 'Geister', 'Tarn'];
+    const ANON_B = ['Alpaka', 'Dachs', 'Falke', 'Igel', 'Krake', 'Luchs', 'Marder',
+                    'Otter', 'Panda', 'Rabe', 'Waschbaer', 'Yeti', 'Fuchs', 'Molch'];
+    function randName() {
+      const pick = a => a[Math.floor(Math.random() * a.length)];
+      return pick(ANON_A) + pick(ANON_B) + (Math.floor(Math.random() * 90) + 10);
+    }
+
+    /* ── Identitaet ─────────────────────────────────────────────── */
+    function loadId() {
+      try {
+        const d = JSON.parse(localStorage.getItem(LS_ID) || 'null');
+        if (d && d.name && d.priv && d.pub && d.fp) return d;
+      } catch (e) {}
+      return null;
+    }
+
+    function renderId() {
+      el('idCreate').style.display = me ? 'none' : '';
+      el('idShow').style.display   = me ? '' : 'none';
+      if (me) {
+        el('idShowName').textContent = me.name;
+        el('idFp').textContent = fmtFp(me.fp);
+      }
+    }
+
+    async function genId() {
+      const name = el('idName').value.trim().replace(/\s+/g, ' ').slice(0, 24);
+      if (!name) { st('idStatus', 'Erst einen Namen eingeben.', true); return; }
+      el('idGenBtn').disabled = true;
+      st('idStatus', 'Erzeuge Schlüsselpaar…');
+      try {
+        const kp = await openpgp.generateKey({ userIDs: [{ name }], format: 'armored' });
+        const pub = await openpgp.readKey({ armoredKey: kp.publicKey });
+        me = { name, priv: kp.privateKey, pub: kp.publicKey,
+               fp: pub.getFingerprint().toUpperCase() };
+        privKey = await openpgp.readPrivateKey({ armoredKey: me.priv });
+        localStorage.setItem(LS_ID, JSON.stringify(me));
+        st('idStatus', '');
+        renderId();
+      } catch (e) {
+        st('idStatus', 'Fehler: ' + e.message, true);
+      }
+      el('idGenBtn').disabled = false;
+    }
+
+    function resetId() {
+      if (!confirm('Identität wirklich löschen? Alte Nachrichten sind damit für immer unlesbar.')) return;
+      localStorage.removeItem(LS_ID);
+      me = null; privKey = null;
+      leaveRoom('');
+      renderId();
+    }
+
+    /* ── Raum / Polling ─────────────────────────────────────────── */
+    function renderRoster() {
+      const box = el('roster');
+      box.innerHTML = '';
+      for (const x of roster) {
+        const pill = document.createElement('span');
+        pill.className = 'pill' + (me && x.fp === me.fp ? ' pill--me' : '');
+        // Anzeige-Fingerprint IMMER aus dem Key selbst berechnet (realFp),
+        // nicht aus der Server-Behauptung — der Server koennte luegen.
+        const shortFp = (x.realFp || '????????').slice(-8);
+        pill.textContent = x.name + ' · ' + shortFp;
+        pill.title = 'Fingerprint: ' + fmtFp(x.realFp || '?');
+        box.appendChild(pill);
+      }
+      if (room) {
+        el('chatHead').textContent = 'Chat — #' + room + ' (' +
+          roster.length + (roster.length === 1 ? ' Person' : ' Leute') + ')';
+      }
+    }
+
+    async function applyRoster(list) {
+      roster = list || [];
+      for (const x of roster) {
+        if (!rosterKeys[x.fp]) {
+          try {
+            const k = await openpgp.readKey({ armoredKey: x.key });
+            x.realFp = k.getFingerprint().toUpperCase();
+            rosterKeys[x.fp] = k;
+          } catch (e) { /* kaputter Key -> kein Empfaenger, keine Pruefung */ }
+        } else {
+          x.realFp = rosterKeys[x.fp].getFingerprint().toUpperCase();
+        }
+      }
+      renderRoster();
+    }
+
+    async function joinRoom() {
+      if (!me) { st('roomStatus', 'Erst links eine Identität anlegen.', true); return; }
+      const rname = el('roomName').value.trim().toLowerCase();
+      if (!/^[a-z0-9][a-z0-9_-]{0,31}$/.test(rname)) {
+        st('roomStatus', 'Raumname: 1-32 Zeichen, nur a-z 0-9 - _', true);
+        return;
+      }
+      el('joinBtn').disabled = true;
+      st('roomStatus', 'Trete bei…');
+      try {
+        const rid = await roomHash(rname);
+        const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
+        clearTimeout(pollTimer);
+        room = rname; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {};
+        el('chatBox').innerHTML = '';
+        await applyRoster(d.roster);
+        el('chatCard').style.display = '';
+        el('leaveBtn').style.display = '';
+        st('roomStatus', 'Drin. Raumname weitersagen = einladen.');
+        el('msgInput').focus();
+        doPoll();   // Verlauf sofort laden (soweit fuer uns entschluesselbar)
+      } catch (e) {
+        st('roomStatus', e.message, true);
+      }
+      el('joinBtn').disabled = false;
+    }
+
+    function leaveRoom(msg) {
+      clearTimeout(pollTimer);
+      room = null; roomId = null; lastSeq = 0; roster = []; rosterKeys = {}; seenSeq = {};
+      el('chatCard').style.display = 'none';
+      el('leaveBtn').style.display = 'none';
+      el('roster').innerHTML = '';
+      st('roomStatus', msg || '');
+    }
+
+    function schedulePoll() {
+      clearTimeout(pollTimer);
+      if (roomId) pollTimer = setTimeout(doPoll, POLL_MS);
+    }
+
+    async function doPoll() {
+      if (!roomId || polling) return;
+      polling = true;
+      clearTimeout(pollTimer);
+      try {
+        // POST statt GET: Raum-ID + Fingerprint sollen in keiner URL und
+        // damit in keinem Request-Log auftauchen.
+        const d = await api('/pgp/poll', { room: roomId, fp: me.fp, since: lastSeq });
+        if (!d.member) {
+          // Heartbeat verpasst (Rechner im Standby o.ae.) -> leise neu beitreten
+          await api('/pgp/join', { room: roomId, name: me.name, fp: me.fp, key: me.pub });
+        }
+        await applyRoster(d.roster);
+        for (const m of (d.msgs || [])) await handleMsg(m);
+        st('chatStatus', '');
+      } catch (e) {
+        if (e.status === 404) { polling = false; leaveRoom('Der Raum ist abgelaufen.'); return; }
+        st('chatStatus', 'Verbindung wackelt: ' + e.message, true);
+      }
+      polling = false;
+      schedulePoll();
+    }
+
+    /* ── Nachrichten ────────────────────────────────────────────── */
+    async function handleMsg(m) {
+      if (seenSeq[m.seq]) return;
+      seenSeq[m.seq] = true;
+      if (m.seq > lastSeq) lastSeq = m.seq;
+
+      let sender = null;
+      for (const x of roster) if (x.fp === m.fp) sender = x;
+
+      let text = null, sigOk = false;
+      try {
+        const msg = await openpgp.readMessage({ armoredMessage: m.body });
+        const opts = { message: msg, decryptionKeys: privKey };
+        const vkey = rosterKeys[m.fp];
+        if (vkey) opts.verificationKeys = vkey;
+        const res = await openpgp.decrypt(opts);
+        text = res.data;
+        if (vkey && res.signatures && res.signatures.length) {
+          try { await res.signatures[0].verified; sigOk = true; } catch (e) {}
+        }
+      } catch (e) { /* nicht an unseren Key verschluesselt */ }
+
+      appendMsg(m, sender, text, sigOk);
+    }
+
+    function appendMsg(m, sender, text, sigOk) {
+      const box = el('chatBox');
+      const nearBottom = box.scrollTop + box.clientHeight > box.scrollHeight - 60;
+
+      const div = document.createElement('div');
+      div.className = 'msg'
+        + (me && m.fp === me.fp ? ' msg--me' : '')
+        + (text === null ? ' msg--locked' : '');
+
+      const head = document.createElement('div');
+      head.className = 'mhead';
+      const nm = document.createElement('span');
+      nm.className = 'mname';
+      nm.textContent = sender ? sender.name : ('? · ' + m.fp.slice(-8));
+      const time = document.createElement('span');
+      time.className = 'mtime';
+      time.textContent = (m.ts || '').slice(11, 16);
+      time.title = m.ts || '';
+      const badge = document.createElement('span');
+      badge.className = 'mbadge';
+      if (text === null) {
+        badge.textContent = '🔒';
+        badge.title = 'Nicht für deinen Schlüssel verschlüsselt';
+      } else if (sigOk) {
+        badge.textContent = '✓';
+        badge.classList.add('ok');
+        badge.title = 'Signatur geprüft';
+      } else {
+        badge.textContent = '⚠';
+        badge.classList.add('warn');
+        badge.title = 'Signatur nicht prüfbar';
+      }
+      head.appendChild(nm); head.appendChild(time); head.appendChild(badge);
+
+      const body = document.createElement('div');
+      body.className = 'mbody';
+      body.textContent = (text === null)
+        ? 'verschlüsselt — du warst beim Absenden nicht im Raum'
+        : text;
+
+      div.appendChild(head); div.appendChild(body);
+      box.appendChild(div);
+      if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    async function sendMsg() {
+      const inp = el('msgInput');
+      const text = inp.value.replace(/\s+$/, '');
+      if (!text.trim() || !roomId || !me) return;
+
+      const keys = [];
+      for (const x of roster) if (rosterKeys[x.fp]) keys.push(rosterKeys[x.fp]);
+      if (!keys.length) { st('chatStatus', 'Keine Empfänger-Schlüssel im Raum.', true); return; }
+
+      el('sendBtn').disabled = true;
+      try {
+        const armored = await openpgp.encrypt({
+          message: await openpgp.createMessage({ text }),
+          encryptionKeys: keys,     // an ALLE im Raum (inkl. uns selbst)
+          signingKeys: privKey,     // signiert -> Empfaenger sehen den Haken
+        });
+        await api('/pgp/send', { room: roomId, fp: me.fp, body: armored });
+        inp.value = '';
+        st('chatStatus', '');
+        doPoll();   // eigene Nachricht sofort nachladen statt 3s warten
+      } catch (e) {
+        st('chatStatus', 'Senden fehlgeschlagen: ' + e.message, true);
+      }
+      el('sendBtn').disabled = false;
+      inp.focus();
+    }
+
+    /* ── Verkabelung ────────────────────────────────────────────── */
+    document.addEventListener('DOMContentLoaded', async () => {
+      const y = el('year'); if (y) y.textContent = new Date().getFullYear();
+
+      if (typeof openpgp === 'undefined') {
+        st('idStatus', 'OpenPGP.js konnte nicht geladen werden — Seite neu laden.', true);
+        return;
+      }
+
+      el('idGenBtn').addEventListener('click', genId);
+      el('idName').addEventListener('keydown', e => { if (e.key === 'Enter') genId(); });
+      el('idDiceBtn').addEventListener('click', () => {
+        el('idName').value = randName();
+        st('idStatus', '');
+      });
+      el('idResetBtn').addEventListener('click', resetId);
+      el('idCopyBtn').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(me.pub);
+          st('idStatus', 'Public Key kopiert.');
+        } catch (e) {
+          st('idStatus', 'Kopieren blockiert — Fingerprint-Box markieren geht auch.', true);
+        }
+      });
+      el('joinBtn').addEventListener('click', joinRoom);
+      el('roomName').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+      el('leaveBtn').addEventListener('click', () => leaveRoom('Raum verlassen.'));
+      el('sendBtn').addEventListener('click', sendMsg);
+      el('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
+
+      me = loadId();
+      if (me) {
+        try {
+          privKey = await openpgp.readPrivateKey({ armoredKey: me.priv });
+        } catch (e) {
+          me = null;
+          localStorage.removeItem(LS_ID);
+        }
+      }
+      renderId();
+    });
+  </script>
+</body>
+</html>
