@@ -97,6 +97,27 @@
       font-family: "Courier New", Consolas, monospace;
       white-space: nowrap;
     }
+    .roster .pill--click { cursor: pointer; }
+    /* Privatmodus: Leiste ueber dem Eingabefeld, solange ein Empfaenger
+       ausgewaehlt ist (Klick auf Namen im Roster oder im Chat). */
+    .dm-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-radius: 4px;
+      padding: 6px 10px;
+      margin-top: 10px;
+      font-size: 0.82em;
+    }
+    .dm-bar .dm-off {
+      cursor: pointer;
+      border: none;
+      background: none;
+      font: inherit;
+      padding: 0 2px;
+    }
+    .msg .mname--click { cursor: pointer; }
     .chat-card { grid-column: 1 / -1; }
     .chat-box {
       height: 380px;
@@ -255,6 +276,8 @@
       color: #9aa0a6;
     }
     html[data-theme="clean"] .roster .pill--me { border-color: #6fd18c; color: #6fd18c; }
+    html[data-theme="clean"] .roster .pill--click:hover { border-color: #9aa0a6; color: #e6e6e6; }
+    html[data-theme="clean"] .roster .pill--dm { border-color: #c792ea; color: #c792ea; }
     html[data-theme="clean"] .chat-box {
       background: #0e0f12;
       border: 1px solid #2a2d34;
@@ -265,6 +288,16 @@
     html[data-theme="clean"] .msg--locked .mbody { color: #6c7178; }
     html[data-theme="clean"] .mbadge.ok { color: #6fd18c; }
     html[data-theme="clean"] .mbadge.warn { color: #c9a848; }
+    html[data-theme="clean"] .mbadge.priv { color: #c792ea; }
+    html[data-theme="clean"] .msg .mname--click:hover { color: #e6e6e6; text-decoration: underline; }
+    html[data-theme="clean"] .dm-bar {
+      background: #1d2026;
+      border: 1px solid #c792ea;
+      color: #c792ea;
+    }
+    html[data-theme="clean"] .dm-bar b { color: #e6e6e6; }
+    html[data-theme="clean"] .dm-bar .dm-off { color: #9aa0a6; }
+    html[data-theme="clean"] .dm-bar .dm-off:hover { color: #fff; }
     html[data-theme="clean"] .aplayer {
       background: #1d2026;
       border: 1px solid #33363b;
@@ -359,6 +392,8 @@
       color: #00ffff;
     }
     html[data-theme="retro"] .roster .pill--me { border-color: #00ff00; color: #00ff00; }
+    html[data-theme="retro"] .roster .pill--click:hover { border-color: #00ffff; }
+    html[data-theme="retro"] .roster .pill--dm { border-color: #ff00ff; color: #ff00ff; box-shadow: 0 0 6px #ff00ff; }
     html[data-theme="retro"] .chat-box {
       background: #000;
       border: 1px dashed #444;
@@ -371,6 +406,18 @@
     html[data-theme="retro"] .msg--locked .mbody { color: #777; }
     html[data-theme="retro"] .mbadge.ok { color: #00ff00; }
     html[data-theme="retro"] .mbadge.warn { color: #ffff00; }
+    html[data-theme="retro"] .mbadge.priv { color: #ff00ff; }
+    html[data-theme="retro"] .msg .mname--click:hover { text-decoration: underline; }
+    html[data-theme="retro"] .dm-bar {
+      background: #000;
+      border: 1px solid #ff00ff;
+      border-radius: 2px;
+      color: #ff00ff;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 6px #ff00ff;
+    }
+    html[data-theme="retro"] .dm-bar b { color: #fff; text-shadow: none; }
+    html[data-theme="retro"] .dm-bar .dm-off { color: #ffff00; text-shadow: 0 0 6px #ffff00; }
     html[data-theme="retro"] .aplayer {
       background: #000;
       border: 1px solid #444;
@@ -471,6 +518,10 @@
     <section class="tool-card tool-card--pink chat-card" aria-labelledby="chatHead" id="chatCard" style="display:none">
       <h2 id="chatHead">Chat</h2>
       <div class="chat-box" id="chatBox" aria-live="polite"></div>
+      <div class="dm-bar" id="dmBar" style="display:none">
+        <span>&#128274; Privat an <b id="dmName"></b> &mdash; nur ihr zwei k&ouml;nnt mitlesen</span>
+        <button type="button" class="dm-off" id="dmOffBtn" title="Privatmodus beenden">&#10005; wieder an alle</button>
+      </div>
       <div class="tool-row">
         <input type="text" id="msgInput" class="grow" maxlength="4000" placeholder="Nachricht &mdash; Enter zum Senden" autocomplete="off">
         <button type="button" class="tool-btn tool-btn--mini" id="fileBtn" title="Datei senden (verschl&uuml;sselt)">&#128206;</button>
@@ -478,7 +529,7 @@
       </div>
       <input type="file" id="fileInput" multiple style="display:none">
       <div class="tool-status" id="chatStatus" role="status" aria-live="polite"></div>
-      <p class="tool-hint">Dateien (Bilder, Audio, alles): einfach in den Chat ziehen oder &#128206; &mdash; werden genauso Ende-zu-Ende verschl&uuml;sselt, max. 7 MB. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (du warst beim Absenden nicht im Raum)</p>
+      <p class="tool-hint">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. Dateien (Bilder, Audio, alles): einfach in den Chat ziehen oder &#128206; &mdash; werden genauso Ende-zu-Ende verschl&uuml;sselt, max. 7 MB. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</p>
     </section>
 
   </main>
@@ -544,6 +595,8 @@
     let seenSeq = {};       // Dedupe fuers Polling
     let pollTimer = null;
     let polling = false;
+    let dmFp = null;        // Privatmodus: Roster-fp des Empfaengers (oder null = alle)
+    let myPub = null;       // eigener Public Key, geparst (fuer Privat-Selbstkopie)
 
     function el(id) { return document.getElementById(id); }
     function st(id, msg, isErr) {
@@ -667,6 +720,7 @@
         me = { name, priv: kp.privateKey, pub: kp.publicKey,
                fp: pub.getFingerprint().toUpperCase() };
         privKey = await openpgp.readPrivateKey({ armoredKey: me.priv });
+        myPub = null;
         localStorage.setItem(LS_ID, JSON.stringify(me));
         st('idStatus', '');
         renderId();
@@ -679,7 +733,7 @@
     function resetId() {
       if (!confirm('Identität wirklich löschen? Alte Nachrichten sind damit für immer unlesbar.')) return;
       localStorage.removeItem(LS_ID);
-      me = null; privKey = null;
+      me = null; privKey = null; myPub = null;
       leaveRoom('');
       renderId();
     }
@@ -696,6 +750,13 @@
         const shortFp = (x.realFp || '????????').slice(-8);
         pill.textContent = x.name + ' · ' + shortFp;
         pill.title = 'Fingerprint: ' + fmtFp(x.realFp || '?');
+        if (me && x.fp !== me.fp) {
+          pill.classList.add('pill--click');
+          pill.title += '\nKlicken = Privatnachricht an ' + x.name;
+          const fp = x.fp;
+          pill.addEventListener('click', () => { dmFp === fp ? clearDm('') : setDm(fp); });
+        }
+        if (x.fp === dmFp) pill.classList.add('pill--dm');
         box.appendChild(pill);
       }
       if (room) {
@@ -716,6 +777,11 @@
         } else {
           x.realFp = rosterKeys[x.fp].getFingerprint().toUpperCase();
         }
+      }
+      // Privat-Empfaenger weg (Heartbeat abgelaufen o.ae.) -> zurueck auf alle,
+      // bevor die naechste Nachricht versehentlich breiter verschluesselt wird
+      if (dmFp && !roster.some(x => x.fp === dmFp)) {
+        clearDm('Privat-Empfänger hat den Raum verlassen — Nachrichten gehen wieder an alle.');
       }
       renderRoster();
     }
@@ -750,6 +816,9 @@
     function leaveRoom(msg) {
       clearTimeout(pollTimer);
       room = null; roomId = null; lastSeq = 0; roster = []; rosterKeys = {}; seenSeq = {};
+      dmFp = null;
+      el('dmBar').style.display = 'none';
+      el('msgInput').placeholder = 'Nachricht — Enter zum Senden';
       el('chatCard').style.display = 'none';
       el('leaveBtn').style.display = 'none';
       el('roster').innerHTML = '';
@@ -782,6 +851,74 @@
       }
       polling = false;
       schedulePoll();
+    }
+
+    /* ── Privatnachrichten ──────────────────────────────────────────
+       Klick auf einen Namen (Roster-Pill oder Chat) waehlt einen Empfaenger;
+       ab dann wird nur noch an dessen Key + den eigenen verschluesselt —
+       kein Public-Key-Kopieren noetig, die Keys kommen ja schon uebers
+       Roster. Der Empfaenger-Hinweis (Marker + fp) steckt IM Klartext vor
+       der Verschluesselung, wandert also mit in den Ciphertext: der Server
+       erfaehrt nie, wer mit wem privat redet. Alle anderen im Raum sehen
+       nur das uebliche Schloss-Placeholder. */
+    // \u0002 am Anfang: kollidiert mit keinem normalen Text/Dateinamen.
+    const PRIV_MARK = '\u0002glappa-priv:v1:';
+
+    function privWrap(fp, s) { return PRIV_MARK + fp + ':' + s; }
+    function privParse(s) {
+      if (!s || !s.startsWith(PRIV_MARK)) return null;
+      const m = /^([0-9A-Fa-f]{40,64}):/.exec(s.slice(PRIV_MARK.length));
+      if (!m) return null;
+      return { to: m[1].toUpperCase(), rest: s.slice(PRIV_MARK.length + m[0].length) };
+    }
+    function nameForFp(fp) {
+      for (const x of roster) if (x.fp === fp || x.realFp === fp) return x.name;
+      return '? · ' + (fp || '').slice(-8);
+    }
+
+    function setDm(fp) {
+      if (!me || fp === me.fp) return;
+      let target = null;
+      for (const x of roster) if (x.fp === fp) target = x;
+      if (!target || !rosterKeys[fp]) {
+        st('chatStatus', 'Diese Person ist nicht (mehr) im Raum.', true);
+        return;
+      }
+      dmFp = fp;
+      el('dmName').textContent = target.name + ' · ' + (target.realFp || '').slice(-8);
+      el('dmBar').style.display = '';
+      el('msgInput').placeholder = 'Privatnachricht an ' + target.name + ' — Enter zum Senden';
+      st('chatStatus', '');
+      renderRoster();
+      el('msgInput').focus();
+    }
+
+    function clearDm(note) {
+      if (dmFp === null && !note) return;
+      dmFp = null;
+      el('dmBar').style.display = 'none';
+      el('msgInput').placeholder = 'Nachricht — Enter zum Senden';
+      if (note) st('chatStatus', note);
+      renderRoster();
+    }
+
+    /* Empfaenger-Keys fuers Verschluesseln: Privatmodus -> Ziel + wir
+       selbst (sonst koennten wir die eigene Nachricht nach dem Poll nicht
+       mehr lesen), sonst alle im Raum. null = Fehler, Status steht schon. */
+    async function encTargets() {
+      if (dmFp) {
+        const k = rosterKeys[dmFp];
+        if (!k) {
+          st('chatStatus', 'Privat-Empfänger ist nicht mehr im Raum.', true);
+          return null;
+        }
+        if (!myPub) myPub = await openpgp.readKey({ armoredKey: me.pub });
+        return [k, myPub];
+      }
+      const keys = [];
+      for (const x of roster) if (rosterKeys[x.fp]) keys.push(rosterKeys[x.fp]);
+      if (!keys.length) { st('chatStatus', 'Keine Empfänger-Schlüssel im Raum.', true); return null; }
+      return keys;
     }
 
     /* ── Nachrichten ────────────────────────────────────────────── */
@@ -900,7 +1037,7 @@
       let sender = null;
       for (const x of roster) if (x.fp === m.fp) sender = x;
 
-      let payload = null, filename = '', sigOk = false;
+      let payload = null, filename = '', sigOk = false, privTo = null;
       try {
         let armored = m.body;
         if (!armored && m.fid) {
@@ -916,15 +1053,23 @@
         const res = await openpgp.decrypt(opts);
         payload = res.data;                 // Uint8Array
         filename = res.filename || '';
+        // Privat-Marker auspacken: bei Dateien steckt er im Dateinamen,
+        // bei Text vorn im Klartext — beides war mitverschluesselt
+        const pf = privParse(filename);
+        if (pf) { privTo = pf.to; filename = pf.rest; }
+        else if (!filename) {
+          const pt = privParse(new TextDecoder().decode(payload));
+          if (pt) { privTo = pt.to; payload = new TextEncoder().encode(pt.rest); }
+        }
         if (vkey && res.signatures && res.signatures.length) {
           try { await res.signatures[0].verified; sigOk = true; } catch (e) {}
         }
       } catch (e) { /* nicht an unseren Key verschluesselt (oder Blob weg) */ }
 
-      appendMsg(m, sender, payload, filename, sigOk);
+      appendMsg(m, sender, payload, filename, sigOk, privTo);
     }
 
-    function appendMsg(m, sender, payload, filename, sigOk) {
+    function appendMsg(m, sender, payload, filename, sigOk, privTo) {
       const box = el('chatBox');
       const nearBottom = box.scrollTop + box.clientHeight > box.scrollHeight - 60;
 
@@ -938,6 +1083,11 @@
       const nm = document.createElement('span');
       nm.className = 'mname';
       nm.textContent = sender ? sender.name : ('? · ' + m.fp.slice(-8));
+      if (me && m.fp !== me.fp) {
+        nm.classList.add('mname--click');
+        nm.title = 'Klicken = Privatnachricht' + (sender ? ' an ' + sender.name : '');
+        nm.addEventListener('click', () => setDm(m.fp));
+      }
       const time = document.createElement('span');
       time.className = 'mtime';
       time.textContent = (m.ts || '').slice(11, 16);
@@ -946,7 +1096,7 @@
       badge.className = 'mbadge';
       if (payload === null) {
         badge.textContent = '🔒';
-        badge.title = 'Nicht für deinen Schlüssel verschlüsselt';
+        badge.title = 'Nicht für deinen Schlüssel verschlüsselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)';
       } else if (sigOk) {
         badge.textContent = '✓';
         badge.classList.add('ok');
@@ -957,11 +1107,20 @@
         badge.title = 'Signatur nicht prüfbar';
       }
       head.appendChild(nm); head.appendChild(time); head.appendChild(badge);
+      if (privTo) {
+        const pb = document.createElement('span');
+        pb.className = 'mbadge priv';
+        pb.textContent = (me && m.fp === me.fp)
+          ? '🔒 privat an ' + nameForFp(privTo)
+          : '🔒 privat';
+        pb.title = 'Privatnachricht — nur für Absender und Empfänger verschlüsselt';
+        head.appendChild(pb);
+      }
 
       const body = document.createElement('div');
       body.className = 'mbody';
       if (payload === null) {
-        body.textContent = 'verschlüsselt — du warst beim Absenden nicht im Raum';
+        body.textContent = 'verschlüsselt — nicht für deinen Schlüssel (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)';
       } else if (filename) {
         // Datei: als Blob-URL rendern (bleibt komplett im Browser)
         const mime = mimeFor(filename);
@@ -999,17 +1158,22 @@
         st('chatStatus', file.name + ': zu groß (max. 7 MB).', true);
         return;
       }
-      const keys = [];
-      for (const x of roster) if (rosterKeys[x.fp]) keys.push(rosterKeys[x.fp]);
-      if (!keys.length) { st('chatStatus', 'Keine Empfänger-Schlüssel im Raum.', true); return; }
+      const keys = await encTargets();
+      if (!keys) return;
       try {
         st('chatStatus', 'Verschlüssle ' + file.name + '…');
         const data = new Uint8Array(await file.arrayBuffer());
+        // Privatmodus: Empfaenger-Marker in den Dateinamen — der steckt im
+        // Literal-Paket, ist also mitverschluesselt (kein Metadaten-Leak)
+        const fname = dmFp ? privWrap(dmFp, file.name) : file.name;
         const armored = await openpgp.encrypt({
           // Dateiname wandert ins Literal-Paket -> ist mitverschluesselt
-          message: await openpgp.createMessage({ binary: data, filename: file.name }),
+          message: await openpgp.createMessage({ binary: data, filename: fname }),
           encryptionKeys: keys,
           signingKeys: privKey,
+          // wildcard: keine Empfaenger-Key-IDs im Ciphertext — der Server
+          // kann so nicht mal ableiten, wer eine Nachricht entschluesseln kann
+          wildcard: true,
         });
         st('chatStatus', 'Lade ' + file.name + ' hoch…');
         await api('/pgp/send', { room: roomId, fp: me.fp, body: armored });
@@ -1025,16 +1189,19 @@
       const text = inp.value.replace(/\s+$/, '');
       if (!text.trim() || !roomId || !me) return;
 
-      const keys = [];
-      for (const x of roster) if (rosterKeys[x.fp]) keys.push(rosterKeys[x.fp]);
-      if (!keys.length) { st('chatStatus', 'Keine Empfänger-Schlüssel im Raum.', true); return; }
+      const keys = await encTargets();
+      if (!keys) return;
 
       el('sendBtn').disabled = true;
       try {
         const armored = await openpgp.encrypt({
-          message: await openpgp.createMessage({ text }),
-          encryptionKeys: keys,     // an ALLE im Raum (inkl. uns selbst)
+          // Privatmodus: Marker + Empfaenger-fp wandern MIT in den Klartext
+          message: await openpgp.createMessage({ text: dmFp ? privWrap(dmFp, text) : text }),
+          encryptionKeys: keys,     // alle im Raum — oder privat: Ziel + wir
           signingKeys: privKey,     // signiert -> Empfaenger sehen den Haken
+          // wildcard: keine Empfaenger-Key-IDs im Ciphertext — der Server
+          // kann so nicht mal ableiten, wer eine Nachricht entschluesseln kann
+          wildcard: true,
         });
         await api('/pgp/send', { room: roomId, fp: me.fp, body: armored });
         inp.value = '';
@@ -1076,6 +1243,7 @@
       el('leaveBtn').addEventListener('click', () => leaveRoom('Raum verlassen.'));
       el('sendBtn').addEventListener('click', sendMsg);
       el('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
+      el('dmOffBtn').addEventListener('click', () => clearDm(''));
 
       /* Dateien: Drag & Drop auf die Chat-Karte + 📎-Button (Handy) */
       const chatCard = el('chatCard');
