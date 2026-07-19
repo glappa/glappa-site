@@ -491,6 +491,7 @@
         <label>Dein Fingerprint (zum Vergleichen)</label>
         <div class="fp-box" id="idFp"></div>
         <div class="tool-row">
+          <button type="button" class="tool-btn tool-btn--mini" id="idFpCopyBtn">Fingerprint kopieren</button>
           <button type="button" class="tool-btn tool-btn--mini" id="idCopyBtn">Public Key kopieren</button>
           <button type="button" class="tool-btn tool-btn--mini" id="idResetBtn">Identit&auml;t l&ouml;schen</button>
         </div>
@@ -514,6 +515,20 @@
       <p class="tool-hint">Der Raumname verl&auml;sst deinen Browser nur als SHA-256-Hash &mdash; der Server kennt ihn nie im Klartext und f&uuml;hrt kein Log, wer wann chattet. Jede Nachricht wird an alle verschl&uuml;sselt, die beim Absenden im Raum sind; wer sp&auml;ter kommt, kann Altes nicht lesen. Fingerprints am besten &uuml;ber einen zweiten Kanal (Anruf, Discord) vergleichen.</p>
     </section>
 
+    <!-- ── Direktchat per Fingerprint ── -->
+    <section class="tool-card tool-card--cyan" aria-labelledby="dirHead">
+      <h2 id="dirHead">Direktchat</h2>
+      <p class="tsub">Chat mit genau EINER Person &mdash; per Fingerprint, ohne Raum.</p>
+      <label for="dirFp">Fingerprint der anderen Person</label>
+      <input type="text" id="dirFp" maxlength="90" placeholder="z.B. 9137 7DC1 8592 &hellip;" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="tool-row">
+        <button type="button" class="tool-btn" id="dirBtn">Direktchat starten</button>
+      </div>
+      <div class="tool-status" id="dirStatus" role="status" aria-live="polite"></div>
+      <div class="roster" id="contactList"></div>
+      <p class="tool-hint">Beide m&uuml;ssen den Fingerprint der jeweils anderen Person eingeben (deinen kopierst du links unter Identit&auml;t) &mdash; dann entsteht aus beiden Fingerprints ein eigenes Postfach, das beim Server nur als Hash existiert. Die Echtheit der Gegenseite wird automatisch am Fingerprint gepr&uuml;ft &mdash; niemand kann sich dazwischenschalten. War die Person schon mal da, kannst du ihr auch schreiben, wenn sie gerade offline ist (Nachrichten warten bis 3 Tage). Zuletzt verbundene Kontakte erscheinen hier als Kn&ouml;pfe (nur in DIESEM Browser gespeichert). Beachte: Dein Fingerprint ist dein dauerhaftes Erkennungszeichen &mdash; wer ihn kennt, kann dich wiedererkennen. F&uuml;r maximale Anonymit&auml;t: R&auml;ume + Wegwerf-Identit&auml;t.</p>
+    </section>
+
     <!-- ── Chat ── -->
     <section class="tool-card tool-card--pink chat-card" aria-labelledby="chatHead" id="chatCard" style="display:none">
       <h2 id="chatHead">Chat</h2>
@@ -529,7 +544,7 @@
       </div>
       <input type="file" id="fileInput" multiple style="display:none">
       <div class="tool-status" id="chatStatus" role="status" aria-live="polite"></div>
-      <p class="tool-hint">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. Dateien (Bilder, Audio, alles): einfach in den Chat ziehen oder &#128206; &mdash; werden genauso Ende-zu-Ende verschl&uuml;sselt, max. 7 MB. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</p>
+      <p class="tool-hint">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis ~200 MB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar MB, l&ouml;scht jedes St&uuml;ck sofort nach Abholung und speichert NICHTS. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</p>
     </section>
 
   </main>
@@ -597,6 +612,9 @@
     let polling = false;
     let dmFp = null;        // Privatmodus: Roster-fp des Empfaengers (oder null = alle)
     let myPub = null;       // eigener Public Key, geparst (fuer Privat-Selbstkopie)
+    let direct = null;      // Direktchat: {peer, name, key, present} oder null = Raum-Modus
+    let xin = {};           // Live-Datei-Empfang: tid -> Zwischenstand
+    let xBusy = false;      // handleXfers laeuft gerade (kein Doppel-Fetch)
 
     function el(id) { return document.getElementById(id); }
     function st(id, msg, isErr) {
@@ -625,13 +643,23 @@
        Server, Proxy und Logs sehen nur den Hash. crypto.subtle gibt es
        nur im Secure Context (https/localhost); fuer http://-LAN-Dev
        rechnet der kompakte Fallback darunter dasselbe Ergebnis. */
-    async function roomHash(name) {
-      const s = 'glappa-pgp-room:v1:' + name;
+    async function hashStr(s) {
       if (crypto.subtle) {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
       }
       return sha256Hex(s);
+    }
+
+    async function roomHash(name) { return hashStr('glappa-pgp-room:v1:' + name); }
+
+    /* Direktchat-Raum-ID: deterministisch aus BEIDEN Fingerprints (sortiert,
+       eigener Namespace). Beide Seiten rechnen unabhaengig dasselbe aus und
+       landen im selben Postfach — der Server sieht nur einen weiteren Hash
+       und kann Direktchats nicht von normalen Raeumen unterscheiden. */
+    async function directHash(fpA, fpB) {
+      const p = [fpA, fpB].sort();
+      return hashStr('glappa-pgp-direct:v1:' + p[0] + ':' + p[1]);
     }
 
     function sha256Hex(str) {
@@ -750,7 +778,7 @@
         const shortFp = (x.realFp || '????????').slice(-8);
         pill.textContent = x.name + ' · ' + shortFp;
         pill.title = 'Fingerprint: ' + fmtFp(x.realFp || '?');
-        if (me && x.fp !== me.fp) {
+        if (me && !direct && x.fp !== me.fp) {
           pill.classList.add('pill--click');
           pill.title += '\nKlicken = Privatnachricht an ' + x.name;
           const fp = x.fp;
@@ -759,7 +787,11 @@
         if (x.fp === dmFp) pill.classList.add('pill--dm');
         box.appendChild(pill);
       }
-      if (room) {
+      if (direct) {
+        el('chatHead').textContent = 'Direktchat — ' + (direct.key
+          ? (direct.name || '?') + (direct.present ? ' ✓' : ' (gerade nicht da)')
+          : 'warte auf Gegenseite…');
+      } else if (room) {
         el('chatHead').textContent = 'Chat — #' + room + ' (' +
           roster.length + (roster.length === 1 ? ' Person' : ' Leute') + ')';
       }
@@ -783,6 +815,22 @@
       if (dmFp && !roster.some(x => x.fp === dmFp)) {
         clearDm('Privat-Empfänger hat den Raum verlassen — Nachrichten gehen wieder an alle.');
       }
+      // Direktmodus: Gegenseite am ECHTEN Key-Fingerprint erkennen (der muss
+      // exakt dem eingetippten entsprechen — alles andere wird ignoriert,
+      // damit kann sich niemand dazwischenmogeln) und Key + Name merken.
+      if (direct) {
+        const hadKey = !!direct.key;
+        direct.present = false;
+        for (const x of roster) {
+          if (x.realFp === direct.peer && rosterKeys[x.fp]) {
+            direct.name = x.name;
+            direct.key = rosterKeys[x.fp];
+            direct.present = true;
+            saveContact(direct.peer, x.name, x.key);
+          }
+        }
+        if (!hadKey && direct.key) st('dirStatus', 'Verbunden — Gegenseite ist da.');
+      }
       renderRoster();
     }
 
@@ -800,6 +848,8 @@
         const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
         clearTimeout(pollTimer);
         room = rname; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {};
+        direct = null; xin = {};
+        st('dirStatus', '');
         el('chatBox').innerHTML = '';
         await applyRoster(d.roster);
         el('chatCard').style.display = '';
@@ -816,13 +866,106 @@
     function leaveRoom(msg) {
       clearTimeout(pollTimer);
       room = null; roomId = null; lastSeq = 0; roster = []; rosterKeys = {}; seenSeq = {};
-      dmFp = null;
+      dmFp = null; direct = null; xin = {};
+      st('dirStatus', '');
       el('dmBar').style.display = 'none';
       el('msgInput').placeholder = 'Nachricht — Enter zum Senden';
       el('chatCard').style.display = 'none';
       el('leaveBtn').style.display = 'none';
       el('roster').innerHTML = '';
       st('roomStatus', msg || '');
+    }
+
+    /* ── Direktchat per Fingerprint ─────────────────────────────────
+       Gibt dir jemand seinen Fingerprint, reicht der zum Anschreiben:
+       beide Seiten geben den Fingerprint der jeweils anderen ein und
+       landen im selben (aus beiden fps abgeleiteten) Postfach. Die
+       Echtheit prueft der Client selbst: nur wer den passenden Key zum
+       eingetippten Fingerprint vorweist, wird als Gegenseite akzeptiert
+       und beschluesselt — der Server kann nichts unterschieben. */
+    async function joinDirect(fpArg) {
+      if (!me) { st('dirStatus', 'Erst links eine Identität anlegen.', true); return; }
+      const f = String(fpArg || el('dirFp').value).replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+      if (f.length !== 40 && f.length !== 64) {
+        st('dirStatus', 'Ein Fingerprint hat 40 (bzw. 64) Hex-Zeichen.', true);
+        return;
+      }
+      if (f === me.fp) { st('dirStatus', 'Das ist dein eigener Fingerprint.', true); return; }
+      el('dirBtn').disabled = true;
+      st('dirStatus', 'Verbinde…');
+      try {
+        const rid = await directHash(me.fp, f);
+        const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
+        clearTimeout(pollTimer);
+        room = null; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {}; xin = {};
+        direct = { peer: f, name: '', key: null, present: false };
+        dmFp = null;
+        el('dmBar').style.display = 'none';
+        el('msgInput').placeholder = 'Nachricht — Enter zum Senden';
+        el('chatBox').innerHTML = '';
+        await applyRoster(d.roster);
+        // Gegenseite offline, aber als Kontakt bekannt? Dann ihren
+        // gespeicherten Key nehmen (gegen den Fingerprint verifiziert) —
+        // Nachrichten warten dann bis zu 3 Tage im Postfach auf sie.
+        if (!direct.key) {
+          const c = loadContacts().find(k => k.fp === f);
+          if (c && c.key) {
+            try {
+              const k = await openpgp.readKey({ armoredKey: c.key });
+              if (k.getFingerprint().toUpperCase() === f) {
+                direct.key = k;
+                direct.name = c.name || '';
+              }
+            } catch (e) {}
+          }
+        }
+        el('chatCard').style.display = '';
+        el('leaveBtn').style.display = '';
+        st('roomStatus', '');
+        st('dirStatus', direct.key
+          ? (direct.present ? 'Verbunden.' :
+             'Verbunden — Nachrichten warten auf die Gegenseite (bis 3 Tage).')
+          : 'Verbunden — die andere Person muss jetzt DEINEN Fingerprint eingeben.');
+        renderRoster();
+        el('msgInput').focus();
+        doPoll();
+      } catch (e) {
+        st('dirStatus', e.message, true);
+      }
+      el('dirBtn').disabled = false;
+    }
+
+    /* Kontakte: NUR lokal (localStorage) — fp, letzter Name und Public Key
+       der Leute, mit denen schon mal ein Direktchat lief. */
+    const LS_CONTACTS = 'glappa-pgp-contacts';
+
+    function loadContacts() {
+      try {
+        const l = JSON.parse(localStorage.getItem(LS_CONTACTS) || '[]');
+        return Array.isArray(l) ? l : [];
+      } catch (e) { return []; }
+    }
+
+    function saveContact(fp, name, key) {
+      const l = loadContacts();
+      if (l.length && l[0].fp === fp && l[0].name === name) return;
+      const rest = l.filter(c => c.fp !== fp);
+      rest.unshift({ fp, name, key });
+      try { localStorage.setItem(LS_CONTACTS, JSON.stringify(rest.slice(0, 12))); } catch (e) {}
+      renderContacts();
+    }
+
+    function renderContacts() {
+      const box = el('contactList');
+      box.innerHTML = '';
+      for (const c of loadContacts()) {
+        const pill = document.createElement('span');
+        pill.className = 'pill pill--click';
+        pill.textContent = c.name + ' · ' + c.fp.slice(-8);
+        pill.title = 'Direktchat mit ' + c.name + ' starten\nFingerprint: ' + fmtFp(c.fp);
+        pill.addEventListener('click', () => joinDirect(c.fp));
+        box.appendChild(pill);
+      }
     }
 
     function schedulePoll() {
@@ -844,6 +987,7 @@
         }
         await applyRoster(d.roster);
         for (const m of (d.msgs || [])) await handleMsg(m);
+        if (d.xfers && d.xfers.length) handleXfers(d.xfers);   // bewusst ohne await
         st('chatStatus', '');
       } catch (e) {
         if (e.status === 404) { polling = false; leaveRoom('Der Raum ist abgelaufen.'); return; }
@@ -877,7 +1021,7 @@
     }
 
     function setDm(fp) {
-      if (!me || fp === me.fp) return;
+      if (!me || direct || fp === me.fp) return;   // im Direktchat ist eh alles privat
       let target = null;
       for (const x of roster) if (x.fp === fp) target = x;
       if (!target || !rosterKeys[fp]) {
@@ -906,6 +1050,14 @@
        selbst (sonst koennten wir die eigene Nachricht nach dem Poll nicht
        mehr lesen), sonst alle im Raum. null = Fehler, Status steht schon. */
     async function encTargets() {
+      if (direct) {
+        if (!direct.key) {
+          st('chatStatus', 'Die Gegenseite war noch nie da — sie muss einmal DEINEN Fingerprint eingeben.', true);
+          return null;
+        }
+        if (!myPub) myPub = await openpgp.readKey({ armoredKey: me.pub });
+        return [direct.key, myPub];
+      }
       if (dmFp) {
         const k = rosterKeys[dmFp];
         if (!k) {
@@ -1069,7 +1221,9 @@
       appendMsg(m, sender, payload, filename, sigOk, privTo);
     }
 
-    function appendMsg(m, sender, payload, filename, sigOk, privTo) {
+    // blob (optional): fertiger Blob statt payload-Bytes — fuer Live-Dateien,
+    // damit 200 MB nicht unnoetig durch Uint8Array-Kopien wandern.
+    function appendMsg(m, sender, payload, filename, sigOk, privTo, blob) {
       const box = el('chatBox');
       const nearBottom = box.scrollTop + box.clientHeight > box.scrollHeight - 60;
 
@@ -1083,7 +1237,7 @@
       const nm = document.createElement('span');
       nm.className = 'mname';
       nm.textContent = sender ? sender.name : ('? · ' + m.fp.slice(-8));
-      if (me && m.fp !== me.fp) {
+      if (me && !direct && m.fp !== me.fp) {
         nm.classList.add('mname--click');
         nm.title = 'Klicken = Privatnachricht' + (sender ? ' an ' + sender.name : '');
         nm.addEventListener('click', () => setDm(m.fp));
@@ -1124,7 +1278,8 @@
       } else if (filename) {
         // Datei: als Blob-URL rendern (bleibt komplett im Browser)
         const mime = mimeFor(filename);
-        const url = URL.createObjectURL(new Blob([payload], { type: mime }));
+        const b = blob || new Blob([payload], { type: mime });
+        const url = URL.createObjectURL(b);
         if (mime.startsWith('image/')) {
           const img = document.createElement('img');
           img.src = url;
@@ -1138,7 +1293,7 @@
         a.className = 'file-dl';
         a.href = url;
         a.download = filename;
-        a.textContent = '💾 ' + filename + ' (' + fmtSize(payload.length) + ')';
+        a.textContent = '💾 ' + filename + ' (' + fmtSize(b.size) + ')';
         body.appendChild(a);
       } else {
         body.textContent = new TextDecoder().decode(payload);
@@ -1149,15 +1304,15 @@
       if (nearBottom) box.scrollTop = box.scrollHeight;
     }
 
-    /* ── Datei senden: verschluesseln wie Text, nur binaer + Dateiname ── */
+    /* ── Datei senden: verschluesseln wie Text, nur binaer + Dateiname ──
+       Bis FILE_RAW_MAX landet die Datei als normaler Blob im Verlauf
+       (bleibt abrufbar). Alles darueber geht als LIVE-Uebertragung in
+       Chunks (sendFileLive): nichts davon wird auf dem Server gespeichert. */
     const FILE_RAW_MAX = 7 * 1024 * 1024;
 
     async function sendFile(file) {
       if (!roomId || !me) { st('chatStatus', 'Erst einem Raum beitreten.', true); return; }
-      if (file.size > FILE_RAW_MAX) {
-        st('chatStatus', file.name + ': zu groß (max. 7 MB).', true);
-        return;
-      }
+      if (file.size > FILE_RAW_MAX) return sendFileLive(file);
       const keys = await encTargets();
       if (!keys) return;
       try {
@@ -1182,6 +1337,139 @@
       } catch (e) {
         st('chatStatus', 'Senden fehlgeschlagen: ' + e.message, true);
       }
+    }
+
+    /* ── Live-Uebertragung grosser Dateien ──────────────────────────
+       Datei wird in 4-MB-Scheiben zerlegt, JEDE einzeln verschluesselt
+       und hochgeladen. Der Server haelt maximal ein paar Chunks vor
+       (Flusskontrolle: {'wait': true} = Empfaenger muessen erst abholen)
+       und loescht jeden Chunk sofort nach Zustellung — gespeichert wird
+       nichts, der Verlauf enthaelt die Datei nicht. Nur wer beim Senden
+       online ist, bekommt sie. */
+    const XCHUNK       = 4 * 1024 * 1024;
+    const XFER_RAW_MAX = 200 * 1024 * 1024;
+
+    function randHex32() {
+      const b = new Uint8Array(16);
+      crypto.getRandomValues(b);
+      return Array.from(b).map(x => x.toString(16).padStart(2, '0')).join('');
+    }
+
+    function tsLocal() {
+      const d = new Date(), p = n => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+           + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    async function sendFileLive(file) {
+      if (file.size > XFER_RAW_MAX) {
+        st('chatStatus', file.name + ': zu groß (max. ~200 MB).', true);
+        return;
+      }
+      const keys = await encTargets();
+      if (!keys) return;
+      const tid = randHex32();
+      const total = Math.max(1, Math.ceil(file.size / XCHUNK));
+      const fname0 = dmFp ? privWrap(dmFp, file.name) : file.name;
+      try {
+        for (let i = 0; i < total; i++) {
+          const slice = new Uint8Array(
+            await file.slice(i * XCHUNK, Math.min((i + 1) * XCHUNK, file.size)).arrayBuffer());
+          st('chatStatus', 'Live-Datei ' + file.name + '… ' + (i + 1) + '/' + total);
+          const armored = await openpgp.encrypt({
+            // Dateiname (+ ggf. Privat-Marker) nur im ersten Chunk
+            message: await openpgp.createMessage({ binary: slice, filename: i === 0 ? fname0 : '' }),
+            encryptionKeys: keys,
+            signingKeys: privKey,
+            wildcard: true,
+          });
+          for (let tries = 0; ; tries++) {
+            const d = await api('/pgp/xup',
+              { room: roomId, fp: me.fp, tid: tid, idx: i, total: total, body: armored });
+            if (!d.wait) break;
+            if (tries >= 240) throw new Error('Empfänger holen nicht ab — abgebrochen.');
+            st('chatStatus', 'Live-Datei: warte auf Empfänger… (' + i + '/' + total + ' gesendet)');
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        }
+        st('chatStatus', '');
+        let sender = null;
+        for (const x of roster) if (me && x.fp === me.fp) sender = x;
+        appendMsg({ fp: me.fp, ts: tsLocal() }, sender, new Uint8Array(0),
+                  file.name, true, dmFp, file);
+      } catch (e) {
+        st('chatStatus', 'Live-Datei fehlgeschlagen: ' + e.message, true);
+      }
+    }
+
+    /* Empfangsseite: Poll meldet, welche Chunks abholbereit sind. */
+    async function handleXfers(list) {
+      if (xBusy || !roomId) return;
+      xBusy = true;
+      try {
+        for (const xf of list) {
+          const t = xin[xf.tid] || (xin[xf.tid] = {
+            from: xf.fp, total: xf.total, parts: {}, got: 0,
+            fname: '', privTo: null, sigAll: true, dead: false,
+          });
+          for (const idx of xf.ready) {
+            if (!roomId) { xBusy = false; return; }
+            if (t.parts[idx] !== undefined) continue;
+            if (t.dead) {
+              // nicht fuer uns entschluesselbar -> nur quittieren, damit
+              // der Server den Chunk-Puffer wieder freigeben kann
+              await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, skip: true });
+              t.parts[idx] = true;
+              continue;
+            }
+            const d = await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx });
+            try {
+              const msg = await openpgp.readMessage({ armoredMessage: d.data });
+              const opts = { message: msg, decryptionKeys: privKey, format: 'binary' };
+              const vkey = rosterKeys[t.from];
+              if (vkey) opts.verificationKeys = vkey;
+              const res = await openpgp.decrypt(opts);
+              if (idx === 0) {
+                let fn = res.filename || 'datei.bin';
+                const p = privParse(fn);
+                if (p) { t.privTo = p.to; fn = p.rest; }
+                t.fname = fn;
+              }
+              let ok = false;
+              if (vkey && res.signatures && res.signatures.length) {
+                try { await res.signatures[0].verified; ok = true; } catch (e) {}
+              }
+              if (!ok) t.sigAll = false;
+              t.parts[idx] = res.data;
+              t.got++;
+            } catch (e) {
+              // z.B. private Live-Datei an jemand anderen: einmal Schloss
+              // zeigen, Rest des Transfers nur noch quittieren
+              t.dead = true;
+              t.parts[idx] = true;
+              let sender = null;
+              for (const x of roster) if (x.fp === t.from) sender = x;
+              appendMsg({ fp: t.from, ts: tsLocal() }, sender, null, '', false, null);
+              continue;
+            }
+            st('chatStatus', 'Empfange Datei… ' + t.got + '/' + t.total);
+            if (t.got >= t.total) {
+              const parts = [];
+              for (let i = 0; i < t.total; i++) parts.push(t.parts[i]);
+              const blob = new Blob(parts, { type: mimeFor(t.fname) });
+              let sender = null;
+              for (const x of roster) if (x.fp === t.from) sender = x;
+              appendMsg({ fp: t.from, ts: tsLocal() }, sender, new Uint8Array(0),
+                        t.fname, t.sigAll, t.privTo, blob);
+              delete xin[xf.tid];
+              st('chatStatus', '');
+            }
+          }
+        }
+      } catch (e) {
+        st('chatStatus', 'Live-Datei: ' + e.message, true);
+      }
+      xBusy = false;
     }
 
     async function sendMsg() {
@@ -1244,6 +1532,17 @@
       el('sendBtn').addEventListener('click', sendMsg);
       el('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendMsg(); });
       el('dmOffBtn').addEventListener('click', () => clearDm(''));
+      el('dirBtn').addEventListener('click', () => joinDirect());
+      el('dirFp').addEventListener('keydown', e => { if (e.key === 'Enter') joinDirect(); });
+      el('idFpCopyBtn').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(fmtFp(me.fp));
+          st('idStatus', 'Fingerprint kopiert — schick ihn deinem Kontakt.');
+        } catch (e) {
+          st('idStatus', 'Kopieren blockiert — Fingerprint-Box markieren geht auch.', true);
+        }
+      });
+      renderContacts();
 
       /* Dateien: Drag & Drop auf die Chat-Karte + 📎-Button (Handy) */
       const chatCard = el('chatCard');
