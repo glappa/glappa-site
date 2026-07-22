@@ -76,7 +76,6 @@
     .tool-btn:disabled { opacity: 0.5; cursor: wait; }
     .tool-btn--mini { padding: 4px 10px; font-size: 0.78em; }
     .tool-status { margin-top: 10px; font-size: 0.82em; min-height: 1.3em; }
-    .tool-hint { font-size: 0.75em; margin-top: 10px; }
 
     /* ── PGP-spezifisch ── */
     .fp-box {
@@ -175,6 +174,71 @@
     .mbadge.ok { }
     .mbadge.warn { }
 
+    /* ── Eine Kachel, drei Bereiche: Identitaet | Raum | Direktchat.
+       Trennlinien zwischen den Spalten (schmal: Zeilen) halten die drei
+       Teile erkennbar, ohne drei einzelne Karten zu brauchen. ── */
+    .pgp-panel {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 0;
+    }
+    .pgp-sec { padding: 13px 16px 14px; min-width: 0; }
+    /* --pgp-div traegt die komplette Trennlinie (Breite/Stil/Farbe) pro
+       Theme — so kann keine spaetere Theme-Regel das border-left:none des
+       Schmal-Layouts wieder aufbrechen. */
+    .pgp-sec + .pgp-sec { border-left: var(--pgp-div, 1px solid #2a2d34); }
+    @media (max-width: 899px) {
+      .pgp-panel { grid-template-columns: 1fr; }
+      .pgp-sec + .pgp-sec { border-left: none; border-top: var(--pgp-div, 1px solid #2a2d34); }
+    }
+
+    /* ── Info-Knopf mit Hover-Tooltip: ersetzt die langen Hinweistexte.
+       Tooltip haengt am .sec-head (position:relative) und spannt dessen
+       volle Breite — kann also nie aus der Kachel herausragen. ── */
+    .sec-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+      margin-bottom: 4px;
+    }
+    .sec-head h2 { margin: 0; }
+    .info-btn {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      padding: 0;
+      font-size: 0.7em;
+      font-weight: bold;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: help;
+    }
+    .info-tip {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      z-index: 60;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.78em;
+      font-weight: normal;
+      line-height: 1.55;
+      text-align: left;
+      text-transform: none;
+      letter-spacing: normal;
+    }
+    .info-wrap { display: inline-flex; }
+    .info-wrap:hover .info-tip,
+    .info-wrap:focus-within .info-tip,
+    .info-wrap.open .info-tip { display: block; }
+
     /* ── CLEAN (Default): schlicht, dunkel, lesbar ── */
     html[data-theme="clean"] {
       background: #0e0f12;
@@ -264,7 +328,24 @@
     html[data-theme="clean"] #themeBtn:hover { color: #fff; border-color: #9aa0a6; }
     html[data-theme="clean"] .tool-status { color: #c9a848; }
     html[data-theme="clean"] .tool-status.err { color: #e5715f; }
-    html[data-theme="clean"] .tool-hint { color: #6c7178; }
+    html[data-theme="clean"] .pgp-panel { --pgp-div: 1px solid #2a2d34; }
+    html[data-theme="clean"] .info-btn {
+      background: none;
+      border: 1px solid #33363b;
+      color: #9aa0a6;
+    }
+    html[data-theme="clean"] .info-wrap:hover .info-btn,
+    html[data-theme="clean"] .info-btn:focus-visible {
+      border-color: #6fd18c;
+      color: #6fd18c;
+      outline: none;
+    }
+    html[data-theme="clean"] .info-tip {
+      background: #1d2026;
+      border: 1px solid #33363b;
+      color: #c6cad1;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.55);
+    }
     html[data-theme="clean"] .fp-box {
       background: #0e0f12;
       border: 1px solid #2a2d34;
@@ -379,7 +460,25 @@
     }
     html[data-theme="retro"] .tool-status { color: #ffff00; }
     html[data-theme="retro"] .tool-status.err { color: #ff5555; }
-    html[data-theme="retro"] .tool-hint { color: #888; }
+    /* Bereichs-Farben in der gemeinsamen Kachel: --tc gilt pro Bereich */
+    html[data-theme="retro"] .pgp-sec--cyan  { --tc: #00ffff; }
+    html[data-theme="retro"] .pgp-sec--green { --tc: #00ff00; }
+    html[data-theme="retro"] .pgp-panel { --pgp-div: 1px dashed #444; }
+    html[data-theme="retro"] .info-btn {
+      background: #000;
+      border: 1px solid var(--tc, #00ffff);
+      color: var(--tc, #00ffff);
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 6px var(--tc, #00ffff);
+    }
+    html[data-theme="retro"] .info-tip {
+      background: #000;
+      border: 1px solid var(--tc, #00ffff);
+      border-radius: 2px;
+      color: #ccc;
+      font-family: "Courier New", monospace;
+      box-shadow: 0 0 12px var(--tc, #00ffff);
+    }
     html[data-theme="retro"] .fp-box {
       background: #000;
       border: 1px dashed #444;
@@ -442,10 +541,11 @@
     <div class="page-banner green">
       <h2>&#128274; PGP-CHAT &#128274;</h2>
 <pre>
- ____   ___  ____
-(  _ \ / __)(  _ \
- ) __/( (_ \ ) __/
-(__)   \___/(__)
+ ____     ____   ____
+|  _ \   / ___| |  _ \
+| |_) | | |  _  | |_) |
+|  __/  | |_| | |  __/
+|_|      \____| |_|
 </pre>
     </div>
     <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
@@ -474,64 +574,91 @@
 
   <main class="tools-grid">
 
-    <!-- ── Identitaet ── -->
-    <section class="tool-card tool-card--cyan" aria-labelledby="idHead">
-      <h2 id="idHead">Deine Identit&auml;t</h2>
-      <p class="tsub">Schl&uuml;sselpaar entsteht HIER im Browser (OpenPGP, Curve25519).</p>
-      <div id="idCreate">
-        <label for="idName">Pseudonym (Pflicht &mdash; nimm NICHT deinen echten Namen)</label>
-        <input type="text" id="idName" maxlength="24" placeholder="z.B. KryptoOtter73" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <div class="tool-row">
-          <button type="button" class="tool-btn tool-btn--mini" id="idDiceBtn" title="Zuf&auml;lliges Pseudonym w&uuml;rfeln">&#127922; Zufallsname</button>
-          <button type="button" class="tool-btn" id="idGenBtn">Schl&uuml;ssel erzeugen</button>
-        </div>
-      </div>
-      <div id="idShow" style="display:none">
-        <div class="id-line">Name: <b id="idShowName"></b></div>
-        <label>Dein Fingerprint (zum Vergleichen)</label>
-        <div class="fp-box" id="idFp"></div>
-        <div class="tool-row">
-          <button type="button" class="tool-btn tool-btn--mini" id="idFpCopyBtn">Fingerprint kopieren</button>
-          <button type="button" class="tool-btn tool-btn--mini" id="idCopyBtn">Public Key kopieren</button>
-          <button type="button" class="tool-btn tool-btn--mini" id="idResetBtn">Identit&auml;t l&ouml;schen</button>
-        </div>
-      </div>
-      <div class="tool-status" id="idStatus" role="status" aria-live="polite"></div>
-      <p class="tool-hint">Alles l&auml;uft unter frei erfundenem Pseudonym &mdash; echte Namen haben hier nichts verloren. Der private Schl&uuml;ssel liegt NUR in diesem Browser (localStorage) und geht nie zum Server. Browserdaten l&ouml;schen = Schl&uuml;ssel weg.</p>
-    </section>
+    <!-- ── Eine Kachel, drei Bereiche: Identitaet | Raum | Direktchat.
+         Die langen Hinweise stecken hinter den i-Knoepfen (.info-tip). ── -->
+    <div class="tool-card tool-card--cyan pgp-panel">
 
-    <!-- ── Raum ── -->
-    <section class="tool-card tool-card--green" aria-labelledby="roomHead">
-      <h2 id="roomHead">Raum</h2>
-      <p class="tsub">Wer den Raumnamen kennt, kann beitreten &mdash; behandle ihn wie ein Passwort.</p>
-      <label for="roomName">Raumname</label>
-      <input type="text" id="roomName" maxlength="32" placeholder="z.B. geheimtreff-42" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="tool-row">
-        <button type="button" class="tool-btn" id="joinBtn">Beitreten</button>
-        <button type="button" class="tool-btn tool-btn--mini" id="leaveBtn" style="display:none">Verlassen</button>
-      </div>
-      <div class="tool-status" id="roomStatus" role="status" aria-live="polite"></div>
-      <div class="roster" id="roster"></div>
-      <p class="tool-hint">Der Raumname verl&auml;sst deinen Browser nur als SHA-256-Hash &mdash; der Server kennt ihn nie im Klartext und f&uuml;hrt kein Log, wer wann chattet. Jede Nachricht wird an alle verschl&uuml;sselt, die beim Absenden im Raum sind; wer sp&auml;ter kommt, kann Altes nicht lesen. Fingerprints am besten &uuml;ber einen zweiten Kanal (Anruf, Discord) vergleichen.</p>
-    </section>
+      <!-- ── Identitaet ── -->
+      <section class="pgp-sec pgp-sec--cyan" aria-labelledby="idHead">
+        <div class="sec-head">
+          <h2 id="idHead">Deine Identit&auml;t</h2>
+          <span class="info-wrap">
+            <button type="button" class="info-btn" aria-label="Info zur Identit&auml;t" aria-describedby="idTip">i</button>
+            <span class="info-tip" id="idTip" role="tooltip">Alles l&auml;uft unter frei erfundenem Pseudonym &mdash; echte Namen haben hier nichts verloren. Der private Schl&uuml;ssel liegt NUR in diesem Browser (localStorage) und geht nie zum Server. Browserdaten l&ouml;schen = Schl&uuml;ssel weg.</span>
+          </span>
+        </div>
+        <p class="tsub">Schl&uuml;sselpaar entsteht HIER im Browser (OpenPGP, Curve25519).</p>
+        <div id="idCreate">
+          <label for="idName">Pseudonym (Pflicht &mdash; nimm NICHT deinen echten Namen)</label>
+          <input type="text" id="idName" maxlength="24" placeholder="z.B. KryptoOtter73" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <div class="tool-row">
+            <button type="button" class="tool-btn tool-btn--mini" id="idDiceBtn" title="Zuf&auml;lliges Pseudonym w&uuml;rfeln">&#127922; Zufallsname</button>
+            <button type="button" class="tool-btn" id="idGenBtn">Schl&uuml;ssel erzeugen</button>
+          </div>
+        </div>
+        <div id="idShow" style="display:none">
+          <div class="id-line">Name: <b id="idShowName"></b></div>
+          <label>Dein Fingerprint (zum Vergleichen)</label>
+          <div class="fp-box" id="idFp"></div>
+          <div class="tool-row">
+            <button type="button" class="tool-btn tool-btn--mini" id="idFpCopyBtn">Fingerprint kopieren</button>
+            <button type="button" class="tool-btn tool-btn--mini" id="idCopyBtn">Public Key kopieren</button>
+            <button type="button" class="tool-btn tool-btn--mini" id="idResetBtn">Identit&auml;t l&ouml;schen</button>
+          </div>
+        </div>
+        <div class="tool-status" id="idStatus" role="status" aria-live="polite"></div>
+      </section>
 
-    <!-- ── Direktchat per Fingerprint ── -->
-    <section class="tool-card tool-card--cyan" aria-labelledby="dirHead">
-      <h2 id="dirHead">Direktchat</h2>
-      <p class="tsub">Chat mit genau EINER Person &mdash; per Fingerprint, ohne Raum.</p>
-      <label for="dirFp">Fingerprint der anderen Person</label>
-      <input type="text" id="dirFp" maxlength="90" placeholder="z.B. 9137 7DC1 8592 &hellip;" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="tool-row">
-        <button type="button" class="tool-btn" id="dirBtn">Direktchat starten</button>
-      </div>
-      <div class="tool-status" id="dirStatus" role="status" aria-live="polite"></div>
-      <div class="roster" id="contactList"></div>
-      <p class="tool-hint">Beide m&uuml;ssen den Fingerprint der jeweils anderen Person eingeben (deinen kopierst du links unter Identit&auml;t) &mdash; dann entsteht aus beiden Fingerprints ein eigenes Postfach, das beim Server nur als Hash existiert. Die Echtheit der Gegenseite wird automatisch am Fingerprint gepr&uuml;ft &mdash; niemand kann sich dazwischenschalten. War die Person schon mal da, kannst du ihr auch schreiben, wenn sie gerade offline ist (Nachrichten warten bis 3 Tage). Zuletzt verbundene Kontakte erscheinen hier als Kn&ouml;pfe (nur in DIESEM Browser gespeichert). Beachte: Dein Fingerprint ist dein dauerhaftes Erkennungszeichen &mdash; wer ihn kennt, kann dich wiedererkennen. F&uuml;r maximale Anonymit&auml;t: R&auml;ume + Wegwerf-Identit&auml;t.</p>
-    </section>
+      <!-- ── Raum ── -->
+      <section class="pgp-sec pgp-sec--green" aria-labelledby="roomHead">
+        <div class="sec-head">
+          <h2 id="roomHead">Raum</h2>
+          <span class="info-wrap">
+            <button type="button" class="info-btn" aria-label="Info zum Raum" aria-describedby="roomTip">i</button>
+            <span class="info-tip" id="roomTip" role="tooltip">Der Raumname verl&auml;sst deinen Browser nur als SHA-256-Hash &mdash; der Server kennt ihn nie im Klartext und f&uuml;hrt kein Log, wer wann chattet. Jede Nachricht wird an alle verschl&uuml;sselt, die beim Absenden im Raum sind; wer sp&auml;ter kommt, kann Altes nicht lesen. Fingerprints am besten &uuml;ber einen zweiten Kanal (Anruf, Discord) vergleichen.</span>
+          </span>
+        </div>
+        <p class="tsub">Wer den Raumnamen kennt, kann beitreten &mdash; behandle ihn wie ein Passwort.</p>
+        <label for="roomName">Raumname</label>
+        <input type="text" id="roomName" maxlength="32" placeholder="z.B. geheimtreff-42" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="tool-row">
+          <button type="button" class="tool-btn" id="joinBtn">Beitreten</button>
+          <button type="button" class="tool-btn tool-btn--mini" id="leaveBtn" style="display:none">Verlassen</button>
+        </div>
+        <div class="tool-status" id="roomStatus" role="status" aria-live="polite"></div>
+        <div class="roster" id="roster"></div>
+      </section>
+
+      <!-- ── Direktchat per Fingerprint ── -->
+      <section class="pgp-sec pgp-sec--cyan" aria-labelledby="dirHead">
+        <div class="sec-head">
+          <h2 id="dirHead">Direktchat</h2>
+          <span class="info-wrap">
+            <button type="button" class="info-btn" aria-label="Info zum Direktchat" aria-describedby="dirTip">i</button>
+            <span class="info-tip" id="dirTip" role="tooltip">Beide m&uuml;ssen den Fingerprint der jeweils anderen Person eingeben (deinen kopierst du links unter Identit&auml;t) &mdash; dann entsteht aus beiden Fingerprints ein eigenes Postfach, das beim Server nur als Hash existiert. Die Echtheit der Gegenseite wird automatisch am Fingerprint gepr&uuml;ft &mdash; niemand kann sich dazwischenschalten. War die Person schon mal da, kannst du ihr auch schreiben, wenn sie gerade offline ist (Nachrichten warten bis 3 Tage). Zuletzt verbundene Kontakte erscheinen hier als Kn&ouml;pfe (nur in DIESEM Browser gespeichert). Beachte: Dein Fingerprint ist dein dauerhaftes Erkennungszeichen &mdash; wer ihn kennt, kann dich wiedererkennen. F&uuml;r maximale Anonymit&auml;t: R&auml;ume + Wegwerf-Identit&auml;t.</span>
+          </span>
+        </div>
+        <p class="tsub">Chat mit genau EINER Person &mdash; per Fingerprint, ohne Raum.</p>
+        <label for="dirFp">Fingerprint der anderen Person</label>
+        <input type="text" id="dirFp" maxlength="90" placeholder="z.B. 9137 7DC1 8592 &hellip;" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="tool-row">
+          <button type="button" class="tool-btn" id="dirBtn">Direktchat starten</button>
+        </div>
+        <div class="tool-status" id="dirStatus" role="status" aria-live="polite"></div>
+        <div class="roster" id="contactList"></div>
+      </section>
+
+    </div>
 
     <!-- ── Chat ── -->
     <section class="tool-card tool-card--pink chat-card" aria-labelledby="chatHead" id="chatCard" style="display:none">
-      <h2 id="chatHead">Chat</h2>
+      <div class="sec-head">
+        <h2 id="chatHead">Chat</h2>
+        <span class="info-wrap">
+          <button type="button" class="info-btn" aria-label="Info zum Chat" aria-describedby="chatTip">i</button>
+          <span class="info-tip" id="chatTip" role="tooltip">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis ~200 MB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar MB, l&ouml;scht jedes St&uuml;ck sofort nach Abholung und speichert NICHTS. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</span>
+        </span>
+      </div>
       <div class="chat-box" id="chatBox" aria-live="polite"></div>
       <div class="dm-bar" id="dmBar" style="display:none">
         <span>&#128274; Privat an <b id="dmName"></b> &mdash; nur ihr zwei k&ouml;nnt mitlesen</span>
@@ -544,7 +671,6 @@
       </div>
       <input type="file" id="fileInput" multiple style="display:none">
       <div class="tool-status" id="chatStatus" role="status" aria-live="polite"></div>
-      <p class="tool-hint">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis ~200 MB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar MB, l&ouml;scht jedes St&uuml;ck sofort nach Abholung und speichert NICHTS. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</p>
     </section>
 
   </main>
@@ -577,6 +703,24 @@
         refresh();
       });
       refresh();
+    })();
+
+    /* ── Info-Knoepfe: Hover zeigt den Tipp (reines CSS). Der Klick-Toggle
+       hier ist fuer Touch-Geraete ohne Hover — und weil Safari Buttons beim
+       Tippen keinen Fokus gibt (focus-within greift dort nicht). ── */
+    (function () {
+      var wraps = Array.prototype.slice.call(document.querySelectorAll('.info-wrap'));
+      wraps.forEach(function (w) {
+        w.querySelector('.info-btn').addEventListener('click', function (e) {
+          e.stopPropagation();
+          var was = w.classList.contains('open');
+          wraps.forEach(function (o) { o.classList.remove('open'); });
+          if (!was) w.classList.add('open');
+        });
+      });
+      document.addEventListener('click', function () {
+        wraps.forEach(function (o) { o.classList.remove('open'); });
+      });
     })();
 
     /* ── API-Endpunkte: gleiche Logik wie werkzeuge.html ──
