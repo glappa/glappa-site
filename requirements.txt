@@ -10,3 +10,8 @@ tzdata
 # GeoIP-Reader (Link-Kuerzer-Statistik: IP -> Laendercode, offline).
 # Die Datenbank selbst (DB-IP Country Lite) laedt der Dockerfile-Build.
 maxminddb
+# Datei-Konverter (home/convert.html): Bilder ueber Pillow, PDF-Seiten <->
+# Bild ueber PyMuPDF. Beides reine Wheels, kein zusaetzliches apt-Paket -
+# Audio/Video laeuft ueber das schon vorhandene ffmpeg-Binary.
+Pillow>=10.0
+pymupdf>=1.24

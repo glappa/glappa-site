@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datei-Konverter &mdash; Glappa Home</title>
+  <meta name="keywords" content="Glappa Datei Konverter Bilder Audio Video PDF PNG JPG MP3 MP4">
+  <meta name="description" content="Bilder, Audio, Video und PDF ineinander umwandeln &mdash; self-hosted auf der GLAPPA-VPS, keine Cloud.">
+  <link rel="icon" href="../favicon.ico">
+  <!-- Theme-Bootstrap VOR dem Stylesheet (gleiches Prinzip wie werkzeuge.html/pgp.html):
+       gespeicherte Wahl setzen, bevor irgendwas rendert — kein Flackern. -->
+  <script>
+    (function () {
+      var t = 'clean';
+      try { t = localStorage.getItem('glappa-tools-theme') || 'clean'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t === 'retro' ? 'retro' : 'clean');
+    })();
+  </script>
+  <link rel="stylesheet" href="home.css?v=11">
+  <style>
+    /* ════════════════════════════════════════════════════════════════
+       Zwei Stile, umschaltbar (Knopf oben rechts, localStorage) —
+       identisch zum Werkzeugkasten/PGP-Chat.
+       ════════════════════════════════════════════════════════════════ */
+    .tools-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 14px auto 4px;
+      padding: 0 16px;
+    }
+    #themeBtn { cursor: pointer; }
+
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+      gap: 18px;
+      max-width: 1000px;
+      margin: 18px auto 48px;
+      padding: 0 16px;
+    }
+    .tool-card { border-radius: 6px; padding: 16px; }
+    .tool-card h2 { margin: 0 0 4px; font-size: 1.05em; }
+    .tool-card .tsub { margin: 0 0 12px; font-size: 0.82em; }
+    .tool-card label {
+      display: block;
+      font-size: 0.78em;
+      margin: 10px 0 4px;
+      letter-spacing: 0.04em;
+    }
+    .tool-card select {
+      width: 100%;
+      border-radius: 4px;
+      font-size: 0.92em;
+      padding: 8px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .tool-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+    .tool-row .grow { flex: 1 1 140px; width: auto; }
+    .tool-btn {
+      border-radius: 4px;
+      font-size: 0.9em;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      padding: 9px 16px;
+      cursor: pointer;
+    }
+    .tool-btn:disabled { opacity: 0.5; cursor: wait; }
+    .tool-btn--mini { padding: 4px 10px; font-size: 0.78em; }
+    .tool-status { margin-top: 10px; font-size: 0.82em; min-height: 1.3em; }
+    .tool-status .blink { animation: toolblink 1s steps(1) infinite; }
+    @keyframes toolblink { 50% { opacity: 0; } }
+    .tool-hint { font-size: 0.75em; margin-top: 10px; }
+
+    /* ── Sub-Rubriken: Format-Gruppen als Reihe kleiner Knoepfe. Jede
+         Kachel behandelt eine Datei-Kategorie (Bild/Audio/Video/PDF) —
+         das ist die "Unterrubrik", die sich hier lohnt, weil die vier
+         Kategorien unterschiedliche Zielformate + Groessenlimits haben. ── */
+    .conv-drop {
+      border-radius: 6px;
+      border: 2px dashed;
+      padding: 18px 12px;
+      text-align: center;
+      font-size: 0.85em;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .conv-drop input[type="file"] { display: none; }
+    .conv-file {
+      margin-top: 8px;
+      font-size: 0.8em;
+      word-break: break-all;
+      display: none;
+    }
+    .conv-file.show { display: block; }
+    .conv-result { margin-top: 12px; display: none; }
+    .conv-result.show { display: block; }
+    .conv-result a { display: inline-block; text-decoration: none; }
+
+    /* ── CLEAN (Default): schlicht, dunkel, lesbar ── */
+    html[data-theme="clean"] {
+      background: #0e0f12;
+      background-image: none;
+    }
+    html[data-theme="clean"] body {
+      background: #0e0f12;
+      background-image: none;
+      color: #e6e6e6;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      cursor: auto;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    html[data-theme="clean"] .marquee,
+    html[data-theme="clean"] .header,
+    html[data-theme="clean"] .construction,
+    html[data-theme="clean"] .retro-only { display: none !important; }
+
+    html[data-theme="clean"] a { color: #6fd18c; }
+    html[data-theme="clean"] a:visited { color: #6fd18c; }
+
+    html[data-theme="clean"] .tools-topbar { margin-top: 22px; }
+    html[data-theme="clean"] .tools-title {
+      margin: 0;
+      font-size: 1.45em;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
+    html[data-theme="clean"] .nav {
+      background: none;
+      border: none;
+      box-shadow: none;
+      text-align: center;
+      font-size: 0.85em;
+      margin: 6px auto 0;
+      padding: 0 16px;
+    }
+    html[data-theme="clean"] .nav a {
+      color: #9aa0a6;
+      text-decoration: none;
+      text-shadow: none;
+      margin: 0 2px;
+    }
+    html[data-theme="clean"] .nav a:hover { color: #fff; }
+    html[data-theme="clean"] .nav a.current { color: #6fd18c; }
+    html[data-theme="clean"] .nav .sep { color: #33363b; margin: 0 4px; }
+
+    html[data-theme="clean"] .tool-card {
+      background: #16181d;
+      border: 1px solid #2a2d34;
+    }
+    html[data-theme="clean"] .tool-card h2 { color: #fff; font-weight: 600; }
+    html[data-theme="clean"] .tool-card .tsub { color: #9aa0a6; }
+    html[data-theme="clean"] .tool-card label { color: #9aa0a6; text-transform: uppercase; }
+    html[data-theme="clean"] .tool-card select {
+      background: #0e0f12;
+      color: #e6e6e6;
+      border: 1px solid #33363b;
+    }
+    html[data-theme="clean"] .tool-card select:focus-visible {
+      outline: 2px solid #6fd18c;
+      outline-offset: 0;
+      border-color: #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn {
+      background: #6fd18c;
+      color: #0e0f12;
+      border: 1px solid #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn:hover:not(:disabled) { background: #8ee2a6; }
+    html[data-theme="clean"] .tool-btn--mini {
+      background: none;
+      color: #6fd18c;
+    }
+    html[data-theme="clean"] .tool-btn--mini:hover:not(:disabled) { background: #1d2026; }
+    html[data-theme="clean"] #themeBtn {
+      background: none;
+      color: #9aa0a6;
+      border: 1px solid #33363b;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 0.8em;
+      font-family: inherit;
+    }
+    html[data-theme="clean"] #themeBtn:hover { color: #fff; border-color: #9aa0a6; }
+    html[data-theme="clean"] .tool-status { color: #c9a848; }
+    html[data-theme="clean"] .tool-status .tool-err { color: #e5715f; }
+    html[data-theme="clean"] .tool-hint { color: #6c7178; }
+    html[data-theme="clean"] .conv-drop {
+      background: #0e0f12;
+      border-color: #33363b;
+      color: #9aa0a6;
+    }
+    html[data-theme="clean"] .conv-drop:hover,
+    html[data-theme="clean"] .conv-drop.drag {
+      border-color: #6fd18c;
+      color: #6fd18c;
+      background: #10140f;
+    }
+    html[data-theme="clean"] .conv-file { color: #e6e6e6; }
+    html[data-theme="clean"] .footer {
+      background: none;
+      border: none;
+      text-align: center;
+      color: #6c7178;
+      font-size: 0.8em;
+      padding-bottom: 24px;
+    }
+    html[data-theme="clean"] .copyright {
+      color: #6c7178;
+      text-shadow: none;
+      font-family: inherit;
+    }
+
+    /* ── RETRO: Neon-Karten passend zu home.css ── */
+    html[data-theme="retro"] .tools-title { display: none; }
+    html[data-theme="retro"] .tools-topbar { justify-content: flex-end; }
+    html[data-theme="retro"] #themeBtn {
+      background: #000;
+      color: var(--neon-yellow, #ffff00);
+      border: 2px solid var(--neon-yellow, #ffff00);
+      border-radius: 2px;
+      padding: 6px 12px;
+      font-family: "Courier New", monospace;
+      font-weight: bold;
+      font-size: 0.8em;
+      text-shadow: 0 0 6px var(--neon-yellow, #ffff00);
+    }
+    html[data-theme="retro"] .tool-card {
+      background: rgba(0,0,0,0.82);
+      border: 2px solid var(--tc, #00ffff);
+      border-radius: 4px;
+      box-shadow: 0 0 14px var(--tc, #00ffff);
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .tool-card--cyan   { --tc: #00ffff; }
+    html[data-theme="retro"] .tool-card--green  { --tc: #00ff00; }
+    html[data-theme="retro"] .tool-card--yellow { --tc: #ffff00; }
+    html[data-theme="retro"] .tool-card--pink   { --tc: #ff00ff; }
+    html[data-theme="retro"] .tool-card h2 {
+      color: var(--tc);
+      text-shadow: 0 0 8px var(--tc);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    html[data-theme="retro"] .tool-card .tsub,
+    html[data-theme="retro"] .tool-card label { color: #aaa; }
+    html[data-theme="retro"] .tool-card select {
+      background: #000;
+      color: #00ffff;
+      border: 1px solid #444;
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+    }
+    html[data-theme="retro"] .tool-card select:focus {
+      outline: none;
+      border-color: var(--tc);
+      box-shadow: 0 0 6px var(--tc);
+    }
+    html[data-theme="retro"] .tool-btn {
+      background: #000;
+      color: var(--tc, #00ffff);
+      border: 2px solid var(--tc, #00ffff);
+      border-radius: 2px;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 0 6px var(--tc, #00ffff);
+    }
+    html[data-theme="retro"] .tool-btn:hover:not(:disabled) {
+      background: var(--tc, #00ffff);
+      color: #000;
+      text-shadow: none;
+    }
+    html[data-theme="retro"] .tool-status { color: #ffff00; }
+    html[data-theme="retro"] .tool-status .tool-err { color: #ff5555; }
+    html[data-theme="retro"] .tool-hint { color: #888; }
+    html[data-theme="retro"] .conv-drop {
+      background: #000;
+      border-color: #444;
+      color: #888;
+    }
+    html[data-theme="retro"] .conv-drop:hover,
+    html[data-theme="retro"] .conv-drop.drag {
+      border-color: var(--tc, #00ffff);
+      color: var(--tc, #00ffff);
+      box-shadow: 0 0 8px var(--tc, #00ffff);
+    }
+    html[data-theme="retro"] .conv-file { color: #eee; }
+  </style>
+</head>
+<body>
+
+  <!-- Retro-Deko (im Clean-Modus komplett ausgeblendet) -->
+  <div class="marquee marquee--top">
+    <span>&#9733; DATEI-KONVERTER &#9733; BILD &middot; AUDIO &middot; VIDEO &middot; PDF &#9733; 100% SELF-HOSTED &#9733; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
+    <div class="page-banner green">
+      <h2>&#128190; KONVERTER &#128190;</h2>
+<pre>
+ __ _  __ _  ____ __  __ __ _  ____ ____
+(  / )(  ( \(  __)  \/  (  ( \(  __)  _ \
+ )  (  /    / ) _)  )    )    ) ) _)  |_)/
+(__\_)\_)__)(____)_/\/\_\_)__)(____)__/\_)
+</pre>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="" aria-hidden="true" width="70" height="98">
+  </header>
+
+  <div class="tools-topbar">
+    <h1 class="tools-title">Datei-Konverter</h1>
+    <button type="button" id="themeBtn" title="Design umschalten"></button>
+  </div>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="../page1.html">Video</a><span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="../home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction retro-only">
+    <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main class="tools-grid">
+
+    <!-- ── Bilder ── -->
+    <section class="tool-card tool-card--cyan" aria-labelledby="imgHead" data-conv="image">
+      <h2 id="imgHead">Bilder-Konverter</h2>
+      <p class="tsub">PNG, JPG, WEBP, BMP, GIF, TIFF, ICO &mdash; in jede Richtung.</p>
+      <label class="conv-drop" tabindex="0" data-drop>
+        <span data-drop-txt>Datei hierher ziehen oder klicken</span>
+        <input type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.tiff,.tif,.ico" data-file>
+      </label>
+      <div class="conv-file" data-fname></div>
+      <div class="tool-row">
+        <select class="grow" aria-label="Zielformat" data-target disabled>
+          <option value="">&mdash; erst Datei w&auml;hlen &mdash;</option>
+        </select>
+        <button type="button" class="tool-btn" data-go disabled>Konvertieren</button>
+      </div>
+      <div class="tool-status" role="status" aria-live="polite" data-status></div>
+      <div class="conv-result" data-result>
+        <a class="tool-btn tool-btn--mini" data-dl download>&#11015; Herunterladen</a>
+      </div>
+      <p class="tool-hint">Max. 25 MB je Datei.</p>
+    </section>
+
+    <!-- ── Audio ── -->
+    <section class="tool-card tool-card--green" aria-labelledby="audHead" data-conv="audio">
+      <h2 id="audHead">Audio-Konverter</h2>
+      <p class="tsub">MP3, WAV, OGG, FLAC, M4A, AAC, OPUS, WMA.</p>
+      <label class="conv-drop" tabindex="0" data-drop>
+        <span data-drop-txt>Datei hierher ziehen oder klicken</span>
+        <input type="file" accept=".mp3,.wav,.ogg,.flac,.m4a,.aac,.opus,.wma" data-file>
+      </label>
+      <div class="conv-file" data-fname></div>
+      <div class="tool-row">
+        <select class="grow" aria-label="Zielformat" data-target disabled>
+          <option value="">&mdash; erst Datei w&auml;hlen &mdash;</option>
+        </select>
+        <button type="button" class="tool-btn" data-go disabled>Konvertieren</button>
+      </div>
+      <div class="tool-status" role="status" aria-live="polite" data-status></div>
+      <div class="conv-result" data-result>
+        <a class="tool-btn tool-btn--mini" data-dl download>&#11015; Herunterladen</a>
+      </div>
+      <p class="tool-hint">Max. 80 MB je Datei.</p>
+    </section>
+
+    <!-- ── Video ── -->
+    <section class="tool-card tool-card--pink" aria-labelledby="vidHead" data-conv="video">
+      <h2 id="vidHead">Video-Konverter</h2>
+      <p class="tsub">MP4, WEBM, MKV, MOV, AVI &mdash; plus GIF-Export und Ton-Extraktion.</p>
+      <label class="conv-drop" tabindex="0" data-drop>
+        <span data-drop-txt>Datei hierher ziehen oder klicken</span>
+        <input type="file" accept=".mp4,.webm,.mkv,.mov,.avi" data-file>
+      </label>
+      <div class="conv-file" data-fname></div>
+      <div class="tool-row">
+        <select class="grow" aria-label="Zielformat" data-target disabled>
+          <option value="">&mdash; erst Datei w&auml;hlen &mdash;</option>
+        </select>
+        <button type="button" class="tool-btn" data-go disabled>Konvertieren</button>
+      </div>
+      <div class="tool-status" role="status" aria-live="polite" data-status></div>
+      <div class="conv-result" data-result>
+        <a class="tool-btn tool-btn--mini" data-dl download>&#11015; Herunterladen</a>
+      </div>
+      <p class="tool-hint">Max. 200 MB je Datei &mdash; kann bei gro&szlig;en Dateien einige Minuten dauern.</p>
+    </section>
+
+    <!-- ── PDF ── -->
+    <section class="tool-card tool-card--yellow" aria-labelledby="pdfHead" data-conv="pdf">
+      <h2 id="pdfHead">PDF-Konverter</h2>
+      <p class="tsub">Bild &rarr; PDF, oder PDF-Seiten &rarr; Bilder (mehrseitig als ZIP).</p>
+      <label class="conv-drop" tabindex="0" data-drop>
+        <span data-drop-txt>PDF oder Bild hierher ziehen oder klicken</span>
+        <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tiff,.tif" data-file>
+      </label>
+      <div class="conv-file" data-fname></div>
+      <div class="tool-row">
+        <select class="grow" aria-label="Zielformat" data-target disabled>
+          <option value="">&mdash; erst Datei w&auml;hlen &mdash;</option>
+        </select>
+        <button type="button" class="tool-btn" data-go disabled>Konvertieren</button>
+      </div>
+      <div class="tool-status" role="status" aria-live="polite" data-status></div>
+      <div class="conv-result" data-result>
+        <a class="tool-btn tool-btn--mini" data-dl download>&#11015; Herunterladen</a>
+      </div>
+      <p class="tool-hint">Max. 40 MB &middot; max. 30 Seiten je PDF.</p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+    <div class="marquee marquee--bottom">
+      <span>&#9733; ALLE KONVERTER LAUFEN AUF DER EIGENEN VPS &#9733; KEIN UPLOAD ZU DRITTEN &#9733; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=17"></script>
+  <script>
+    /* ── Design-Umschalter: clean (Default) <-> retro, localStorage —
+       gleicher Schluessel wie werkzeuge.html/pgp.html. ── */
+    (function () {
+      var KEY = 'glappa-tools-theme';
+      var btn = document.getElementById('themeBtn');
+      function refresh() {
+        var retro = document.documentElement.getAttribute('data-theme') === 'retro';
+        btn.textContent = retro ? '● Schlicht-Modus' : '★ 90er-Modus';
+        btn.setAttribute('aria-pressed', retro ? 'true' : 'false');
+      }
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'retro' ? 'clean' : 'retro';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem(KEY, next); } catch (e) {}
+        refresh();
+      });
+      refresh();
+    })();
+
+    /* ── API-Endpunkte: gleiche Logik wie werkzeuge.html/pgp.html ── */
+    function apiUrl(path) {
+      const h = location.hostname;
+      const isLocal = (h === 'localhost' || h === '127.0.0.1'
+                       || h.startsWith('192.168.') || h.startsWith('10.'));
+      if (isLocal) return location.protocol + '//' + h + ':8080' + path;
+      if (h === 'home.glappa.de' || h === 'search.glappa.de') return '/api' + path;
+      return 'https://home.glappa.de/api' + path;
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       Zielformate je Kategorie. 'pdf' ist die Ausnahme: das Zielformat
+       haengt davon ab, WAS reingezogen wird (Bild -> genau "PDF", PDF ->
+       PNG/JPG) — wird in targetsFor() dynamisch aufgeloest.
+       ════════════════════════════════════════════════════════════════ */
+    // 'jpeg' bewusst nicht als eigenes Zielformat - waere nur ein zweiter
+    // Name fuer dasselbe Format wie 'jpg' (als Quell-Endung wird es unten
+    // in extOf() trotzdem erkannt).
+    const IMAGE_EXTS = ['png','jpg','webp','bmp','gif','tiff','ico'];
+    const AUDIO_EXTS = ['mp3','wav','ogg','flac','m4a','aac','opus','wma'];
+
+    const LABELS = {
+      png:'PNG', jpg:'JPG', jpeg:'JPEG', webp:'WEBP', bmp:'BMP', gif:'GIF',
+      tiff:'TIFF', tif: 'TIFF', ico:'ICO', mp3:'MP3', wav:'WAV', ogg:'OGG',
+      flac:'FLAC', m4a:'M4A', aac:'AAC', opus:'OPUS', wma:'WMA',
+      mp4:'MP4', webm:'WEBM', mkv:'MKV', mov:'MOV', avi:'AVI', pdf:'PDF',
+    };
+
+    function extOf(name) {
+      const parts = (name || '').split('.');
+      let e = (parts.length > 1 ? parts.pop() : '').toLowerCase();
+      if (e === 'tif') e = 'tiff';   // gleiche Zielliste wie tiff
+      return e;
+    }
+
+    // liefert die erlaubten Zielformate fuer diese Kachel + gewaehlte Datei,
+    // als flache Liste ODER mit optgroups: [{group, options:[{value,label}]}]
+    function targetsFor(kind, ext) {
+      if (kind === 'image') {
+        return IMAGE_EXTS.filter(e => e !== ext).map(e => ({ value: e, label: LABELS[e] }));
+      }
+      if (kind === 'audio') {
+        return AUDIO_EXTS.filter(e => e !== ext).map(e => ({ value: e, label: LABELS[e] }));
+      }
+      if (kind === 'video') {
+        return [
+          { group: 'Video', options: ['mp4','webm','mkv','mov','avi','gif']
+              .filter(e => e !== ext).map(e => ({ value: e, label: LABELS[e] + (e === 'gif' ? ' (Animation)' : '') })) },
+          { group: 'Nur Ton extrahieren', options: ['mp3','wav','m4a']
+              .map(e => ({ value: e, label: LABELS[e] })) },
+        ];
+      }
+      if (kind === 'pdf') {
+        if (ext === 'pdf') {
+          return [{ value: 'png', label: 'PNG (je Seite)' }, { value: 'jpg', label: 'JPG (je Seite)' }];
+        }
+        if (IMAGE_EXTS.includes(ext) || ext === 'jpeg') {
+          return [{ value: 'pdf', label: 'PDF' }];
+        }
+        return [];
+      }
+      return [];
+    }
+
+    function fillSelect(sel, list) {
+      sel.innerHTML = '';
+      if (!list.length) {
+        const op = document.createElement('option');
+        op.value = ''; op.textContent = '— kein Zielformat verfuegbar —';
+        sel.appendChild(op);
+        return;
+      }
+      list.forEach(item => {
+        if (item.group) {
+          const og = document.createElement('optgroup');
+          og.label = item.group;
+          item.options.forEach(o => {
+            const op = document.createElement('option');
+            op.value = o.value; op.textContent = o.label;
+            og.appendChild(op);
+          });
+          sel.appendChild(og);
+        } else {
+          const op = document.createElement('option');
+          op.value = item.value; op.textContent = item.label;
+          sel.appendChild(op);
+        }
+      });
+    }
+
+    /* ── Eine Kachel an ihre Elemente + Logik klemmen ── */
+    function wireConverter(card) {
+      const kind   = card.dataset.conv;
+      const drop   = card.querySelector('[data-drop]');
+      const dropTx = card.querySelector('[data-drop-txt]');
+      const input  = card.querySelector('[data-file]');
+      const fname  = card.querySelector('[data-fname]');
+      const target = card.querySelector('[data-target]');
+      const btn    = card.querySelector('[data-go]');
+      const status = card.querySelector('[data-status]');
+      const result = card.querySelector('[data-result]');
+      const dl     = card.querySelector('[data-dl]');
+      let file = null;
+
+      function reset() {
+        result.classList.remove('show');
+        status.innerHTML = '';
+      }
+
+      function pick(f) {
+        if (!f) return;
+        const ext = extOf(f.name);
+        const list = targetsFor(kind, ext);
+        if (!list.length) {
+          fname.textContent = f.name + ' — Format wird hier nicht unterstuetzt.';
+          fname.classList.add('show');
+          target.disabled = true; btn.disabled = true;
+          fillSelect(target, []);
+          file = null;
+          return;
+        }
+        file = f;
+        fname.textContent = f.name;
+        fname.classList.add('show');
+        fillSelect(target, list);
+        target.disabled = false;
+        btn.disabled = false;
+        reset();
+      }
+
+      input.addEventListener('change', () => pick(input.files[0]));
+
+      ['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => {
+        e.preventDefault(); drop.classList.add('drag');
+      }));
+      ['dragleave','dragend','drop'].forEach(ev => drop.addEventListener(ev, () => {
+        drop.classList.remove('drag');
+      }));
+      drop.addEventListener('drop', e => {
+        e.preventDefault();
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) { input.files = e.dataTransfer.files; pick(f); }
+      });
+      drop.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+      });
+
+      btn.addEventListener('click', async () => {
+        if (!file || !target.value) return;
+        btn.disabled = true;
+        result.classList.remove('show');
+        status.innerHTML = 'Konvertiere<span class="blink">_</span> (Video/PDF kann etwas dauern)';
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('target', target.value);
+          const resp = await fetch(apiUrl('/convert'), { method: 'POST', body: fd });
+          if (!resp.ok) {
+            let msg = 'Fehler — nochmal versuchen.';
+            try { const j = await resp.json(); if (j.error) msg = j.error; } catch (e) {}
+            throw new Error(msg);
+          }
+          const blob = await resp.blob();
+          const cd = resp.headers.get('Content-Disposition') || '';
+          const m = /filename\*?=(?:UTF-8''|")?([^";]+)"?/i.exec(cd);
+          const outName = m ? decodeURIComponent(m[1].replace(/"$/, '')) : ('konvertiert.' + target.value);
+          const url = URL.createObjectURL(blob);
+          dl.href = url;
+          dl.download = outName;
+          dl.textContent = '⬇ ' + outName;
+          result.classList.add('show');
+          status.textContent = 'Fertig.';
+        } catch (e) {
+          status.innerHTML = '<span class="tool-err">' + (e.message || 'Fehler — nochmal versuchen.') + '</span>';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    document.querySelectorAll('[data-conv]').forEach(wireConverter);
+  </script>
+</body>
+</html>

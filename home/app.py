@@ -1,6 +1,6 @@
 from flask import Flask, Response, request, send_file, jsonify, send_from_directory
 from werkzeug.exceptions import HTTPException
-import os, re, ssl, sys, json, uuid, threading, queue, time, glob
+import os, re, ssl, sys, json, uuid, threading, queue, time, glob, subprocess, zipfile
 
 # Repo-Wurzel (glappa-site/) — eine Ebene ueber home/. Von hier serviert die
 # App ihre eigenen Assets (img, coursor) same-origin, damit der Downloader nicht
@@ -13,6 +13,18 @@ try:
     import yt_dlp
 except ImportError:
     yt_dlp = None
+
+# Datei-Konverter: Pillow fuer Bilder, PyMuPDF (fitz) fuer PDF-Seiten <-> Bild.
+# Beides reine Wheels (kein apt-Paket noetig) - Audio/Video laeuft ueber das
+# ffmpeg-Binary, das schon fuer den YouTube-Downloader installiert ist.
+try:
+    from PIL import Image as PILImage
+except ImportError:
+    PILImage = None
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None
 
 # ── SSL (optional; lokal ohne Certs -> Plain HTTP) ────────────────
 context = None
@@ -2132,6 +2144,269 @@ def short_resolve(code: str):
 
 
 # ══════════════════════════════════════════════════════════════════
+# DATEI-KONVERTER — home/convert.html
+#
+# Ein Endpunkt fuer alle vier Kacheln (Bilder, Audio, Video, PDF). Bilder
+# laufen durch Pillow, Audio/Video durch ffmpeg (Subprocess, wie beim
+# YouTube-Downloader), PDF-Seiten <-> Bild durch PyMuPDF. Alles passiert
+# lokal auf der VPS, nichts geht in die Cloud. Dateien landen kurz in
+# CONVERT_DIR und werden danach wieder aufgeraeumt (Quelle sofort, Ergebnis
+# verzoegert - der Download braucht noch etwas Zeit zum Rueberladen).
+# ══════════════════════════════════════════════════════════════════
+CONVERT_DIR = os.path.join(DOWNLOAD_DIR, 'convert')
+
+IMAGE_EXTS = {'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff', 'ico'}
+AUDIO_EXTS = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'wma'}
+VIDEO_EXTS = {'mp4', 'webm', 'mkv', 'mov', 'avi'}
+
+# Grosszuegig, aber begrenzt - der Konverter laeuft auf derselben kleinen
+# VPS wie alles andere ("Pentium Power"), ein Video-Encode ist CPU-Arbeit.
+CONVERT_MAX_BYTES = {
+    'image': 25 * 1024 * 1024,
+    'audio': 80 * 1024 * 1024,
+    'video': 200 * 1024 * 1024,
+    'pdf':   40 * 1024 * 1024,
+}
+CONVERT_FFMPEG_TIMEOUT = 600   # sek - passend zum Apache-Proxy-Timeout
+CONVERT_PDF_MAX_PAGES  = 30
+
+_IMG_PIL_FMT = {
+    'jpg': 'JPEG', 'jpeg': 'JPEG', 'png': 'PNG', 'webp': 'WEBP',
+    'bmp': 'BMP', 'gif': 'GIF', 'tiff': 'TIFF', 'ico': 'ICO',
+}
+
+_VIDEO_CODEC = {
+    'mp4':  ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '160k'],
+    'mkv':  ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '160k'],
+    'mov':  ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '160k'],
+    'webm': ['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus'],
+    'avi':  ['-c:v', 'mpeg4', '-qscale:v', '5', '-c:a', 'libmp3lame'],
+}
+_AUDIO_CODEC = {
+    'mp3':  ['-c:a', 'libmp3lame', '-q:a', '2'],
+    'wav':  ['-c:a', 'pcm_s16le'],
+    'ogg':  ['-c:a', 'libvorbis', '-q:a', '5'],
+    'flac': ['-c:a', 'flac'],
+    'm4a':  ['-c:a', 'aac', '-b:a', '160k'],
+    'aac':  ['-c:a', 'aac', '-b:a', '160k'],
+    'opus': ['-c:a', 'libopus', '-b:a', '128k'],
+    'wma':  ['-c:a', 'wmav2', '-b:a', '160k'],
+}
+
+
+class _ConvertError(Exception):
+    """Fehler, der 1:1 als Nutzertext an den Client geht (kein internes Detail)."""
+
+
+def _convert_kind(ext: str):
+    if ext == 'pdf':
+        return 'pdf'
+    if ext in IMAGE_EXTS:
+        return 'image'
+    if ext in AUDIO_EXTS:
+        return 'audio'
+    if ext in VIDEO_EXTS:
+        return 'video'
+    return None
+
+
+def _convert_image(src_path: str, target: str, base: str):
+    pil_fmt = _IMG_PIL_FMT[target]
+    out_path = src_path + f'.out.{target}'
+    try:
+        im = PILImage.open(src_path)
+        im.load()
+    except Exception:
+        raise _ConvertError('Datei ist kein lesbares Bild.')
+
+    save_kwargs = {}
+    if pil_fmt == 'JPEG':
+        # JPEG kennt keine Transparenz -> auf weiss kompositieren statt crashen
+        if im.mode in ('RGBA', 'LA', 'P'):
+            rgba = im.convert('RGBA')
+            bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
+            bg.paste(rgba, mask=rgba.split()[-1])
+            im = bg
+        else:
+            im = im.convert('RGB')
+        save_kwargs['quality'] = 92
+    elif pil_fmt == 'ICO':
+        save_kwargs['sizes'] = [(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]
+    elif pil_fmt == 'BMP' and im.mode not in ('RGB', 'L', 'P'):
+        im = im.convert('RGB')
+
+    try:
+        im.save(out_path, pil_fmt, **save_kwargs)
+    except Exception:
+        raise _ConvertError('Pillow konnte die Datei nicht in dieses Format schreiben.')
+    return out_path, f'{base}.{target}'
+
+
+def _convert_image_to_pdf(src_path: str, base: str):
+    try:
+        im = PILImage.open(src_path)
+        im.load()
+    except Exception:
+        raise _ConvertError('Datei ist kein lesbares Bild.')
+    if im.mode in ('RGBA', 'LA', 'P'):
+        rgba = im.convert('RGBA')
+        bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
+        bg.paste(rgba, mask=rgba.split()[-1])
+        im = bg
+    else:
+        im = im.convert('RGB')
+    out_path = src_path + '.out.pdf'
+    im.save(out_path, 'PDF')
+    return out_path, f'{base}.pdf'
+
+
+def _convert_pdf_to_image(src_path: str, target: str, base: str):
+    pil_ext = 'jpg' if target in ('jpg', 'jpeg') else 'png'
+    try:
+        doc = fitz.open(src_path)
+    except Exception:
+        raise _ConvertError('Datei ist kein lesbares PDF.')
+
+    page_paths = []
+    try:
+        if doc.page_count < 1:
+            raise _ConvertError('PDF enthaelt keine Seiten.')
+        if doc.page_count > CONVERT_PDF_MAX_PAGES:
+            raise _ConvertError(f'PDF hat zu viele Seiten (max. {CONVERT_PDF_MAX_PAGES}).')
+
+        for i, page in enumerate(doc):
+            pix = page.get_pixmap(dpi=150)
+            p = f'{src_path}.page{i + 1}.{pil_ext}'
+            pix.save(p)
+            page_paths.append(p)
+
+        if len(page_paths) == 1:
+            out_path = src_path + f'.out.{target}'
+            os.replace(page_paths[0], out_path)
+            page_paths = []
+            return out_path, f'{base}.{target}'
+
+        out_path = src_path + '.out.zip'
+        with zipfile.ZipFile(out_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for i, p in enumerate(page_paths):
+                zf.write(p, f'{base}_seite{i + 1}.{pil_ext}')
+        return out_path, f'{base}_seiten.zip'
+    finally:
+        doc.close()
+        for p in page_paths:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def _convert_media(src_path: str, target: str, base: str):
+    out_path = src_path + f'.out.{target}'
+    cmd = ['ffmpeg', '-y', '-i', src_path]
+    if target == 'gif':
+        cmd += ['-vf', 'fps=12,scale=480:-1:flags=lanczos']
+    elif _convert_kind(target) == 'audio':
+        cmd += ['-vn'] + _AUDIO_CODEC.get(target, [])
+    else:
+        cmd += _VIDEO_CODEC.get(target, [])
+    cmd += [out_path]
+
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               timeout=CONVERT_FFMPEG_TIMEOUT)
+    except FileNotFoundError:
+        raise _ConvertError('ffmpeg ist auf dem Server nicht installiert.')
+    except subprocess.TimeoutExpired:
+        raise _ConvertError('Konvertierung hat zu lange gedauert (Timeout) - kleinere Datei versuchen.')
+
+    if proc.returncode != 0 or not os.path.exists(out_path):
+        Downloader.logger.warning('ffmpeg convert failed: %s',
+                                   proc.stderr.decode(errors='replace')[-2000:])
+        raise _ConvertError('ffmpeg konnte die Datei nicht konvertieren (Format evtl. nicht unterstuetzt).')
+    return out_path, f'{base}.{target}'
+
+
+@Downloader.route('/convert', methods=['POST', 'OPTIONS'])
+def convert_file():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    up = request.files.get('file')
+    target = (request.form.get('target') or '').strip().lower().lstrip('.')
+    if not up or not up.filename:
+        return _cors_resp(jsonify({'error': 'Keine Datei erhalten.'})), 400
+    if target not in (IMAGE_EXTS | AUDIO_EXTS | VIDEO_EXTS | {'pdf'}):
+        return _cors_resp(jsonify({'error': 'Unbekanntes Zielformat.'})), 400
+
+    src_ext = os.path.splitext(up.filename)[1].lstrip('.').lower()
+    if src_ext == 'tif':
+        src_ext = 'tiff'   # gleiche Alias-Normalisierung wie im Client (extOf())
+    src_kind = _convert_kind(src_ext)
+    if src_kind is None:
+        return _cors_resp(jsonify({'error': f'Format ".{src_ext}" wird nicht unterstuetzt.'})), 400
+    if src_ext == target:
+        return _cors_resp(jsonify({'error': 'Quelle und Ziel sind bereits gleich.'})), 400
+
+    tgt_kind = _convert_kind(target)
+    is_img_to_pdf   = src_kind == 'image' and target == 'pdf'
+    is_pdf_to_img   = src_kind == 'pdf' and tgt_kind == 'image'
+    is_video_to_gif = src_kind == 'video' and target == 'gif'
+    is_video_to_aud = src_kind == 'video' and tgt_kind == 'audio'
+    is_same_kind    = src_kind == tgt_kind and src_kind in ('image', 'audio', 'video')
+    if not (is_img_to_pdf or is_pdf_to_img or is_video_to_gif or is_video_to_aud or is_same_kind):
+        return _cors_resp(jsonify({'error': 'Diese Kombination wird nicht unterstuetzt.'})), 400
+
+    if src_kind == 'image' and PILImage is None:
+        return _cors_resp(jsonify({'error': 'Bildkonvertierung ist auf dem Server nicht installiert (Pillow fehlt).'})), 503
+    if is_pdf_to_img and fitz is None:
+        return _cors_resp(jsonify({'error': 'PDF-Konvertierung ist auf dem Server nicht installiert (PyMuPDF fehlt).'})), 503
+
+    limit = CONVERT_MAX_BYTES.get(src_kind, 25 * 1024 * 1024)
+    if request.content_length and request.content_length > limit + 65536:
+        return _cors_resp(jsonify({'error': f'Datei zu gross (max. {limit // (1024 * 1024)} MB).'})), 413
+
+    os.makedirs(CONVERT_DIR, exist_ok=True)
+    job = uuid.uuid4().hex
+    src_path = os.path.join(CONVERT_DIR, f'{job}_in.{src_ext}')
+    up.save(src_path)
+
+    try:
+        if os.path.getsize(src_path) > limit:
+            return _cors_resp(jsonify({'error': f'Datei zu gross (max. {limit // (1024 * 1024)} MB).'})), 413
+
+        base = safe_title(os.path.splitext(os.path.basename(up.filename))[0]) or 'datei'
+
+        if is_img_to_pdf:
+            out_path, out_name = _convert_image_to_pdf(src_path, base)
+        elif is_pdf_to_img:
+            out_path, out_name = _convert_pdf_to_image(src_path, target, base)
+        elif src_kind == 'image':
+            out_path, out_name = _convert_image(src_path, target, base)
+        else:  # audio/video (inkl. Video->Ton, Video->GIF)
+            out_path, out_name = _convert_media(src_path, target, base)
+
+        cleanup_later(out_path, delay=900)
+        resp = send_file(out_path, as_attachment=True, download_name=out_name)
+        # Content-Disposition ist per Default fuer Cross-Origin-Fetch unsichtbar -
+        # der Client braucht ihn, um den echten Dateinamen auszulesen.
+        resp.headers['Access-Control-Expose-Headers'] = 'Content-Disposition'
+        return _cors_resp(resp)
+    except _ConvertError as e:
+        return _cors_resp(jsonify({'error': str(e)})), 422
+    except Exception:
+        Downloader.logger.exception('convert failed')
+        return _cors_resp(jsonify({'error': 'Konvertierung fehlgeschlagen.'})), 500
+    finally:
+        try:
+            os.remove(src_path)
+        except OSError:
+            pass
+
+
+# ══════════════════════════════════════════════════════════════════
 # PGP-CHAT — Ende-zu-Ende-verschluesselter Raum-Chat (home/pgp.html)
 #
 # Der Server ist hier NUR Briefkasten: Die Clients erzeugen ihre
@@ -2191,8 +2466,14 @@ PGP_XFER_DIR    = os.path.join(DOWNLOAD_DIR, 'pgpxfers')
 PGP_XCHUNK_MAX  = 6 * 1024 * 1024      # armored Chunk (~4 MB roh)
 PGP_XTOTAL_MAX  = 64                   # Chunks je Transfer (~256 MB roh)
 PGP_XWINDOW     = 24 * 1024 * 1024     # unabgeholte Bytes je Raum
-PGP_XFER_TTL    = 1800                 # sek ohne Aktivitaet -> Transfer weg
+# TTL bewusst KURZ: ein lebendiger Transfer wird bei jedem xup/xget
+# angefasst — nur kaputte (Sender/Empfaenger weg, Tab zu, Reload) bleiben
+# liegen, und die muessen schnell weg, weil ihre Chunks sonst das
+# PGP_XWINDOW des Raums blockieren und JEDE weitere Uebertragung
+# verhungern lassen (so geschehen: 30-min-Zombies nach Reload).
+PGP_XFER_TTL    = 180                  # sek ohne Aktivitaet -> Transfer weg
 PGP_XFERS_MAX   = 3                    # gleichzeitige Transfers je Raum
+PGP_XDEAD_TTL   = 3600                 # sek: Tombstone abgebrochener Transfers
 PGP_TID_RE      = re.compile(r'[0-9a-f]{32}')
 
 def _pgp_load():
@@ -2247,11 +2528,18 @@ def _pgp_prune(rooms) -> bool:
             if now - (room['keys'][fp].get('seen') or 0) > PGP_MEMBER_TTL:
                 del room['keys'][fp]
                 changed = True
-        # Haengengebliebene Live-Transfers (Sender/Empfaenger weg) entsorgen
+        # Haengengebliebene Live-Transfers (Sender/Empfaenger weg) entsorgen.
+        # Tombstone merken: ein Sender, der noch Chunks nachschiebt, bekommt
+        # so einen klaren Fehler statt eines stillen Transfer-Neuanfangs.
         for tid in list(room.get('xfers') or {}):
             if now - (room['xfers'][tid].get('ts') or 0) > PGP_XFER_TTL:
                 _pgp_xfer_del(room['xfers'][tid])
                 del room['xfers'][tid]
+                room.setdefault('xdead', {})[tid] = now
+                changed = True
+        for tid in list(room.get('xdead') or {}):
+            if now - room['xdead'][tid] > PGP_XDEAD_TTL:
+                del room['xdead'][tid]
                 changed = True
     # Waisen-Blobs wegraeumen (Crash zwischen Datei-Write und JSON-Save):
     # alles, was kein Raum mehr referenziert und aelter als 1h ist.
@@ -2365,16 +2653,27 @@ def pgp_poll():
         if changed:
             _pgp_save(rooms)
         msgs = [m for m in room['msgs'] if m['seq'] > since]
-        # Live-Transfers, aus denen DIESER Empfaenger noch Chunks holen muss
+        # Live-Transfers, die DIESEN Empfaenger noch angehen. Auch OHNE
+        # abholbereite Chunks melden (ready leer, z.B. Sender laedt gerade
+        # noch hoch): der Client braucht das Lebenszeichen + den 'up'-Stand,
+        # um kaputte Transfers (Chunks weg nach Reload) erkennen zu koennen.
         xl = []
         for tid, x in (room.get('xfers') or {}).items():
             if fp == x.get('fp') or fp not in (x.get('to') or []):
                 continue
-            ready = sorted(int(i) for i, c in (x.get('chunks') or {}).items()
-                           if fp not in (c.get('got') or []))
-            if ready:
-                xl.append({'tid': tid, 'fp': x['fp'], 'total': x['total'],
-                           'ready': ready})
+            chunks = x.get('chunks') or {}
+            ready, had = [], 0
+            for i in (x.get('updone') or []):
+                c = chunks.get(str(i))
+                if c is None or fp in (c.get('got') or []):
+                    had += 1          # hat er schon (quittiert bzw. geloescht)
+                else:
+                    ready.append(int(i))
+            if had >= (x.get('total') or 0):
+                continue              # dieser Empfaenger ist komplett fertig
+            xl.append({'tid': tid, 'fp': x['fp'], 'total': x['total'],
+                       'ready': sorted(ready),
+                       'up': len(x.get('updone') or [])})
         return _cors_resp(jsonify({'seq': room['seq'], 'member': me is not None,
                                    'roster': _pgp_roster(room), 'msgs': msgs,
                                    'xfers': xl}))
@@ -2483,6 +2782,10 @@ def pgp_xup():
         xfers = room.setdefault('xfers', {})
         x = xfers.get(tid)
         if x is None:
+            if tid in (room.get('xdead') or {}):
+                # Transfer wurde abgebrochen (Empfaenger ausgestiegen oder
+                # TTL) — dem Sender KLAR sagen statt still neu anzufangen.
+                return _cors_resp(jsonify({'error': 'Uebertragung abgebrochen — bitte neu senden.'})), 409
             if len(xfers) >= PGP_XFERS_MAX:
                 return _cors_resp(jsonify({'error': f'Max. {PGP_XFERS_MAX} Live-Uebertragungen gleichzeitig je Raum.'})), 507
             to = [k for k in room['keys'] if k != fp]
@@ -2497,6 +2800,10 @@ def pgp_xup():
         pending = sum(c.get('size') or 0 for xx in xfers.values()
                       for c in (xx.get('chunks') or {}).values())
         if pending + len(body) > PGP_XWINDOW:
+            # Lebenszeichen auch beim Warten — sonst prunt die (kurze)
+            # XFER_TTL einen Sender weg, der nur aufs Fenster wartet.
+            x['ts'] = now
+            _pgp_save(rooms)
             return _cors_resp(jsonify({'ok': False, 'wait': True}))
         os.makedirs(PGP_XFER_DIR, exist_ok=True)
         fid = secrets.token_hex(16)
@@ -2509,10 +2816,18 @@ def pgp_xup():
         _pgp_save(rooms)
         return _cors_resp(jsonify({'ok': True}))
 
-# xget: Empfaenger holt Chunk ab. Sobald ALLE Empfaenger einen Chunk
-# haben, fliegt seine Datei sofort von der Platte. skip=True quittiert
-# nur (fuer Clients, die den Transfer nicht entschluesseln koennen —
-# z.B. private Live-Datei an jemand anderen), ohne die Daten zu senden.
+# xget: Empfaenger holt Chunk ab — in ZWEI Schritten, damit nichts mehr
+# verloren geht (frueher: Loeschen-beim-Lesen -> ein Reload/Netzwackler
+# mitten im Empfang hat Chunks unwiederbringlich vernichtet und den
+# Transfer fuer immer bei n/m haengen lassen):
+#   peek=True  -> Daten liefern, Chunk BLEIBT liegen (beliebig wiederholbar)
+#   ack=True   -> quittieren OHNE Daten: erst JETZT, nach erfolgreichem
+#                 Entschluesseln beim Empfaenger, darf der Chunk weg.
+#   skip=True  -> wie ack (Altname: Clients, die den Transfer nicht
+#                 entschluesseln koennen, geben die Chunks nur frei).
+#   (nichts)   -> Altverhalten fuer alte Clients: Daten + quittieren.
+# Sobald ALLE Empfaenger quittiert haben, fliegt die Chunk-Datei von der
+# Platte — gespeichert wird also weiterhin nichts dauerhaft.
 @Downloader.route('/pgp/xget', methods=['POST', 'OPTIONS'])
 def pgp_xget():
     if request.method == 'OPTIONS':
@@ -2525,7 +2840,8 @@ def pgp_xget():
     rname = (data.get('room') or '').strip().lower()
     fp    = (data.get('fp') or '').strip().upper()
     tid   = (data.get('tid') or '').strip().lower()
-    skip  = bool(data.get('skip'))
+    peek  = bool(data.get('peek'))
+    ack   = bool(data.get('ack') or data.get('skip'))
     try:
         idx = int(data.get('idx'))
     except (TypeError, ValueError):
@@ -2550,7 +2866,7 @@ def pgp_xget():
         if c is None:
             return _cors_resp(jsonify({'error': 'Chunk (noch) nicht da.'})), 404
         payload = None
-        if not skip:
+        if not ack:                       # peek oder Alt-Client: Daten liefern
             try:
                 with open(os.path.join(PGP_XFER_DIR, c['fid'] + '.asc'), 'r') as f:
                     payload = f.read()
@@ -2558,20 +2874,81 @@ def pgp_xget():
                 del x['chunks'][str(idx)]
                 _pgp_save(rooms)
                 return _cors_resp(jsonify({'error': 'Chunk-Datei weg (aufgeraeumt).'})), 404
-        if fp not in c['got']:
-            c['got'].append(fp)
-        if set(x['to']) <= set(c['got']):
-            # alle haben ihn -> sofort von der Platte
-            try:
-                os.remove(os.path.join(PGP_XFER_DIR, c['fid'] + '.asc'))
-            except OSError:
-                pass
-            del x['chunks'][str(idx)]
+        if ack or not peek:               # quittieren (ack oder Alt-Client)
+            if fp not in c['got']:
+                c['got'].append(fp)
+            if set(x['to']) <= set(c['got']):
+                # alle haben ihn sicher -> sofort von der Platte
+                try:
+                    os.remove(os.path.join(PGP_XFER_DIR, c['fid'] + '.asc'))
+                except OSError:
+                    pass
+                del x['chunks'][str(idx)]
         x['ts'] = now
         if len(x['updone']) >= x['total'] and not x['chunks']:
             del room['xfers'][tid]      # komplett zugestellt -> Transfer weg
         _pgp_save(rooms)
         return _cors_resp(jsonify({'ok': True, 'data': payload}))
+
+# xdel: Live-Transfer abbrechen. Der SENDER loescht damit seinen ganzen
+# Transfer (z.B. nach Sende-Fehler), ein EMPFAENGER traegt nur sich selbst
+# aus — noetig nach einem Reload mitten im Empfang: die schon quittierten
+# Chunks existieren nicht mehr, der Rest wuerde sonst ewig warten und das
+# Uebertragungsfenster des Raums blockieren. Tombstone in beiden Faellen,
+# damit ein noch sendender Client einen klaren Fehler bekommt.
+@Downloader.route('/pgp/xdel', methods=['POST', 'OPTIONS'])
+def pgp_xdel():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = (data.get('room') or '').strip().lower()
+    fp    = (data.get('fp') or '').strip().upper()
+    tid   = (data.get('tid') or '').strip().lower()
+    if (not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp)
+            or not PGP_TID_RE.fullmatch(tid)):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+
+    now = time.time()
+    with PGP_LOCK:
+        rooms = _pgp_load()
+        _pgp_prune(rooms)
+        room = rooms.get(rname)
+        if room is None or fp not in room['keys']:
+            return _cors_resp(jsonify({'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'})), 403
+        x = (room.get('xfers') or {}).get(tid)
+        if x is None:
+            return _cors_resp(jsonify({'ok': True}))    # schon weg -> fertig
+        if fp == x.get('fp'):
+            # Sender: kompletter Abbruch
+            _pgp_xfer_del(x)
+            del room['xfers'][tid]
+            room.setdefault('xdead', {})[tid] = now
+        elif fp in (x.get('to') or []):
+            # Empfaenger: nur selbst austragen; Chunks, auf die dann
+            # niemand mehr wartet, sofort freigeben
+            x['to'] = [t for t in x['to'] if t != fp]
+            for i in list(x.get('chunks') or {}):
+                c = x['chunks'][i]
+                c['got'] = [g for g in (c.get('got') or []) if g != fp]
+                if set(x['to']) <= set(c['got']):
+                    try:
+                        os.remove(os.path.join(PGP_XFER_DIR, c['fid'] + '.asc'))
+                    except OSError:
+                        pass
+                    del x['chunks'][i]
+            if not x['to']:
+                del room['xfers'][tid]
+                room.setdefault('xdead', {})[tid] = now
+            elif len(x['updone']) >= x['total'] and not x['chunks']:
+                del room['xfers'][tid]
+        else:
+            return _cors_resp(jsonify({'error': 'Nicht dein Transfer.'})), 403
+        _pgp_save(rooms)
+        return _cors_resp(jsonify({'ok': True}))
 
 # Blob-Abholung. GET mit zufaelliger 128-bit-ID: nicht erratbar, sagt nichts
 # ueber Raum/Absender aus, und /api/pgp/ steht eh nicht im Access-Log.
