@@ -142,6 +142,15 @@
     }
     .file-dl { font-size: 0.82em; display: inline-block; margin-top: 4px; word-break: break-all; }
     .chat-box.drag { outline: 2px dashed currentColor; outline-offset: -6px; }
+    /* Live-Uebertragung: Fortschrittsbalken als Eintrag im Verlauf —
+       bewusst NICHT in der Statuszeile (die wird von anderen Meldungen
+       ueberschrieben); ein Balken je Transfer, Senden UND Empfangen. */
+    .xfer { margin: 0 0 10px; max-width: 460px; }
+    .xfer .xname { font-size: 0.8em; font-weight: bold; word-break: break-all; }
+    .xfer .xbar { height: 10px; border-radius: 999px; overflow: hidden; margin-top: 4px; }
+    .xfer .xfill { height: 100%; width: 0%; transition: width 0.25s linear; }
+    .xfer .xinfo { font-size: 0.76em; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .xfer.err .xbar { display: none; }
     /* Eigener Audio-Player (Lautstaerke 0-100 mit %-Anzeige) */
     .aplayer {
       display: flex;
@@ -379,6 +388,11 @@
     html[data-theme="clean"] .dm-bar b { color: #e6e6e6; }
     html[data-theme="clean"] .dm-bar .dm-off { color: #9aa0a6; }
     html[data-theme="clean"] .dm-bar .dm-off:hover { color: #fff; }
+    html[data-theme="clean"] .xfer .xname { color: #9aa0a6; }
+    html[data-theme="clean"] .xfer .xbar { background: #1d2026; border: 1px solid #33363b; }
+    html[data-theme="clean"] .xfer .xfill { background: #6fd18c; }
+    html[data-theme="clean"] .xfer .xinfo { color: #9aa0a6; }
+    html[data-theme="clean"] .xfer.err .xinfo { color: #e5715f; }
     html[data-theme="clean"] .aplayer {
       background: #1d2026;
       border: 1px solid #33363b;
@@ -517,6 +531,11 @@
     }
     html[data-theme="retro"] .dm-bar b { color: #fff; text-shadow: none; }
     html[data-theme="retro"] .dm-bar .dm-off { color: #ffff00; text-shadow: 0 0 6px #ffff00; }
+    html[data-theme="retro"] .xfer .xname { color: #00ffff; }
+    html[data-theme="retro"] .xfer .xbar { background: #000; border: 1px solid #444; border-radius: 2px; }
+    html[data-theme="retro"] .xfer .xfill { background: #00ff00; box-shadow: 0 0 8px #00ff00; }
+    html[data-theme="retro"] .xfer .xinfo { color: #00ffff; }
+    html[data-theme="retro"] .xfer.err .xinfo { color: #ff5555; }
     html[data-theme="retro"] .aplayer {
       background: #000;
       border: 1px solid #444;
@@ -656,7 +675,7 @@
         <h2 id="chatHead">Chat</h2>
         <span class="info-wrap">
           <button type="button" class="info-btn" aria-label="Info zum Chat" aria-describedby="chatTip">i</button>
-          <span class="info-tip" id="chatTip" role="tooltip">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis ~200 MB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar MB, l&ouml;scht jedes St&uuml;ck sofort nach Abholung und speichert NICHTS. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</span>
+          <span class="info-tip" id="chatTip" role="tooltip">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis ~200 MB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar MB, l&ouml;scht jedes St&uuml;ck, sobald der Empfang best&auml;tigt ist, und speichert NICHTS. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</span>
         </span>
       </div>
       <div class="chat-box" id="chatBox" aria-live="polite"></div>
@@ -759,6 +778,8 @@
     let direct = null;      // Direktchat: {peer, name, key, present} oder null = Raum-Modus
     let xin = {};           // Live-Datei-Empfang: tid -> Zwischenstand
     let xBusy = false;      // handleXfers laeuft gerade (kein Doppel-Fetch)
+    let xdone = {};         // tid -> fertig empfangen (gegen Doppel-Zustellung)
+    let pollFlaky = false;  // letzter Poll ging schief -> Status danach aufraeumen
 
     function el(id) { return document.getElementById(id); }
     function st(id, msg, isErr) {
@@ -780,6 +801,38 @@
         throw e;
       }
       return d;
+    }
+
+    /* Wie api(), aber per XMLHttpRequest — nur fuer die grossen Datei-
+       Chunks: liefert Upload-/Download-Fortschritt (kann fetch nicht) und
+       hat ein hartes Timeout, damit ein haengender Request nie den ganzen
+       Transfer blockiert. Server-Fehler tragen e.status, Netz-/Timeout-
+       Fehler nicht — daran erkennt der Aufrufer, was wiederholbar ist. */
+    function apiX(path, body, o) {
+      o = o || {};
+      return new Promise((resolve, reject) => {
+        const x = new XMLHttpRequest();
+        x.open('POST', apiUrl(path));
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.timeout = o.timeout || 120000;
+        x.responseType = 'json';
+        if (o.onUp && x.upload) x.upload.addEventListener('progress', ev => {
+          if (ev.lengthComputable && ev.total) o.onUp(ev.loaded / ev.total);
+        });
+        if (o.onDown) x.addEventListener('progress', ev => {
+          if (ev.lengthComputable && ev.total) o.onDown(ev.loaded / ev.total);
+        });
+        x.addEventListener('load', () => {
+          const d = x.response || {};
+          if (x.status >= 200 && x.status < 300 && !d.error) return resolve(d);
+          const e = new Error(d.error || ('HTTP ' + x.status));
+          e.status = x.status;
+          reject(e);
+        });
+        x.addEventListener('error',   () => reject(new Error('Netzwerkfehler')));
+        x.addEventListener('timeout', () => reject(new Error('Zeitüberschreitung')));
+        x.send(JSON.stringify(body));
+      });
     }
 
     /* ── Raum-ID: SHA-256 des Raumnamens ────────────────────────────
@@ -992,7 +1045,7 @@
         const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
         clearTimeout(pollTimer);
         room = rname; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {};
-        direct = null; xin = {};
+        direct = null; xin = {}; xdone = {};
         st('dirStatus', '');
         el('chatBox').innerHTML = '';
         await applyRoster(d.roster);
@@ -1010,7 +1063,7 @@
     function leaveRoom(msg) {
       clearTimeout(pollTimer);
       room = null; roomId = null; lastSeq = 0; roster = []; rosterKeys = {}; seenSeq = {};
-      dmFp = null; direct = null; xin = {};
+      dmFp = null; direct = null; xin = {}; xdone = {};
       st('dirStatus', '');
       el('dmBar').style.display = 'none';
       el('msgInput').placeholder = 'Nachricht — Enter zum Senden';
@@ -1041,7 +1094,7 @@
         const rid = await directHash(me.fp, f);
         const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
         clearTimeout(pollTimer);
-        room = null; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {}; xin = {};
+        room = null; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {}; xin = {}; xdone = {};
         direct = { peer: f, name: '', key: null, present: false };
         dmFp = null;
         el('dmBar').style.display = 'none';
@@ -1131,10 +1184,16 @@
         }
         await applyRoster(d.roster);
         for (const m of (d.msgs || [])) await handleMsg(m);
-        if (d.xfers && d.xfers.length) handleXfers(d.xfers);   // bewusst ohne await
-        st('chatStatus', '');
+        // bewusst ohne await; auch bei LEERER Liste aufrufen, wenn noch
+        // Empfaenge offen sind — nur so faellt auf, dass ein Transfer
+        // serverseitig verschwunden ist (abgebrochen/abgelaufen)
+        if ((d.xfers && d.xfers.length) || Object.keys(xin).length) handleXfers(d.xfers || []);
+        // Status NICHT mehr pauschal wischen — das hat frueher jede
+        // Fehlermeldung nach max. 3 s unsichtbar gemacht.
+        if (pollFlaky) { pollFlaky = false; st('chatStatus', ''); }
       } catch (e) {
         if (e.status === 404) { polling = false; leaveRoom('Der Raum ist abgelaufen.'); return; }
+        pollFlaky = true;
         st('chatStatus', 'Verbindung wackelt: ' + e.message, true);
       }
       polling = false;
@@ -1448,6 +1507,60 @@
       if (nearBottom) box.scrollTop = box.scrollHeight;
     }
 
+    /* ── Fortschrittsbalken fuer Datei-Transfers: ein Eintrag im Verlauf
+       je Uebertragung (Senden UND Empfangen) mit %, Tempo und Restzeit.
+       Bei Erfolg verschwindet er zugunsten der fertigen Nachricht, bei
+       Fehlern bleibt er als sichtbare Fehlerzeile stehen (die Statuszeile
+       taugt dafuer nicht — die ueberschreibt jede andere Meldung). ── */
+    function xbarNew(dir, label) {
+      const box = el('chatBox');
+      const div = document.createElement('div');
+      div.className = 'xfer';
+      const nm = document.createElement('div');
+      nm.className = 'xname';
+      const bar = document.createElement('div');
+      bar.className = 'xbar';
+      const fill = document.createElement('div');
+      fill.className = 'xfill';
+      bar.appendChild(fill);
+      const info = document.createElement('div');
+      info.className = 'xinfo';
+      info.textContent = '0 %';
+      div.appendChild(nm); div.appendChild(bar); div.appendChild(info);
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+      const b = { div, nm, fill, info, t0: Date.now() };
+      xbarLabel(b, dir, label);
+      return b;
+    }
+    function xbarLabel(b, dir, label) {
+      b.nm.textContent = (dir === 'up' ? '⬆ Sende: ' : '⬇ Empfange: ') + label;
+    }
+    /* frac 0..1; bytesTotal (geschaetzte) Gesamtgroesse fuer Tempo/Restzeit */
+    function xbarSet(b, frac, bytesTotal, note) {
+      frac = Math.max(0, Math.min(1, frac || 0));
+      b.fill.style.width = (frac * 100).toFixed(1) + '%';
+      let s = Math.round(frac * 100) + ' %';
+      const secs = (Date.now() - b.t0) / 1000;
+      if (bytesTotal && secs > 1 && frac > 0.02 && frac < 1) {
+        const speed = frac * bytesTotal / secs;          // Schnitt bisher
+        s += ' · ' + fmtSize(speed) + '/s · noch ~' + fmtEta((1 - frac) * bytesTotal / speed);
+      }
+      if (note) s += ' — ' + note;
+      b.info.textContent = s;
+    }
+    function xbarErr(b, msg) {
+      b.div.classList.add('err');
+      b.info.textContent = '✖ ' + msg;
+    }
+    function xbarGone(b) { b.div.remove(); }
+    function fmtEta(s) {
+      if (!isFinite(s) || s < 0) return '?';
+      s = Math.round(s);
+      if (s < 60) return s + ' s';
+      return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + ' min';
+    }
+
     /* ── Datei senden: verschluesseln wie Text, nur binaer + Dateiname ──
        Bis FILE_RAW_MAX landet die Datei als normaler Blob im Verlauf
        (bleibt abrufbar). Alles darueber geht als LIVE-Uebertragung in
@@ -1459,8 +1572,8 @@
       if (file.size > FILE_RAW_MAX) return sendFileLive(file);
       const keys = await encTargets();
       if (!keys) return;
+      const bar = xbarNew('up', file.name + ' (' + fmtSize(file.size) + ')');
       try {
-        st('chatStatus', 'Verschlüssle ' + file.name + '…');
         const data = new Uint8Array(await file.arrayBuffer());
         // Privatmodus: Empfaenger-Marker in den Dateinamen — der steckt im
         // Literal-Paket, ist also mitverschluesselt (kein Metadaten-Leak)
@@ -1474,12 +1587,13 @@
           // kann so nicht mal ableiten, wer eine Nachricht entschluesseln kann
           wildcard: true,
         });
-        st('chatStatus', 'Lade ' + file.name + ' hoch…');
-        await api('/pgp/send', { room: roomId, fp: me.fp, body: armored });
-        st('chatStatus', '');
+        await apiX('/pgp/send', { room: roomId, fp: me.fp, body: armored },
+                   { timeout: 300000,
+                     onUp: f => xbarSet(bar, f, armored.length) });
+        xbarGone(bar);
         doPoll();
       } catch (e) {
-        st('chatStatus', 'Senden fehlgeschlagen: ' + e.message, true);
+        xbarErr(bar, 'Senden fehlgeschlagen: ' + e.message);
       }
     }
 
@@ -1512,14 +1626,16 @@
       }
       const keys = await encTargets();
       if (!keys) return;
+      const rid = roomId;         // festhalten: Raumwechsel bricht den Transfer ab
       const tid = randHex32();
       const total = Math.max(1, Math.ceil(file.size / XCHUNK));
       const fname0 = dmFp ? privWrap(dmFp, file.name) : file.name;
+      const bar = xbarNew('up', file.name + ' (' + fmtSize(file.size) + ')');
       try {
         for (let i = 0; i < total; i++) {
-          const slice = new Uint8Array(
-            await file.slice(i * XCHUNK, Math.min((i + 1) * XCHUNK, file.size)).arrayBuffer());
-          st('chatStatus', 'Live-Datei ' + file.name + '… ' + (i + 1) + '/' + total);
+          if (roomId !== rid) throw new Error('Raum gewechselt.');
+          const rawEnd = Math.min((i + 1) * XCHUNK, file.size);
+          const slice = new Uint8Array(await file.slice(i * XCHUNK, rawEnd).arrayBuffer());
           const armored = await openpgp.encrypt({
             // Dateiname (+ ggf. Privat-Marker) nur im ersten Chunk
             message: await openpgp.createMessage({ binary: slice, filename: i === 0 ? fname0 : '' }),
@@ -1528,45 +1644,98 @@
             wildcard: true,
           });
           for (let tries = 0; ; tries++) {
-            const d = await api('/pgp/xup',
-              { room: roomId, fp: me.fp, tid: tid, idx: i, total: total, body: armored });
+            if (roomId !== rid) throw new Error('Raum gewechselt.');
+            let d;
+            try {
+              d = await apiX('/pgp/xup',
+                { room: rid, fp: me.fp, tid: tid, idx: i, total: total, body: armored },
+                { timeout: 300000,
+                  onUp: f => xbarSet(bar, (i * XCHUNK + slice.length * f) / file.size, file.size) });
+            } catch (e) {
+              // Server-Antworten (409/507/...) sind endgueltig; reine
+              // Netz-/Timeout-Fehler nicht — xup ist idempotent, also
+              // denselben Chunk einfach nochmal versuchen.
+              if (e.status) throw e;
+              if (tries >= 240) throw new Error('Verbindung weg — abgebrochen.');
+              xbarSet(bar, i * XCHUNK / file.size, file.size, 'Verbindung stockt — neuer Versuch…');
+              await new Promise(r => setTimeout(r, 3000));
+              continue;
+            }
             if (!d.wait) break;
             if (tries >= 240) throw new Error('Empfänger holen nicht ab — abgebrochen.');
-            st('chatStatus', 'Live-Datei: warte auf Empfänger… (' + i + '/' + total + ' gesendet)');
+            xbarSet(bar, i * XCHUNK / file.size, file.size, 'warte auf Empfänger…');
             await new Promise(r => setTimeout(r, 1500));
           }
+          xbarSet(bar, rawEnd / file.size, file.size);
         }
-        st('chatStatus', '');
+        xbarGone(bar);
         let sender = null;
         for (const x of roster) if (me && x.fp === me.fp) sender = x;
         appendMsg({ fp: me.fp, ts: tsLocal() }, sender, new Uint8Array(0),
                   file.name, true, dmFp, file);
       } catch (e) {
-        st('chatStatus', 'Live-Datei fehlgeschlagen: ' + e.message, true);
+        xbarErr(bar, 'Senden fehlgeschlagen: ' + e.message
+                     + (/neu senden/.test(e.message) ? '' : ' — bitte nochmal versuchen.'));
+        // Serverseitig aufraeumen, sonst blockieren die liegengebliebenen
+        // Chunks bis zur TTL das Uebertragungsfenster des Raums
+        api('/pgp/xdel', { room: rid, fp: me.fp, tid: tid }).catch(() => {});
       }
     }
 
-    /* Empfangsseite: Poll meldet, welche Chunks abholbereit sind. */
+    /* Empfangsseite: Poll meldet je Transfer, welche Chunks abholbereit
+       sind (ready) und wie viele der Sender schon hochgeladen hat (up).
+       Pro Chunk: peek (Daten holen — der Server BEHAELT den Chunk) ->
+       entschluesseln -> ack (erst jetzt darf der Server ihn loeschen).
+       Reisst dabei die Verbindung ab, holt der naechste Poll denselben
+       Chunk einfach nochmal — verloren geht nichts mehr. */
     async function handleXfers(list) {
       if (xBusy || !roomId) return;
       xBusy = true;
       try {
+        const seen = {};
         for (const xf of list) {
+          seen[xf.tid] = true;
+          if (xdone[xf.tid]) {
+            // schon komplett empfangen (nur unser letztes ack kam nicht
+            // durch) -> Reste still quittieren, NICHT nochmal zustellen
+            for (const idx of (xf.ready || [])) {
+              await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, ack: true }).catch(() => {});
+            }
+            continue;
+          }
           const t = xin[xf.tid] || (xin[xf.tid] = {
-            from: xf.fp, total: xf.total, parts: {}, got: 0,
-            fname: '', privTo: null, sigAll: true, dead: false,
+            from: xf.fp, total: xf.total, parts: {}, got: 0, bytes: 0,
+            fname: '', privTo: null, sigAll: true, dead: false, bar: null, miss: 0,
           });
-          for (const idx of xf.ready) {
+          t.miss = 0;
+          if (!t.bar && !t.dead) {
+            t.bar = xbarNew('down', t.fname || 'Datei von ' + nameForFp(t.from));
+          }
+          // geschaetzte Gesamtgroesse fuer Tempo/Restzeit: Schnitt der
+          // bisherigen Chunks, sonst nominale Chunk-Groesse
+          const estBytes = () => (t.got ? t.bytes / t.got : XCHUNK) * t.total;
+          for (const idx of (xf.ready || [])) {
             if (!roomId) { xBusy = false; return; }
             if (t.parts[idx] !== undefined) continue;
             if (t.dead) {
               // nicht fuer uns entschluesselbar -> nur quittieren, damit
               // der Server den Chunk-Puffer wieder freigeben kann
-              await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, skip: true });
+              await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, ack: true });
               t.parts[idx] = true;
               continue;
             }
-            const d = await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx });
+            let d;
+            try {
+              d = await apiX('/pgp/xget',
+                { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, peek: true },
+                { timeout: 120000,
+                  onDown: f => { if (t.bar) xbarSet(t.bar, (t.got + f) / t.total, estBytes()); } });
+            } catch (e) {
+              // Netz-/Serverfehler: der Chunk liegt noch da — der naechste
+              // Poll versucht es einfach nochmal
+              if (t.bar) xbarSet(t.bar, t.got / t.total, estBytes(), 'Verbindung stockt…');
+              break;
+            }
             try {
               const msg = await openpgp.readMessage({ armoredMessage: d.data });
               const opts = { message: msg, decryptionKeys: privKey, format: 'binary' };
@@ -1578,6 +1747,7 @@
                 const p = privParse(fn);
                 if (p) { t.privTo = p.to; fn = p.rest; }
                 t.fname = fn;
+                if (t.bar) xbarLabel(t.bar, 'down', fn);
               }
               let ok = false;
               if (vkey && res.signatures && res.signatures.length) {
@@ -1585,30 +1755,70 @@
               }
               if (!ok) t.sigAll = false;
               t.parts[idx] = res.data;
+              t.bytes += res.data.length;
               t.got++;
             } catch (e) {
               // z.B. private Live-Datei an jemand anderen: einmal Schloss
               // zeigen, Rest des Transfers nur noch quittieren
               t.dead = true;
               t.parts[idx] = true;
+              if (t.bar) { xbarGone(t.bar); t.bar = null; }
               let sender = null;
               for (const x of roster) if (x.fp === t.from) sender = x;
               appendMsg({ fp: t.from, ts: tsLocal() }, sender, null, '', false, null);
-              continue;
             }
-            st('chatStatus', 'Empfange Datei… ' + t.got + '/' + t.total);
+            // erst NACH gesichertem Entschluesseln quittieren — jetzt darf
+            // der Server den Chunk vergessen (schlaegt das ack fehl, ist es
+            // egal: naechster Poll quittiert nach, TTL raeumt notfalls auf)
+            await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, ack: true }).catch(() => {});
+            if (t.bar) xbarSet(t.bar, t.got / t.total, estBytes());
             if (t.got >= t.total) {
               const parts = [];
               for (let i = 0; i < t.total; i++) parts.push(t.parts[i]);
               const blob = new Blob(parts, { type: mimeFor(t.fname) });
+              if (t.bar) { xbarGone(t.bar); t.bar = null; }
               let sender = null;
               for (const x of roster) if (x.fp === t.from) sender = x;
               appendMsg({ fp: t.from, ts: tsLocal() }, sender, new Uint8Array(0),
                         t.fname, t.sigAll, t.privTo, blob);
+              xdone[xf.tid] = true;
               delete xin[xf.tid];
-              st('chatStatus', '');
+              break;
             }
           }
+          // Unrettbar kaputt? Uns fehlen Chunks, die der Sender laengst
+          // hochgeladen hat, die aber nicht (mehr) angeboten werden — die
+          // sind weg (typisch: Seite mitten im Empfang neu geladen; die
+          // vor dem Reload quittierten Teile existieren nirgends mehr).
+          const t2 = xin[xf.tid];
+          if (t2 && !t2.dead && t2.got < t2.total) {
+            const offered = {};
+            for (const i of (xf.ready || [])) offered[i] = true;
+            let lost = false;
+            for (let i = 0; i < Math.min(t2.total, xf.up || 0); i++) {
+              if (t2.parts[i] === undefined && !offered[i]) { lost = true; break; }
+            }
+            if (lost) {
+              if (t2.bar) xbarErr(t2.bar, 'Übertragung unterbrochen (Seite neu geladen?) — bitte nochmal senden lassen.');
+              delete xin[xf.tid];
+              api('/pgp/xdel', { room: roomId, fp: me.fp, tid: xf.tid }).catch(() => {});
+            }
+          }
+        }
+        // Transfers, die serverseitig verschwunden sind (Sender abgebrochen
+        // oder Zeit abgelaufen), bevor alles da war: Balken -> Fehlerzeile.
+        // Erst nach 2 Polls in Folge, ein einzelner kann ein Race sein.
+        for (const tid of Object.keys(xin)) {
+          if (seen[tid]) continue;
+          const t = xin[tid];
+          t.miss = (t.miss || 0) + 1;
+          if (t.miss < 2) continue;
+          if (t.bar && !t.dead && t.got < t.total) {
+            xbarErr(t.bar, 'Übertragung abgebrochen (Gegenseite weg oder Zeit abgelaufen).');
+          } else if (t.bar) {
+            xbarGone(t.bar);
+          }
+          delete xin[tid];
         }
       } catch (e) {
         st('chatStatus', 'Live-Datei: ' + e.message, true);

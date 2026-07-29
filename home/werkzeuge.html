@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Werkzeuge &mdash; Glappa Home</title>
-  <meta name="keywords" content="Glappa Werkzeuge Uebersetzer Zusammenfasser Link-Kuerzer Speedtest">
-  <meta name="description" content="GLAPPA-Werkzeugkasten: KI-&Uuml;bersetzer, Zusammenfasser, Link-K&uuml;rzer und Speedtest — alles self-hosted, keine Cloud.">
+  <meta name="keywords" content="Glappa Werkzeuge Uebersetzer Link-Kuerzer Speedtest Chart Kerzenchart">
+  <meta name="description" content="GLAPPA-Werkzeugkasten: KI-&Uuml;bersetzer, Link-K&uuml;rzer, Speedtest, Datei-Konverter, PGP-Chat und Chart-Visualizer — alles self-hosted, keine Cloud.">
   <link rel="icon" href="../favicon.ico">
   <!-- Theme-Bootstrap VOR dem Stylesheet: gespeicherte Wahl setzen, bevor
        irgendwas rendert — kein Flackern (gleiches Prinzip wie beim
@@ -396,26 +396,6 @@
       </div>
     </section>
 
-    <!-- ── KI-Zusammenfasser ── -->
-    <section class="tool-card tool-card--green" aria-labelledby="suHead">
-      <h2 id="suHead">Zusammenfasser</h2>
-      <p class="tsub">Langer Text rein &mdash; Kernaussage + Stichpunkte raus.</p>
-      <label for="suText">Text (max. 8000 Zeichen)</label>
-      <textarea id="suText" maxlength="8000" style="min-height:150px" placeholder="Artikel, Mail, Wall-of-Text..."></textarea>
-      <div class="tool-row">
-        <select id="suQuality" class="grow" aria-label="Modellwahl">
-          <option value="fast">Schnell (4B)</option>
-          <option value="smart">Gr&uuml;ndlich (14B, langsamer)</option>
-        </select>
-        <button type="button" class="tool-btn" id="suBtn">Zusammenfassen</button>
-      </div>
-      <div class="tool-status" id="suStatus" role="status" aria-live="polite"></div>
-      <div class="tool-out" id="suOut" aria-label="Zusammenfassung"></div>
-      <div class="tool-row">
-        <button type="button" class="tool-btn tool-btn--mini" id="suCopy" style="display:none">Kopieren</button>
-      </div>
-    </section>
-
     <!-- ── Link-Kuerzer ── -->
     <section class="tool-card tool-card--yellow" aria-labelledby="shHead">
       <h2 id="shHead">Link-K&uuml;rzer</h2>
@@ -465,6 +445,16 @@
       <br>
       <a class="speed-go" href="pgp.html">&#128274; Chat &ouml;ffnen</a>
       <p class="tool-hint">Schl&uuml;ssel entstehen im Browser, Pseudonym statt Klarname, kein Log. Raumname teilen = einladen.</p>
+    </section>
+
+    <!-- ── Chart-Visualizer ── -->
+    <section class="tool-card tool-card--cyan speed-card" aria-labelledby="chvHead">
+      <h2 id="chvHead">Chart-Visualizer</h2>
+      <p class="tsub">Live-Kerzenchart (Binance) mit Zoom, Volumen, RSI, Trendlinien &amp; Fibonacci &mdash; optional musik-reaktiv.</p>
+      <img src="../img/gif/rocket3.gif" alt="" aria-hidden="true" height="40">
+      <br>
+      <a class="speed-go" href="chartvis.html">&#128200; Chart-Vis &ouml;ffnen</a>
+      <p class="tool-hint">Zeichenwerkzeuge wie bei DexScreener &amp; Co. &mdash; und ein Knopf, der die Kerzen zur Musik tanzen l&auml;sst.</p>
     </section>
 
   </main>
@@ -596,16 +586,6 @@
         return { tool: 'translate', text: text,
                  target: document.getElementById('trLang').value,
                  quality: document.getElementById('trQuality').value };
-      },
-    });
-
-    wireKiTool({
-      btn: 'suBtn', status: 'suStatus', out: 'suOut', copy: 'suCopy',
-      payload() {
-        const text = document.getElementById('suText').value.trim();
-        if (!text) { document.getElementById('suText').focus(); return null; }
-        return { tool: 'summarize', text: text,
-                 quality: document.getElementById('suQuality').value };
       },
     });
 

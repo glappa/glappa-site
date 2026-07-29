@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chart-Visualizer &mdash; Glappa Home</title>
+  <meta name="keywords" content="Glappa Bitcoin Chart Visualizer Musik Binance Kerzenchart RSI Trendlinie Fibonacci Volumen">
+  <meta name="description" content="Vollwertiges Kerzenchart-Tool (Binance-Live-Daten): Zoom, Volumen, RSI, Trendlinien, Fibonacci, Lineal &mdash; optional musik-reaktiv.">
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="home.css?v=11">
+  <style>
+    /* ── Chart-Visualizer: eigene Karte im selben Neon-Look wie der Player ── */
+    .chart-section { max-width: 1040px; margin: 30px auto; padding: 0 16px; }
+    .chart-panel {
+      background: linear-gradient(180deg, #10121c 0%, #05060a 100%);
+      border: 4px ridge var(--neon-cyan);
+      border-radius: 4px;
+      padding: 16px;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+      box-shadow: 0 0 16px rgba(0,255,255,0.35);
+      position: relative;
+    }
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      border-bottom: 1px dashed var(--neon-cyan);
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+    }
+    .chart-title {
+      color: var(--neon-cyan);
+      font-weight: bold;
+      font-size: 1.05em;
+      letter-spacing: 1px;
+      text-shadow: 0 0 6px var(--neon-cyan);
+    }
+    .chart-price { font-size: 1.1em; font-weight: bold; white-space: nowrap; }
+    .chart-price .chg-up   { color: #3be6a0; text-shadow: 0 0 6px #3be6a0; margin-left: 8px; }
+    .chart-price .chg-down { color: #ff5f6d; text-shadow: 0 0 6px #ff5f6d; margin-left: 8px; }
+
+    .chart-controls, .chart-topbar {
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+      margin-bottom: 8px;
+    }
+    .chart-controls select, .chart-controls input[type="text"] {
+      background: #000; color: #0ff; border: 1px solid #333; border-radius: 2px;
+      padding: 6px 8px; font-family: inherit; font-size: 0.85em;
+    }
+    .chart-controls input[type="text"] { flex: 1 1 160px; }
+    .chart-controls select:focus, .chart-controls input:focus {
+      outline: none; border-color: var(--neon-cyan); box-shadow: 0 0 6px rgba(0,255,255,0.4);
+    }
+    .chart-btn {
+      background: #111; border: 2px outset var(--neon-yellow); color: var(--neon-yellow);
+      padding: 6px 14px; cursor: pointer; font-weight: bold; font-size: 0.85em;
+      text-shadow: 0 0 4px var(--neon-yellow); font-family: inherit;
+    }
+    .chart-btn:hover { color: var(--neon-pink); border-color: var(--neon-pink); text-shadow: 0 0 4px var(--neon-pink); }
+    .chart-btn:active { border-style: inset; }
+    .chart-btn:disabled { opacity: 0.5; cursor: wait; }
+    .chart-btn--mini { padding: 5px 10px; font-size: 0.8em; }
+    .chart-btn.active {
+      background: var(--neon-pink); color: #000; border-color: var(--neon-pink); text-shadow: none;
+    }
+
+    .chart-seg-group { display: flex; gap: 2px; background: #000; border: 1px solid #333; border-radius: 2px; padding: 2px; }
+    .chart-seg-btn {
+      background: none; border: none; color: #888; padding: 5px 9px; font-size: 0.78em;
+      cursor: pointer; font-family: inherit; border-radius: 2px; min-width: 28px;
+    }
+    .chart-seg-btn:hover { color: #ccc; }
+    .chart-seg-btn.active { background: var(--neon-cyan); color: #000; font-weight: bold; }
+
+    .chart-status { font-size: 0.8em; color: #ffd866; min-height: 1.2em; margin-bottom: 8px; }
+    .chart-status .err { color: #ff5f6d; }
+    .chart-status .blink { animation: cvblink 1s steps(1) infinite; }
+    @keyframes cvblink { 50% { opacity: 0; } }
+
+    .chart-body { display: flex; gap: 6px; align-items: stretch; }
+    .chart-vtoolbar {
+      display: flex; flex-direction: column; gap: 2px; background: #000; border: 1px solid #333;
+      border-radius: 2px; padding: 4px; flex: 0 0 auto; height: fit-content;
+    }
+    .chart-vtoolbar button {
+      background: none; border: none; color: #888; font-size: 1.05em; padding: 7px; width: 34px;
+      cursor: pointer; border-radius: 2px; font-family: inherit; line-height: 1;
+    }
+    .chart-vtoolbar button:hover { color: #ccc; background: rgba(255,255,255,0.08); }
+    .chart-vtoolbar button.active { background: var(--neon-cyan); color: #000; }
+    .chart-vtoolbar-sep { height: 1px; background: #333; margin: 4px 2px; }
+
+    .chart-canvas-wrap {
+      position: relative; background: #000; border: 2px inset #333;
+      height: 500px; resize: vertical; overflow: hidden;
+      min-height: 280px; max-height: 80vh; flex: 1 1 auto; min-width: 0;
+    }
+    #chartCanvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    .chart-canvas-wrap:fullscreen { height: 100vh; background: #000; }
+    .chart-empty {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #555; font-size: 0.9em; letter-spacing: 1px; text-align: center; padding: 20px;
+      pointer-events: none;
+    }
+    .chart-empty[hidden] { display: none; }
+    .chart-tooltip {
+      position: absolute; pointer-events: none; background: rgba(0,0,0,0.85);
+      border: 1px solid var(--neon-cyan); border-radius: 3px; padding: 6px 9px;
+      font-size: 0.76em; line-height: 1.5; color: #eee; white-space: nowrap;
+      box-shadow: 0 0 8px rgba(0,255,255,0.3); z-index: 5;
+    }
+    .chart-tooltip[hidden] { display: none; }
+    .chart-hint { font-size: 0.74em; color: #888; margin: 8px 4px 0; font-style: italic; }
+  </style>
+</head>
+<body>
+
+  <div class="marquee marquee--top">
+    <span>&#128200; GLAPPA CHART-VIS &#128200; BINANCE-LIVE-DATEN &#128200; ZOOM &middot; VOLUMEN &middot; RSI &middot; TRENDLINIEN &middot; FIBONACCI &#128200; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <div class="page-banner">
+      <h2>&#128200; CHART-VIS &#128200;</h2>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="../page1.html">Video</a><span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="../home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <div class="construction">
+    <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+    <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+    <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+  </div>
+
+  <main>
+    <!-- ── Kurs-Chart ── -->
+    <section class="chart-section">
+      <div class="chart-panel" id="chartPanel">
+        <div class="chart-head">
+          <span class="chart-title" id="coinTitle">Bitcoin (BTC/USDT)</span>
+          <span class="chart-price">
+            <span id="priceVal">&mdash;</span><span id="chgVal" class="chg-up"></span>
+          </span>
+        </div>
+
+        <div class="chart-controls">
+          <select id="symbolSelect" aria-label="Handelspaar">
+            <option value="BTCUSDT" selected>&#8383; Bitcoin (BTC/USDT)</option>
+            <option value="ETHUSDT">&Xi; Ethereum (ETH/USDT)</option>
+            <option value="BNBUSDT">BNB (BNB/USDT)</option>
+            <option value="SOLUSDT">Solana (SOL/USDT)</option>
+            <option value="XRPUSDT">XRP (XRP/USDT)</option>
+            <option value="DOGEUSDT">Dogecoin (DOGE/USDT)</option>
+            <option value="ADAUSDT">Cardano (ADA/USDT)</option>
+            <option value="LTCUSDT">Litecoin (LTC/USDT)</option>
+            <option value="TRXUSDT">TRON (TRX/USDT)</option>
+            <option value="DOTUSDT">Polkadot (DOT/USDT)</option>
+            <option value="__custom">Anderes Binance-Symbol&hellip;</option>
+          </select>
+          <input type="text" id="symbolCustom" placeholder="z.B. PEPEUSDT" hidden>
+          <button type="button" class="chart-btn chart-btn--mini" id="reloadBtn" title="Neu laden">&#8635;</button>
+          <button type="button" class="chart-btn chart-btn--mini active" id="volBtn" title="Volumen-Panel ein/aus">Vol</button>
+          <button type="button" class="chart-btn chart-btn--mini" id="rsiBtn" title="RSI(14)-Indikator ein/aus">RSI</button>
+          <button type="button" class="chart-btn chart-btn--mini" id="fsBtn" title="Vollbild an/aus">&#9974; Vollbild</button>
+        </div>
+
+        <div class="chart-topbar">
+          <div class="chart-seg-group chart-tf-group" role="group" aria-label="Zeitintervall">
+            <button type="button" class="chart-seg-btn" data-interval="1s">1s</button>
+            <button type="button" class="chart-seg-btn" data-interval="1m">1m</button>
+            <button type="button" class="chart-seg-btn" data-interval="5m">5m</button>
+            <button type="button" class="chart-seg-btn" data-interval="15m">15m</button>
+            <button type="button" class="chart-seg-btn" data-interval="1h">1h</button>
+            <button type="button" class="chart-seg-btn" data-interval="4h">4h</button>
+            <button type="button" class="chart-seg-btn active" data-interval="1d">1D</button>
+            <button type="button" class="chart-seg-btn" data-interval="1w">1W</button>
+          </div>
+          <div class="chart-seg-group chart-type-group" role="group" aria-label="Diagrammtyp">
+            <button type="button" class="chart-seg-btn active" data-charttype="candles" title="Kerzenchart">&#128367; Kerzen</button>
+            <button type="button" class="chart-seg-btn" data-charttype="line" title="Linienchart">&#128201; Linie</button>
+          </div>
+        </div>
+
+        <div class="chart-status" id="chartStatus" role="status" aria-live="polite"></div>
+
+        <div class="chart-body">
+          <div class="chart-vtoolbar" id="chartVToolbar" role="group" aria-label="Zeichenwerkzeuge">
+            <button type="button" data-tool="pan" class="active" title="Crosshair: Verschieben (ziehen) &amp; Zoomen (Mausrad)">&#10011;</button>
+            <button type="button" data-tool="line" title="Trendlinie zeichnen">&#128200;</button>
+            <button type="button" data-tool="hline" title="Horizontale Preislinie setzen">&#10134;</button>
+            <button type="button" data-tool="fib" title="Fibonacci-Retracement">Fib</button>
+            <button type="button" data-tool="rect" title="Rechteck / Zone markieren">&#9645;</button>
+            <button type="button" data-tool="text" title="Textnotiz platzieren">T</button>
+            <button type="button" data-tool="ruler" title="Lineal: Preis-/Prozent-Differenz messen">&#128207;</button>
+            <button type="button" data-tool="brush" title="Freihand zeichnen">&#128396;</button>
+            <div class="chart-vtoolbar-sep"></div>
+            <button type="button" id="magnetBtn" title="Magnet: Punkte rasten an O/H/L/C der Kerze ein">&#129522;</button>
+            <button type="button" data-tool="eraser" title="Radiergummi: Klick auf eine Zeichnung entfernt sie" style="font-size:0.7em; font-weight:bold;">Del</button>
+            <button type="button" id="lockBtn" title="Zeichnungen sperren (kein Zeichnen/L&ouml;schen mehr)">&#128274;</button>
+            <button type="button" id="clearDrawBtn" title="Alle Zeichnungen entfernen">&#128465;</button>
+          </div>
+
+          <div class="chart-canvas-wrap" id="chartWrap">
+            <canvas id="chartCanvas"></canvas>
+            <div class="chart-tooltip" id="chartTooltip" hidden></div>
+            <div class="chart-empty" id="chartEmpty">Kurs w&auml;hlen &mdash; l&auml;dt automatisch&hellip;</div>
+          </div>
+        </div>
+
+        <div class="chart-controls" style="margin-top:8px;">
+          <button type="button" class="chart-btn chart-btn--mini" id="musicModeBtn" title="Musik-reaktiven Modus ein/aus">&#127925; Musik-Reaktiv: AUS</button>
+        </div>
+
+        <p class="chart-hint" id="chartHint">
+          Live-Kerzendaten von Binance (&ouml;ffentliche API, keine Anmeldung). <strong>Crosshair</strong>-Werkzeug: ziehen zum
+          Verschieben, Mausrad zum Zoomen. Mausrad &uuml;ber der <strong>Preisachse rechts</strong> zoomt stattdessen die
+          H&ouml;he (Kerzen gr&ouml;&szlig;er/kleiner je nach Scroll-Richtung) &mdash; Doppelklick dort setzt es zur&uuml;ck.
+          Dazu <strong>Trendlinie</strong>, <strong>horizontale Linie</strong>,
+          <strong>Fibonacci</strong>, <strong>Rechteck</strong>, <strong>Text</strong>, <strong>Lineal</strong> und
+          <strong>Freihand</strong> &mdash; <strong>Magnet</strong> rastet an Kerzenpreisen ein, <strong>Radiergummi</strong>
+          l&ouml;scht einzelne Zeichnungen, <strong>Schloss</strong> sperrt alles. <strong>Vol</strong> und <strong>RSI</strong>
+          schalten die Indikator-Panels dazu. &bdquo;Musik-Reaktiv&ldquo; blendet unten den Player ein &mdash; solange er
+          l&auml;uft, pulsiert der Chart im Takt.
+        </p>
+      </div>
+    </section>
+
+    <!-- ── Musik-Input: bleibt versteckt, bis "Musik-Reaktiv" eingeschaltet wird ── -->
+    <section class="player-section" id="playerSection" hidden>
+      <div class="player" id="player">
+        <div class="player-head">
+          <span class="player-title">&#9836; MUSIK-INPUT</span>
+          <span class="player-version">treibt den Chart an</span>
+        </div>
+
+        <div class="player-display">
+          <div class="player-track" id="trackTitle">&mdash; kein Track geladen &mdash;</div>
+          <div class="player-time">
+            <span id="curTime">0:00</span>
+            <input type="range" class="player-seek" id="seek" min="0" max="1000" value="0" step="1">
+            <span id="totalTime">0:00</span>
+          </div>
+        </div>
+
+        <div class="player-controls">
+          <button class="player-btn" id="prevBtn" title="Vorheriger Track">&#9198;</button>
+          <button class="player-btn player-btn--play" id="playBtn" title="Play/Pause">&#9654;</button>
+          <button class="player-btn" id="stopBtn" title="Stop">&#9632;</button>
+          <button class="player-btn" id="nextBtn" title="N&auml;chster Track">&#9197;</button>
+          <span class="player-vol">
+            &#128266;
+            <input type="range" id="volume" min="0" max="100" value="80" title="Lautst&auml;rke">
+          </span>
+        </div>
+
+        <div class="player-modes">
+          <button class="player-mode-btn" id="shuffleBtn" title="Shuffle">&#128256; Shuffle</button>
+          <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
+        </div>
+
+        <div class="player-load">
+          <label class="player-file-btn">
+            &#128193; Dateien w&auml;hlen
+            <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+          </label>
+          <span class="player-drop-hint">oder Dateien hier rein-droppen (MP3/WAV/OGG/FLAC/M4A&hellip;)</span>
+        </div>
+
+        <div class="player-playlist" id="playlist">
+          <div class="player-playlist-empty">[ PLAYLIST LEER &mdash; Tracks &uuml;ber Button oder Drop laden ]</div>
+        </div>
+
+        <audio id="audio" preload="metadata"></audio>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="construction">
+      <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+      <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+    </div>
+
+    <div class="footer-actions">
+      <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
+        <img id="mailImg" src="../img/gif/animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+      </a>
+      <a href="../index.html">
+        <img src="../img/gif/anihome1.gif" alt="Home" width="88" height="31">
+      </a>
+    </div>
+
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+
+    <div class="firefox">
+      <a href="https://www.firefox.com">
+        <img src="../img/gif/userlovefirefox7dm4aroh2dt9.gif" alt="GO DOWNLOAD FIREFOX!">
+      </a>
+    </div>
+
+    <div class="badges">
+      <img src="../img/gif/allbrowsers.gif" alt="">
+      <img src="../img/gif/blinktastic_spongebob.gif" alt="">
+      <img src="../img/gif/browser1.gif" alt="">
+      <img src="../img/gif/browsers.gif" alt="">
+      <img src="../img/gif/counter3.gif" alt="">
+      <img src="../img/gif/external-content.duckduckgo.com.gif" alt="">
+      <img src="../img/gif/hacker.gif" alt="">
+      <img src="../img/gif/hugsnotdrugs.gif" alt="">
+    </div>
+
+    <div class="marquee marquee--bottom">
+      <span>&#128200; KERZEN IM TAKT &#128200; LAUT AUFDREHEN &#128200; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=17"></script>
+  <script>
+    (function () {
+      // ══════════════════════════════════════════════════════════════
+      // Chart-Vis: Live-Kerzendaten von Binance (Symbol + echtes Intervall,
+      // inkl. Volumen) mit Zoom/Pan, Crosshair, Trendlinie, horizontaler
+      // Linie, Fibonacci, Rechteck, Text, Lineal, Freihand, Magnet,
+      // Radiergummi, Schloss, Volumen- und RSI(14)-Panel -- plus optionalem
+      // Musik-Reaktiv-Modus (Bass = Zoom-Puls, Mitten = Kippen, Hoehen/Beat
+      // = Farbe + Funken), gleiches Analyse-Prinzip wie der Mandelbrot-
+      // Visualizer in tunes.html. Der Musik-Player bleibt versteckt, bis
+      // der Modus per Button eingeschaltet wird.
+      // ══════════════════════════════════════════════════════════════
+
+      const symbolSelect  = document.getElementById('symbolSelect');
+      const symbolCustom  = document.getElementById('symbolCustom');
+      const reloadBtn     = document.getElementById('reloadBtn');
+      const volBtn        = document.getElementById('volBtn');
+      const rsiBtn        = document.getElementById('rsiBtn');
+      const fsBtn         = document.getElementById('fsBtn');
+      const statusEl      = document.getElementById('chartStatus');
+      const coinTitleEl   = document.getElementById('coinTitle');
+      const priceEl       = document.getElementById('priceVal');
+      const chgEl         = document.getElementById('chgVal');
+      const wrap          = document.getElementById('chartWrap');
+      const canvas        = document.getElementById('chartCanvas');
+      const cctx          = canvas.getContext('2d');
+      const emptyEl       = document.getElementById('chartEmpty');
+      const tooltipEl     = document.getElementById('chartTooltip');
+      const panelEl       = document.getElementById('chartPanel');
+      const clearDrawBtn  = document.getElementById('clearDrawBtn');
+      const magnetBtn     = document.getElementById('magnetBtn');
+      const lockBtn       = document.getElementById('lockBtn');
+      const musicModeBtn  = document.getElementById('musicModeBtn');
+      const playerSection = document.getElementById('playerSection');
+
+      const SYMBOL_NAMES = {
+        BTCUSDT: 'Bitcoin (BTC/USDT)', ETHUSDT: 'Ethereum (ETH/USDT)', BNBUSDT: 'BNB (BNB/USDT)',
+        SOLUSDT: 'Solana (SOL/USDT)', XRPUSDT: 'XRP (XRP/USDT)', DOGEUSDT: 'Dogecoin (DOGE/USDT)',
+        ADAUSDT: 'Cardano (ADA/USDT)', LTCUSDT: 'Litecoin (LTC/USDT)', TRXUSDT: 'TRON (TRX/USDT)',
+        DOTUSDT: 'Polkadot (DOT/USDT)'
+      };
+
+      let candles = [];        // [{t,o,h,l,c,v}] -- komplettes geladenes Datenfenster
+      let currentSymbol   = 'BTCUSDT';
+      let currentInterval = '1d';
+      let chartType = 'candles'; // 'candles' | 'line'
+      let reqSeq = 0;
+      let hoverIndex = -1;     // echter Index in `candles`, nicht im Sichtfenster
+      let hoverY = -1;
+      let cssW = 0, cssH = 0, dpr = Math.max(1, window.devicePixelRatio || 1);
+      let raf = 0;
+      let ambientT = 0;
+
+      // --- Zoom/Pan: sichtbares Kerzenfenster -------------------------
+      const MIN_VIEW = 8;
+      const AXIS_W = 72;        // Breite der rechten Preisachsen-Spalte (Mausrad dort = Preis-Zoom)
+      const PRICE_ZOOM_MIN = 0.15, PRICE_ZOOM_MAX = 6;
+      let priceZoom = 1;        // 1 = automatisch an die sichtbaren Kerzen angepasst
+      let viewStart = 0, viewCount = 0;
+      function clampView() {
+        const total = candles.length;
+        if (!total) { viewStart = 0; viewCount = 0; return; }
+        viewCount = Math.max(Math.min(MIN_VIEW, total), Math.min(total, viewCount));
+        viewStart = Math.max(0, Math.min(total - viewCount, viewStart));
+      }
+      function getView() {
+        const total = candles.length;
+        if (!total) return { start: 0, count: 0 };
+        const count = Math.max(1, Math.min(total, Math.round(viewCount)));
+        const start = Math.max(0, Math.min(total - count, Math.round(viewStart)));
+        return { start, count };
+      }
+      function resetView() { viewStart = 0; viewCount = candles.length; clampView(); }
+
+      // --- Zeichenwerkzeuge --------------------------------------------
+      let currentTool = 'pan';   // 'pan'|'line'|'hline'|'fib'|'rect'|'text'|'ruler'|'brush'|'eraser'
+      let drawings = [];         // Zeichnungen in Datenkoordinaten (Index+Preis)
+      let pending  = null;       // gerade gezogene, noch nicht abgeschlossene Zeichnung
+      let dragState = null;      // {mode:'pan', startX, startViewStart} | {mode:'draw'}
+      let lastGeom  = null;      // von renderChart() aktuell gehaltene Sichtfenster-Geometrie
+      let magnetOn = false, locked = false;
+
+      function snapPrice(idx, price) {
+        if (!magnetOn) return price;
+        const ci = Math.max(0, Math.min(candles.length - 1, Math.round(idx)));
+        const c = candles[ci];
+        if (!c) return price;
+        const opts = [c.o, c.h, c.l, c.c];
+        let best = opts[0], bestD = Math.abs(price - opts[0]);
+        for (let k = 1; k < opts.length; k++) {
+          const d = Math.abs(price - opts[k]);
+          if (d < bestD) { bestD = d; best = opts[k]; }
+        }
+        return best;
+      }
+
+      function hitTestDrawing(x, y) {
+        const g = lastGeom; if (!g) return -1;
+        const px_ = idx => (idx - g.start) * g.slot + g.slot / 2;
+        const py_ = price => g.plotY0 + g.plotH - ((price - g.minP) / (g.maxP - g.minP)) * g.plotH;
+        function distToSeg(px0, py0, x1, y1, x2, y2) {
+          const dx = x2 - x1, dy = y2 - y1;
+          const len2 = dx * dx + dy * dy;
+          let t = len2 ? ((px0 - x1) * dx + (py0 - y1) * dy) / len2 : 0;
+          t = Math.max(0, Math.min(1, t));
+          const cx = x1 + t * dx, cy = y1 + t * dy;
+          return Math.hypot(px0 - cx, py0 - cy);
+        }
+        const TOL = 8;
+        for (let idx = drawings.length - 1; idx >= 0; idx--) {
+          const d = drawings[idx];
+          if (d.type === 'hline') {
+            if (Math.abs(y - py_(d.price)) < TOL) return idx;
+          } else if (d.type === 'text') {
+            if (Math.hypot(x - px_(d.i1), y - py_(d.p1)) < 16) return idx;
+          } else if (d.type === 'brush') {
+            for (let k = 1; k < d.points.length; k++) {
+              const a = d.points[k - 1], b = d.points[k];
+              if (distToSeg(x, y, px_(a.i), py_(a.p), px_(b.i), py_(b.p)) < TOL) return idx;
+            }
+          } else if (d.type === 'rect' || d.type === 'fib') {
+            const x1 = px_(d.i1), y1 = py_(d.p1), x2 = px_(d.i2), y2 = py_(d.p2);
+            const minx = Math.min(x1, x2), maxx = Math.max(x1, x2), miny = Math.min(y1, y2), maxy = Math.max(y1, y2);
+            if (x >= minx - TOL && x <= maxx + TOL && y >= miny - TOL && y <= maxy + TOL) return idx;
+          } else {
+            if (distToSeg(x, y, px_(d.i1), py_(d.p1), px_(d.i2), py_(d.p2)) < TOL) return idx;
+          }
+        }
+        return -1;
+      }
+
+      // --- Indikator: RSI(14) -----------------------------------------
+      let rsiOn = false;
+      let rsiData = null;        // Array parallel zu `candles`, RSI-Wert oder null
+      let volOn = true;
+
+      function computeRSI(rows, period) {
+        period = period || 14;
+        const out = new Array(rows.length).fill(null);
+        if (rows.length <= period) return out;
+        let gainSum = 0, lossSum = 0;
+        for (let i = 1; i <= period; i++) {
+          const diff = rows[i].c - rows[i - 1].c;
+          if (diff >= 0) gainSum += diff; else lossSum -= diff;
+        }
+        let avgGain = gainSum / period, avgLoss = lossSum / period;
+        out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+        for (let i = period + 1; i < rows.length; i++) {
+          const diff = rows[i].c - rows[i - 1].c;
+          const gain = diff > 0 ? diff : 0, loss = diff < 0 ? -diff : 0;
+          avgGain = (avgGain * (period - 1) + gain) / period;
+          avgLoss = (avgLoss * (period - 1) + loss) / period;
+          out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+        }
+        return out;
+      }
+
+      // --- Musik-Reaktiv-Modus: Player + alle Reaktiv-Effekte gaten ---
+      let musicMode = false;
+      const MUSIC_KEY = 'glappa-chartvis-music';
+      try { musicMode = localStorage.getItem(MUSIC_KEY) === '1'; } catch (e) {}
+
+      function applyMusicMode() {
+        playerSection.hidden = !musicMode;
+        musicModeBtn.classList.toggle('active', musicMode);
+        musicModeBtn.innerHTML = musicMode ? '&#127925; Musik-Reaktiv: AN' : '&#127925; Musik-Reaktiv: AUS';
+        if (!musicMode) {
+          panelEl.style.boxShadow = '';
+          bassEnv = 0; beatFlash = 0; midSm = 0; trebSm = 0; totalSm = 0;
+          particles.length = 0;
+        }
+      }
+      musicModeBtn.addEventListener('click', () => {
+        musicMode = !musicMode;
+        try { localStorage.setItem(MUSIC_KEY, musicMode ? '1' : '0'); } catch (e) {}
+        applyMusicMode();
+      });
+
+      // --- Preis/Datum-Formatierung ---------------------------------
+      function fmtPrice(p) {
+        const dec = p >= 1000 ? 0 : p >= 1 ? 2 : 6;
+        return p.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: dec });
+      }
+      function fmtCurrency(p) { return '$' + fmtPrice(p); }
+      const INTRADAY = { '1s': 1, '1m': 1, '5m': 1, '15m': 1, '1h': 1, '4h': 1 };
+      function fmtDate(ts) {
+        const d = new Date(ts);
+        if (INTRADAY[currentInterval]) {
+          let s = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          if (currentInterval === '1s') s += ':' + String(d.getSeconds()).padStart(2, '0');
+          return s;
+        }
+        return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+      }
+
+      // --- Symbol-Auswahl ----------------------------------------------
+      symbolSelect.addEventListener('change', () => {
+        symbolCustom.hidden = symbolSelect.value !== '__custom';
+        if (!symbolCustom.hidden) symbolCustom.focus();
+        else loadChart();
+      });
+      symbolCustom.addEventListener('keydown', e => { if (e.key === 'Enter') loadChart(); });
+      reloadBtn.addEventListener('click', loadChart);
+
+      // --- Kursdaten laden (Binance Klines, keine Anmeldung noetig) ---
+      async function fetchKlines(symbol, interval, endTime) {
+        let url = 'https://api.binance.com/api/v3/klines?symbol=' + encodeURIComponent(symbol) +
+                  '&interval=' + encodeURIComponent(interval) + '&limit=500';
+        if (endTime) url += '&endTime=' + endTime;
+        let resp;
+        try {
+          resp = await fetch(url);
+        } catch (e) {
+          throw new Error('Netzwerkfehler &mdash; Binance nicht erreichbar.');
+        }
+        if (!resp.ok) {
+          if (resp.status === 429 || resp.status === 418) throw new Error('Zu viele Anfragen (Rate-Limit) &mdash; kurz warten und nochmal.');
+          if (resp.status === 400) throw new Error('Unbekanntes Symbol oder Intervall.');
+          throw new Error('HTTP ' + resp.status);
+        }
+        const data = await resp.json();
+        if (!Array.isArray(data)) throw new Error('Keine Daten erhalten.');
+        return data.map(k => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
+      }
+
+      // --- Aeltere Historie nachladen: wird ausgeloest, wenn Zoomen/Pan das
+      // Sichtfenster nah an den linken Rand der bisher geladenen Kerzen
+      // bringt -- so laesst sich beliebig weit zurueckscrollen/-zoomen, statt
+      // hart an der Grenze des ersten Ladevorgangs (500 Kerzen) zu enden.
+      const LOAD_MORE_THRESHOLD = 15;
+      let loadingMore = false, noMoreHistory = false;
+      async function loadMoreHistory() {
+        if (loadingMore || noMoreHistory || !candles.length) return;
+        loadingMore = true;
+        try {
+          while (!noMoreHistory && getView().start <= LOAD_MORE_THRESHOLD) {
+            const endTime = candles[0].t - 1;
+            const older = await fetchKlines(currentSymbol, currentInterval, endTime);
+            if (!older.length) { noMoreHistory = true; break; }
+            const addedCount = older.length;
+            candles = older.concat(candles);
+            viewStart += addedCount;
+            if (older.length < 500) noMoreHistory = true;
+          }
+          rsiData = computeRSI(candles, 14);
+          statusEl.textContent = candles.length + ' Kerzen geladen (' + currentInterval + ')' +
+            (noMoreHistory ? ' — Anfang der Historie erreicht.' : '.');
+        } catch (e) {
+          // Stiller Fehlschlag: naechster Scroll/Zoom loest einen neuen Versuch aus.
+        } finally {
+          loadingMore = false;
+        }
+      }
+
+      function updateHeader() {
+        const last = candles[candles.length - 1];
+        const first = candles[0];
+        const pct = ((last.c - first.o) / first.o) * 100;
+        priceEl.textContent = fmtCurrency(last.c);
+        chgEl.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(2) + '% (gesamter Datensatz)';
+        chgEl.className = pct >= 0 ? 'chg-up' : 'chg-down';
+        coinTitleEl.textContent = SYMBOL_NAMES[currentSymbol] || currentSymbol;
+      }
+
+      async function loadChart() {
+        const sel = symbolSelect.value;
+        const symbol = (sel === '__custom' ? symbolCustom.value.trim() : sel).toUpperCase();
+        if (!symbol) { symbolCustom.focus(); return; }
+        const seq = ++reqSeq;
+        statusEl.innerHTML = 'Lade Kursdaten<span class="blink">_</span>';
+        try {
+          const rows = await fetchKlines(symbol, currentInterval);
+          if (seq !== reqSeq) return;
+          candles = rows;
+          currentSymbol = symbol;
+          emptyEl.hidden = true;
+          updateHeader();
+          resetView();
+          priceZoom = 1;
+          noMoreHistory = false;
+          drawings = []; pending = null;
+          rsiData = computeRSI(candles, 14);
+          statusEl.textContent = candles.length + ' Kerzen geladen (' + currentInterval + ').';
+          buildEqBands(getView().count);
+        } catch (e) {
+          if (seq !== reqSeq) return;
+          statusEl.innerHTML = '<span class="err">' + (e.message || 'Fehler beim Laden.') + '</span>';
+        }
+      }
+
+      // --- Top-Toolbar: Intervall + Diagrammtyp -----------------------
+      document.querySelectorAll('.chart-tf-group .chart-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentInterval = btn.dataset.interval;
+          document.querySelectorAll('.chart-tf-group .chart-seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+          loadChart();
+        });
+      });
+      document.querySelectorAll('.chart-type-group .chart-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          chartType = btn.dataset.charttype;
+          document.querySelectorAll('.chart-type-group .chart-seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+        });
+      });
+      volBtn.addEventListener('click', () => { volOn = !volOn; volBtn.classList.toggle('active', volOn); });
+      rsiBtn.addEventListener('click', () => { rsiOn = !rsiOn; rsiBtn.classList.toggle('active', rsiOn); });
+
+      // --- Linke Toolbar: Zeichenwerkzeuge + Magnet/Schloss/Loeschen --
+      document.querySelectorAll('#chartVToolbar button[data-tool]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentTool = btn.dataset.tool;
+          document.querySelectorAll('#chartVToolbar button[data-tool]').forEach(b => b.classList.toggle('active', b === btn));
+          canvas.style.cursor = currentTool === 'pan' ? 'grab' : currentTool === 'eraser' ? 'not-allowed' : 'crosshair';
+        });
+      });
+      magnetBtn.addEventListener('click', () => { magnetOn = !magnetOn; magnetBtn.classList.toggle('active', magnetOn); });
+      lockBtn.addEventListener('click', () => { locked = !locked; lockBtn.classList.toggle('active', locked); });
+      clearDrawBtn.addEventListener('click', () => { drawings = []; pending = null; });
+
+      // --- Vollbild ----------------------------------------------------
+      fsBtn.addEventListener('click', () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else wrap.requestFullscreen().catch(() => {});
+      });
+      document.addEventListener('fullscreenchange', () => setTimeout(fitCanvas, 50));
+
+      // --- Canvas-Groesse (High-DPI) ------------------------------------
+      function fitCanvas() {
+        const r = wrap.getBoundingClientRect();
+        cssW = Math.max(64, Math.floor(r.width));
+        cssH = Math.max(64, Math.floor(r.height));
+        dpr = Math.max(1, window.devicePixelRatio || 1);
+        const pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
+        if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+      }
+      window.addEventListener('resize', fitCanvas);
+      if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(wrap);
+      fitCanvas();
+
+      // --- Maus: Hover/Crosshair, Pan, Zoom (Mausrad), Zeichnen -------
+      function updateHoverAndTooltip(x, y) {
+        if (!lastGeom || !candles.length) { hoverIndex = -1; hoverY = -1; tooltipEl.hidden = true; return; }
+        const g = lastGeom;
+        hoverY = Math.max(g.plotY0, Math.min(g.plotY0 + g.plotH, y));
+        if (x >= cssW - AXIS_W) {
+          // Preisachsen-Spalte: kein Kerzen-Tooltip, nur die Crosshair-Preiszeile
+          hoverIndex = -1;
+          tooltipEl.hidden = true;
+          return;
+        }
+        const idx = Math.max(g.start, Math.min(g.start + g.count - 1, Math.round(g.start + x / g.slot)));
+        hoverIndex = idx;
+        const c = candles[idx];
+        if (!c) { tooltipEl.hidden = true; return; }
+        tooltipEl.hidden = false;
+        tooltipEl.style.left = Math.min(cssW - 170, Math.max(0, x + 12)) + 'px';
+        tooltipEl.style.top = '8px';
+        let html = new Date(c.t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) +
+          '<br>O ' + fmtPrice(c.o) + '&nbsp; H ' + fmtPrice(c.h) +
+          '<br>L ' + fmtPrice(c.l) + '&nbsp; C ' + fmtPrice(c.c) +
+          '<br>Vol ' + c.v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+        if (rsiOn && rsiData && rsiData[idx] != null) html += '<br>RSI ' + rsiData[idx].toFixed(1);
+        tooltipEl.innerHTML = html;
+      }
+
+      canvas.addEventListener('mousedown', e => {
+        if (e.button !== 0 || !candles.length || !lastGeom) return;
+        const r = canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        if (x >= cssW - AXIS_W) return; // Preisachse: nur Mausrad-Zoom, kein Zeichnen/Verschieben
+        e.preventDefault();
+        const g = lastGeom;
+
+        if (currentTool === 'pan') {
+          dragState = { mode: 'pan', startX: x, startViewStart: viewStart };
+          canvas.style.cursor = 'grabbing';
+          return;
+        }
+        if (locked) {
+          statusEl.innerHTML = '<span class="err">Zeichnungen sind gesperrt (Schloss-Button).</span>';
+          return;
+        }
+        if (currentTool === 'eraser') {
+          const hit = hitTestDrawing(x, y);
+          if (hit >= 0) drawings.splice(hit, 1);
+          return;
+        }
+        const idxRaw = g.start + x / g.slot;
+        const priceRaw = g.maxP - (y - g.plotY0) / g.plotH * (g.maxP - g.minP);
+        if (currentTool === 'hline') {
+          drawings.push({ type: 'hline', price: snapPrice(idxRaw, priceRaw) });
+          return;
+        }
+        if (currentTool === 'text') {
+          const txt = window.prompt('Text fuer die Notiz an dieser Stelle:', '');
+          if (txt && txt.trim()) drawings.push({ type: 'text', i1: idxRaw, p1: snapPrice(idxRaw, priceRaw), text: txt.trim() });
+          return;
+        }
+        if (currentTool === 'brush') {
+          pending = { type: 'brush', points: [{ i: idxRaw, p: priceRaw }] };
+          dragState = { mode: 'draw' };
+          return;
+        }
+        pending = { type: currentTool, i1: idxRaw, p1: snapPrice(idxRaw, priceRaw), i2: idxRaw, p2: snapPrice(idxRaw, priceRaw) };
+        dragState = { mode: 'draw' };
+      });
+
+      canvas.addEventListener('mousemove', e => {
+        if (!candles.length) return;
+        const r = canvas.getBoundingClientRect();
+        const x = e.clientX - r.left, y = e.clientY - r.top;
+        updateHoverAndTooltip(x, y);
+        if (!dragState) {
+          canvas.style.cursor = x >= cssW - AXIS_W ? 'ns-resize'
+            : currentTool === 'pan' ? 'grab'
+            : currentTool === 'eraser' ? 'not-allowed' : 'crosshair';
+        }
+        if (!lastGeom) return;
+        const g = lastGeom;
+        if (dragState && dragState.mode === 'pan') {
+          const dx = x - dragState.startX;
+          viewStart = dragState.startViewStart - dx / g.slot;
+          clampView();
+          if (getView().start <= LOAD_MORE_THRESHOLD) loadMoreHistory();
+        } else if (dragState && dragState.mode === 'draw' && pending) {
+          const idx = g.start + x / g.slot;
+          const price = g.maxP - (y - g.plotY0) / g.plotH * (g.maxP - g.minP);
+          if (pending.type === 'brush') pending.points.push({ i: idx, p: price });
+          else { pending.i2 = idx; pending.p2 = snapPrice(idx, price); }
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (dragState && dragState.mode === 'draw' && pending) {
+          const keep = pending.type === 'brush'
+            ? pending.points.length > 1
+            : (Math.abs(pending.i2 - pending.i1) > 0.3 || Math.abs(pending.p2 - pending.p1) > 1e-9);
+          if (keep) drawings.push(pending);
+          pending = null;
+        }
+        if (dragState && dragState.mode === 'pan') canvas.style.cursor = currentTool === 'pan' ? 'grab' : 'crosshair';
+        dragState = null;
+      });
+
+      canvas.addEventListener('mouseleave', () => { hoverIndex = -1; hoverY = -1; tooltipEl.hidden = true; });
+
+      canvas.addEventListener('wheel', e => {
+        if (!candles.length || !lastGeom) return;
+        e.preventDefault();
+        const r = canvas.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        if (x >= cssW - AXIS_W) {
+          // Preisachse: Mausrad skaliert die Kerzen vertikal (kleiner/groesser),
+          // unabhaengig vom Zeit-Zoom -- wie bei TradingView/DexScreener.
+          const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+          priceZoom = Math.max(PRICE_ZOOM_MIN, Math.min(PRICE_ZOOM_MAX, priceZoom * factor));
+          return;
+        }
+        const g = lastGeom;
+        const idxUnderMouse = g.start + x / g.slot;
+        const zoomFactor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+        viewCount = viewCount * zoomFactor;
+        clampView();
+        const newSlot = g.plotW / getView().count;
+        viewStart = idxUnderMouse - x / newSlot;
+        clampView();
+        if (getView().start <= LOAD_MORE_THRESHOLD) loadMoreHistory();
+      }, { passive: false });
+
+      canvas.addEventListener('dblclick', e => {
+        const r = canvas.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        if (x >= cssW - AXIS_W) priceZoom = 1; // Preisachse: Doppelklick setzt Zoom zurueck
+      });
+
+      // ── Audio-Analyse (Web Audio API) ───────────────────────────────
+      const audio = document.getElementById('audio');
+      audio.volume = 0.8;
+      let audioCtx = null, analyser = null, visData = null;
+      let bassEnv = 0, bassAvg = 0, beatFlash = 0;
+      let midSm = 0, trebSm = 0, totalSm = 0;
+      let specHue = 0;
+      let eqVals = null, eqBands = null;
+      let particles = [];
+
+      function ensureAudioCtx() {
+        if (audioCtx) return true;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return false;
+        try {
+          audioCtx = new Ctx();
+          const src = audioCtx.createMediaElementSource(audio);
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 512;
+          analyser.smoothingTimeConstant = 0.6;
+          visData = new Uint8Array(analyser.frequencyBinCount);
+          src.connect(analyser);
+          analyser.connect(audioCtx.destination);
+          return true;
+        } catch (e) { audioCtx = null; return false; }
+      }
+
+      function buildEqBands(bars) {
+        if (!visData || !bars) { eqBands = null; eqVals = null; return; }
+        const n = visData.length;
+        eqBands = new Int32Array(bars + 1);
+        const minBin = 1, maxBin = n;
+        for (let b = 0; b <= bars; b++) {
+          const t = b / bars;
+          eqBands[b] = Math.min(maxBin, Math.max(minBin, Math.round(minBin * Math.pow(maxBin / minBin, t))));
+        }
+        eqVals = new Float32Array(bars);
+      }
+
+      function spawnBeatParticles() {
+        if (!candles.length || !cssW) return;
+        const hue = (specHue + 300) % 360;
+        for (let i = 0; i < 20; i++) {
+          particles.push({
+            x: cssW - 14, y: cssH * 0.3,
+            vx: (Math.random() - 0.5) * 3.2, vy: -(1.5 + Math.random() * 4),
+            life: 1, sz: 2 + Math.random() * 3, hue: (hue + Math.random() * 80) % 360
+          });
+        }
+        if (particles.length > 200) particles.splice(0, particles.length - 200);
+      }
+
+      function spawnAmbientSpark() {
+        if (!candles.length || !cssW) return;
+        const hue = (specHue + Math.random() * 60) % 360;
+        particles.push({
+          x: Math.random() * cssW, y: cssH * (0.15 + Math.random() * 0.5),
+          vx: (Math.random() - 0.5) * 0.8, vy: -(0.4 + Math.random() * 1),
+          life: 0.7, sz: 1.5 + Math.random() * 2, hue
+        });
+      }
+
+      function updateAudioBands() {
+        if (analyser && !audio.paused) {
+          analyser.getByteFrequencyData(visData);
+          const n = visData.length;
+          const hi = Math.max(2, Math.floor(n * 0.06));
+          let s = 0; for (let i = 1; i < hi; i++) s += visData[i];
+          const bass = s / ((hi - 1) * 255);
+          if (bass > bassEnv) bassEnv = bass; else bassEnv += (bass - bassEnv) * 0.22;
+          bassAvg += (bass - bassAvg) * 0.05;
+          if (bass > bassAvg * 1.25 + 0.05 && beatFlash < 0.4) { beatFlash = 1; spawnBeatParticles(); }
+          else beatFlash = Math.max(0, beatFlash - 0.055);
+
+          const trebStart = Math.floor(n * 0.55);
+          let mid = 0, treb = 0, total = 0;
+          for (let i = hi; i < trebStart; i++) mid += visData[i];
+          for (let i = trebStart; i < n; i++) treb += visData[i];
+          for (let i = 0; i < n; i++) total += visData[i];
+          mid /= ((trebStart - hi) * 255); treb /= ((n - trebStart) * 255); total /= (n * 255);
+          midSm += (mid - midSm) * 0.22;
+          trebSm += (treb - trebSm) * 0.22;
+          totalSm += (total - totalSm) * 0.12;
+          specHue = (specHue + 0.2 + trebSm * 5 + beatFlash * 2.5) % 360;
+
+          if (bassEnv > 0.32 && Math.random() < (bassEnv - 0.3) * 0.5) spawnAmbientSpark();
+
+          if (candles.length) {
+            const viewN = getView().count;
+            if (!eqBands || eqBands.length !== viewN + 1) buildEqBands(viewN);
+            if (eqVals) {
+              for (let b = 0; b < eqVals.length; b++) {
+                const lo = eqBands[b], hiB = Math.max(lo + 1, eqBands[b + 1]);
+                let m = 0; for (let i = lo; i < hiB; i++) if (visData[i] > m) m = visData[i];
+                const v = Math.min(1, (m / 255) * (1 + bassEnv * 0.4));
+                if (v > eqVals[b]) eqVals[b] = v; else eqVals[b] += (v - eqVals[b]) * 0.25;
+              }
+            }
+          }
+        } else {
+          bassEnv *= 0.9; beatFlash = Math.max(0, beatFlash - 0.05);
+          midSm *= 0.95; trebSm *= 0.95; totalSm *= 0.95;
+          if (eqVals) for (let i = 0; i < eqVals.length; i++) eqVals[i] *= 0.9;
+        }
+      }
+
+      function pumpGlow() {
+        const blur = Math.round(bassEnv * 60 + beatFlash * 46);
+        const a = (0.3 + bassEnv * 0.65).toFixed(2);
+        panelEl.style.boxShadow = '0 0 ' + (16 + blur) + 'px rgba(0,255,255,' + a + '), ' +
+          'inset 0 0 ' + Math.round(beatFlash * 42) + 'px rgba(255,0,255,0.28)';
+      }
+
+      // ── Render ──────────────────────────────────────────────────────
+      function renderChart() {
+        cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const W = cssW, H = cssH;
+        cctx.clearRect(0, 0, W, H);
+        const bg = cctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, '#0c0e16'); bg.addColorStop(1, '#020204');
+        cctx.fillStyle = bg;
+        cctx.fillRect(0, 0, W, H);
+
+        if (musicMode) {
+          const auraR = Math.max(W, H) * 0.65;
+          const aura = cctx.createRadialGradient(W / 2, H * 0.4, 0, W / 2, H * 0.4, auraR);
+          aura.addColorStop(0, 'hsla(' + specHue + ',85%,55%,' + (0.06 + bassEnv * 0.22 + beatFlash * 0.10).toFixed(3) + ')');
+          aura.addColorStop(1, 'hsla(' + specHue + ',85%,55%,0)');
+          cctx.fillStyle = aura;
+          cctx.fillRect(0, 0, W, H);
+        }
+
+        const { start, count } = getView();
+        const n = count;
+        const VOL_H = volOn ? Math.round(H * 0.12) : 0;
+        const RSI_H = rsiOn ? Math.round(H * 0.16) : 0;
+        const EQ_H  = musicMode ? Math.round(H * 0.18) : 0;
+        const AXIS_H = 20;
+        const topPad = 6;
+        const plotH = Math.max(10, H - VOL_H - RSI_H - EQ_H - AXIS_H - topPad);
+        const plotY0 = topPad;
+        const volY0 = plotY0 + plotH;
+        const rsiY0 = volY0 + VOL_H;
+
+        const plotW = Math.max(10, W - AXIS_W);
+
+        let minP = Infinity, maxP = -Infinity;
+        for (let k = 0; k < n; k++) {
+          const c = candles[start + k];
+          if (c.l < minP) minP = c.l;
+          if (c.h > maxP) maxP = c.h;
+        }
+        const pad = (maxP - minP) * 0.08 || maxP * 0.01 || 1;
+        minP -= pad; maxP += pad;
+        // Manueller Preis-Zoom (Mausrad ueber der Preisachse): skaliert den
+        // Auto-Fit-Bereich um seine Mitte, unabhaengig vom Zeit-Zoom.
+        const midP = (minP + maxP) / 2;
+        const halfRangeBase = (maxP - minP) / 2;
+        minP = midP - halfRangeBase * priceZoom;
+        maxP = midP + halfRangeBase * priceZoom;
+        const priceRange = Math.max(1e-9, maxP - minP);
+        function yFor(p) { return plotY0 + plotH - ((p - minP) / priceRange) * plotH; }
+
+        const slot = plotW / n;
+        lastGeom = { start, count: n, slot, plotY0, plotH, minP, maxP, plotW };
+
+        const bodyW = musicMode
+          ? Math.max(1, slot * 0.62) * (1 + bassEnv * 0.4 + beatFlash * 0.25)
+          : Math.max(1, slot * 0.62);
+
+        // Kamera-Puls (Bass) + Beat-Wackler + Kippen (Mitten) -- betrifft NUR
+        // die Kerzen/Linie selbst. Gitter, Preisachse, Volumen/RSI-Panels und
+        // Zeichnungen bleiben bewusst stabil (siehe unten, ausserhalb save/restore).
+        const scaleAmt = musicMode ? 1 + bassEnv * 0.09 + beatFlash * 0.05 : 1;
+        const shk = musicMode ? beatFlash * 13 : 0;
+        const tilt = musicMode ? midSm * 0.28 + Math.sin(ambientT * 0.5) * 0.015 : 0;
+        cctx.save();
+        cctx.translate(plotW / 2, plotY0 + plotH / 2);
+        cctx.rotate(tilt);
+        cctx.scale(scaleAmt, scaleAmt);
+        cctx.translate(-plotW / 2 + Math.sin(ambientT * 40) * shk * 0.4,
+                       -(plotY0 + plotH / 2) + Math.cos(ambientT * 37) * shk * 0.3);
+
+        const hueShift = musicMode ? (Math.sin(ambientT * 0.6) * 8 + trebSm * 40 + beatFlash * 45 + midSm * 16) : 0;
+
+        if (chartType === 'line') {
+          cctx.beginPath();
+          for (let i = 0; i < n; i++) {
+            const c = candles[start + i];
+            const x = i * slot + slot / 2;
+            const eqBoost = (musicMode && eqVals) ? (eqVals[i] || 0) : 0;
+            const y = yFor(c.c) - eqBoost * plotH * 0.16;
+            if (i === 0) cctx.moveTo(x, y); else cctx.lineTo(x, y);
+          }
+          cctx.strokeStyle = musicMode ? ('hsl(' + (156 + hueShift) + ',85%,55%)') : '#3be6a0';
+          cctx.lineWidth = 2;
+          cctx.stroke();
+          cctx.lineTo((n - 1) * slot + slot / 2, plotY0 + plotH);
+          cctx.lineTo(slot / 2, plotY0 + plotH);
+          cctx.closePath();
+          const lgrad = cctx.createLinearGradient(0, plotY0, 0, plotY0 + plotH);
+          lgrad.addColorStop(0, 'rgba(59,230,160,0.25)');
+          lgrad.addColorStop(1, 'rgba(59,230,160,0)');
+          cctx.fillStyle = lgrad;
+          cctx.fill();
+        } else {
+          for (let i = 0; i < n; i++) {
+            const c = candles[start + i];
+            const x = i * slot + slot / 2;
+            const eqBoost = (musicMode && eqVals) ? (eqVals[i] || 0) : 0;
+            const wob = eqBoost * plotH * 0.16;
+            const yO = yFor(c.o) - wob, yC = yFor(c.c) - wob;
+            const yH = yFor(c.h) - wob, yL = yFor(c.l) - wob;
+            const up = c.c >= c.o;
+            const hue = (up ? 156 : 355) + hueShift;
+            cctx.strokeStyle = 'hsl(' + hue + ',85%,52%)';
+            cctx.fillStyle   = 'hsl(' + hue + ',80%,45%)';
+            cctx.lineWidth = 1;
+            cctx.beginPath(); cctx.moveTo(x, yH); cctx.lineTo(x, yL); cctx.stroke();
+            const bodyTop = Math.min(yO, yC);
+            const bodyH = Math.max(1, Math.abs(yC - yO));
+            if (musicMode) {
+              const glow = eqBoost * 24 + (i === n - 1 ? beatFlash * 26 : 0);
+              if (glow > 0.5) { cctx.shadowColor = 'hsl(' + hue + ',100%,62%)'; cctx.shadowBlur = glow; }
+            }
+            cctx.fillRect(x - bodyW / 2, bodyTop, bodyW, bodyH);
+            cctx.shadowBlur = 0;
+          }
+        }
+
+        cctx.restore();
+
+        const lastC = candles[candles.length - 1].c;
+        const lastCandle = candles[candles.length - 1];
+        const lastUp = lastCandle.c >= lastCandle.o;
+
+        // ── Preisachsen-Spalte: dezenter Hintergrund + Trennlinie, dann Grid
+        // + Preislabels. Bewusst AUSSERHALB des Musik-Kamera-Pulses -- Achse
+        // und Gitter zittern nicht mit, auch wenn die Kerzen daneben pulsieren.
+        cctx.fillStyle = 'rgba(255,255,255,0.03)';
+        cctx.fillRect(plotW, 0, AXIS_W, H);
+        cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        cctx.beginPath(); cctx.moveTo(plotW, 0); cctx.lineTo(plotW, H); cctx.stroke();
+
+        cctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        cctx.setLineDash([4, 4]);
+        cctx.lineDashOffset = musicMode ? -ambientT * 8 : 0;
+        cctx.font = '10px "Courier New", monospace';
+        cctx.fillStyle = 'rgba(255,255,255,0.55)';
+        cctx.textAlign = 'left';
+        const GRID_N = 5;
+        for (let g = 0; g <= GRID_N; g++) {
+          const p = minP + (priceRange * g / GRID_N);
+          const y = yFor(p);
+          cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(plotW, y); cctx.stroke();
+          cctx.fillText(fmtCurrency(p), plotW + 6, y + 3);
+        }
+        cctx.setLineDash([]);
+
+        if (lastC >= minP && lastC <= maxP) {
+          const ly = yFor(lastC);
+          cctx.strokeStyle = 'rgba(0,255,255,0.6)';
+          cctx.setLineDash([6, 4]);
+          cctx.beginPath(); cctx.moveTo(0, ly); cctx.lineTo(plotW, ly); cctx.stroke();
+          cctx.setLineDash([]);
+        }
+
+        // ── Preis-Label (aktueller Kurs, farbig je nach letzter Kerze) ──
+        if (lastC >= minP && lastC <= maxP) {
+          const ly = yFor(lastC);
+          const label = fmtCurrency(lastC);
+          cctx.font = 'bold 11px "Courier New", monospace';
+          const tw = cctx.measureText(label).width;
+          const boxW = Math.max(AXIS_W - 4, tw + 14), boxH = 18;
+          cctx.fillStyle = lastUp ? '#3be6a0' : '#ff5f6d';
+          cctx.fillRect(plotW + 2, ly - boxH / 2, boxW, boxH);
+          cctx.fillStyle = '#000';
+          cctx.textAlign = 'left';
+          cctx.fillText(label, plotW + 2 + 7, ly + 4);
+        }
+
+        if (musicMode && beatFlash > 0.02) {
+          cctx.fillStyle = 'rgba(255,0,255,' + (beatFlash * 0.18).toFixed(3) + ')';
+          cctx.fillRect(0, 0, W, H);
+        }
+        if (musicMode && beatFlash > 0.03) {
+          const cx = plotW / 2, cy = plotY0 + plotH / 2;
+          const ringR = (1 - beatFlash) * Math.max(W, H) * 0.55 + 8;
+          cctx.strokeStyle = 'rgba(0,255,255,' + (beatFlash * 0.55).toFixed(3) + ')';
+          cctx.lineWidth = 2.5;
+          cctx.beginPath(); cctx.arc(cx, cy, ringR, 0, Math.PI * 2); cctx.stroke();
+        }
+
+        // ── Zeichnungen: bewusst AUSSERHALB des Musik-Kamera-Pulses --
+        // bleiben exakt an Maus/Datenpunkten ausgerichtet, auch wenn die
+        // Kerzen daneben im Bass zittern.
+        function projX(idx) { return (idx - start) * slot + slot / 2; }
+        function projY(price) { return plotY0 + plotH - ((price - minP) / priceRange) * plotH; }
+
+        function drawTrendline(d, isPending) {
+          const x1 = projX(d.i1), y1 = projY(d.p1), x2 = projX(d.i2), y2 = projY(d.p2);
+          cctx.strokeStyle = isPending ? 'rgba(255,214,102,0.55)' : 'rgba(255,214,102,0.9)';
+          cctx.lineWidth = 2;
+          cctx.beginPath(); cctx.moveTo(x1, y1); cctx.lineTo(x2, y2); cctx.stroke();
+          cctx.fillStyle = cctx.strokeStyle;
+          cctx.beginPath(); cctx.arc(x1, y1, 3, 0, Math.PI * 2); cctx.fill();
+          cctx.beginPath(); cctx.arc(x2, y2, 3, 0, Math.PI * 2); cctx.fill();
+        }
+
+        function drawHLine(d) {
+          const y = projY(d.price);
+          cctx.strokeStyle = 'rgba(0,255,255,0.75)';
+          cctx.setLineDash([6, 3]);
+          cctx.lineWidth = 1.5;
+          cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(plotW, y); cctx.stroke();
+          cctx.setLineDash([]);
+          const label = fmtCurrency(d.price);
+          cctx.font = 'bold 10px "Courier New", monospace';
+          const tw = cctx.measureText(label).width;
+          cctx.fillStyle = 'rgba(0,0,0,0.75)';
+          cctx.fillRect(plotW + 2, y - 9, Math.max(AXIS_W - 6, tw + 8), 15);
+          cctx.fillStyle = '#0ff';
+          cctx.textAlign = 'left';
+          cctx.fillText(label, plotW + 6, y + 3);
+        }
+
+        function drawFib(d) {
+          const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+          const colors = ['#888', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#888'];
+          const x1 = projX(d.i1), x2 = projX(d.i2);
+          const xMin = Math.min(x1, x2), xMax = Math.max(x1, x2);
+          levels.forEach((lv, k) => {
+            const price = d.p1 + (d.p2 - d.p1) * lv;
+            const y = projY(price);
+            cctx.strokeStyle = colors[k];
+            cctx.globalAlpha = 0.8;
+            cctx.setLineDash([4, 3]);
+            cctx.lineWidth = 1.2;
+            cctx.beginPath(); cctx.moveTo(xMin, y); cctx.lineTo(xMax, y); cctx.stroke();
+            cctx.setLineDash([]);
+            cctx.globalAlpha = 1;
+            cctx.fillStyle = colors[k];
+            cctx.font = '10px "Courier New", monospace';
+            cctx.textAlign = 'left';
+            cctx.fillText((lv * 100).toFixed(1) + '%  ' + fmtPrice(price), xMax + 4, y + 3);
+          });
+        }
+
+        function drawRect(d, isPending) {
+          const x1 = projX(d.i1), y1 = projY(d.p1), x2 = projX(d.i2), y2 = projY(d.p2);
+          cctx.fillStyle = 'rgba(0,255,255,' + (isPending ? 0.08 : 0.14) + ')';
+          cctx.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1) || 1, Math.abs(y2 - y1) || 1);
+          cctx.strokeStyle = 'rgba(0,255,255,' + (isPending ? 0.5 : 0.8) + ')';
+          cctx.lineWidth = 1.5;
+          cctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1) || 1, Math.abs(y2 - y1) || 1);
+        }
+
+        function drawTextAnno(d) {
+          const x = projX(d.i1), y = projY(d.p1);
+          cctx.font = 'bold 12px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          const tw = cctx.measureText(d.text).width;
+          cctx.fillStyle = 'rgba(0,0,0,0.7)';
+          cctx.fillRect(x - 2, y - 14, tw + 8, 18);
+          cctx.fillStyle = '#ffd866';
+          cctx.fillText(d.text, x + 2, y);
+        }
+
+        function drawBrush(d) {
+          if (d.points.length < 2) return;
+          cctx.strokeStyle = 'rgba(255,214,102,0.9)';
+          cctx.lineWidth = 2;
+          cctx.lineJoin = 'round'; cctx.lineCap = 'round';
+          cctx.beginPath();
+          d.points.forEach((pt, k) => {
+            const x = projX(pt.i), y = projY(pt.p);
+            if (k === 0) cctx.moveTo(x, y); else cctx.lineTo(x, y);
+          });
+          cctx.stroke();
+        }
+
+        function drawRulerAnno(d, isPending) {
+          const x1 = projX(d.i1), y1 = projY(d.p1), x2 = projX(d.i2), y2 = projY(d.p2);
+          const up = d.p2 >= d.p1;
+          const rgb = up ? '59,230,160' : '255,95,109';
+          const a = isPending ? 0.6 : 0.9;
+          cctx.fillStyle = 'rgba(' + rgb + ',' + (a * 0.15).toFixed(2) + ')';
+          cctx.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.max(1, Math.abs(x2 - x1)), Math.max(1, Math.abs(y2 - y1)));
+          cctx.strokeStyle = 'rgba(' + rgb + ',' + a.toFixed(2) + ')';
+          cctx.lineWidth = 1.5;
+          cctx.setLineDash([5, 3]);
+          cctx.beginPath(); cctx.moveTo(x1, y1); cctx.lineTo(x2, y2); cctx.stroke();
+          cctx.setLineDash([]);
+          cctx.fillStyle = cctx.strokeStyle;
+          cctx.beginPath(); cctx.arc(x1, y1, 3, 0, Math.PI * 2); cctx.fill();
+          cctx.beginPath(); cctx.arc(x2, y2, 3, 0, Math.PI * 2); cctx.fill();
+
+          const pct = d.p1 !== 0 ? ((d.p2 - d.p1) / d.p1) * 100 : 0;
+          const bars = Math.round(d.i2 - d.i1);
+          const label = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%  ' +
+            (d.p2 - d.p1 >= 0 ? '+' : '-') + fmtCurrency(Math.abs(d.p2 - d.p1)) + '  ' + Math.abs(bars) + ' Kerzen';
+          cctx.font = 'bold 11px "Courier New", monospace';
+          const tw = cctx.measureText(label).width;
+          let lx = x2 + 8;
+          if (lx + tw + 10 > plotW) lx = x2 - tw - 18;
+          const ly2 = y2 - 18;
+          cctx.fillStyle = 'rgba(0,0,0,0.8)';
+          cctx.fillRect(lx - 5, ly2 - 12, tw + 10, 18);
+          cctx.strokeStyle = 'rgba(' + rgb + ',0.8)';
+          cctx.strokeRect(lx - 5, ly2 - 12, tw + 10, 18);
+          cctx.fillStyle = up ? '#3be6a0' : '#ff5f6d';
+          cctx.textAlign = 'left';
+          cctx.fillText(label, lx, ly2 + 1);
+        }
+
+        function renderDrawing(d, isPending) {
+          if (d.type === 'line') drawTrendline(d, isPending);
+          else if (d.type === 'hline') drawHLine(d);
+          else if (d.type === 'fib') drawFib(d);
+          else if (d.type === 'rect') drawRect(d, isPending);
+          else if (d.type === 'text') drawTextAnno(d);
+          else if (d.type === 'brush') drawBrush(d);
+          else if (d.type === 'ruler') drawRulerAnno(d, isPending);
+        }
+        for (const d of drawings) renderDrawing(d, false);
+        if (pending) renderDrawing(pending, true);
+
+        // Crosshair (immer sichtbar beim Hover, unabhaengig vom Werkzeug)
+        if (hoverIndex >= start && hoverIndex < start + n && hoverY >= 0) {
+          const x = (hoverIndex - start) * slot + slot / 2;
+          cctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          cctx.setLineDash([2, 3]);
+          cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, plotY0 + plotH); cctx.stroke();
+          if (hoverY >= plotY0 && hoverY <= plotY0 + plotH) {
+            cctx.beginPath(); cctx.moveTo(0, hoverY); cctx.lineTo(plotW, hoverY); cctx.stroke();
+          }
+          cctx.setLineDash([]);
+          if (hoverY >= plotY0 && hoverY <= plotY0 + plotH) {
+            const hoverPrice = maxP - ((hoverY - plotY0) / plotH) * priceRange;
+            const label = fmtCurrency(hoverPrice);
+            cctx.font = '10px "Courier New", monospace';
+            const tw = cctx.measureText(label).width;
+            cctx.fillStyle = 'rgba(0,255,255,0.9)';
+            cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 15);
+            cctx.fillStyle = '#000';
+            cctx.textAlign = 'left';
+            cctx.fillText(label, plotW + 6, hoverY + 3);
+          }
+        }
+
+        // Volumen-Panel
+        if (volOn) {
+          let maxV = 0;
+          for (let k = 0; k < n; k++) if (candles[start + k].v > maxV) maxV = candles[start + k].v;
+          maxV = maxV || 1;
+          for (let i = 0; i < n; i++) {
+            const c = candles[start + i];
+            const h = (c.v / maxV) * VOL_H;
+            const up = c.c >= c.o;
+            cctx.fillStyle = up ? 'rgba(59,230,160,0.55)' : 'rgba(255,95,109,0.55)';
+            cctx.fillRect(i * slot, volY0 + VOL_H - h, Math.max(1, slot - 1), h);
+          }
+          cctx.fillStyle = 'rgba(255,255,255,0.35)';
+          cctx.font = '10px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          cctx.fillText('Volumen', 4, volY0 + 11);
+          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          cctx.beginPath(); cctx.moveTo(0, volY0); cctx.lineTo(plotW, volY0); cctx.stroke();
+        }
+
+        // RSI-Panel
+        if (rsiOn && rsiData) {
+          function rsiYFor(v) { return rsiY0 + RSI_H - (v / 100) * RSI_H; }
+          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          cctx.beginPath(); cctx.moveTo(0, rsiY0); cctx.lineTo(plotW, rsiY0); cctx.stroke();
+          cctx.setLineDash([3, 3]);
+          [30, 70].forEach(v => { cctx.beginPath(); cctx.moveTo(0, rsiYFor(v)); cctx.lineTo(plotW, rsiYFor(v)); cctx.stroke(); });
+          cctx.setLineDash([]);
+          cctx.fillStyle = 'rgba(255,255,255,0.4)';
+          cctx.font = '10px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          cctx.fillText('RSI (14)', 4, rsiY0 + 11);
+          cctx.strokeStyle = '#c084fc';
+          cctx.lineWidth = 1.5;
+          cctx.beginPath();
+          let started = false;
+          for (let i = 0; i < n; i++) {
+            const v = rsiData[start + i];
+            if (v == null) continue;
+            const x = i * slot + slot / 2;
+            const y = rsiYFor(v);
+            if (!started) { cctx.moveTo(x, y); started = true; } else cctx.lineTo(x, y);
+          }
+          if (started) cctx.stroke();
+        }
+
+        // EQ-Band unter dem Chart (nur Musik-Reaktiv-Modus)
+        if (musicMode) {
+          const eqY0 = H - AXIS_H - EQ_H;
+          if (eqVals) {
+            for (let i = 0; i < n; i++) {
+              const v = eqVals[i] || 0;
+              if (v < 0.01) continue;
+              const x = i * slot;
+              const bh = v * EQ_H;
+              const hue = (specHue + (i / n) * 50) % 360;
+              cctx.shadowColor = 'hsl(' + hue + ',100%,60%)';
+              cctx.shadowBlur = 4 + v * 16;
+              cctx.fillStyle = 'hsla(' + hue + ',95%,58%,0.85)';
+              cctx.fillRect(x, eqY0 + EQ_H - bh, Math.max(1, slot - 1), bh);
+            }
+            cctx.shadowBlur = 0;
+          }
+          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          cctx.beginPath(); cctx.moveTo(0, eqY0); cctx.lineTo(plotW, eqY0); cctx.stroke();
+        }
+
+        // X-Achse
+        cctx.fillStyle = 'rgba(255,255,255,0.4)';
+        cctx.font = '10px "Courier New", monospace';
+        cctx.textAlign = 'center';
+        const ticks = 5;
+        for (let t = 0; t <= ticks; t++) {
+          const i = Math.min(n - 1, Math.round((t / ticks) * (n - 1)));
+          cctx.fillText(fmtDate(candles[start + i].t), i * slot + slot / 2, H - 4);
+        }
+
+        // Funken (Beat- + Ambient-Partikel), nur Musik-Reaktiv-Modus
+        if (musicMode) {
+          for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life -= 0.02;
+            if (p.life <= 0 || p.y > H) { particles.splice(i, 1); continue; }
+            const sz = p.sz || 3;
+            cctx.shadowColor = 'hsl(' + p.hue + ',100%,65%)';
+            cctx.shadowBlur = 6;
+            cctx.fillStyle = 'hsla(' + p.hue + ',100%,70%,' + p.life.toFixed(2) + ')';
+            cctx.fillRect(p.x, p.y, sz, sz);
+          }
+          cctx.shadowBlur = 0;
+        } else if (particles.length) {
+          particles.length = 0;
+        }
+      }
+
+      function draw() {
+        raf = requestAnimationFrame(draw);
+        if (document.hidden) return;
+        ambientT += 0.016;
+        if (musicMode) updateAudioBands();
+        if (candles.length) {
+          try { renderChart(); }
+          catch (e) { if (!draw.warned) { draw.warned = true; console.warn('Chart-Vis-Frame-Fehler:', e); } }
+        }
+        if (musicMode) pumpGlow();
+      }
+      raf = requestAnimationFrame(draw);
+
+      // ── Musik-Player (gekuerzte Fassung des Players aus tunes.html) ──
+      const playBtn  = document.getElementById('playBtn');
+      const prevBtn  = document.getElementById('prevBtn');
+      const nextBtn  = document.getElementById('nextBtn');
+      const stopBtn  = document.getElementById('stopBtn');
+      const seek     = document.getElementById('seek');
+      const volEl    = document.getElementById('volume');
+      const titleEl  = document.getElementById('trackTitle');
+      const curEl    = document.getElementById('curTime');
+      const totEl    = document.getElementById('totalTime');
+      const plEl     = document.getElementById('playlist');
+      const playerEl = document.getElementById('player');
+      const fileInp  = document.getElementById('fileInput');
+      const shufBtn  = document.getElementById('shuffleBtn');
+      const repBtn   = document.getElementById('repeatBtn');
+
+      const SUPPORTED = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|weba|mp4)$/i;
+      let tracks = [];
+      let current = -1;
+      let shuffle = false;
+      let repeat  = 'none';
+      let seekingUser = false;
+
+      function fmt(t) {
+        if (!isFinite(t) || t < 0) return '0:00';
+        const m = Math.floor(t / 60), s = Math.floor(t % 60);
+        return m + ':' + String(s).padStart(2, '0');
+      }
+
+      function loadFiles(files) {
+        const list = Array.from(files || []).filter(f =>
+          (f.type && f.type.startsWith('audio/')) || SUPPORTED.test(f.name)
+        );
+        for (const f of list) tracks.push({ name: f.name, url: URL.createObjectURL(f) });
+        renderPlaylist();
+        if (current === -1 && tracks.length) playTrack(0);
+      }
+
+      function playTrack(i) {
+        if (i < 0 || i >= tracks.length) return;
+        current = i;
+        audio.src = tracks[i].url;
+        titleEl.textContent = tracks[i].name;
+        renderPlaylist();
+        audio.play().catch(() => {});
+      }
+
+      function togglePlay() {
+        if (!tracks.length) return;
+        if (audio.paused) audio.play().catch(() => {});
+        else audio.pause();
+      }
+      function next() {
+        if (!tracks.length) return;
+        if (shuffle && tracks.length > 1) {
+          let n; do { n = Math.floor(Math.random() * tracks.length); } while (n === current);
+          playTrack(n);
+        } else playTrack((current + 1) % tracks.length);
+      }
+      function prev() {
+        if (!tracks.length) return;
+        if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+        playTrack((current - 1 + tracks.length) % tracks.length);
+      }
+      function stop() { audio.pause(); audio.currentTime = 0; }
+
+      function renderPlaylist() {
+        if (!tracks.length) {
+          plEl.innerHTML = '<div class="player-playlist-empty">[ PLAYLIST LEER &mdash; Tracks &uuml;ber Button oder Drop laden ]</div>';
+          return;
+        }
+        plEl.innerHTML = tracks.map((t, i) =>
+          '<div class="player-track-row' + (i === current ? ' active' : '') + '" data-i="' + i + '">' +
+            '<span class="player-track-num">' + String(i + 1).padStart(2, '0') + '.</span>' +
+            '<span class="player-track-name"></span>' +
+            '<button class="player-track-remove" data-i="' + i + '" title="Entfernen">&times;</button>' +
+          '</div>'
+        ).join('');
+        plEl.querySelectorAll('.player-track-row').forEach(row => {
+          const i = +row.dataset.i;
+          row.querySelector('.player-track-name').textContent = tracks[i].name;
+        });
+      }
+
+      audio.addEventListener('timeupdate', () => {
+        curEl.textContent = fmt(audio.currentTime);
+        if (!seekingUser && audio.duration) seek.value = (audio.currentTime / audio.duration) * 1000;
+      });
+      audio.addEventListener('loadedmetadata', () => { totEl.textContent = fmt(audio.duration); });
+      audio.addEventListener('play', () => {
+        playBtn.innerHTML = '&#10074;&#10074;';
+        if (!ensureAudioCtx()) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        buildEqBands(getView().count);
+      });
+      audio.addEventListener('pause', () => { playBtn.innerHTML = '&#9654;'; });
+      audio.addEventListener('ended', () => {
+        if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+        const isLast = current === tracks.length - 1;
+        if (isLast && repeat !== 'all' && !shuffle) { stop(); return; }
+        next();
+      });
+      audio.addEventListener('error', () => {
+        const err = audio.error;
+        if (!err || err.code === 1) return;
+        const name = tracks[current] ? tracks[current].name : '?';
+        titleEl.textContent = 'Fehler beim Laden: ' + name;
+        if ((err.code === 3 || err.code === 4) && tracks.length > 1) setTimeout(next, 800);
+      });
+
+      playBtn.addEventListener('click', togglePlay);
+      prevBtn.addEventListener('click', prev);
+      nextBtn.addEventListener('click', next);
+      stopBtn.addEventListener('click', stop);
+      volEl.addEventListener('input', e => { audio.volume = e.target.value / 100; });
+      seek.addEventListener('input', () => { seekingUser = true; });
+      seek.addEventListener('change', e => {
+        if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration;
+        seekingUser = false;
+      });
+      shufBtn.addEventListener('click', () => { shuffle = !shuffle; shufBtn.classList.toggle('active', shuffle); });
+      repBtn.addEventListener('click', () => {
+        repeat = repeat === 'none' ? 'all' : repeat === 'all' ? 'one' : 'none';
+        repBtn.classList.toggle('active', repeat !== 'none');
+        repBtn.innerHTML = repeat === 'one' ? '&#128257; Repeat 1' : '&#128257; Repeat';
+      });
+      plEl.addEventListener('click', e => {
+        const remove = e.target.closest('.player-track-remove');
+        if (remove) {
+          e.stopPropagation();
+          const i = +remove.dataset.i;
+          URL.revokeObjectURL(tracks[i].url);
+          tracks.splice(i, 1);
+          if (current === i) {
+            stop(); audio.removeAttribute('src'); audio.load();
+            current = -1;
+            titleEl.textContent = '— kein Track geladen —';
+            curEl.textContent = '0:00'; totEl.textContent = '0:00'; seek.value = 0;
+          } else if (current > i) current--;
+          renderPlaylist();
+          return;
+        }
+        const row = e.target.closest('.player-track-row');
+        if (row) playTrack(+row.dataset.i);
+      });
+      fileInp.addEventListener('change', e => { loadFiles(e.target.files); e.target.value = ''; });
+      ['dragenter', 'dragover'].forEach(ev => playerEl.addEventListener(ev, e => {
+        e.preventDefault(); playerEl.classList.add('drag');
+      }));
+      ['dragleave', 'dragend', 'drop'].forEach(ev => playerEl.addEventListener(ev, e => {
+        if (ev === 'drop') { e.preventDefault(); loadFiles(e.dataTransfer.files); }
+        if (e.target === playerEl || ev !== 'dragleave') playerEl.classList.remove('drag');
+      }));
+      document.addEventListener('keydown', e => {
+        if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+        if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+        else if (e.key === 'Escape' && pending) { pending = null; dragState = null; }
+      });
+
+      // Anfangszustand: Musik-Modus (per Default AUS, aus localStorage
+      // wiederhergestellt) anwenden, dann direkt den Bitcoin-Chart laden.
+      applyMusicMode();
+      loadChart();
+    })();
+  </script>
+</body>
+</html>
