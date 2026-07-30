@@ -63,9 +63,17 @@
     .chart-btn:active { border-style: inset; }
     .chart-btn:disabled { opacity: 0.5; cursor: wait; }
     .chart-btn--mini { padding: 5px 10px; font-size: 0.8em; }
+    .chart-btn--icon { padding: 5px 8px; line-height: 0; }
     .chart-btn.active {
       background: var(--neon-pink); color: #000; border-color: var(--neon-pink); text-shadow: none;
     }
+    .chart-btn:disabled { opacity: 0.35; cursor: default; }
+    .chart-live {
+      font-size: 0.68em; letter-spacing: 1px; color: #666; border: 1px solid #333;
+      padding: 3px 7px; border-radius: 2px; white-space: nowrap; margin-left: 8px;
+    }
+    .chart-live.on { color: #3be6a0; border-color: #3be6a0; text-shadow: 0 0 6px #3be6a0; }
+    .chart-sep { width: 1px; align-self: stretch; background: #333; margin: 0 2px; }
 
     .chart-seg-group { display: flex; gap: 2px; background: #000; border: 1px solid #333; border-radius: 2px; padding: 2px; }
     .chart-seg-btn {
@@ -82,20 +90,29 @@
 
     .chart-body { display: flex; gap: 6px; align-items: stretch; }
     .chart-vtoolbar {
-      display: flex; flex-direction: column; gap: 2px; background: #000; border: 1px solid #333;
-      border-radius: 2px; padding: 4px; flex: 0 0 auto; height: fit-content;
+      display: flex; flex-direction: column; gap: 1px; background: #000; border: 1px solid #333;
+      border-radius: 2px; padding: 3px; flex: 0 0 auto; height: fit-content;
     }
     .chart-vtoolbar button {
-      background: none; border: none; color: #888; font-size: 1.05em; padding: 7px; width: 34px;
-      cursor: pointer; border-radius: 2px; font-family: inherit; line-height: 1;
+      background: none; border: none; color: #8a8a8a; padding: 5px; width: 30px; height: 28px;
+      cursor: pointer; border-radius: 2px; font-family: inherit; line-height: 0;
+      display: flex; align-items: center; justify-content: center;
     }
-    .chart-vtoolbar button:hover { color: #ccc; background: rgba(255,255,255,0.08); }
+    .chart-vtoolbar button:hover { color: #fff; background: rgba(255,255,255,0.09); }
     .chart-vtoolbar button.active { background: var(--neon-cyan); color: #000; }
     .chart-vtoolbar-sep { height: 1px; background: #333; margin: 4px 2px; }
+    /* Alle Werkzeug-Symbole sind Inline-SVG statt Emoji: Emoji fehlen je nach
+       System/Font komplett (leere Kaesten), SVG rendert ueberall gleich. */
+    .chart-vtoolbar button svg, .chart-btn svg, .chart-props svg {
+      width: 17px; height: 17px; display: block;
+      fill: none; stroke: currentColor; stroke-width: 1.6;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .chart-btn svg { display: inline-block; vertical-align: middle; }
 
     .chart-canvas-wrap {
       position: relative; background: #000; border: 2px inset #333;
-      height: 500px; resize: vertical; overflow: hidden;
+      height: 520px; resize: vertical; overflow: hidden;
       min-height: 280px; max-height: 80vh; flex: 1 1 auto; min-width: 0;
     }
     #chartCanvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
@@ -106,14 +123,44 @@
       pointer-events: none;
     }
     .chart-empty[hidden] { display: none; }
-    .chart-tooltip {
-      position: absolute; pointer-events: none; background: rgba(0,0,0,0.85);
-      border: 1px solid var(--neon-cyan); border-radius: 3px; padding: 6px 9px;
-      font-size: 0.76em; line-height: 1.5; color: #eee; white-space: nowrap;
-      box-shadow: 0 0 8px rgba(0,255,255,0.3); z-index: 5;
+    /* Schwebende Eigenschaften-Leiste des ausgewaehlten Objekts */
+    .chart-props {
+      position: absolute; z-index: 8; display: flex; align-items: center; gap: 6px;
+      background: rgba(4,6,12,0.95); border: 1px solid var(--neon-cyan); border-radius: 3px;
+      padding: 4px 6px; box-shadow: 0 0 10px rgba(0,255,255,0.35);
     }
-    .chart-tooltip[hidden] { display: none; }
+    .chart-props[hidden] { display: none; }
+    .chart-props .pcolors, .chart-props .pwidths { display: flex; gap: 3px; }
+    .chart-props .sw {
+      width: 15px; height: 15px; border-radius: 50%; border: 1px solid #000;
+      padding: 0; cursor: pointer;
+    }
+    .chart-props .sw.active { box-shadow: 0 0 0 2px #fff; }
+    .chart-props .wbtn {
+      background: none; border: 1px solid #333; color: #999; font-size: 0.62rem;
+      padding: 2px 4px; cursor: pointer; font-family: inherit; border-radius: 2px;
+    }
+    .chart-props .wbtn.active { border-color: var(--neon-cyan); color: var(--neon-cyan); }
+    .chart-props .pdel {
+      background: none; border: 1px solid #553; color: #ff5f6d; cursor: pointer;
+      padding: 3px 4px; border-radius: 2px; line-height: 0;
+    }
+    .chart-props .pdel:hover { border-color: #ff5f6d; background: rgba(255,95,109,0.15); }
+
+    /* Vollbild: die ganze Karte, damit Werkzeuge + Kopfzeile mitkommen */
+    .chart-panel:fullscreen {
+      display: flex; flex-direction: column; height: 100vh; width: 100vw;
+      overflow: hidden; border-radius: 0; margin: 0;
+    }
+    .chart-panel:fullscreen .chart-body { flex: 1 1 auto; min-height: 0; }
+    .chart-panel:fullscreen .chart-canvas-wrap { height: 100%; max-height: none; resize: none; }
+    .chart-panel:fullscreen .chart-hint, .chart-panel:fullscreen .chart-foot { display: none; }
+
     .chart-hint { font-size: 0.74em; color: #888; margin: 8px 4px 0; font-style: italic; }
+    .chart-hint kbd {
+      font-family: inherit; background: #111; border: 1px solid #444; border-radius: 2px;
+      padding: 0 4px; color: #0ff; font-style: normal; font-size: 0.95em;
+    }
   </style>
 </head>
 <body>
@@ -154,6 +201,7 @@
           <span class="chart-title" id="coinTitle">Bitcoin (BTC/USDT)</span>
           <span class="chart-price">
             <span id="priceVal">&mdash;</span><span id="chgVal" class="chg-up"></span>
+            <span class="chart-live" id="liveTag">&#9675; offline</span>
           </span>
         </div>
 
@@ -172,10 +220,32 @@
             <option value="__custom">Anderes Binance-Symbol&hellip;</option>
           </select>
           <input type="text" id="symbolCustom" placeholder="z.B. PEPEUSDT" hidden>
-          <button type="button" class="chart-btn chart-btn--mini" id="reloadBtn" title="Neu laden">&#8635;</button>
-          <button type="button" class="chart-btn chart-btn--mini active" id="volBtn" title="Volumen-Panel ein/aus">Vol</button>
-          <button type="button" class="chart-btn chart-btn--mini" id="rsiBtn" title="RSI(14)-Indikator ein/aus">RSI</button>
-          <button type="button" class="chart-btn chart-btn--mini" id="fsBtn" title="Vollbild an/aus">&#9974; Vollbild</button>
+          <button type="button" class="chart-btn chart-btn--icon" id="reloadBtn" title="Neu laden" aria-label="Neu laden">
+            <svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M17 2v5h-5"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="fitBtn" title="Ansicht zur&uuml;cksetzen (zum aktuellen Kurs springen)" aria-label="Ansicht zur&uuml;cksetzen">
+            <svg viewBox="0 0 20 20"><path d="M3 10h4M13 10h4M10 3v4M10 13v4"/><circle cx="10" cy="10" r="3"/></svg>
+          </button>
+          <span class="chart-sep"></span>
+          <button type="button" class="chart-btn chart-btn--mini active" data-ind="vol" title="Volumen-Panel ein/aus">Vol</button>
+          <button type="button" class="chart-btn chart-btn--mini" data-ind="rsi" title="RSI(14) ein/aus">RSI</button>
+          <button type="button" class="chart-btn chart-btn--mini" data-ind="macd" title="MACD 12/26/9 ein/aus">MACD</button>
+          <button type="button" class="chart-btn chart-btn--mini" data-ind="ma" title="Gleitende Durchschnitte MA20/MA50">MA</button>
+          <button type="button" class="chart-btn chart-btn--mini" data-ind="bb" title="Bollinger-B&auml;nder (20, 2&sigma;)">BB</button>
+          <span class="chart-sep"></span>
+          <button type="button" class="chart-btn chart-btn--mini" id="logBtn" title="Logarithmische Preisachse (Taste L)">LOG</button>
+          <button type="button" class="chart-btn chart-btn--icon" id="undoBtn" title="R&uuml;ckg&auml;ngig (Strg+Z)" aria-label="R&uuml;ckg&auml;ngig" disabled>
+            <svg viewBox="0 0 20 20"><path d="M4 9h8a4 4 0 0 1 0 8h-3"/><path d="M7 5 3 9l4 4"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="redoBtn" title="Wiederherstellen (Strg+Y)" aria-label="Wiederherstellen" disabled>
+            <svg viewBox="0 0 20 20"><path d="M16 9H8a4 4 0 0 0 0 8h3"/><path d="m13 5 4 4-4 4"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="shotBtn" title="Chart als PNG speichern" aria-label="Screenshot">
+            <svg viewBox="0 0 20 20"><rect x="2" y="6" width="16" height="11" rx="2"/><circle cx="10" cy="11.5" r="3.2"/><path d="M7 6l1.4-2h3.2L13 6"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="fsBtn" title="Vollbild an/aus" aria-label="Vollbild">
+            <svg viewBox="0 0 20 20"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/></svg>
+          </button>
         </div>
 
         <div class="chart-topbar">
@@ -184,14 +254,19 @@
             <button type="button" class="chart-seg-btn" data-interval="1m">1m</button>
             <button type="button" class="chart-seg-btn" data-interval="5m">5m</button>
             <button type="button" class="chart-seg-btn" data-interval="15m">15m</button>
+            <button type="button" class="chart-seg-btn" data-interval="30m">30m</button>
             <button type="button" class="chart-seg-btn" data-interval="1h">1h</button>
             <button type="button" class="chart-seg-btn" data-interval="4h">4h</button>
             <button type="button" class="chart-seg-btn active" data-interval="1d">1D</button>
             <button type="button" class="chart-seg-btn" data-interval="1w">1W</button>
+            <button type="button" class="chart-seg-btn" data-interval="1M">1M</button>
           </div>
           <div class="chart-seg-group chart-type-group" role="group" aria-label="Diagrammtyp">
-            <button type="button" class="chart-seg-btn active" data-charttype="candles" title="Kerzenchart">&#128367; Kerzen</button>
-            <button type="button" class="chart-seg-btn" data-charttype="line" title="Linienchart">&#128201; Linie</button>
+            <button type="button" class="chart-seg-btn active" data-charttype="candles" title="Kerzenchart">Kerzen</button>
+            <button type="button" class="chart-seg-btn" data-charttype="ha" title="Heikin-Ashi: gegl&auml;ttete Kerzen, Trend besser sichtbar">Heikin</button>
+            <button type="button" class="chart-seg-btn" data-charttype="bars" title="OHLC-Balken">Balken</button>
+            <button type="button" class="chart-seg-btn" data-charttype="line" title="Linienchart (Schlusskurse)">Linie</button>
+            <button type="button" class="chart-seg-btn" data-charttype="area" title="Fl&auml;chenchart">Fl&auml;che</button>
           </div>
         </div>
 
@@ -199,24 +274,66 @@
 
         <div class="chart-body">
           <div class="chart-vtoolbar" id="chartVToolbar" role="group" aria-label="Zeichenwerkzeuge">
-            <button type="button" data-tool="pan" class="active" title="Crosshair: Verschieben (ziehen) &amp; Zoomen (Mausrad)">&#10011;</button>
-            <button type="button" data-tool="line" title="Trendlinie zeichnen">&#128200;</button>
-            <button type="button" data-tool="hline" title="Horizontale Preislinie setzen">&#10134;</button>
-            <button type="button" data-tool="fib" title="Fibonacci-Retracement">Fib</button>
-            <button type="button" data-tool="rect" title="Rechteck / Zone markieren">&#9645;</button>
-            <button type="button" data-tool="text" title="Textnotiz platzieren">T</button>
-            <button type="button" data-tool="ruler" title="Lineal: Preis-/Prozent-Differenz messen">&#128207;</button>
-            <button type="button" data-tool="brush" title="Freihand zeichnen">&#128396;</button>
+            <button type="button" data-tool="pan" class="active" title="Fadenkreuz: ziehen = scrollen, Mausrad = Zoom, Objekte anfassen (Taste A)" aria-label="Fadenkreuz">
+              <svg viewBox="0 0 20 20"><path d="M10 1v6M10 13v6M1 10h6M13 10h6"/><circle cx="10" cy="10" r="2.2"/></svg>
+            </button>
+            <button type="button" data-tool="line" title="Trendlinie (Taste T)" aria-label="Trendlinie">
+              <svg viewBox="0 0 20 20"><path d="M5.4 14.6 14.6 5.4"/><circle cx="4" cy="16" r="2"/><circle cx="16" cy="4" r="2"/></svg>
+            </button>
+            <button type="button" data-tool="ray" title="Strahl: verl&auml;ngert sich bis zum Chartrand" aria-label="Strahl">
+              <svg viewBox="0 0 20 20"><path d="M4 16 17 3"/><circle cx="4" cy="16" r="2"/><path d="M12 3h5v5"/></svg>
+            </button>
+            <button type="button" data-tool="hline" title="Horizontale Preislinie (Taste H)" aria-label="Horizontale Linie">
+              <svg viewBox="0 0 20 20"><path d="M2 10h16"/><circle cx="10" cy="10" r="2.2"/></svg>
+            </button>
+            <button type="button" data-tool="vline" title="Vertikale Zeitlinie (Taste V)" aria-label="Vertikale Linie">
+              <svg viewBox="0 0 20 20"><path d="M10 2v16"/><circle cx="10" cy="10" r="2.2"/></svg>
+            </button>
+            <button type="button" data-tool="arrow" title="Pfeil" aria-label="Pfeil">
+              <svg viewBox="0 0 20 20"><path d="M3 17 16 4M9 4h7v7"/></svg>
+            </button>
+            <button type="button" data-tool="fib" title="Fibonacci-Retracement (Taste F)" aria-label="Fibonacci">
+              <svg viewBox="0 0 20 20"><path d="M2 4h16M4 8h14M6 12h12M8 16h10"/></svg>
+            </button>
+            <button type="button" data-tool="rect" title="Rechteck / Zone (Taste R)" aria-label="Rechteck">
+              <svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="1"/></svg>
+            </button>
+            <button type="button" data-tool="ellipse" title="Ellipse" aria-label="Ellipse">
+              <svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="7.5" ry="5"/></svg>
+            </button>
+            <button type="button" data-tool="text" title="Textnotiz (Doppelklick zum Bearbeiten)" aria-label="Text">
+              <svg viewBox="0 0 20 20"><path d="M4 5h12M10 5v11M7.5 16h5"/></svg>
+            </button>
+            <button type="button" data-tool="ruler" title="Lineal: Preis-, Prozent- und Zeitdifferenz messen (Taste M)" aria-label="Lineal">
+              <svg viewBox="0 0 20 20"><rect x="2" y="6" width="16" height="8" rx="1"/><path d="M6 6v3M10 6v4M14 6v3"/></svg>
+            </button>
+            <button type="button" data-tool="brush" title="Freihand zeichnen (Taste B)" aria-label="Freihand">
+              <svg viewBox="0 0 20 20"><path d="m4 16 1.2-4L13 4.2 15.8 7 8 14.8z"/><path d="m11.5 5.7 2.8 2.8"/></svg>
+            </button>
             <div class="chart-vtoolbar-sep"></div>
-            <button type="button" id="magnetBtn" title="Magnet: Punkte rasten an O/H/L/C der Kerze ein">&#129522;</button>
-            <button type="button" data-tool="eraser" title="Radiergummi: Klick auf eine Zeichnung entfernt sie" style="font-size:0.7em; font-weight:bold;">Del</button>
-            <button type="button" id="lockBtn" title="Zeichnungen sperren (kein Zeichnen/L&ouml;schen mehr)">&#128274;</button>
-            <button type="button" id="clearDrawBtn" title="Alle Zeichnungen entfernen">&#128465;</button>
+            <button type="button" id="magnetBtn" title="Magnet: Punkte rasten an O/H/L/C der Kerze ein" aria-label="Magnet">
+              <svg viewBox="0 0 20 20"><path d="M5 3v7a5 5 0 0 0 10 0V3"/><path d="M5 8.5h4M11 8.5h4"/><path d="M5 3h4M11 3h4"/></svg>
+            </button>
+            <button type="button" data-tool="eraser" title="Radiergummi: Klick auf eine Zeichnung entfernt sie (Taste X)" aria-label="Radiergummi">
+              <svg viewBox="0 0 20 20"><path d="M6 17h11"/><path d="m3.5 13.5 6-6 5 5-4 4h-5z"/><path d="m7 10 5 5"/></svg>
+            </button>
+            <button type="button" id="lockBtn" title="Zeichnungen sperren (kein Bearbeiten/L&ouml;schen)" aria-label="Sperren">
+              <svg viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
+            </button>
+            <button type="button" id="clearDrawBtn" title="Alle Zeichnungen dieses Symbols entfernen" aria-label="Alles l&ouml;schen">
+              <svg viewBox="0 0 20 20"><path d="M3.5 6h13M8 6V4h4v2M5.5 6l1 11h7l1-11"/><path d="M8.5 9v5M11.5 9v5"/></svg>
+            </button>
           </div>
 
           <div class="chart-canvas-wrap" id="chartWrap">
             <canvas id="chartCanvas"></canvas>
-            <div class="chart-tooltip" id="chartTooltip" hidden></div>
+            <div class="chart-props" id="chartProps" hidden>
+              <span class="pcolors"></span>
+              <span class="pwidths"></span>
+              <button type="button" class="pdel" title="Objekt l&ouml;schen (Entf)" aria-label="Objekt l&ouml;schen">
+                <svg viewBox="0 0 20 20"><path d="M3.5 6h13M8 6V4h4v2M5.5 6l1 11h7l1-11"/></svg>
+              </button>
+            </div>
             <div class="chart-empty" id="chartEmpty">Kurs w&auml;hlen &mdash; l&auml;dt automatisch&hellip;</div>
           </div>
         </div>
@@ -226,15 +343,21 @@
         </div>
 
         <p class="chart-hint" id="chartHint">
-          Live-Kerzendaten von Binance (&ouml;ffentliche API, keine Anmeldung). <strong>Crosshair</strong>-Werkzeug: ziehen zum
-          Verschieben, Mausrad zum Zoomen. Mausrad &uuml;ber der <strong>Preisachse rechts</strong> zoomt stattdessen die
-          H&ouml;he (Kerzen gr&ouml;&szlig;er/kleiner je nach Scroll-Richtung) &mdash; Doppelklick dort setzt es zur&uuml;ck.
-          Dazu <strong>Trendlinie</strong>, <strong>horizontale Linie</strong>,
-          <strong>Fibonacci</strong>, <strong>Rechteck</strong>, <strong>Text</strong>, <strong>Lineal</strong> und
-          <strong>Freihand</strong> &mdash; <strong>Magnet</strong> rastet an Kerzenpreisen ein, <strong>Radiergummi</strong>
-          l&ouml;scht einzelne Zeichnungen, <strong>Schloss</strong> sperrt alles. <strong>Vol</strong> und <strong>RSI</strong>
-          schalten die Indikator-Panels dazu. &bdquo;Musik-Reaktiv&ldquo; blendet unten den Player ein &mdash; solange er
-          l&auml;uft, pulsiert der Chart im Takt.
+          Kerzendaten von Binance (&ouml;ffentliche API, keine Anmeldung) &mdash; Historie per REST, laufende Kerze per
+          WebSocket in Echtzeit (&bdquo;LIVE&ldquo; oben rechts).
+          <strong>Navigation:</strong> ziehen = scrollen, Mausrad = Zoom auf den Mauszeiger, Shift+Rad = seitlich,
+          zwei Finger = Pinch-Zoom. Ziehen an der <strong>Preisachse</strong> (oder Mausrad dort) skaliert die H&ouml;he,
+          senkrechtes Ziehen im Chart verschiebt sie &mdash; Doppelklick auf die Achse schaltet zur&uuml;ck auf
+          <em>Auto</em>. Doppelklick im Chart oder das Zielkreuz-Symbol springt zur&uuml;ck zum aktuellen Kurs.
+          <strong>Zeichnen:</strong> alle Objekte h&auml;ngen an Zeitpunkt&nbsp;+&nbsp;Preis &mdash; sie bleiben beim
+          Zoomen, Scrollen, Nachladen alter Historie und beim Intervall-Wechsel exakt an ihrer Kerze. Mit dem
+          Fadenkreuz-Werkzeug lassen sie sich anklicken, verschieben und an den Griffen neu ziehen; die kleine Leiste
+          dar&uuml;ber &auml;ndert Farbe und Linienst&auml;rke. Zeichnungen werden je Symbol im Browser gespeichert.
+          <strong>Tasten:</strong> <kbd>A</kbd> Fadenkreuz, <kbd>T</kbd> Trendlinie, <kbd>H</kbd>/<kbd>V</kbd> Linien,
+          <kbd>R</kbd> Rechteck, <kbd>F</kbd> Fibonacci, <kbd>M</kbd> Lineal, <kbd>B</kbd> Freihand, <kbd>X</kbd>
+          Radiergummi, <kbd>L</kbd> Log-Achse, <kbd>Entf</kbd> l&ouml;schen, <kbd>Esc</kbd> abbrechen,
+          <kbd>Strg</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> r&uuml;ckg&auml;ngig.
+          &bdquo;Musik-Reaktiv&ldquo; blendet unten den Player ein &mdash; solange er l&auml;uft, pulsiert der Chart im Takt.
         </p>
       </div>
     </section>
@@ -333,37 +456,45 @@
   <script>
     (function () {
       // ══════════════════════════════════════════════════════════════
-      // Chart-Vis: Live-Kerzendaten von Binance (Symbol + echtes Intervall,
-      // inkl. Volumen) mit Zoom/Pan, Crosshair, Trendlinie, horizontaler
-      // Linie, Fibonacci, Rechteck, Text, Lineal, Freihand, Magnet,
-      // Radiergummi, Schloss, Volumen- und RSI(14)-Panel -- plus optionalem
-      // Musik-Reaktiv-Modus (Bass = Zoom-Puls, Mitten = Kippen, Hoehen/Beat
-      // = Farbe + Funken), gleiches Analyse-Prinzip wie der Mandelbrot-
-      // Visualizer in tunes.html. Der Musik-Player bleibt versteckt, bis
-      // der Modus per Button eingeschaltet wird.
+      // Chart-Vis -- TradingView-artige Kerzenchart-Engine auf Binance-
+      // Daten (REST-Historie + WebSocket-Ticks in Echtzeit).
+      //
+      // Kernidee: Zeichnungen liegen in DATEN-Koordinaten (Zeitstempel +
+      // Preis) -- nicht in Pixeln und nicht in Kerzen-Indizes. Dadurch
+      // kleben sie beim Zoomen, Scrollen, Nachladen aelterer Historie und
+      // beim Intervall-Wechsel exakt an ihrer Stelle im Kurs. Alle
+      // Pixel<->Daten-Umrechnungen laufen ueber GENAU EINE Funktion
+      // (geom()), die Maus-Handler und Renderer gemeinsam benutzen --
+      // frueher gab es dafuer zwei leicht verschiedene Formeln (halber
+      // Kerzen-Slot Versatz), weshalb Zeichnungen beim Zoomen wanderten.
       // ══════════════════════════════════════════════════════════════
 
-      const symbolSelect  = document.getElementById('symbolSelect');
-      const symbolCustom  = document.getElementById('symbolCustom');
-      const reloadBtn     = document.getElementById('reloadBtn');
-      const volBtn        = document.getElementById('volBtn');
-      const rsiBtn        = document.getElementById('rsiBtn');
-      const fsBtn         = document.getElementById('fsBtn');
-      const statusEl      = document.getElementById('chartStatus');
-      const coinTitleEl   = document.getElementById('coinTitle');
-      const priceEl       = document.getElementById('priceVal');
-      const chgEl         = document.getElementById('chgVal');
-      const wrap          = document.getElementById('chartWrap');
-      const canvas        = document.getElementById('chartCanvas');
+      const $ = id => document.getElementById(id);
+      const symbolSelect  = $('symbolSelect');
+      const symbolCustom  = $('symbolCustom');
+      const reloadBtn     = $('reloadBtn');
+      const fsBtn         = $('fsBtn');
+      const shotBtn       = $('shotBtn');
+      const logBtn        = $('logBtn');
+      const fitBtn        = $('fitBtn');
+      const undoBtn       = $('undoBtn');
+      const redoBtn       = $('redoBtn');
+      const statusEl      = $('chartStatus');
+      const coinTitleEl   = $('coinTitle');
+      const priceEl       = $('priceVal');
+      const chgEl         = $('chgVal');
+      const liveEl        = $('liveTag');
+      const wrap          = $('chartWrap');
+      const canvas        = $('chartCanvas');
       const cctx          = canvas.getContext('2d');
-      const emptyEl       = document.getElementById('chartEmpty');
-      const tooltipEl     = document.getElementById('chartTooltip');
-      const panelEl       = document.getElementById('chartPanel');
-      const clearDrawBtn  = document.getElementById('clearDrawBtn');
-      const magnetBtn     = document.getElementById('magnetBtn');
-      const lockBtn       = document.getElementById('lockBtn');
-      const musicModeBtn  = document.getElementById('musicModeBtn');
-      const playerSection = document.getElementById('playerSection');
+      const emptyEl       = $('chartEmpty');
+      const panelEl       = $('chartPanel');
+      const propsEl       = $('chartProps');
+      const clearDrawBtn  = $('clearDrawBtn');
+      const magnetBtn     = $('magnetBtn');
+      const lockBtn       = $('lockBtn');
+      const musicModeBtn  = $('musicModeBtn');
+      const playerSection = $('playerSection');
 
       const SYMBOL_NAMES = {
         BTCUSDT: 'Bitcoin (BTC/USDT)', ETHUSDT: 'Ethereum (ETH/USDT)', BNBUSDT: 'BNB (BNB/USDT)',
@@ -372,99 +503,153 @@
         DOTUSDT: 'Polkadot (DOT/USDT)'
       };
 
-      let candles = [];        // [{t,o,h,l,c,v}] -- komplettes geladenes Datenfenster
+      // Kerzendauer je Intervall -- Grundlage der Zeit<->Index-Umrechnung.
+      const BAR_MS = {
+        '1s': 1e3, '1m': 6e4, '3m': 18e4, '5m': 3e5, '15m': 9e5, '30m': 18e5,
+        '1h': 36e5, '2h': 72e5, '4h': 144e5, '6h': 216e5, '8h': 288e5, '12h': 432e5,
+        '1d': 864e5, '3d': 2592e5, '1w': 6048e5, '1M': 2629746e3
+      };
+
+      const PAGE = 1000;              // Kerzen pro Binance-Anfrage (API-Maximum)
+      const AXIS_W = 78;              // Breite der Preisachsen-Spalte rechts
+      const AXIS_H = 22;              // Hoehe der Zeitachsen-Zeile unten
+      const TOP_PAD = 8;
+      const MIN_BARS = 8;             // engster Zeit-Zoom
+      const HIT_TOL = 7;              // Trefferradius fuer Zeichnungen (px)
+
+      let candles = [];               // [{t,o,h,l,c,v}] aufsteigend
+      let haData = null;              // Heikin-Ashi-Serie (parallel zu candles)
       let currentSymbol   = 'BTCUSDT';
       let currentInterval = '1d';
-      let chartType = 'candles'; // 'candles' | 'line'
+      let chartType = 'candles';      // candles|ha|bars|line|area
+      let barMs = BAR_MS['1d'];
       let reqSeq = 0;
-      let hoverIndex = -1;     // echter Index in `candles`, nicht im Sichtfenster
-      let hoverY = -1;
       let cssW = 0, cssH = 0, dpr = Math.max(1, window.devicePixelRatio || 1);
-      let raf = 0;
-      let ambientT = 0;
+      let raf = 0, ambientT = 0;
+      let hoverX = -1, hoverY = -1, hoverSlot = null, hoverIndex = -1, mouseIn = false;
 
-      // --- Zoom/Pan: sichtbares Kerzenfenster -------------------------
-      const MIN_VIEW = 8;
-      const AXIS_W = 72;        // Breite der rechten Preisachsen-Spalte (Mausrad dort = Preis-Zoom)
-      const PRICE_ZOOM_MIN = 0.15, PRICE_ZOOM_MAX = 6;
-      let priceZoom = 1;        // 1 = automatisch an die sichtbaren Kerzen angepasst
-      let viewStart = 0, viewCount = 0;
+      // --- Einstellungen dauerhaft merken -------------------------------
+      const PREF_KEY = 'glappa-chartvis-prefs';
+      let prefs = {};
+      try { prefs = JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { prefs = {}; }
+
+      const indState = { vol: true, rsi: false, macd: false, ma: false, bb: false };
+      if (prefs.ind) for (const k in indState) if (typeof prefs.ind[k] === 'boolean') indState[k] = prefs.ind[k];
+      let logScale = !!prefs.log;
+      let magnetOn = !!prefs.magnet;
+      let locked = false;
+      if (prefs.interval && BAR_MS[prefs.interval]) currentInterval = prefs.interval;
+      if (prefs.type) chartType = prefs.type;
+
+      function savePrefs() {
+        try {
+          localStorage.setItem(PREF_KEY, JSON.stringify({
+            interval: currentInterval, type: chartType, log: logScale,
+            magnet: magnetOn, ind: indState, symbol: currentSymbol
+          }));
+        } catch (e) {}
+      }
+
+      // --- Preis-Transformation (linear oder logarithmisch) -------------
+      function tp(p)  { return logScale ? Math.log(Math.max(1e-9, p)) : p; }
+      function untp(v){ return logScale ? Math.exp(v) : v; }
+
+      // --- Formatierung -------------------------------------------------
+      function fmtPrice(p) {
+        if (!isFinite(p)) return '—';
+        const a = Math.abs(p);
+        const dec = a >= 1000 ? 0 : a >= 1 ? 2 : a >= 0.01 ? 4 : 8;
+        return p.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: dec });
+      }
+      function fmtCurrency(p) { return '$' + fmtPrice(p); }
+      function fmtVol(v) {
+        if (v >= 1e9) return (v / 1e9).toFixed(2) + ' Mrd';
+        if (v >= 1e6) return (v / 1e6).toFixed(2) + ' Mio';
+        if (v >= 1e3) return (v / 1e3).toFixed(1) + ' Tsd';
+        return v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+      }
+      function axisLabel(ts) {
+        const d = new Date(ts);
+        if (barMs < 864e5) {
+          if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0)
+            return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+          let s = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          if (barMs < 6e4) s += ':' + String(d.getSeconds()).padStart(2, '0');
+          return s;
+        }
+        if (barMs <= 6048e5) return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+        return d.toLocaleDateString('de-DE', { month: '2-digit', year: '2-digit' });
+      }
+      function fmtFull(ts) {
+        const d = new Date(ts);
+        if (barMs < 864e5) return d.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: barMs < 6e4 ? 'medium' : 'short' });
+        return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' });
+      }
+      function niceNum(range, round) {
+        if (!(range > 0)) return 1;
+        const exp = Math.floor(Math.log10(range));
+        const f = range / Math.pow(10, exp);
+        const nf = round ? (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10)
+                         : (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10);
+        return nf * Math.pow(10, exp);
+      }
+
+      // --- Zeit <-> (Bruchteil-)Index -----------------------------------
+      // Beide Richtungen extrapolieren ueber die geladenen Daten hinaus,
+      // damit Zeichnungen rechts vom letzten Kurs oder links vor dem
+      // Datenanfang nicht zusammenklappen.
+      function idxFromTime(t) {
+        const n = candles.length;
+        if (!n) return 0;
+        const t0 = candles[0].t;
+        if (t <= t0) return (t - t0) / barMs;
+        const tn = candles[n - 1].t;
+        if (t >= tn) return (n - 1) + (t - tn) / barMs;
+        let lo = 0, hi = n - 1;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (candles[m].t <= t) lo = m; else hi = m; }
+        const span = candles[hi].t - candles[lo].t || barMs;
+        return lo + (t - candles[lo].t) / span;
+      }
+      function timeFromIdx(i) {
+        const n = candles.length;
+        if (!n) return Date.now();
+        if (i <= 0) return candles[0].t + i * barMs;
+        if (i >= n - 1) return candles[n - 1].t + (i - (n - 1)) * barMs;
+        const lo = Math.floor(i), f = i - lo;
+        return candles[lo].t + (candles[lo + 1].t - candles[lo].t) * f;
+      }
+
+      // --- Sichtfenster (Zeit-Zoom/Scroll) -------------------------------
+      let viewStart = 0, viewCount = 180;
       function clampView() {
         const total = candles.length;
-        if (!total) { viewStart = 0; viewCount = 0; return; }
-        viewCount = Math.max(Math.min(MIN_VIEW, total), Math.min(total, viewCount));
-        viewStart = Math.max(0, Math.min(total - viewCount, viewStart));
+        if (!total) { viewStart = 0; viewCount = MIN_BARS; return; }
+        viewCount = Math.max(MIN_BARS, Math.min(total + 40, viewCount));
+        const rightPad = Math.max(2, viewCount * 0.05);
+        const minStart = -viewCount * 0.35;
+        const maxStart = Math.max(minStart, total - Math.max(4, viewCount * 0.12));
+        viewStart = Math.max(minStart, Math.min(maxStart, viewStart));
+        void rightPad;
       }
+      // Kompatibilitaet fuer den Musik-Teil weiter unten
       function getView() {
+        return { start: Math.max(0, Math.floor(viewStart)), count: Math.max(1, Math.ceil(viewCount) + 2) };
+      }
+      function resetView() {
         const total = candles.length;
-        if (!total) return { start: 0, count: 0 };
-        const count = Math.max(1, Math.min(total, Math.round(viewCount)));
-        const start = Math.max(0, Math.min(total - count, Math.round(viewStart)));
-        return { start, count };
+        viewCount = Math.max(MIN_BARS, Math.min(total, 180));
+        viewStart = total - viewCount + Math.max(2, viewCount * 0.06);
+        autoScale = true;
+        clampView();
       }
-      function resetView() { viewStart = 0; viewCount = candles.length; clampView(); }
+      function atRightEdge() { return viewStart + viewCount >= candles.length - 0.5; }
 
-      // --- Zeichenwerkzeuge --------------------------------------------
-      let currentTool = 'pan';   // 'pan'|'line'|'hline'|'fib'|'rect'|'text'|'ruler'|'brush'|'eraser'
-      let drawings = [];         // Zeichnungen in Datenkoordinaten (Index+Preis)
-      let pending  = null;       // gerade gezogene, noch nicht abgeschlossene Zeichnung
-      let dragState = null;      // {mode:'pan', startX, startViewStart} | {mode:'draw'}
-      let lastGeom  = null;      // von renderChart() aktuell gehaltene Sichtfenster-Geometrie
-      let magnetOn = false, locked = false;
+      // --- Preisskala ----------------------------------------------------
+      let autoScale = true;
+      let scaleMin = 0, scaleMax = 1;
 
-      function snapPrice(idx, price) {
-        if (!magnetOn) return price;
-        const ci = Math.max(0, Math.min(candles.length - 1, Math.round(idx)));
-        const c = candles[ci];
-        if (!c) return price;
-        const opts = [c.o, c.h, c.l, c.c];
-        let best = opts[0], bestD = Math.abs(price - opts[0]);
-        for (let k = 1; k < opts.length; k++) {
-          const d = Math.abs(price - opts[k]);
-          if (d < bestD) { bestD = d; best = opts[k]; }
-        }
-        return best;
-      }
-
-      function hitTestDrawing(x, y) {
-        const g = lastGeom; if (!g) return -1;
-        const px_ = idx => (idx - g.start) * g.slot + g.slot / 2;
-        const py_ = price => g.plotY0 + g.plotH - ((price - g.minP) / (g.maxP - g.minP)) * g.plotH;
-        function distToSeg(px0, py0, x1, y1, x2, y2) {
-          const dx = x2 - x1, dy = y2 - y1;
-          const len2 = dx * dx + dy * dy;
-          let t = len2 ? ((px0 - x1) * dx + (py0 - y1) * dy) / len2 : 0;
-          t = Math.max(0, Math.min(1, t));
-          const cx = x1 + t * dx, cy = y1 + t * dy;
-          return Math.hypot(px0 - cx, py0 - cy);
-        }
-        const TOL = 8;
-        for (let idx = drawings.length - 1; idx >= 0; idx--) {
-          const d = drawings[idx];
-          if (d.type === 'hline') {
-            if (Math.abs(y - py_(d.price)) < TOL) return idx;
-          } else if (d.type === 'text') {
-            if (Math.hypot(x - px_(d.i1), y - py_(d.p1)) < 16) return idx;
-          } else if (d.type === 'brush') {
-            for (let k = 1; k < d.points.length; k++) {
-              const a = d.points[k - 1], b = d.points[k];
-              if (distToSeg(x, y, px_(a.i), py_(a.p), px_(b.i), py_(b.p)) < TOL) return idx;
-            }
-          } else if (d.type === 'rect' || d.type === 'fib') {
-            const x1 = px_(d.i1), y1 = py_(d.p1), x2 = px_(d.i2), y2 = py_(d.p2);
-            const minx = Math.min(x1, x2), maxx = Math.max(x1, x2), miny = Math.min(y1, y2), maxy = Math.max(y1, y2);
-            if (x >= minx - TOL && x <= maxx + TOL && y >= miny - TOL && y <= maxy + TOL) return idx;
-          } else {
-            if (distToSeg(x, y, px_(d.i1), py_(d.p1), px_(d.i2), py_(d.p2)) < TOL) return idx;
-          }
-        }
-        return -1;
-      }
-
-      // --- Indikator: RSI(14) -----------------------------------------
-      let rsiOn = false;
-      let rsiData = null;        // Array parallel zu `candles`, RSI-Wert oder null
-      let volOn = true;
+      // --- Indikatoren ---------------------------------------------------
+      let rsiData = null, ma20 = null, ma50 = null, bb = null, macd = null;
 
       function computeRSI(rows, period) {
         period = period || 14;
@@ -486,8 +671,870 @@
         }
         return out;
       }
+      function sma(rows, period) {
+        const out = new Array(rows.length).fill(null);
+        let sum = 0;
+        for (let i = 0; i < rows.length; i++) {
+          sum += rows[i].c;
+          if (i >= period) sum -= rows[i - period].c;
+          if (i >= period - 1) out[i] = sum / period;
+        }
+        return out;
+      }
+      function emaArr(vals, period) {
+        const out = new Array(vals.length).fill(null);
+        const k = 2 / (period + 1);
+        let prev = null, sum = 0, cnt = 0;
+        for (let i = 0; i < vals.length; i++) {
+          const v = vals[i];
+          if (v == null) continue;
+          if (prev === null) {
+            sum += v; cnt++;
+            if (cnt === period) { prev = sum / period; out[i] = prev; }
+          } else { prev = v * k + prev * (1 - k); out[i] = prev; }
+        }
+        return out;
+      }
+      function bollinger(rows, period, mult) {
+        const mid = sma(rows, period);
+        const up = new Array(rows.length).fill(null), lo = new Array(rows.length).fill(null);
+        for (let i = period - 1; i < rows.length; i++) {
+          if (mid[i] == null) continue;
+          let s = 0;
+          for (let k = i - period + 1; k <= i; k++) { const d = rows[k].c - mid[i]; s += d * d; }
+          const sd = Math.sqrt(s / period);
+          up[i] = mid[i] + mult * sd; lo[i] = mid[i] - mult * sd;
+        }
+        return { mid, up, lo };
+      }
+      function computeMACD(rows, fast, slow, sig) {
+        const cl = rows.map(r => r.c);
+        const ef = emaArr(cl, fast), es = emaArr(cl, slow);
+        const line = cl.map((_, i) => (ef[i] != null && es[i] != null) ? ef[i] - es[i] : null);
+        const signal = emaArr(line, sig);
+        const hist = line.map((v, i) => (v != null && signal[i] != null) ? v - signal[i] : null);
+        return { line, signal, hist };
+      }
+      function computeHA(rows) {
+        const out = new Array(rows.length);
+        let po = null, pc = null;
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          const hc = (r.o + r.h + r.l + r.c) / 4;
+          const ho = po === null ? (r.o + r.c) / 2 : (po + pc) / 2;
+          out[i] = { t: r.t, o: ho, c: hc, h: Math.max(r.h, ho, hc), l: Math.min(r.l, ho, hc), v: r.v };
+          po = ho; pc = hc;
+        }
+        return out;
+      }
+      function computeIndicators() {
+        rsiData = computeRSI(candles, 14);
+        ma20 = sma(candles, 20);
+        ma50 = sma(candles, 50);
+        bb = bollinger(candles, 20, 2);
+        macd = computeMACD(candles, 12, 26, 9);
+        haData = computeHA(candles);
+      }
+      function dispBar(i) { return (chartType === 'ha' && haData && haData[i]) ? haData[i] : candles[i]; }
 
-      // --- Musik-Reaktiv-Modus: Player + alle Reaktiv-Effekte gaten ---
+      // ── Geometrie: die EINZIGE Quelle fuer Pixel<->Daten ───────────────
+      function geom() {
+        const W = cssW, H = cssH;
+        let volH  = indState.vol  ? Math.round(H * 0.13) : 0;
+        let rsiH  = indState.rsi  ? Math.round(H * 0.16) : 0;
+        let macdH = indState.macd ? Math.round(H * 0.16) : 0;
+        let eqH   = musicMode     ? Math.round(H * 0.16) : 0;
+        const avail = Math.max(60, H - AXIS_H - TOP_PAD);
+        let extra = volH + rsiH + macdH + eqH;
+        const maxExtra = Math.max(0, avail - Math.max(110, avail * 0.5));
+        if (extra > maxExtra && extra > 0) {
+          const f = maxExtra / extra;
+          volH = Math.round(volH * f); rsiH = Math.round(rsiH * f);
+          macdH = Math.round(macdH * f); eqH = Math.round(eqH * f);
+          extra = volH + rsiH + macdH + eqH;
+        }
+        const plotY0 = TOP_PAD;
+        const plotH  = Math.max(40, avail - extra);
+        const volY0  = plotY0 + plotH;
+        const rsiY0  = volY0 + volH;
+        const macdY0 = rsiY0 + rsiH;
+        const eqY0   = macdY0 + macdH;
+        const plotW  = Math.max(10, W - AXIS_W);
+        const slot   = plotW / Math.max(MIN_BARS, viewCount);
+        const i0 = Math.max(0, Math.floor(viewStart));
+        const i1 = Math.min(candles.length - 1, Math.ceil(viewStart + viewCount));
+
+        let lo, hi;
+        if (autoScale) {
+          lo = Infinity; hi = -Infinity;
+          for (let i = i0; i <= i1; i++) {
+            const c = dispBar(i); if (!c) continue;
+            if (c.l < lo) lo = c.l;
+            if (c.h > hi) hi = c.h;
+          }
+          if (indState.bb && bb) for (let i = i0; i <= i1; i++) {
+            const u = bb.up[i], d = bb.lo[i];
+            if (u != null && u > hi) hi = u;
+            if (d != null && d < lo) lo = d;
+          }
+          if (indState.ma && ma50) for (let i = i0; i <= i1; i++) {
+            const a = ma20[i], b = ma50[i];
+            if (a != null) { if (a > hi) hi = a; if (a < lo) lo = a; }
+            if (b != null) { if (b > hi) hi = b; if (b < lo) lo = b; }
+          }
+          if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+          if (hi <= lo) { hi = lo + Math.max(1e-8, Math.abs(lo) * 0.01); }
+          const padP = (hi - lo) * 0.08;
+          lo -= padP; hi += padP;
+          if (logScale && lo <= 0) lo = hi * 1e-4;
+          scaleMin = lo; scaleMax = hi;
+        } else {
+          lo = scaleMin; hi = scaleMax;
+          if (logScale && lo <= 0) lo = Math.max(1e-9, hi * 1e-4);
+        }
+        const tLo = tp(lo), tHi = tp(hi);
+        const tSpan = Math.max(1e-12, tHi - tLo);
+
+        const g = {
+          W, H, plotW, plotH, plotY0, plotY1: plotY0 + plotH,
+          volY0, volH, rsiY0, rsiH, macdY0, macdH, eqY0, eqH,
+          axisY0: H - AXIS_H, slot, i0, i1, lo, hi, tLo, tHi, tSpan
+        };
+        g.xOf = i => (i - viewStart) * slot + slot / 2;
+        g.iOf = x => viewStart + (x - slot / 2) / slot;
+        g.yOf = p => plotY0 + plotH - (tp(p) - tLo) / tSpan * plotH;
+        g.pOf = y => untp(tHi - (y - plotY0) / plotH * tSpan);
+        return g;
+      }
+
+      // ── Zeichnungen ────────────────────────────────────────────────────
+      // Modell: {id, type, pts:[{t,p}], color, width, text}
+      const DEF_COLOR = {
+        line: '#ffd866', ray: '#ffd866', arrow: '#ffd866', hline: '#00e5ff', vline: '#00e5ff',
+        rect: '#00e5ff', ellipse: '#c084fc', fib: '#ffd866', text: '#ffd866',
+        brush: '#ffd866', ruler: '#3be6a0'
+      };
+      const PALETTE = ['#ffd866', '#3be6a0', '#ff5f6d', '#00e5ff', '#c084fc', '#ffffff'];
+      const TWO_POINT = { line: 1, ray: 1, arrow: 1, rect: 1, ellipse: 1, fib: 1, ruler: 1 };
+
+      let currentTool = 'pan';
+      let drawings = [];
+      let pending  = null;
+      let dragState = null;
+      let selectedId = null, hoverHit = null;
+      let undoStack = [], redoStack = [];
+      let idCounter = 1;
+      const newId = () => 'd' + (idCounter++) + '_' + Date.now().toString(36);
+
+      const DRAW_KEY = s => 'glappa-chartvis-draw-' + s;
+      function saveDrawings() {
+        try { localStorage.setItem(DRAW_KEY(currentSymbol), JSON.stringify(drawings)); } catch (e) {}
+      }
+      function loadDrawings(sym) {
+        let arr = [];
+        try { arr = JSON.parse(localStorage.getItem(DRAW_KEY(sym))) || []; } catch (e) { arr = []; }
+        drawings = Array.isArray(arr) ? arr.filter(d => d && d.type && Array.isArray(d.pts) && d.pts.length) : [];
+        selectedId = null;
+      }
+      function snapshot() {
+        undoStack.push(JSON.stringify(drawings));
+        if (undoStack.length > 80) undoStack.shift();
+        redoStack.length = 0;
+        updateUndoBtns();
+      }
+      function undo() {
+        if (!undoStack.length) return;
+        redoStack.push(JSON.stringify(drawings));
+        drawings = JSON.parse(undoStack.pop());
+        selectedId = null; pending = null; saveDrawings(); updateUndoBtns();
+      }
+      function redo() {
+        if (!redoStack.length) return;
+        undoStack.push(JSON.stringify(drawings));
+        drawings = JSON.parse(redoStack.pop());
+        selectedId = null; pending = null; saveDrawings(); updateUndoBtns();
+      }
+      function updateUndoBtns() {
+        undoBtn.disabled = !undoStack.length;
+        redoBtn.disabled = !redoStack.length;
+      }
+      function findDrawing(id) { return drawings.find(d => d.id === id) || null; }
+
+      // Magnet: Zeitpunkt auf die Kerze, Preis auf den naechsten O/H/L/C-Wert
+      function dataPoint(g, x, y, useMagnet) {
+        const idx = g.iOf(x);
+        let price = g.pOf(y);
+        let t;
+        if (useMagnet && magnetOn && candles.length) {
+          const ci = Math.max(0, Math.min(candles.length - 1, Math.round(idx)));
+          const c = dispBar(ci) || candles[ci];
+          t = candles[ci].t;
+          const opts = [c.o, c.h, c.l, c.c];
+          let best = opts[0], bestD = Math.abs(price - opts[0]);
+          for (let k = 1; k < 4; k++) {
+            const d = Math.abs(price - opts[k]);
+            if (d < bestD) { bestD = d; best = opts[k]; }
+          }
+          price = best;
+        } else {
+          t = timeFromIdx(idx);
+        }
+        return { t, p: price };
+      }
+
+      function distToSeg(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const len2 = dx * dx + dy * dy;
+        let t = len2 ? ((px - x1) * dx + (py - y1) * dy) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+      }
+      function scr(g, pt) { return { x: g.xOf(idxFromTime(pt.t)), y: g.yOf(pt.p) }; }
+
+      // Treffer-Test: liefert 'p0'/'p1'/'body' oder null
+      function hitDrawing(g, d, x, y) {
+        const P = d.pts.map(pt => scr(g, pt));
+        const near = (a, b) => Math.hypot(x - a, y - b) < HIT_TOL + 2;
+        if (d.type !== 'brush' && d.type !== 'hline' && d.type !== 'vline' && d.type !== 'text') {
+          if (P[0] && near(P[0].x, P[0].y)) return 'p0';
+          if (P[1] && near(P[1].x, P[1].y)) return 'p1';
+        }
+        switch (d.type) {
+          case 'hline':
+            return Math.abs(y - P[0].y) < HIT_TOL ? 'body' : null;
+          case 'vline':
+            return Math.abs(x - P[0].x) < HIT_TOL ? 'body' : null;
+          case 'text': {
+            cctx.font = 'bold ' + (11 + (d.width || 2) * 1.5) + 'px "Courier New", monospace';
+            const w = cctx.measureText(d.text || '').width;
+            return (x > P[0].x - 6 && x < P[0].x + w + 8 && y > P[0].y - 16 && y < P[0].y + 6) ? 'body' : null;
+          }
+          case 'brush': {
+            for (let k = 1; k < P.length; k++)
+              if (distToSeg(x, y, P[k - 1].x, P[k - 1].y, P[k].x, P[k].y) < HIT_TOL) return 'body';
+            return null;
+          }
+          case 'rect': case 'fib': case 'ruler': {
+            const x1 = Math.min(P[0].x, P[1].x), x2 = Math.max(P[0].x, P[1].x);
+            const y1 = Math.min(P[0].y, P[1].y), y2 = Math.max(P[0].y, P[1].y);
+            return (x >= x1 - HIT_TOL && x <= x2 + HIT_TOL && y >= y1 - HIT_TOL && y <= y2 + HIT_TOL) ? 'body' : null;
+          }
+          case 'ellipse': {
+            const cx = (P[0].x + P[1].x) / 2, cy = (P[0].y + P[1].y) / 2;
+            const rx = Math.abs(P[1].x - P[0].x) / 2 || 1, ry = Math.abs(P[1].y - P[0].y) / 2 || 1;
+            const v = Math.pow((x - cx) / rx, 2) + Math.pow((y - cy) / ry, 2);
+            return v < 1.25 ? 'body' : null;
+          }
+          case 'ray': {
+            const e = rayEnd(P[0].x, P[0].y, P[1].x, P[1].y, g);
+            return distToSeg(x, y, P[0].x, P[0].y, e.x, e.y) < HIT_TOL ? 'body' : null;
+          }
+          default:
+            return distToSeg(x, y, P[0].x, P[0].y, P[1].x, P[1].y) < HIT_TOL ? 'body' : null;
+        }
+      }
+      function hitTest(g, x, y) {
+        // zuerst das ausgewaehlte Objekt (damit dessen Griffe Vorrang haben)
+        const order = drawings.slice();
+        const si = order.findIndex(d => d.id === selectedId);
+        if (si >= 0) order.push(order.splice(si, 1)[0]);
+        for (let k = order.length - 1; k >= 0; k--) {
+          const part = hitDrawing(g, order[k], x, y);
+          if (part) return { d: order[k], part };
+        }
+        return null;
+      }
+      function rayEnd(x1, y1, x2, y2, g) {
+        let dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len; dy /= len;
+        let t = Infinity;
+        if (dx > 1e-9) t = Math.min(t, (g.plotW - x1) / dx); else if (dx < -1e-9) t = Math.min(t, -x1 / dx);
+        if (dy > 1e-9) t = Math.min(t, (g.plotY1 - y1) / dy); else if (dy < -1e-9) t = Math.min(t, (g.plotY0 - y1) / dy);
+        if (!isFinite(t) || t < 0) t = len;
+        return { x: x1 + dx * t, y: y1 + dy * t };
+      }
+
+      // ── Werkzeug-Leiste ────────────────────────────────────────────────
+      function setTool(tool) {
+        currentTool = tool;
+        document.querySelectorAll('#chartVToolbar button[data-tool]')
+          .forEach(b => b.classList.toggle('active', b.dataset.tool === tool));
+        applyCursor();
+      }
+      document.querySelectorAll('#chartVToolbar button[data-tool]').forEach(btn => {
+        btn.addEventListener('click', () => setTool(btn.dataset.tool));
+      });
+      magnetBtn.addEventListener('click', () => {
+        magnetOn = !magnetOn; magnetBtn.classList.toggle('active', magnetOn); savePrefs();
+      });
+      lockBtn.addEventListener('click', () => {
+        locked = !locked; lockBtn.classList.toggle('active', locked);
+        if (locked) { selectedId = null; hideProps(); }
+        statusEl.textContent = locked ? 'Zeichnungen gesperrt.' : 'Zeichnungen entsperrt.';
+      });
+      clearDrawBtn.addEventListener('click', () => {
+        if (!drawings.length) return;
+        if (!window.confirm('Alle ' + drawings.length + ' Zeichnungen dieses Symbols loeschen?')) return;
+        snapshot(); drawings = []; pending = null; selectedId = null; hideProps(); saveDrawings();
+      });
+      undoBtn.addEventListener('click', undo);
+      redoBtn.addEventListener('click', redo);
+      magnetBtn.classList.toggle('active', magnetOn);
+
+      // ── Eigenschaften-Leiste des ausgewaehlten Objekts ─────────────────
+      const propColors = propsEl.querySelector('.pcolors');
+      const propWidths = propsEl.querySelector('.pwidths');
+      PALETTE.forEach(col => {
+        const b = document.createElement('button');
+        b.className = 'sw'; b.style.background = col; b.dataset.col = col;
+        b.title = 'Farbe ' + col;
+        propColors.appendChild(b);
+      });
+      [1, 2, 3].forEach(w => {
+        const b = document.createElement('button');
+        b.className = 'wbtn'; b.dataset.w = w; b.textContent = w + 'px';
+        propWidths.appendChild(b);
+      });
+      propsEl.addEventListener('click', e => {
+        const d = findDrawing(selectedId);
+        if (!d) return;
+        const sw = e.target.closest('.sw');
+        const wb = e.target.closest('.wbtn');
+        const del = e.target.closest('.pdel');
+        if (sw)  { snapshot(); d.color = sw.dataset.col; saveDrawings(); syncProps(d); }
+        if (wb)  { snapshot(); d.width = +wb.dataset.w; saveDrawings(); syncProps(d); }
+        if (del) { deleteSelected(); }
+      });
+      function syncProps(d) {
+        propsEl.querySelectorAll('.sw').forEach(b => b.classList.toggle('active', b.dataset.col === (d.color || DEF_COLOR[d.type])));
+        propsEl.querySelectorAll('.wbtn').forEach(b => b.classList.toggle('active', +b.dataset.w === (d.width || 2)));
+      }
+      function hideProps() { propsEl.hidden = true; }
+      function deleteSelected() {
+        const i = drawings.findIndex(d => d.id === selectedId);
+        if (i < 0) return;
+        snapshot(); drawings.splice(i, 1); selectedId = null; hideProps(); saveDrawings();
+      }
+      function selectDrawing(d) {
+        selectedId = d ? d.id : null;
+        if (!d) { hideProps(); return; }
+        propsEl.hidden = false;
+        syncProps(d);
+      }
+
+      // ── Canvas-Groesse (High-DPI) ──────────────────────────────────────
+      // Misst der Browser die Flaeche (noch) nicht -- z.B. weil das Layout
+      // beim Skriptstart oder in einem Hintergrund-Tab nicht steht --, wird
+      // die kaputte Groesse NICHT uebernommen, sondern spaeter neu gemessen.
+      // Sonst friert die gesamte Geometrie auf Minimalwerten ein und Klicks
+      // landen an voellig falschen Kursen.
+      function fitCanvas() {
+        const r = wrap.getBoundingClientRect();
+        if (r.width < 40 || r.height < 40) {
+          if (!fitCanvas.retry) {
+            fitCanvas.retry = setTimeout(() => { fitCanvas.retry = 0; fitCanvas(); }, 150);
+          }
+          return;
+        }
+        cssW = Math.floor(r.width);
+        cssH = Math.floor(r.height);
+        dpr = Math.max(1, window.devicePixelRatio || 1);
+        const pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
+        if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+      }
+      window.addEventListener('resize', fitCanvas);
+      window.addEventListener('load', fitCanvas);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) fitCanvas(); });
+      if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(wrap);
+      fitCanvas();
+
+      // ── Zeiger-Eingabe (Maus, Touch, Stift) ────────────────────────────
+      const pointers = new Map();
+      let pinch = null;
+
+      function localXY(e) {
+        const r = canvas.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+      }
+      function zoneOf(g, x, y) {
+        if (x >= g.plotW) return 'paxis';
+        if (y >= g.axisY0) return 'taxis';
+        return 'plot';
+      }
+      function applyCursor(zone, hit) {
+        let c;
+        if (zone === 'paxis') c = 'ns-resize';
+        else if (zone === 'taxis') c = 'ew-resize';
+        else if (dragState && dragState.mode === 'pan') c = 'grabbing';
+        else if (hit && !locked) c = (hit.part === 'body') ? 'move' : 'nwse-resize';
+        else if (currentTool === 'pan') c = 'grab';
+        else if (currentTool === 'eraser') c = 'crosshair';
+        else c = 'crosshair';
+        if (canvas.style.cursor !== c) canvas.style.cursor = c;
+      }
+
+      canvas.addEventListener('pointerdown', e => {
+        if (!candles.length) return;
+        canvas.focus && canvas.focus();
+        const { x, y } = localXY(e);
+        pointers.set(e.pointerId, { x, y });
+        if (pointers.size === 2) {
+          const [a, b] = [...pointers.values()];
+          const g = geom();
+          pinch = {
+            dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+            count: viewCount,
+            centerIdx: g.iOf((a.x + b.x) / 2),
+            centerX: (a.x + b.x) / 2
+          };
+          dragState = null;
+          return;
+        }
+        if (pointers.size > 2 || e.button !== 0 && e.pointerType === 'mouse') return;
+        e.preventDefault();
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        const g = geom();
+        const zone = zoneOf(g, x, y);
+
+        if (zone === 'paxis') {
+          dragState = { mode: 'paxis', startY: y, tLo: g.tLo, tHi: g.tHi, moved: false };
+          return;
+        }
+        if (zone === 'taxis') {
+          dragState = { mode: 'taxis', startX: x, count: viewCount, centerIdx: g.iOf(g.plotW / 2) };
+          return;
+        }
+
+        // Auswahl/Bearbeiten hat immer Vorrang -- auch mit aktivem Zeichen-
+        // werkzeug lassen sich vorhandene Objekte anfassen (wie TradingView).
+        const hit = locked ? null : hitTest(g, x, y);
+        if (currentTool === 'eraser') {
+          if (hit) { snapshot(); drawings.splice(drawings.indexOf(hit.d), 1); selectedId = null; hideProps(); saveDrawings(); }
+          else statusEl.textContent = 'Radiergummi: auf eine Zeichnung klicken.';
+          return;
+        }
+        if (hit && (currentTool === 'pan' || hit.d.id === selectedId)) {
+          selectDrawing(hit.d);
+          snapshot();
+          dragState = {
+            mode: 'move', part: hit.part, d: hit.d,
+            startT: timeFromIdx(g.iOf(x)), startTP: tp(g.pOf(y)),
+            orig: JSON.parse(JSON.stringify(hit.d.pts)), moved: false
+          };
+          return;
+        }
+        if (currentTool === 'pan') {
+          selectDrawing(null);
+          dragState = { mode: 'pan', startX: x, startY: y, startView: viewStart, tLo: g.tLo, tHi: g.tHi, vpan: false };
+          applyCursor(zone, null);
+          return;
+        }
+        if (locked) { statusEl.innerHTML = '<span class="err">Zeichnungen sind gesperrt (Schloss).</span>'; return; }
+
+        // Neues Objekt anlegen
+        const pt = dataPoint(g, x, y, true);
+        const base = { id: newId(), type: currentTool, color: DEF_COLOR[currentTool] || '#ffd866', width: 2 };
+        if (currentTool === 'hline' || currentTool === 'vline') {
+          const d = Object.assign(base, { pts: [pt] });
+          snapshot(); drawings.push(d); saveDrawings(); selectDrawing(d);
+          return;
+        }
+        if (currentTool === 'text') {
+          const txt = window.prompt('Text fuer die Notiz an dieser Stelle:', '');
+          if (txt && txt.trim()) {
+            const d = Object.assign(base, { pts: [pt], text: txt.trim() });
+            snapshot(); drawings.push(d); saveDrawings(); selectDrawing(d);
+          }
+          return;
+        }
+        if (currentTool === 'brush') {
+          pending = Object.assign(base, { pts: [pt] });
+          dragState = { mode: 'draw' };
+          return;
+        }
+        pending = Object.assign(base, { pts: [pt, { t: pt.t, p: pt.p }] });
+        dragState = { mode: 'draw' };
+      });
+
+      canvas.addEventListener('pointermove', e => {
+        if (!candles.length) return;
+        const { x, y } = localXY(e);
+        if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x, y });
+        mouseIn = true;
+
+        if (pinch && pointers.size === 2) {
+          const [a, b] = [...pointers.values()];
+          const dist = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+          viewCount = pinch.count * (pinch.dist / dist);
+          clampView();
+          const g2 = geom();
+          viewStart = pinch.centerIdx - (pinch.centerX - g2.slot / 2) / g2.slot;
+          clampView();
+          maybeLoadMore();
+          return;
+        }
+
+        const g = geom();
+        updateHover(g, x, y);
+
+        if (!dragState) {
+          const zone = zoneOf(g, x, y);
+          hoverHit = (zone === 'plot' && !locked) ? hitTest(g, x, y) : null;
+          applyCursor(zone, hoverHit);
+          return;
+        }
+
+        if (dragState.mode === 'pan') {
+          const dx = x - dragState.startX, dy = y - dragState.startY;
+          viewStart = dragState.startView - dx / g.slot;
+          clampView();
+          // Vertikal ziehen schaltet (wie bei TradingView) auf manuelle
+          // Preisskala um -- erst ab ein paar Pixeln, damit horizontales
+          // Scrollen nicht versehentlich die Skala verstellt.
+          if (dragState.vpan || Math.abs(dy) > 10) {
+            dragState.vpan = true;
+            autoScale = false;
+            const shift = (dy / g.plotH) * (dragState.tHi - dragState.tLo);
+            scaleMin = untp(dragState.tLo + shift);
+            scaleMax = untp(dragState.tHi + shift);
+          }
+          maybeLoadMore();
+          return;
+        }
+        if (dragState.mode === 'paxis') {
+          autoScale = false;
+          const f = Math.pow(1.008, y - dragState.startY);
+          const mid = (dragState.tLo + dragState.tHi) / 2;
+          const half = (dragState.tHi - dragState.tLo) / 2 * f;
+          scaleMin = untp(mid - half); scaleMax = untp(mid + half);
+          return;
+        }
+        if (dragState.mode === 'taxis') {
+          viewCount = dragState.count * Math.pow(1.012, dragState.startX - x);
+          clampView();
+          const g2 = geom();
+          viewStart = dragState.centerIdx - (g2.plotW / 2 - g2.slot / 2) / g2.slot;
+          clampView();
+          maybeLoadMore();
+          return;
+        }
+        if (dragState.mode === 'move') {
+          const d = dragState.d;
+          dragState.moved = true;
+          if (dragState.part === 'body') {
+            const dIdx = g.iOf(x) - idxFromTime(dragState.startT);
+            const dTp  = tp(g.pOf(y)) - dragState.startTP;
+            d.pts = dragState.orig.map(pt => ({
+              t: timeFromIdx(idxFromTime(pt.t) + dIdx),
+              p: untp(tp(pt.p) + dTp)
+            }));
+          } else {
+            const k = dragState.part === 'p0' ? 0 : 1;
+            d.pts[k] = dataPoint(g, x, y, true);
+          }
+          return;
+        }
+        if (dragState.mode === 'draw' && pending) {
+          const pt = dataPoint(g, x, y, true);
+          if (pending.type === 'brush') {
+            const last = pending.pts[pending.pts.length - 1];
+            const a = scr(g, last);
+            if (Math.hypot(a.x - x, a.y - y) > 2.5) pending.pts.push({ t: timeFromIdx(g.iOf(x)), p: g.pOf(y) });
+          } else {
+            pending.pts[1] = pt;
+          }
+        }
+      });
+
+      function endPointer(e) {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) pinch = null;
+        try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+        if (!dragState) return;
+        if (dragState.mode === 'draw' && pending) {
+          const P = pending.pts;
+          const keep = pending.type === 'brush'
+            ? P.length > 2
+            : (Math.abs(idxFromTime(P[1].t) - idxFromTime(P[0].t)) > 0.4 || Math.abs(P[1].p - P[0].p) > 1e-12);
+          if (keep) { snapshot(); drawings.push(pending); saveDrawings(); selectDrawing(pending); }
+          pending = null;
+        } else if (dragState.mode === 'move') {
+          if (dragState.moved) saveDrawings(); else undoStack.pop();
+          updateUndoBtns();
+        }
+        dragState = null;
+        applyCursor('plot', hoverHit);
+      }
+      canvas.addEventListener('pointerup', endPointer);
+      canvas.addEventListener('pointercancel', endPointer);
+      canvas.addEventListener('pointerleave', () => {
+        mouseIn = false; hoverIndex = -1; hoverSlot = null; hoverX = -1; hoverY = -1;
+      });
+
+      function updateHover(g, x, y) {
+        hoverX = x; hoverY = y;
+        if (x >= g.plotW || y >= g.axisY0) { hoverSlot = null; hoverIndex = -1; return; }
+        hoverSlot = Math.round(g.iOf(x));
+        hoverIndex = (hoverSlot >= 0 && hoverSlot < candles.length) ? hoverSlot : -1;
+      }
+
+      canvas.addEventListener('wheel', e => {
+        if (!candles.length) return;
+        e.preventDefault();
+        const { x, y } = localXY(e);
+        const g = geom();
+        const zone = zoneOf(g, x, y);
+        if (zone === 'paxis') {
+          autoScale = false;
+          const f = e.deltaY > 0 ? 1.1 : 1 / 1.1;
+          const mid = (g.tLo + g.tHi) / 2, half = (g.tHi - g.tLo) / 2 * f;
+          scaleMin = untp(mid - half); scaleMax = untp(mid + half);
+          return;
+        }
+        if (e.shiftKey) {                       // Shift+Rad = seitlich scrollen
+          viewStart += (e.deltaY > 0 ? 1 : -1) * Math.max(1, viewCount * 0.08);
+          clampView(); maybeLoadMore();
+          return;
+        }
+        const idxUnder = g.iOf(x);
+        viewCount *= (e.deltaY > 0 ? 1.15 : 1 / 1.15);
+        clampView();
+        const g2 = geom();
+        viewStart = idxUnder - (x - g2.slot / 2) / g2.slot;
+        clampView();
+        maybeLoadMore();
+      }, { passive: false });
+
+      canvas.addEventListener('dblclick', e => {
+        const { x, y } = localXY(e);
+        const g = geom();
+        const zone = zoneOf(g, x, y);
+        if (zone === 'paxis') { autoScale = true; return; }
+        if (zone === 'taxis') { resetView(); return; }
+        const hit = locked ? null : hitTest(g, x, y);
+        if (hit && hit.d.type === 'text') {
+          const txt = window.prompt('Text bearbeiten:', hit.d.text || '');
+          if (txt !== null) {
+            snapshot();
+            if (txt.trim()) hit.d.text = txt.trim();
+            else drawings.splice(drawings.indexOf(hit.d), 1);
+            saveDrawings();
+          }
+          return;
+        }
+        if (!hit) resetView();
+      });
+
+      canvas.addEventListener('contextmenu', e => {
+        const { x, y } = localXY(e);
+        const g = geom();
+        const hit = locked ? null : hitTest(g, x, y);
+        if (hit) { e.preventDefault(); selectDrawing(hit.d); }
+      });
+
+      // ── Tastatur ───────────────────────────────────────────────────────
+      document.addEventListener('keydown', e => {
+        const tag = document.activeElement ? document.activeElement.tagName : '';
+        if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
+        const mod = e.ctrlKey || e.metaKey;
+        if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+        if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); return; }
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          if (selectedId) { e.preventDefault(); deleteSelected(); }
+          return;
+        }
+        if (e.key === 'Escape') { pending = null; dragState = null; selectDrawing(null); return; }
+        const map = { a: 'pan', t: 'line', h: 'hline', v: 'vline', r: 'rect', f: 'fib', m: 'ruler', b: 'brush', x: 'eraser' };
+        if (!mod && map[e.key.toLowerCase()]) { setTool(map[e.key.toLowerCase()]); return; }
+        if (!mod && e.key.toLowerCase() === 'l') { toggleLog(); }
+      });
+
+      // ── Kursdaten laden ────────────────────────────────────────────────
+      async function fetchKlines(symbol, interval, endTime) {
+        let url = 'https://api.binance.com/api/v3/klines?symbol=' + encodeURIComponent(symbol) +
+                  '&interval=' + encodeURIComponent(interval) + '&limit=' + PAGE;
+        if (endTime) url += '&endTime=' + endTime;
+        let resp;
+        try { resp = await fetch(url); }
+        catch (e) { throw new Error('Netzwerkfehler &mdash; Binance nicht erreichbar.'); }
+        if (!resp.ok) {
+          if (resp.status === 429 || resp.status === 418) throw new Error('Zu viele Anfragen (Rate-Limit) &mdash; kurz warten.');
+          if (resp.status === 400) throw new Error('Unbekanntes Symbol oder Intervall.');
+          throw new Error('HTTP ' + resp.status);
+        }
+        const data = await resp.json();
+        if (!Array.isArray(data)) throw new Error('Keine Daten erhalten.');
+        return data.map(k => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
+      }
+
+      const LOAD_MORE_THRESHOLD = 30;
+      let loadingMore = false, noMoreHistory = false;
+      function maybeLoadMore() { if (viewStart <= LOAD_MORE_THRESHOLD) loadMoreHistory(); }
+      async function loadMoreHistory() {
+        if (loadingMore || noMoreHistory || !candles.length) return;
+        loadingMore = true;
+        const symAtStart = currentSymbol, ivAtStart = currentInterval;
+        try {
+          let guard = 0;
+          while (!noMoreHistory && viewStart <= LOAD_MORE_THRESHOLD && guard++ < 6) {
+            const older = await fetchKlines(currentSymbol, currentInterval, candles[0].t - 1);
+            if (symAtStart !== currentSymbol || ivAtStart !== currentInterval) return;
+            if (!older.length) { noMoreHistory = true; break; }
+            candles = older.concat(candles);
+            viewStart += older.length;   // Zeichnungen haengen an der ZEIT und
+                                         // verrutschen dabei deshalb nicht mehr.
+            if (older.length < PAGE) noMoreHistory = true;
+          }
+          computeIndicators();
+          statusEl.textContent = candles.length + ' Kerzen (' + currentInterval + ')' +
+            (noMoreHistory ? ' — Anfang der Historie erreicht.' : '.');
+        } catch (e) {
+          // stiller Fehlschlag: naechster Scroll versucht es erneut
+        } finally { loadingMore = false; }
+      }
+
+      // ── Echtzeit-Ticks per WebSocket ───────────────────────────────────
+      let ws = null, wsSeq = 0;
+      function setLive(on, txt) {
+        liveEl.classList.toggle('on', !!on);
+        liveEl.textContent = txt || (on ? '● LIVE' : '○ offline');
+      }
+      function closeWs() {
+        wsSeq++;
+        if (ws) { try { ws.onclose = null; ws.onmessage = null; ws.close(); } catch (e) {} ws = null; }
+        setLive(false);
+      }
+      function openWs(symbol, interval) {
+        closeWs();
+        if (!('WebSocket' in window)) return;
+        const my = ++wsSeq;
+        let sock;
+        try {
+          sock = new WebSocket('wss://stream.binance.com:9443/ws/' +
+                               symbol.toLowerCase() + '@kline_' + interval);
+        } catch (e) { return; }
+        ws = sock;
+        sock.onopen  = () => { if (my === wsSeq) setLive(true); };
+        sock.onerror = () => { if (my === wsSeq) setLive(false); };
+        sock.onclose = () => { if (my === wsSeq) setLive(false); };
+        sock.onmessage = ev => {
+          if (my !== wsSeq) return;
+          let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+          const k = m && m.k;
+          if (!k) return;
+          applyLiveBar({ t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.v });
+        };
+      }
+      function applyLiveBar(bar) {
+        if (!candles.length) return;
+        const last = candles[candles.length - 1];
+        if (bar.t === last.t) { candles[candles.length - 1] = bar; }
+        else if (bar.t > last.t) {
+          const follow = atRightEdge();
+          candles.push(bar);
+          if (follow) { viewStart += 1; clampView(); }
+        } else return;
+        computeIndicators();
+      }
+
+      async function loadChart() {
+        const sel = symbolSelect.value;
+        const symbol = (sel === '__custom' ? symbolCustom.value.trim() : sel).toUpperCase();
+        if (!symbol) { symbolCustom.focus(); return; }
+        const seq = ++reqSeq;
+        closeWs();
+        statusEl.innerHTML = 'Lade Kursdaten<span class="blink">_</span>';
+        try {
+          const rows = await fetchKlines(symbol, currentInterval);
+          if (seq !== reqSeq) return;
+          if (!rows.length) throw new Error('Keine Kerzen fuer dieses Symbol/Intervall.');
+          if (symbol !== currentSymbol) {
+            loadDrawings(symbol);
+            undoStack.length = 0; redoStack.length = 0; updateUndoBtns(); hideProps();
+          }
+          candles = rows;
+          currentSymbol = symbol;
+          barMs = BAR_MS[currentInterval] || 864e5;
+          emptyEl.hidden = true;
+          noMoreHistory = false; pending = null; dragState = null;
+          computeIndicators();
+          resetView();
+          coinTitleEl.textContent = SYMBOL_NAMES[currentSymbol] || currentSymbol;
+          statusEl.textContent = candles.length + ' Kerzen (' + currentInterval +
+            ') — ziehen = scrollen, Mausrad = Zoom, Doppelklick = Ansicht zurueck.';
+          buildEqBands(getView().count);
+          savePrefs();
+          openWs(currentSymbol, currentInterval);
+        } catch (e) {
+          if (seq !== reqSeq) return;
+          statusEl.innerHTML = '<span class="err">' + (e.message || 'Fehler beim Laden.') + '</span>';
+        }
+      }
+
+      // ── Bedienelemente oben ────────────────────────────────────────────
+      symbolSelect.addEventListener('change', () => {
+        symbolCustom.hidden = symbolSelect.value !== '__custom';
+        if (!symbolCustom.hidden) symbolCustom.focus();
+        else loadChart();
+      });
+      symbolCustom.addEventListener('keydown', e => { if (e.key === 'Enter') loadChart(); });
+      reloadBtn.addEventListener('click', loadChart);
+
+      document.querySelectorAll('.chart-tf-group .chart-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          currentInterval = btn.dataset.interval;
+          document.querySelectorAll('.chart-tf-group .chart-seg-btn')
+            .forEach(b => b.classList.toggle('active', b === btn));
+          loadChart();   // Zeichnungen bleiben: sie haengen an Zeitstempeln
+        });
+      });
+      document.querySelectorAll('.chart-type-group .chart-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          chartType = btn.dataset.charttype;
+          document.querySelectorAll('.chart-type-group .chart-seg-btn')
+            .forEach(b => b.classList.toggle('active', b === btn));
+          savePrefs();
+        });
+      });
+      document.querySelectorAll('[data-ind]').forEach(btn => {
+        btn.classList.toggle('active', !!indState[btn.dataset.ind]);
+        btn.addEventListener('click', () => {
+          indState[btn.dataset.ind] = !indState[btn.dataset.ind];
+          btn.classList.toggle('active', indState[btn.dataset.ind]);
+          savePrefs();
+        });
+      });
+      function toggleLog() {
+        logScale = !logScale;
+        logBtn.classList.toggle('active', logScale);
+        autoScale = true;
+        savePrefs();
+      }
+      logBtn.addEventListener('click', toggleLog);
+      logBtn.classList.toggle('active', logScale);
+      fitBtn.addEventListener('click', () => { resetView(); });
+
+      fsBtn.addEventListener('click', () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else panelEl.requestFullscreen && panelEl.requestFullscreen().catch(() => {});
+      });
+      document.addEventListener('fullscreenchange', () => setTimeout(fitCanvas, 60));
+
+      shotBtn.addEventListener('click', () => {
+        try {
+          const a = document.createElement('a');
+          a.download = currentSymbol + '_' + currentInterval + '_' +
+            new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.png';
+          a.href = canvas.toDataURL('image/png');
+          a.click();
+          statusEl.textContent = 'Screenshot gespeichert: ' + a.download;
+        } catch (e) {
+          statusEl.innerHTML = '<span class="err">Screenshot fehlgeschlagen.</span>';
+        }
+      });
+
+      // ── Musik-Reaktiv-Modus ────────────────────────────────────────────
       let musicMode = false;
       const MUSIC_KEY = 'glappa-chartvis-music';
       try { musicMode = localStorage.getItem(MUSIC_KEY) === '1'; } catch (e) {}
@@ -508,304 +1555,7 @@
         applyMusicMode();
       });
 
-      // --- Preis/Datum-Formatierung ---------------------------------
-      function fmtPrice(p) {
-        const dec = p >= 1000 ? 0 : p >= 1 ? 2 : 6;
-        return p.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: dec });
-      }
-      function fmtCurrency(p) { return '$' + fmtPrice(p); }
-      const INTRADAY = { '1s': 1, '1m': 1, '5m': 1, '15m': 1, '1h': 1, '4h': 1 };
-      function fmtDate(ts) {
-        const d = new Date(ts);
-        if (INTRADAY[currentInterval]) {
-          let s = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-          if (currentInterval === '1s') s += ':' + String(d.getSeconds()).padStart(2, '0');
-          return s;
-        }
-        return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-      }
-
-      // --- Symbol-Auswahl ----------------------------------------------
-      symbolSelect.addEventListener('change', () => {
-        symbolCustom.hidden = symbolSelect.value !== '__custom';
-        if (!symbolCustom.hidden) symbolCustom.focus();
-        else loadChart();
-      });
-      symbolCustom.addEventListener('keydown', e => { if (e.key === 'Enter') loadChart(); });
-      reloadBtn.addEventListener('click', loadChart);
-
-      // --- Kursdaten laden (Binance Klines, keine Anmeldung noetig) ---
-      async function fetchKlines(symbol, interval, endTime) {
-        let url = 'https://api.binance.com/api/v3/klines?symbol=' + encodeURIComponent(symbol) +
-                  '&interval=' + encodeURIComponent(interval) + '&limit=500';
-        if (endTime) url += '&endTime=' + endTime;
-        let resp;
-        try {
-          resp = await fetch(url);
-        } catch (e) {
-          throw new Error('Netzwerkfehler &mdash; Binance nicht erreichbar.');
-        }
-        if (!resp.ok) {
-          if (resp.status === 429 || resp.status === 418) throw new Error('Zu viele Anfragen (Rate-Limit) &mdash; kurz warten und nochmal.');
-          if (resp.status === 400) throw new Error('Unbekanntes Symbol oder Intervall.');
-          throw new Error('HTTP ' + resp.status);
-        }
-        const data = await resp.json();
-        if (!Array.isArray(data)) throw new Error('Keine Daten erhalten.');
-        return data.map(k => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
-      }
-
-      // --- Aeltere Historie nachladen: wird ausgeloest, wenn Zoomen/Pan das
-      // Sichtfenster nah an den linken Rand der bisher geladenen Kerzen
-      // bringt -- so laesst sich beliebig weit zurueckscrollen/-zoomen, statt
-      // hart an der Grenze des ersten Ladevorgangs (500 Kerzen) zu enden.
-      const LOAD_MORE_THRESHOLD = 15;
-      let loadingMore = false, noMoreHistory = false;
-      async function loadMoreHistory() {
-        if (loadingMore || noMoreHistory || !candles.length) return;
-        loadingMore = true;
-        try {
-          while (!noMoreHistory && getView().start <= LOAD_MORE_THRESHOLD) {
-            const endTime = candles[0].t - 1;
-            const older = await fetchKlines(currentSymbol, currentInterval, endTime);
-            if (!older.length) { noMoreHistory = true; break; }
-            const addedCount = older.length;
-            candles = older.concat(candles);
-            viewStart += addedCount;
-            if (older.length < 500) noMoreHistory = true;
-          }
-          rsiData = computeRSI(candles, 14);
-          statusEl.textContent = candles.length + ' Kerzen geladen (' + currentInterval + ')' +
-            (noMoreHistory ? ' — Anfang der Historie erreicht.' : '.');
-        } catch (e) {
-          // Stiller Fehlschlag: naechster Scroll/Zoom loest einen neuen Versuch aus.
-        } finally {
-          loadingMore = false;
-        }
-      }
-
-      function updateHeader() {
-        const last = candles[candles.length - 1];
-        const first = candles[0];
-        const pct = ((last.c - first.o) / first.o) * 100;
-        priceEl.textContent = fmtCurrency(last.c);
-        chgEl.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(2) + '% (gesamter Datensatz)';
-        chgEl.className = pct >= 0 ? 'chg-up' : 'chg-down';
-        coinTitleEl.textContent = SYMBOL_NAMES[currentSymbol] || currentSymbol;
-      }
-
-      async function loadChart() {
-        const sel = symbolSelect.value;
-        const symbol = (sel === '__custom' ? symbolCustom.value.trim() : sel).toUpperCase();
-        if (!symbol) { symbolCustom.focus(); return; }
-        const seq = ++reqSeq;
-        statusEl.innerHTML = 'Lade Kursdaten<span class="blink">_</span>';
-        try {
-          const rows = await fetchKlines(symbol, currentInterval);
-          if (seq !== reqSeq) return;
-          candles = rows;
-          currentSymbol = symbol;
-          emptyEl.hidden = true;
-          updateHeader();
-          resetView();
-          priceZoom = 1;
-          noMoreHistory = false;
-          drawings = []; pending = null;
-          rsiData = computeRSI(candles, 14);
-          statusEl.textContent = candles.length + ' Kerzen geladen (' + currentInterval + ').';
-          buildEqBands(getView().count);
-        } catch (e) {
-          if (seq !== reqSeq) return;
-          statusEl.innerHTML = '<span class="err">' + (e.message || 'Fehler beim Laden.') + '</span>';
-        }
-      }
-
-      // --- Top-Toolbar: Intervall + Diagrammtyp -----------------------
-      document.querySelectorAll('.chart-tf-group .chart-seg-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          currentInterval = btn.dataset.interval;
-          document.querySelectorAll('.chart-tf-group .chart-seg-btn').forEach(b => b.classList.toggle('active', b === btn));
-          loadChart();
-        });
-      });
-      document.querySelectorAll('.chart-type-group .chart-seg-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          chartType = btn.dataset.charttype;
-          document.querySelectorAll('.chart-type-group .chart-seg-btn').forEach(b => b.classList.toggle('active', b === btn));
-        });
-      });
-      volBtn.addEventListener('click', () => { volOn = !volOn; volBtn.classList.toggle('active', volOn); });
-      rsiBtn.addEventListener('click', () => { rsiOn = !rsiOn; rsiBtn.classList.toggle('active', rsiOn); });
-
-      // --- Linke Toolbar: Zeichenwerkzeuge + Magnet/Schloss/Loeschen --
-      document.querySelectorAll('#chartVToolbar button[data-tool]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          currentTool = btn.dataset.tool;
-          document.querySelectorAll('#chartVToolbar button[data-tool]').forEach(b => b.classList.toggle('active', b === btn));
-          canvas.style.cursor = currentTool === 'pan' ? 'grab' : currentTool === 'eraser' ? 'not-allowed' : 'crosshair';
-        });
-      });
-      magnetBtn.addEventListener('click', () => { magnetOn = !magnetOn; magnetBtn.classList.toggle('active', magnetOn); });
-      lockBtn.addEventListener('click', () => { locked = !locked; lockBtn.classList.toggle('active', locked); });
-      clearDrawBtn.addEventListener('click', () => { drawings = []; pending = null; });
-
-      // --- Vollbild ----------------------------------------------------
-      fsBtn.addEventListener('click', () => {
-        if (document.fullscreenElement) document.exitFullscreen();
-        else wrap.requestFullscreen().catch(() => {});
-      });
-      document.addEventListener('fullscreenchange', () => setTimeout(fitCanvas, 50));
-
-      // --- Canvas-Groesse (High-DPI) ------------------------------------
-      function fitCanvas() {
-        const r = wrap.getBoundingClientRect();
-        cssW = Math.max(64, Math.floor(r.width));
-        cssH = Math.max(64, Math.floor(r.height));
-        dpr = Math.max(1, window.devicePixelRatio || 1);
-        const pw = Math.round(cssW * dpr), ph = Math.round(cssH * dpr);
-        if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
-      }
-      window.addEventListener('resize', fitCanvas);
-      if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(wrap);
-      fitCanvas();
-
-      // --- Maus: Hover/Crosshair, Pan, Zoom (Mausrad), Zeichnen -------
-      function updateHoverAndTooltip(x, y) {
-        if (!lastGeom || !candles.length) { hoverIndex = -1; hoverY = -1; tooltipEl.hidden = true; return; }
-        const g = lastGeom;
-        hoverY = Math.max(g.plotY0, Math.min(g.plotY0 + g.plotH, y));
-        if (x >= cssW - AXIS_W) {
-          // Preisachsen-Spalte: kein Kerzen-Tooltip, nur die Crosshair-Preiszeile
-          hoverIndex = -1;
-          tooltipEl.hidden = true;
-          return;
-        }
-        const idx = Math.max(g.start, Math.min(g.start + g.count - 1, Math.round(g.start + x / g.slot)));
-        hoverIndex = idx;
-        const c = candles[idx];
-        if (!c) { tooltipEl.hidden = true; return; }
-        tooltipEl.hidden = false;
-        tooltipEl.style.left = Math.min(cssW - 170, Math.max(0, x + 12)) + 'px';
-        tooltipEl.style.top = '8px';
-        let html = new Date(c.t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) +
-          '<br>O ' + fmtPrice(c.o) + '&nbsp; H ' + fmtPrice(c.h) +
-          '<br>L ' + fmtPrice(c.l) + '&nbsp; C ' + fmtPrice(c.c) +
-          '<br>Vol ' + c.v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
-        if (rsiOn && rsiData && rsiData[idx] != null) html += '<br>RSI ' + rsiData[idx].toFixed(1);
-        tooltipEl.innerHTML = html;
-      }
-
-      canvas.addEventListener('mousedown', e => {
-        if (e.button !== 0 || !candles.length || !lastGeom) return;
-        const r = canvas.getBoundingClientRect();
-        const x = e.clientX - r.left, y = e.clientY - r.top;
-        if (x >= cssW - AXIS_W) return; // Preisachse: nur Mausrad-Zoom, kein Zeichnen/Verschieben
-        e.preventDefault();
-        const g = lastGeom;
-
-        if (currentTool === 'pan') {
-          dragState = { mode: 'pan', startX: x, startViewStart: viewStart };
-          canvas.style.cursor = 'grabbing';
-          return;
-        }
-        if (locked) {
-          statusEl.innerHTML = '<span class="err">Zeichnungen sind gesperrt (Schloss-Button).</span>';
-          return;
-        }
-        if (currentTool === 'eraser') {
-          const hit = hitTestDrawing(x, y);
-          if (hit >= 0) drawings.splice(hit, 1);
-          return;
-        }
-        const idxRaw = g.start + x / g.slot;
-        const priceRaw = g.maxP - (y - g.plotY0) / g.plotH * (g.maxP - g.minP);
-        if (currentTool === 'hline') {
-          drawings.push({ type: 'hline', price: snapPrice(idxRaw, priceRaw) });
-          return;
-        }
-        if (currentTool === 'text') {
-          const txt = window.prompt('Text fuer die Notiz an dieser Stelle:', '');
-          if (txt && txt.trim()) drawings.push({ type: 'text', i1: idxRaw, p1: snapPrice(idxRaw, priceRaw), text: txt.trim() });
-          return;
-        }
-        if (currentTool === 'brush') {
-          pending = { type: 'brush', points: [{ i: idxRaw, p: priceRaw }] };
-          dragState = { mode: 'draw' };
-          return;
-        }
-        pending = { type: currentTool, i1: idxRaw, p1: snapPrice(idxRaw, priceRaw), i2: idxRaw, p2: snapPrice(idxRaw, priceRaw) };
-        dragState = { mode: 'draw' };
-      });
-
-      canvas.addEventListener('mousemove', e => {
-        if (!candles.length) return;
-        const r = canvas.getBoundingClientRect();
-        const x = e.clientX - r.left, y = e.clientY - r.top;
-        updateHoverAndTooltip(x, y);
-        if (!dragState) {
-          canvas.style.cursor = x >= cssW - AXIS_W ? 'ns-resize'
-            : currentTool === 'pan' ? 'grab'
-            : currentTool === 'eraser' ? 'not-allowed' : 'crosshair';
-        }
-        if (!lastGeom) return;
-        const g = lastGeom;
-        if (dragState && dragState.mode === 'pan') {
-          const dx = x - dragState.startX;
-          viewStart = dragState.startViewStart - dx / g.slot;
-          clampView();
-          if (getView().start <= LOAD_MORE_THRESHOLD) loadMoreHistory();
-        } else if (dragState && dragState.mode === 'draw' && pending) {
-          const idx = g.start + x / g.slot;
-          const price = g.maxP - (y - g.plotY0) / g.plotH * (g.maxP - g.minP);
-          if (pending.type === 'brush') pending.points.push({ i: idx, p: price });
-          else { pending.i2 = idx; pending.p2 = snapPrice(idx, price); }
-        }
-      });
-
-      window.addEventListener('mouseup', () => {
-        if (dragState && dragState.mode === 'draw' && pending) {
-          const keep = pending.type === 'brush'
-            ? pending.points.length > 1
-            : (Math.abs(pending.i2 - pending.i1) > 0.3 || Math.abs(pending.p2 - pending.p1) > 1e-9);
-          if (keep) drawings.push(pending);
-          pending = null;
-        }
-        if (dragState && dragState.mode === 'pan') canvas.style.cursor = currentTool === 'pan' ? 'grab' : 'crosshair';
-        dragState = null;
-      });
-
-      canvas.addEventListener('mouseleave', () => { hoverIndex = -1; hoverY = -1; tooltipEl.hidden = true; });
-
-      canvas.addEventListener('wheel', e => {
-        if (!candles.length || !lastGeom) return;
-        e.preventDefault();
-        const r = canvas.getBoundingClientRect();
-        const x = e.clientX - r.left;
-        if (x >= cssW - AXIS_W) {
-          // Preisachse: Mausrad skaliert die Kerzen vertikal (kleiner/groesser),
-          // unabhaengig vom Zeit-Zoom -- wie bei TradingView/DexScreener.
-          const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
-          priceZoom = Math.max(PRICE_ZOOM_MIN, Math.min(PRICE_ZOOM_MAX, priceZoom * factor));
-          return;
-        }
-        const g = lastGeom;
-        const idxUnderMouse = g.start + x / g.slot;
-        const zoomFactor = e.deltaY > 0 ? 1.15 : 1 / 1.15;
-        viewCount = viewCount * zoomFactor;
-        clampView();
-        const newSlot = g.plotW / getView().count;
-        viewStart = idxUnderMouse - x / newSlot;
-        clampView();
-        if (getView().start <= LOAD_MORE_THRESHOLD) loadMoreHistory();
-      }, { passive: false });
-
-      canvas.addEventListener('dblclick', e => {
-        const r = canvas.getBoundingClientRect();
-        const x = e.clientX - r.left;
-        if (x >= cssW - AXIS_W) priceZoom = 1; // Preisachse: Doppelklick setzt Zoom zurueck
-      });
-
-      // ── Audio-Analyse (Web Audio API) ───────────────────────────────
+      // ── Audio-Analyse (Web Audio API) ──────────────────────────────────
       const audio = document.getElementById('audio');
       audio.volume = 0.8;
       let audioCtx = null, analyser = null, visData = null;
@@ -893,8 +1643,8 @@
           if (bassEnv > 0.32 && Math.random() < (bassEnv - 0.3) * 0.5) spawnAmbientSpark();
 
           if (candles.length) {
-            const viewN = getView().count;
-            if (!eqBands || eqBands.length !== viewN + 1) buildEqBands(viewN);
+            const bars = getView().count;
+            if (!eqBands || eqVals.length !== bars) buildEqBands(bars);
             if (eqVals) {
               for (let b = 0; b < eqVals.length; b++) {
                 const lo = eqBands[b], hiB = Math.max(lo + 1, eqBands[b + 1]);
@@ -918,7 +1668,188 @@
           'inset 0 0 ' + Math.round(beatFlash * 42) + 'px rgba(255,0,255,0.28)';
       }
 
-      // ── Render ──────────────────────────────────────────────────────
+      // ── Zeichnungs-Renderer ────────────────────────────────────────────
+      function arrowHead(x1, y1, x2, y2, size) {
+        const a = Math.atan2(y2 - y1, x2 - x1);
+        cctx.beginPath();
+        cctx.moveTo(x2, y2);
+        cctx.lineTo(x2 - size * Math.cos(a - 0.42), y2 - size * Math.sin(a - 0.42));
+        cctx.lineTo(x2 - size * Math.cos(a + 0.42), y2 - size * Math.sin(a + 0.42));
+        cctx.closePath();
+        cctx.fill();
+      }
+      function handleDot(x, y) {
+        cctx.fillStyle = '#000';
+        cctx.strokeStyle = '#fff';
+        cctx.lineWidth = 1.5;
+        cctx.beginPath(); cctx.rect(x - 3.5, y - 3.5, 7, 7); cctx.fill(); cctx.stroke();
+      }
+      function withAlpha(hex, a) {
+        const h = hex.replace('#', '');
+        const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+        const r = parseInt(v.slice(0, 2), 16), g2 = parseInt(v.slice(2, 4), 16), b = parseInt(v.slice(4, 6), 16);
+        return 'rgba(' + r + ',' + g2 + ',' + b + ',' + a + ')';
+      }
+
+      function renderDrawing(g, d, opts) {
+        const sel = opts.selected, ghost = opts.ghost;
+        const col = d.color || DEF_COLOR[d.type] || '#ffd866';
+        const lw  = d.width || 2;
+        const P = d.pts.map(pt => scr(g, pt));
+        cctx.lineWidth = lw;
+        cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col;
+        cctx.fillStyle = cctx.strokeStyle;
+        cctx.setLineDash([]);
+
+        switch (d.type) {
+          case 'line':
+            cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(P[1].x, P[1].y); cctx.stroke();
+            break;
+          case 'ray': {
+            const e = rayEnd(P[0].x, P[0].y, P[1].x, P[1].y, g);
+            cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(e.x, e.y); cctx.stroke();
+            break;
+          }
+          case 'arrow':
+            cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(P[1].x, P[1].y); cctx.stroke();
+            arrowHead(P[0].x, P[0].y, P[1].x, P[1].y, 9 + lw * 2);
+            break;
+          case 'hline': {
+            cctx.setLineDash([7, 4]);
+            cctx.beginPath(); cctx.moveTo(0, P[0].y); cctx.lineTo(g.plotW, P[0].y); cctx.stroke();
+            cctx.setLineDash([]);
+            opts.labels.push({ y: P[0].y, text: fmtCurrency(d.pts[0].p), col });
+            break;
+          }
+          case 'vline': {
+            cctx.setLineDash([7, 4]);
+            cctx.beginPath(); cctx.moveTo(P[0].x, g.plotY0); cctx.lineTo(P[0].x, g.plotY1); cctx.stroke();
+            cctx.setLineDash([]);
+            break;
+          }
+          case 'rect': {
+            const x = Math.min(P[0].x, P[1].x), y = Math.min(P[0].y, P[1].y);
+            const w = Math.abs(P[1].x - P[0].x) || 1, h = Math.abs(P[1].y - P[0].y) || 1;
+            cctx.fillStyle = withAlpha(col, ghost ? 0.08 : 0.14);
+            cctx.fillRect(x, y, w, h);
+            cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col;
+            cctx.strokeRect(x, y, w, h);
+            break;
+          }
+          case 'ellipse': {
+            const cx = (P[0].x + P[1].x) / 2, cy = (P[0].y + P[1].y) / 2;
+            const rx = Math.abs(P[1].x - P[0].x) / 2 || 1, ry = Math.abs(P[1].y - P[0].y) / 2 || 1;
+            cctx.beginPath(); cctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+            cctx.fillStyle = withAlpha(col, ghost ? 0.07 : 0.12); cctx.fill();
+            cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col; cctx.stroke();
+            break;
+          }
+          case 'fib': {
+            const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618];
+            const colors = ['#9aa', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#9aa', '#ff8fd0'];
+            const xMin = Math.min(P[0].x, P[1].x), xMax = Math.max(P[0].x, P[1].x);
+            const p0 = d.pts[0].p, p1 = d.pts[1].p;
+            cctx.font = '10px "Courier New", monospace';
+            cctx.textAlign = 'left';
+            let prevY = null;
+            levels.forEach((lv, k) => {
+              const price = p0 + (p1 - p0) * lv;
+              const y = g.yOf(price);
+              if (prevY !== null && k > 0 && lv <= 1) {
+                cctx.fillStyle = withAlpha(colors[k], 0.07);
+                cctx.fillRect(xMin, Math.min(prevY, y), Math.max(1, xMax - xMin), Math.abs(y - prevY));
+              }
+              prevY = y;
+              cctx.strokeStyle = withAlpha(colors[k], ghost ? 0.5 : 0.85);
+              cctx.setLineDash(lv === 0 || lv === 1 ? [] : [4, 3]);
+              cctx.lineWidth = (lv === 0 || lv === 1) ? lw : 1.2;
+              cctx.beginPath(); cctx.moveTo(xMin, y); cctx.lineTo(xMax, y); cctx.stroke();
+              cctx.setLineDash([]);
+              const label = (lv * 100).toFixed(1).replace('.0', '') + '%  ' + fmtPrice(price);
+              const tw = cctx.measureText(label).width;
+              const lx = Math.min(xMax + 5, g.plotW - tw - 3);
+              cctx.fillStyle = colors[k];
+              cctx.fillText(label, lx, y - 2);
+            });
+            break;
+          }
+          case 'text': {
+            const size = 11 + lw * 1.5;
+            cctx.font = 'bold ' + size + 'px "Courier New", monospace';
+            cctx.textAlign = 'left';
+            const tw = cctx.measureText(d.text || '').width;
+            cctx.fillStyle = 'rgba(0,0,0,0.72)';
+            cctx.fillRect(P[0].x - 4, P[0].y - size - 2, tw + 10, size + 8);
+            cctx.fillStyle = col;
+            cctx.fillText(d.text || '', P[0].x + 1, P[0].y);
+            break;
+          }
+          case 'brush': {
+            if (P.length < 2) break;
+            cctx.lineJoin = 'round'; cctx.lineCap = 'round';
+            cctx.beginPath();
+            P.forEach((pt, k) => { if (k === 0) cctx.moveTo(pt.x, pt.y); else cctx.lineTo(pt.x, pt.y); });
+            cctx.stroke();
+            break;
+          }
+          case 'ruler': {
+            const up = d.pts[1].p >= d.pts[0].p;
+            const rgb = up ? '59,230,160' : '255,95,109';
+            const a = ghost ? 0.6 : 0.92;
+            const x = Math.min(P[0].x, P[1].x), y = Math.min(P[0].y, P[1].y);
+            const w = Math.max(1, Math.abs(P[1].x - P[0].x)), h = Math.max(1, Math.abs(P[1].y - P[0].y));
+            cctx.fillStyle = 'rgba(' + rgb + ',' + (a * 0.14).toFixed(2) + ')';
+            cctx.fillRect(x, y, w, h);
+            cctx.strokeStyle = 'rgba(' + rgb + ',' + a.toFixed(2) + ')';
+            cctx.lineWidth = 1.5;
+            cctx.setLineDash([5, 3]);
+            cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(P[1].x, P[1].y); cctx.stroke();
+            cctx.setLineDash([]);
+            arrowHead(P[0].x, P[0].y, P[1].x, P[1].y, 10);
+            const pct = d.pts[0].p !== 0 ? ((d.pts[1].p - d.pts[0].p) / d.pts[0].p) * 100 : 0;
+            const bars = Math.round(idxFromTime(d.pts[1].t) - idxFromTime(d.pts[0].t));
+            const dur = Math.abs(bars) * barMs;
+            const durTxt = dur >= 864e5 ? (dur / 864e5).toFixed(0) + ' T'
+                        : dur >= 36e5 ? (dur / 36e5).toFixed(0) + ' h'
+                        : dur >= 6e4 ? (dur / 6e4).toFixed(0) + ' min' : (dur / 1e3).toFixed(0) + ' s';
+            const label = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%   ' +
+              (d.pts[1].p - d.pts[0].p >= 0 ? '+' : '-') + fmtCurrency(Math.abs(d.pts[1].p - d.pts[0].p)) +
+              '   ' + Math.abs(bars) + ' Kerzen / ' + durTxt;
+            cctx.font = 'bold 11px "Courier New", monospace';
+            const tw = cctx.measureText(label).width;
+            let lx = P[1].x + 10;
+            if (lx + tw + 10 > g.plotW) lx = Math.max(2, P[1].x - tw - 18);
+            const ly = Math.max(g.plotY0 + 14, P[1].y - 16);
+            cctx.fillStyle = 'rgba(0,0,0,0.85)';
+            cctx.fillRect(lx - 5, ly - 12, tw + 10, 18);
+            cctx.strokeStyle = 'rgba(' + rgb + ',0.85)';
+            cctx.lineWidth = 1;
+            cctx.strokeRect(lx - 5, ly - 12, tw + 10, 18);
+            cctx.fillStyle = up ? '#3be6a0' : '#ff5f6d';
+            cctx.textAlign = 'left';
+            cctx.fillText(label, lx, ly + 1);
+            break;
+          }
+        }
+
+        if (sel || (hoverHit && hoverHit.d === d && !dragState)) {
+          if (d.type === 'brush') {
+            if (sel) { handleDot(P[0].x, P[0].y); handleDot(P[P.length - 1].x, P[P.length - 1].y); }
+          } else if (d.type === 'hline') {
+            if (sel) handleDot(g.plotW / 2, P[0].y);
+          } else if (d.type === 'vline') {
+            if (sel) handleDot(P[0].x, (g.plotY0 + g.plotY1) / 2);
+          } else if (d.type === 'text') {
+            if (sel) handleDot(P[0].x, P[0].y);
+          } else if (sel) {
+            handleDot(P[0].x, P[0].y);
+            handleDot(P[1].x, P[1].y);
+          }
+        }
+      }
+
+      // ── Haupt-Renderer ─────────────────────────────────────────────────
+      let lastHeader = '';
       function renderChart() {
         cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         const W = cssW, H = cssH;
@@ -937,153 +1868,190 @@
           cctx.fillRect(0, 0, W, H);
         }
 
-        const { start, count } = getView();
-        const n = count;
-        const VOL_H = volOn ? Math.round(H * 0.12) : 0;
-        const RSI_H = rsiOn ? Math.round(H * 0.16) : 0;
-        const EQ_H  = musicMode ? Math.round(H * 0.18) : 0;
-        const AXIS_H = 20;
-        const topPad = 6;
-        const plotH = Math.max(10, H - VOL_H - RSI_H - EQ_H - AXIS_H - topPad);
-        const plotY0 = topPad;
-        const volY0 = plotY0 + plotH;
-        const rsiY0 = volY0 + VOL_H;
+        const g = geom();
+        const { i0, i1, slot, plotW, plotH, plotY0 } = g;
+        const total = candles.length;
 
-        const plotW = Math.max(10, W - AXIS_W);
-
-        let minP = Infinity, maxP = -Infinity;
-        for (let k = 0; k < n; k++) {
-          const c = candles[start + k];
-          if (c.l < minP) minP = c.l;
-          if (c.h > maxP) maxP = c.h;
+        // ── Gitter: Preislinien (runde Werte) + Zeitlinien ──────────────
+        cctx.font = '10px "Courier New", monospace';
+        cctx.textAlign = 'left';
+        cctx.lineWidth = 1;
+        const priceTicks = [];
+        if (logScale) {
+          for (let k = 0; k <= 5; k++) priceTicks.push(untp(g.tLo + (g.tSpan * k) / 5));
+        } else {
+          const step = niceNum((g.hi - g.lo) / 5, true);
+          for (let p = Math.ceil(g.lo / step) * step; p <= g.hi; p += step) priceTicks.push(p);
         }
-        const pad = (maxP - minP) * 0.08 || maxP * 0.01 || 1;
-        minP -= pad; maxP += pad;
-        // Manueller Preis-Zoom (Mausrad ueber der Preisachse): skaliert den
-        // Auto-Fit-Bereich um seine Mitte, unabhaengig vom Zeit-Zoom.
-        const midP = (minP + maxP) / 2;
-        const halfRangeBase = (maxP - minP) / 2;
-        minP = midP - halfRangeBase * priceZoom;
-        maxP = midP + halfRangeBase * priceZoom;
-        const priceRange = Math.max(1e-9, maxP - minP);
-        function yFor(p) { return plotY0 + plotH - ((p - minP) / priceRange) * plotH; }
+        cctx.strokeStyle = 'rgba(255,255,255,0.09)';
+        cctx.setLineDash([4, 4]);
+        cctx.lineDashOffset = musicMode ? -ambientT * 8 : 0;
+        priceTicks.forEach(p => {
+          const y = g.yOf(p);
+          if (y < plotY0 - 1 || y > g.plotY1 + 1) return;
+          cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(plotW, y); cctx.stroke();
+        });
+        cctx.setLineDash([]);
+        cctx.lineDashOffset = 0;
 
-        const slot = plotW / n;
-        lastGeom = { start, count: n, slot, plotY0, plotH, minP, maxP, plotW };
+        // Zeit-Ticks: Schrittweite so, dass Labels ~90px auseinander liegen
+        let stepBars = Math.max(1, Math.ceil(90 / Math.max(1, slot)));
+        stepBars = niceNum(stepBars, false);
+        const timeTicks = [];
+        const firstTick = Math.ceil(Math.max(0, viewStart) / stepBars) * stepBars;
+        for (let i = firstTick; i <= Math.min(total - 1, viewStart + viewCount); i += stepBars) timeTicks.push(i);
+        cctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        timeTicks.forEach(i => {
+          const x = g.xOf(i);
+          cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, g.axisY0); cctx.stroke();
+        });
 
-        const bodyW = musicMode
-          ? Math.max(1, slot * 0.62) * (1 + bassEnv * 0.4 + beatFlash * 0.25)
-          : Math.max(1, slot * 0.62);
-
-        // Kamera-Puls (Bass) + Beat-Wackler + Kippen (Mitten) -- betrifft NUR
-        // die Kerzen/Linie selbst. Gitter, Preisachse, Volumen/RSI-Panels und
-        // Zeichnungen bleiben bewusst stabil (siehe unten, ausserhalb save/restore).
+        // ── Kursserie (im Musik-Kamera-Puls) ────────────────────────────
         const scaleAmt = musicMode ? 1 + bassEnv * 0.09 + beatFlash * 0.05 : 1;
         const shk = musicMode ? beatFlash * 13 : 0;
         const tilt = musicMode ? midSm * 0.28 + Math.sin(ambientT * 0.5) * 0.015 : 0;
         cctx.save();
-        cctx.translate(plotW / 2, plotY0 + plotH / 2);
-        cctx.rotate(tilt);
-        cctx.scale(scaleAmt, scaleAmt);
-        cctx.translate(-plotW / 2 + Math.sin(ambientT * 40) * shk * 0.4,
-                       -(plotY0 + plotH / 2) + Math.cos(ambientT * 37) * shk * 0.3);
-
+        cctx.beginPath(); cctx.rect(0, 0, plotW, g.plotY1 + 1); cctx.clip();
+        if (musicMode) {
+          cctx.translate(plotW / 2, plotY0 + plotH / 2);
+          cctx.rotate(tilt);
+          cctx.scale(scaleAmt, scaleAmt);
+          cctx.translate(-plotW / 2 + Math.sin(ambientT * 40) * shk * 0.4,
+                         -(plotY0 + plotH / 2) + Math.cos(ambientT * 37) * shk * 0.3);
+        }
         const hueShift = musicMode ? (Math.sin(ambientT * 0.6) * 8 + trebSm * 40 + beatFlash * 45 + midSm * 16) : 0;
+        const eqBase = Math.floor(viewStart);
+        const eqAt = i => (musicMode && eqVals) ? (eqVals[i - eqBase] || 0) : 0;
 
-        if (chartType === 'line') {
+        if (chartType === 'line' || chartType === 'area') {
           cctx.beginPath();
-          for (let i = 0; i < n; i++) {
-            const c = candles[start + i];
-            const x = i * slot + slot / 2;
-            const eqBoost = (musicMode && eqVals) ? (eqVals[i] || 0) : 0;
-            const y = yFor(c.c) - eqBoost * plotH * 0.16;
-            if (i === 0) cctx.moveTo(x, y); else cctx.lineTo(x, y);
+          let started = false;
+          for (let i = i0; i <= i1; i++) {
+            const c = candles[i]; if (!c) continue;
+            const x = g.xOf(i), y = g.yOf(c.c) - eqAt(i) * plotH * 0.16;
+            if (!started) { cctx.moveTo(x, y); started = true; } else cctx.lineTo(x, y);
           }
           cctx.strokeStyle = musicMode ? ('hsl(' + (156 + hueShift) + ',85%,55%)') : '#3be6a0';
           cctx.lineWidth = 2;
           cctx.stroke();
-          cctx.lineTo((n - 1) * slot + slot / 2, plotY0 + plotH);
-          cctx.lineTo(slot / 2, plotY0 + plotH);
-          cctx.closePath();
-          const lgrad = cctx.createLinearGradient(0, plotY0, 0, plotY0 + plotH);
-          lgrad.addColorStop(0, 'rgba(59,230,160,0.25)');
-          lgrad.addColorStop(1, 'rgba(59,230,160,0)');
-          cctx.fillStyle = lgrad;
-          cctx.fill();
+          if (chartType === 'area' && started) {
+            cctx.lineTo(g.xOf(i1), g.plotY1);
+            cctx.lineTo(g.xOf(i0), g.plotY1);
+            cctx.closePath();
+            const lgrad = cctx.createLinearGradient(0, plotY0, 0, g.plotY1);
+            lgrad.addColorStop(0, 'rgba(59,230,160,0.30)');
+            lgrad.addColorStop(1, 'rgba(59,230,160,0)');
+            cctx.fillStyle = lgrad;
+            cctx.fill();
+          }
         } else {
-          for (let i = 0; i < n; i++) {
-            const c = candles[start + i];
-            const x = i * slot + slot / 2;
-            const eqBoost = (musicMode && eqVals) ? (eqVals[i] || 0) : 0;
-            const wob = eqBoost * plotH * 0.16;
-            const yO = yFor(c.o) - wob, yC = yFor(c.c) - wob;
-            const yH = yFor(c.h) - wob, yL = yFor(c.l) - wob;
+          const bodyW = Math.max(1, slot * 0.66) * (musicMode ? (1 + bassEnv * 0.4 + beatFlash * 0.25) : 1);
+          const thin = slot < 2.5;
+          for (let i = i0; i <= i1; i++) {
+            const c = dispBar(i); if (!c) continue;
+            const x = g.xOf(i);
+            const wob = eqAt(i) * plotH * 0.16;
+            const yO = g.yOf(c.o) - wob, yC = g.yOf(c.c) - wob;
+            const yH = g.yOf(c.h) - wob, yL = g.yOf(c.l) - wob;
             const up = c.c >= c.o;
             const hue = (up ? 156 : 355) + hueShift;
             cctx.strokeStyle = 'hsl(' + hue + ',85%,52%)';
             cctx.fillStyle   = 'hsl(' + hue + ',80%,45%)';
             cctx.lineWidth = 1;
-            cctx.beginPath(); cctx.moveTo(x, yH); cctx.lineTo(x, yL); cctx.stroke();
-            const bodyTop = Math.min(yO, yC);
-            const bodyH = Math.max(1, Math.abs(yC - yO));
             if (musicMode) {
-              const glow = eqBoost * 24 + (i === n - 1 ? beatFlash * 26 : 0);
+              const glow = eqAt(i) * 24 + (i === total - 1 ? beatFlash * 26 : 0);
               if (glow > 0.5) { cctx.shadowColor = 'hsl(' + hue + ',100%,62%)'; cctx.shadowBlur = glow; }
             }
-            cctx.fillRect(x - bodyW / 2, bodyTop, bodyW, bodyH);
+            if (chartType === 'bars') {
+              cctx.beginPath();
+              cctx.moveTo(x, yH); cctx.lineTo(x, yL);
+              cctx.moveTo(x - bodyW / 2, yO); cctx.lineTo(x, yO);
+              cctx.moveTo(x, yC); cctx.lineTo(x + bodyW / 2, yC);
+              cctx.lineWidth = Math.max(1, Math.min(3, slot * 0.18));
+              cctx.stroke();
+            } else if (thin) {
+              cctx.beginPath(); cctx.moveTo(x, yH); cctx.lineTo(x, yL); cctx.stroke();
+            } else {
+              cctx.beginPath(); cctx.moveTo(x, yH); cctx.lineTo(x, yL); cctx.stroke();
+              const bodyTop = Math.min(yO, yC);
+              const bodyH = Math.max(1, Math.abs(yC - yO));
+              cctx.fillRect(x - bodyW / 2, bodyTop, bodyW, bodyH);
+            }
             cctx.shadowBlur = 0;
           }
         }
 
+        // Gleitende Durchschnitte / Bollinger -- im selben Kamera-Raum
+        function plotSeries(arr, color, width) {
+          cctx.strokeStyle = color; cctx.lineWidth = width || 1.4;
+          cctx.beginPath();
+          let st = false;
+          for (let i = i0; i <= i1; i++) {
+            const v = arr[i]; if (v == null) continue;
+            const x = g.xOf(i), y = g.yOf(v);
+            if (!st) { cctx.moveTo(x, y); st = true; } else cctx.lineTo(x, y);
+          }
+          if (st) cctx.stroke();
+        }
+        if (indState.ma && ma20) { plotSeries(ma20, '#ffd866', 1.4); plotSeries(ma50, '#00e5ff', 1.4); }
+        if (indState.bb && bb) {
+          plotSeries(bb.up, 'rgba(192,132,252,0.85)', 1.2);
+          plotSeries(bb.lo, 'rgba(192,132,252,0.85)', 1.2);
+          plotSeries(bb.mid, 'rgba(192,132,252,0.45)', 1);
+        }
         cctx.restore();
 
-        const lastC = candles[candles.length - 1].c;
-        const lastCandle = candles[candles.length - 1];
-        const lastUp = lastCandle.c >= lastCandle.o;
-
-        // ── Preisachsen-Spalte: dezenter Hintergrund + Trennlinie, dann Grid
-        // + Preislabels. Bewusst AUSSERHALB des Musik-Kamera-Pulses -- Achse
-        // und Gitter zittern nicht mit, auch wenn die Kerzen daneben pulsieren.
+        // ── Preisachse ──────────────────────────────────────────────────
         cctx.fillStyle = 'rgba(255,255,255,0.03)';
         cctx.fillRect(plotW, 0, AXIS_W, H);
         cctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        cctx.beginPath(); cctx.moveTo(plotW, 0); cctx.lineTo(plotW, H); cctx.stroke();
+        cctx.lineWidth = 1;
+        cctx.beginPath(); cctx.moveTo(plotW + 0.5, 0); cctx.lineTo(plotW + 0.5, H); cctx.stroke();
+        cctx.beginPath(); cctx.moveTo(0, g.axisY0 + 0.5); cctx.lineTo(W, g.axisY0 + 0.5); cctx.stroke();
 
-        cctx.strokeStyle = 'rgba(255,255,255,0.10)';
-        cctx.setLineDash([4, 4]);
-        cctx.lineDashOffset = musicMode ? -ambientT * 8 : 0;
         cctx.font = '10px "Courier New", monospace';
         cctx.fillStyle = 'rgba(255,255,255,0.55)';
         cctx.textAlign = 'left';
-        const GRID_N = 5;
-        for (let g = 0; g <= GRID_N; g++) {
-          const p = minP + (priceRange * g / GRID_N);
-          const y = yFor(p);
-          cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(plotW, y); cctx.stroke();
+        priceTicks.forEach(p => {
+          const y = g.yOf(p);
+          if (y < 8 || y > g.plotY1 + 2) return;
           cctx.fillText(fmtCurrency(p), plotW + 6, y + 3);
+        });
+        if (!autoScale) {
+          cctx.fillStyle = 'rgba(255,214,102,0.85)';
+          cctx.font = 'bold 9px "Courier New", monospace';
+          cctx.fillText('MANUELL', plotW + 6, g.plotY1 - 4);
         }
-        cctx.setLineDash([]);
 
-        if (lastC >= minP && lastC <= maxP) {
-          const ly = yFor(lastC);
-          cctx.strokeStyle = 'rgba(0,255,255,0.6)';
+        // Zeitachsen-Beschriftung
+        cctx.fillStyle = 'rgba(255,255,255,0.45)';
+        cctx.font = '10px "Courier New", monospace';
+        cctx.textAlign = 'center';
+        timeTicks.forEach(i => {
+          const x = g.xOf(i);
+          if (x < 20 || x > plotW - 20) return;
+          cctx.fillText(axisLabel(candles[i].t), x, H - 7);
+        });
+
+        // ── Letzter Kurs: Linie + Label ─────────────────────────────────
+        const lastCandle = candles[total - 1];
+        const lastC = lastCandle.c;
+        const lastUp = lastCandle.c >= lastCandle.o;
+        if (lastC >= g.lo && lastC <= g.hi) {
+          const ly = g.yOf(lastC);
+          cctx.strokeStyle = lastUp ? 'rgba(59,230,160,0.65)' : 'rgba(255,95,109,0.65)';
           cctx.setLineDash([6, 4]);
+          cctx.lineWidth = 1;
           cctx.beginPath(); cctx.moveTo(0, ly); cctx.lineTo(plotW, ly); cctx.stroke();
           cctx.setLineDash([]);
-        }
-
-        // ── Preis-Label (aktueller Kurs, farbig je nach letzter Kerze) ──
-        if (lastC >= minP && lastC <= maxP) {
-          const ly = yFor(lastC);
           const label = fmtCurrency(lastC);
           cctx.font = 'bold 11px "Courier New", monospace';
           const tw = cctx.measureText(label).width;
-          const boxW = Math.max(AXIS_W - 4, tw + 14), boxH = 18;
           cctx.fillStyle = lastUp ? '#3be6a0' : '#ff5f6d';
-          cctx.fillRect(plotW + 2, ly - boxH / 2, boxW, boxH);
+          cctx.fillRect(plotW + 2, ly - 9, Math.max(AXIS_W - 4, tw + 12), 18);
           cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
-          cctx.fillText(label, plotW + 2 + 7, ly + 4);
+          cctx.fillText(label, plotW + 8, ly + 4);
         }
 
         if (musicMode && beatFlash > 0.02) {
@@ -1098,241 +2066,224 @@
           cctx.beginPath(); cctx.arc(cx, cy, ringR, 0, Math.PI * 2); cctx.stroke();
         }
 
-        // ── Zeichnungen: bewusst AUSSERHALB des Musik-Kamera-Pulses --
-        // bleiben exakt an Maus/Datenpunkten ausgerichtet, auch wenn die
-        // Kerzen daneben im Bass zittern.
-        function projX(idx) { return (idx - start) * slot + slot / 2; }
-        function projY(price) { return plotY0 + plotH - ((price - minP) / priceRange) * plotH; }
-
-        function drawTrendline(d, isPending) {
-          const x1 = projX(d.i1), y1 = projY(d.p1), x2 = projX(d.i2), y2 = projY(d.p2);
-          cctx.strokeStyle = isPending ? 'rgba(255,214,102,0.55)' : 'rgba(255,214,102,0.9)';
-          cctx.lineWidth = 2;
-          cctx.beginPath(); cctx.moveTo(x1, y1); cctx.lineTo(x2, y2); cctx.stroke();
-          cctx.fillStyle = cctx.strokeStyle;
-          cctx.beginPath(); cctx.arc(x1, y1, 3, 0, Math.PI * 2); cctx.fill();
-          cctx.beginPath(); cctx.arc(x2, y2, 3, 0, Math.PI * 2); cctx.fill();
-        }
-
-        function drawHLine(d) {
-          const y = projY(d.price);
-          cctx.strokeStyle = 'rgba(0,255,255,0.75)';
-          cctx.setLineDash([6, 3]);
-          cctx.lineWidth = 1.5;
-          cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(plotW, y); cctx.stroke();
-          cctx.setLineDash([]);
-          const label = fmtCurrency(d.price);
+        // ── Zeichnungen: auf die Chartflaeche geclippt, ausserhalb des
+        // Musik-Kamera-Pulses (sie sollen exakt am Kurs kleben) ──────────
+        const axisLabels = [];
+        cctx.save();
+        cctx.beginPath(); cctx.rect(0, 0, plotW, g.plotY1 + 1); cctx.clip();
+        for (const d of drawings) renderDrawing(g, d, { selected: d.id === selectedId, ghost: false, labels: axisLabels });
+        if (pending) renderDrawing(g, pending, { selected: false, ghost: true, labels: axisLabels });
+        cctx.restore();
+        axisLabels.forEach(l => {
+          if (l.y < 8 || l.y > g.plotY1) return;
           cctx.font = 'bold 10px "Courier New", monospace';
-          const tw = cctx.measureText(label).width;
-          cctx.fillStyle = 'rgba(0,0,0,0.75)';
-          cctx.fillRect(plotW + 2, y - 9, Math.max(AXIS_W - 6, tw + 8), 15);
-          cctx.fillStyle = '#0ff';
+          const tw = cctx.measureText(l.text).width;
+          cctx.fillStyle = 'rgba(0,0,0,0.85)';
+          cctx.fillRect(plotW + 2, l.y - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+          cctx.strokeStyle = l.col; cctx.lineWidth = 1;
+          cctx.strokeRect(plotW + 2, l.y - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+          cctx.fillStyle = l.col;
           cctx.textAlign = 'left';
-          cctx.fillText(label, plotW + 6, y + 3);
-        }
+          cctx.fillText(l.text, plotW + 6, l.y + 3);
+        });
 
-        function drawFib(d) {
-          const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
-          const colors = ['#888', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#888'];
-          const x1 = projX(d.i1), x2 = projX(d.i2);
-          const xMin = Math.min(x1, x2), xMax = Math.max(x1, x2);
-          levels.forEach((lv, k) => {
-            const price = d.p1 + (d.p2 - d.p1) * lv;
-            const y = projY(price);
-            cctx.strokeStyle = colors[k];
-            cctx.globalAlpha = 0.8;
-            cctx.setLineDash([4, 3]);
-            cctx.lineWidth = 1.2;
-            cctx.beginPath(); cctx.moveTo(xMin, y); cctx.lineTo(xMax, y); cctx.stroke();
-            cctx.setLineDash([]);
-            cctx.globalAlpha = 1;
-            cctx.fillStyle = colors[k];
-            cctx.font = '10px "Courier New", monospace';
-            cctx.textAlign = 'left';
-            cctx.fillText((lv * 100).toFixed(1) + '%  ' + fmtPrice(price), xMax + 4, y + 3);
-          });
-        }
-
-        function drawRect(d, isPending) {
-          const x1 = projX(d.i1), y1 = projY(d.p1), x2 = projX(d.i2), y2 = projY(d.p2);
-          cctx.fillStyle = 'rgba(0,255,255,' + (isPending ? 0.08 : 0.14) + ')';
-          cctx.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1) || 1, Math.abs(y2 - y1) || 1);
-          cctx.strokeStyle = 'rgba(0,255,255,' + (isPending ? 0.5 : 0.8) + ')';
-          cctx.lineWidth = 1.5;
-          cctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1) || 1, Math.abs(y2 - y1) || 1);
-        }
-
-        function drawTextAnno(d) {
-          const x = projX(d.i1), y = projY(d.p1);
-          cctx.font = 'bold 12px "Courier New", monospace';
-          cctx.textAlign = 'left';
-          const tw = cctx.measureText(d.text).width;
-          cctx.fillStyle = 'rgba(0,0,0,0.7)';
-          cctx.fillRect(x - 2, y - 14, tw + 8, 18);
-          cctx.fillStyle = '#ffd866';
-          cctx.fillText(d.text, x + 2, y);
-        }
-
-        function drawBrush(d) {
-          if (d.points.length < 2) return;
-          cctx.strokeStyle = 'rgba(255,214,102,0.9)';
-          cctx.lineWidth = 2;
-          cctx.lineJoin = 'round'; cctx.lineCap = 'round';
-          cctx.beginPath();
-          d.points.forEach((pt, k) => {
-            const x = projX(pt.i), y = projY(pt.p);
-            if (k === 0) cctx.moveTo(x, y); else cctx.lineTo(x, y);
-          });
-          cctx.stroke();
-        }
-
-        function drawRulerAnno(d, isPending) {
-          const x1 = projX(d.i1), y1 = projY(d.p1), x2 = projX(d.i2), y2 = projY(d.p2);
-          const up = d.p2 >= d.p1;
-          const rgb = up ? '59,230,160' : '255,95,109';
-          const a = isPending ? 0.6 : 0.9;
-          cctx.fillStyle = 'rgba(' + rgb + ',' + (a * 0.15).toFixed(2) + ')';
-          cctx.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.max(1, Math.abs(x2 - x1)), Math.max(1, Math.abs(y2 - y1)));
-          cctx.strokeStyle = 'rgba(' + rgb + ',' + a.toFixed(2) + ')';
-          cctx.lineWidth = 1.5;
-          cctx.setLineDash([5, 3]);
-          cctx.beginPath(); cctx.moveTo(x1, y1); cctx.lineTo(x2, y2); cctx.stroke();
-          cctx.setLineDash([]);
-          cctx.fillStyle = cctx.strokeStyle;
-          cctx.beginPath(); cctx.arc(x1, y1, 3, 0, Math.PI * 2); cctx.fill();
-          cctx.beginPath(); cctx.arc(x2, y2, 3, 0, Math.PI * 2); cctx.fill();
-
-          const pct = d.p1 !== 0 ? ((d.p2 - d.p1) / d.p1) * 100 : 0;
-          const bars = Math.round(d.i2 - d.i1);
-          const label = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%  ' +
-            (d.p2 - d.p1 >= 0 ? '+' : '-') + fmtCurrency(Math.abs(d.p2 - d.p1)) + '  ' + Math.abs(bars) + ' Kerzen';
-          cctx.font = 'bold 11px "Courier New", monospace';
-          const tw = cctx.measureText(label).width;
-          let lx = x2 + 8;
-          if (lx + tw + 10 > plotW) lx = x2 - tw - 18;
-          const ly2 = y2 - 18;
-          cctx.fillStyle = 'rgba(0,0,0,0.8)';
-          cctx.fillRect(lx - 5, ly2 - 12, tw + 10, 18);
-          cctx.strokeStyle = 'rgba(' + rgb + ',0.8)';
-          cctx.strokeRect(lx - 5, ly2 - 12, tw + 10, 18);
-          cctx.fillStyle = up ? '#3be6a0' : '#ff5f6d';
-          cctx.textAlign = 'left';
-          cctx.fillText(label, lx, ly2 + 1);
-        }
-
-        function renderDrawing(d, isPending) {
-          if (d.type === 'line') drawTrendline(d, isPending);
-          else if (d.type === 'hline') drawHLine(d);
-          else if (d.type === 'fib') drawFib(d);
-          else if (d.type === 'rect') drawRect(d, isPending);
-          else if (d.type === 'text') drawTextAnno(d);
-          else if (d.type === 'brush') drawBrush(d);
-          else if (d.type === 'ruler') drawRulerAnno(d, isPending);
-        }
-        for (const d of drawings) renderDrawing(d, false);
-        if (pending) renderDrawing(pending, true);
-
-        // Crosshair (immer sichtbar beim Hover, unabhaengig vom Werkzeug)
-        if (hoverIndex >= start && hoverIndex < start + n && hoverY >= 0) {
-          const x = (hoverIndex - start) * slot + slot / 2;
-          cctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        // ── Fadenkreuz ──────────────────────────────────────────────────
+        if (mouseIn && hoverSlot !== null && hoverY >= plotY0 && hoverY <= g.axisY0) {
+          const x = g.xOf(hoverSlot);
+          cctx.strokeStyle = 'rgba(255,255,255,0.35)';
+          cctx.lineWidth = 1;
           cctx.setLineDash([2, 3]);
-          cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, plotY0 + plotH); cctx.stroke();
-          if (hoverY >= plotY0 && hoverY <= plotY0 + plotH) {
-            cctx.beginPath(); cctx.moveTo(0, hoverY); cctx.lineTo(plotW, hoverY); cctx.stroke();
-          }
+          cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, g.axisY0); cctx.stroke();
+          cctx.beginPath(); cctx.moveTo(0, hoverY); cctx.lineTo(plotW, hoverY); cctx.stroke();
           cctx.setLineDash([]);
-          if (hoverY >= plotY0 && hoverY <= plotY0 + plotH) {
-            const hoverPrice = maxP - ((hoverY - plotY0) / plotH) * priceRange;
-            const label = fmtCurrency(hoverPrice);
+          if (hoverY <= g.plotY1) {
+            const label = fmtCurrency(g.pOf(hoverY));
             cctx.font = '10px "Courier New", monospace';
             const tw = cctx.measureText(label).width;
-            cctx.fillStyle = 'rgba(0,255,255,0.9)';
-            cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 15);
+            cctx.fillStyle = 'rgba(0,255,255,0.92)';
+            cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 16);
             cctx.fillStyle = '#000';
             cctx.textAlign = 'left';
             cctx.fillText(label, plotW + 6, hoverY + 3);
           }
-        }
-
-        // Volumen-Panel
-        if (volOn) {
-          let maxV = 0;
-          for (let k = 0; k < n; k++) if (candles[start + k].v > maxV) maxV = candles[start + k].v;
-          maxV = maxV || 1;
-          for (let i = 0; i < n; i++) {
-            const c = candles[start + i];
-            const h = (c.v / maxV) * VOL_H;
-            const up = c.c >= c.o;
-            cctx.fillStyle = up ? 'rgba(59,230,160,0.55)' : 'rgba(255,95,109,0.55)';
-            cctx.fillRect(i * slot, volY0 + VOL_H - h, Math.max(1, slot - 1), h);
-          }
-          cctx.fillStyle = 'rgba(255,255,255,0.35)';
+          const tLabel = fmtFull(timeFromIdx(hoverSlot));
           cctx.font = '10px "Courier New", monospace';
+          const ttw = cctx.measureText(tLabel).width;
+          const bx = Math.max(0, Math.min(plotW - ttw - 10, x - ttw / 2 - 5));
+          cctx.fillStyle = 'rgba(0,255,255,0.92)';
+          cctx.fillRect(bx, g.axisY0 + 3, ttw + 10, 16);
+          cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
-          cctx.fillText('Volumen', 4, volY0 + 11);
-          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
-          cctx.beginPath(); cctx.moveTo(0, volY0); cctx.lineTo(plotW, volY0); cctx.stroke();
+          cctx.fillText(tLabel, bx + 5, g.axisY0 + 14);
         }
 
-        // RSI-Panel
-        if (rsiOn && rsiData) {
-          function rsiYFor(v) { return rsiY0 + RSI_H - (v / 100) * RSI_H; }
-          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
-          cctx.beginPath(); cctx.moveTo(0, rsiY0); cctx.lineTo(plotW, rsiY0); cctx.stroke();
-          cctx.setLineDash([3, 3]);
-          [30, 70].forEach(v => { cctx.beginPath(); cctx.moveTo(0, rsiYFor(v)); cctx.lineTo(plotW, rsiYFor(v)); cctx.stroke(); });
-          cctx.setLineDash([]);
+        // ── Volumen ─────────────────────────────────────────────────────
+        if (indState.vol && g.volH > 4) {
+          let maxV = 0;
+          for (let i = i0; i <= i1; i++) if (candles[i] && candles[i].v > maxV) maxV = candles[i].v;
+          maxV = maxV || 1;
+          const bw = Math.max(1, slot * 0.66);
+          for (let i = i0; i <= i1; i++) {
+            const c = candles[i]; if (!c) continue;
+            const h = (c.v / maxV) * (g.volH - 12);
+            cctx.fillStyle = c.c >= c.o ? 'rgba(59,230,160,0.5)' : 'rgba(255,95,109,0.5)';
+            cctx.fillRect(g.xOf(i) - bw / 2, g.volY0 + g.volH - h, bw, h);
+          }
+          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.beginPath(); cctx.moveTo(0, g.volY0 + 0.5); cctx.lineTo(plotW, g.volY0 + 0.5); cctx.stroke();
           cctx.fillStyle = 'rgba(255,255,255,0.4)';
           cctx.font = '10px "Courier New", monospace';
           cctx.textAlign = 'left';
-          cctx.fillText('RSI (14)', 4, rsiY0 + 11);
+          const vi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
+          cctx.fillText('Vol  ' + fmtVol(candles[vi] ? candles[vi].v : 0), 4, g.volY0 + 11);
+        }
+
+        // ── RSI ─────────────────────────────────────────────────────────
+        if (indState.rsi && rsiData && g.rsiH > 4) {
+          const rsiYFor = v => g.rsiY0 + g.rsiH - (v / 100) * (g.rsiH - 6) - 3;
+          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.beginPath(); cctx.moveTo(0, g.rsiY0 + 0.5); cctx.lineTo(plotW, g.rsiY0 + 0.5); cctx.stroke();
+          cctx.fillStyle = 'rgba(192,132,252,0.08)';
+          cctx.fillRect(0, rsiYFor(70), plotW, rsiYFor(30) - rsiYFor(70));
+          cctx.setLineDash([3, 3]);
+          cctx.strokeStyle = 'rgba(255,255,255,0.18)';
+          [30, 70].forEach(v => { cctx.beginPath(); cctx.moveTo(0, rsiYFor(v)); cctx.lineTo(plotW, rsiYFor(v)); cctx.stroke(); });
+          cctx.setLineDash([]);
           cctx.strokeStyle = '#c084fc';
           cctx.lineWidth = 1.5;
           cctx.beginPath();
-          let started = false;
-          for (let i = 0; i < n; i++) {
-            const v = rsiData[start + i];
-            if (v == null) continue;
-            const x = i * slot + slot / 2;
-            const y = rsiYFor(v);
-            if (!started) { cctx.moveTo(x, y); started = true; } else cctx.lineTo(x, y);
+          let st = false;
+          for (let i = i0; i <= i1; i++) {
+            const v = rsiData[i]; if (v == null) continue;
+            const x = g.xOf(i), y = rsiYFor(v);
+            if (!st) { cctx.moveTo(x, y); st = true; } else cctx.lineTo(x, y);
           }
-          if (started) cctx.stroke();
+          if (st) cctx.stroke();
+          const ri = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
+          cctx.fillStyle = 'rgba(255,255,255,0.45)';
+          cctx.font = '10px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          cctx.fillText('RSI 14  ' + (rsiData[ri] != null ? rsiData[ri].toFixed(1) : '—'), 4, g.rsiY0 + 11);
         }
 
-        // EQ-Band unter dem Chart (nur Musik-Reaktiv-Modus)
-        if (musicMode) {
-          const eqY0 = H - AXIS_H - EQ_H;
+        // ── MACD ────────────────────────────────────────────────────────
+        if (indState.macd && macd && g.macdH > 4) {
+          let mx = 1e-9;
+          for (let i = i0; i <= i1; i++) {
+            for (const a of [macd.line[i], macd.signal[i], macd.hist[i]])
+              if (a != null && Math.abs(a) > mx) mx = Math.abs(a);
+          }
+          const mid = g.macdY0 + g.macdH / 2;
+          const mY = v => mid - (v / mx) * (g.macdH / 2 - 6);
+          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.beginPath(); cctx.moveTo(0, g.macdY0 + 0.5); cctx.lineTo(plotW, g.macdY0 + 0.5); cctx.stroke();
+          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          cctx.beginPath(); cctx.moveTo(0, mid); cctx.lineTo(plotW, mid); cctx.stroke();
+          const bw = Math.max(1, slot * 0.6);
+          for (let i = i0; i <= i1; i++) {
+            const hv = macd.hist[i]; if (hv == null) continue;
+            cctx.fillStyle = hv >= 0 ? 'rgba(59,230,160,0.55)' : 'rgba(255,95,109,0.55)';
+            const y = mY(hv);
+            cctx.fillRect(g.xOf(i) - bw / 2, Math.min(y, mid), bw, Math.abs(mid - y));
+          }
+          const line = (arr, col) => {
+            cctx.strokeStyle = col; cctx.lineWidth = 1.3;
+            cctx.beginPath();
+            let st = false;
+            for (let i = i0; i <= i1; i++) {
+              const v = arr[i]; if (v == null) continue;
+              const x = g.xOf(i), y = mY(v);
+              if (!st) { cctx.moveTo(x, y); st = true; } else cctx.lineTo(x, y);
+            }
+            if (st) cctx.stroke();
+          };
+          line(macd.line, '#00e5ff');
+          line(macd.signal, '#ffd866');
+          cctx.fillStyle = 'rgba(255,255,255,0.45)';
+          cctx.font = '10px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          cctx.fillText('MACD 12/26/9', 4, g.macdY0 + 11);
+        }
+
+        // ── EQ-Band (nur Musik-Modus) ───────────────────────────────────
+        if (musicMode && g.eqH > 4) {
           if (eqVals) {
-            for (let i = 0; i < n; i++) {
-              const v = eqVals[i] || 0;
+            for (let i = i0; i <= i1; i++) {
+              const v = eqVals[i - eqBase] || 0;
               if (v < 0.01) continue;
-              const x = i * slot;
-              const bh = v * EQ_H;
-              const hue = (specHue + (i / n) * 50) % 360;
+              const bh = v * g.eqH;
+              const hue = (specHue + ((i - i0) / Math.max(1, i1 - i0)) * 50) % 360;
               cctx.shadowColor = 'hsl(' + hue + ',100%,60%)';
               cctx.shadowBlur = 4 + v * 16;
               cctx.fillStyle = 'hsla(' + hue + ',95%,58%,0.85)';
-              cctx.fillRect(x, eqY0 + EQ_H - bh, Math.max(1, slot - 1), bh);
+              cctx.fillRect(g.xOf(i) - slot / 2, g.eqY0 + g.eqH - bh, Math.max(1, slot - 1), bh);
             }
             cctx.shadowBlur = 0;
           }
-          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
-          cctx.beginPath(); cctx.moveTo(0, eqY0); cctx.lineTo(plotW, eqY0); cctx.stroke();
+          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.beginPath(); cctx.moveTo(0, g.eqY0 + 0.5); cctx.lineTo(plotW, g.eqY0 + 0.5); cctx.stroke();
         }
 
-        // X-Achse
-        cctx.fillStyle = 'rgba(255,255,255,0.4)';
-        cctx.font = '10px "Courier New", monospace';
-        cctx.textAlign = 'center';
-        const ticks = 5;
-        for (let t = 0; t <= ticks; t++) {
-          const i = Math.min(n - 1, Math.round((t / ticks) * (n - 1)));
-          cctx.fillText(fmtDate(candles[start + i].t), i * slot + slot / 2, H - 4);
+        // ── Legende oben links (TradingView-Stil) ───────────────────────
+        const li = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
+        const lc = candles[li];
+        if (lc) {
+          const dc = dispBar(li) || lc;
+          const prev = candles[li - 1];
+          const chg = prev ? ((lc.c - prev.c) / prev.c) * 100 : 0;
+          const up = dc.c >= dc.o;
+          cctx.font = 'bold 11px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          const l1 = currentSymbol + ' · ' + currentInterval + ' · Binance' + (logScale ? ' · LOG' : '');
+          const l2 = 'O ' + fmtPrice(dc.o) + '  H ' + fmtPrice(dc.h) + '  L ' + fmtPrice(dc.l) + '  C ' + fmtPrice(dc.c);
+          const l3 = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%   ' + fmtFull(lc.t);
+          const showMA = indState.ma && ma20;
+          const wMax = Math.max(cctx.measureText(l1).width, cctx.measureText(l2).width, cctx.measureText(l3).width);
+          cctx.fillStyle = 'rgba(3,5,10,0.72)';
+          cctx.fillRect(2, plotY0 + 1, wMax + 12, showMA ? 74 : 48);
+          cctx.fillStyle = 'rgba(0,255,255,0.9)';
+          cctx.fillText(l1, 8, plotY0 + 14);
+          cctx.fillStyle = up ? '#3be6a0' : '#ff5f6d';
+          cctx.fillText(l2, 8, plotY0 + 28);
+          cctx.fillStyle = chg >= 0 ? 'rgba(59,230,160,0.85)' : 'rgba(255,95,109,0.85)';
+          cctx.font = '10px "Courier New", monospace';
+          cctx.fillText(l3, 8, plotY0 + 42);
+          if (showMA) {
+            const t20 = ma20[li] != null ? fmtPrice(ma20[li]) : '—';
+            const t50 = ma50[li] != null ? fmtPrice(ma50[li]) : '—';
+            cctx.fillStyle = '#ffd866'; cctx.fillText('MA20 ' + t20, 8, plotY0 + 56);
+            cctx.fillStyle = '#00e5ff'; cctx.fillText('MA50 ' + t50, 8, plotY0 + 68);
+          }
         }
 
-        // Funken (Beat- + Ambient-Partikel), nur Musik-Reaktiv-Modus
+        // Kopfzeile aktualisieren (nur bei Aenderung -> kein DOM-Geflacker)
+        const firstVis = candles[Math.max(0, i0)];
+        const pct = firstVis ? ((lastC - firstVis.o) / firstVis.o) * 100 : 0;
+        const head = fmtCurrency(lastC) + '|' + pct.toFixed(2);
+        if (head !== lastHeader) {
+          lastHeader = head;
+          priceEl.textContent = fmtCurrency(lastC);
+          chgEl.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(2) + '% (Sichtfenster)';
+          chgEl.className = pct >= 0 ? 'chg-up' : 'chg-down';
+        }
+
+        // Eigenschaften-Leiste ueber das ausgewaehlte Objekt legen
+        if (!propsEl.hidden) {
+          const d = findDrawing(selectedId);
+          if (!d) hideProps();
+          else {
+            const P = d.pts.map(pt => scr(g, pt));
+            let px = Math.min(...P.map(p => p.x)), py = Math.min(...P.map(p => p.y));
+            if (d.type === 'hline') px = plotW / 2 - 60;
+            const bw = propsEl.offsetWidth || 190, bh = propsEl.offsetHeight || 28;
+            px = Math.max(4, Math.min(cssW - bw - 4, px));
+            py = Math.max(4, Math.min(cssH - bh - 4, py - bh - 8));
+            propsEl.style.left = Math.round(px) + 'px';
+            propsEl.style.top  = Math.round(py) + 'px';
+          }
+        }
+
+        // ── Funken ──────────────────────────────────────────────────────
         if (musicMode) {
           for (let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
@@ -1353,6 +2304,7 @@
       function draw() {
         raf = requestAnimationFrame(draw);
         if (document.hidden) return;
+        if (cssW < 40 || cssH < 40) { fitCanvas(); return; }
         ambientT += 0.016;
         if (musicMode) updateAudioBands();
         if (candles.length) {
@@ -1522,10 +2474,31 @@
         else if (e.key === 'Escape' && pending) { pending = null; dragState = null; }
       });
 
-      // Anfangszustand: Musik-Modus (per Default AUS, aus localStorage
-      // wiederhergestellt) anwenden, dann direkt den Bitcoin-Chart laden.
-      applyMusicMode();
-      loadChart();
+      // ── Anfangszustand ───────────────────────────────────────────────
+      // Gemerkte Einstellungen (Intervall, Chart-Typ, Indikatoren, Symbol)
+      // auf die Bedienelemente spiegeln, gespeicherte Zeichnungen holen,
+      // Musik-Modus anwenden -- dann den Chart laden.
+      (function initChart() {
+        document.querySelectorAll('.chart-tf-group .chart-seg-btn')
+          .forEach(b => b.classList.toggle('active', b.dataset.interval === currentInterval));
+        document.querySelectorAll('.chart-type-group .chart-seg-btn')
+          .forEach(b => b.classList.toggle('active', b.dataset.charttype === chartType));
+        if (prefs.symbol) {
+          const opt = [...symbolSelect.options].find(o => o.value === prefs.symbol);
+          if (opt) symbolSelect.value = prefs.symbol;
+          else {
+            symbolSelect.value = '__custom';
+            symbolCustom.hidden = false;
+            symbolCustom.value = prefs.symbol;
+          }
+          currentSymbol = prefs.symbol;
+        }
+        loadDrawings(currentSymbol);
+        updateUndoBtns();
+        setTool('pan');
+        applyMusicMode();
+        loadChart();
+      })();
     })();
   </script>
 </body>
