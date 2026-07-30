@@ -18,9 +18,19 @@
 body, html {
   margin: 0;
   padding: 0;
+  /* Schwarz als Unterlage: das Sterne-GIF ist "fixed" und wird nur INNERHALB
+     der Element-Box gemalt. Ohne diese Farbe blitzt bei kurzen Seiten unter
+     dem Inhalt die nackte Browser-Leinwand durch (je nach Browser-Theme
+     weiss oder schwarz) -> sichtbarer Streifen am Seitenende. */
+  background-color: #000;
   background-image: url('../img/gif/background.gif');
   background-repeat: repeat;
   background-attachment: fixed;
+  /* ...und die Seite immer mindestens bildschirmhoch machen, damit die
+     Sterne den ganzen Viewport ausfuellen, auch wenn wenig Inhalt da ist.
+     dvh (falls unterstuetzt) beruecksichtigt die Browserleisten auf Handys. */
+  min-height: 100vh;
+  min-height: 100dvh;
   font-family: "Comic Sans MS", "Comic Sans", "Comic Neue", cursive, sans-serif;
   color: #fff;
   cursor: url('../coursor/WoW Cursor.cur'), auto;
