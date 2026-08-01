@@ -357,7 +357,9 @@
           <kbd>R</kbd> Rechteck, <kbd>F</kbd> Fibonacci, <kbd>M</kbd> Lineal, <kbd>B</kbd> Freihand, <kbd>X</kbd>
           Radiergummi, <kbd>L</kbd> Log-Achse, <kbd>Entf</kbd> l&ouml;schen, <kbd>Esc</kbd> abbrechen,
           <kbd>Strg</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> r&uuml;ckg&auml;ngig.
-          &bdquo;Musik-Reaktiv&ldquo; blendet unten den Player ein &mdash; solange er l&auml;uft, pulsiert der Chart im Takt.
+          &bdquo;Musik-Reaktiv&ldquo; blendet unten den Player ein. Der Chart selbst bleibt dabei ruhig stehen &mdash;
+          er kippt und wackelt nicht: im Takt reagieren nur die <strong>Kerzen</strong> (Breite, Glut, Farbton) und
+          das Spektrum-Band, das erst mit dem geladenen Track erscheint.
         </p>
       </div>
     </section>
@@ -525,7 +527,7 @@
       let barMs = BAR_MS['1d'];
       let reqSeq = 0;
       let cssW = 0, cssH = 0, dpr = Math.max(1, window.devicePixelRatio || 1);
-      let raf = 0, ambientT = 0;
+      let raf = 0;
       let hoverX = -1, hoverY = -1, hoverSlot = null, hoverIndex = -1, mouseIn = false;
 
       // --- Einstellungen dauerhaft merken -------------------------------
@@ -743,7 +745,10 @@
         let volH  = indState.vol  ? Math.round(H * 0.13) : 0;
         let rsiH  = indState.rsi  ? Math.round(H * 0.16) : 0;
         let macdH = indState.macd ? Math.round(H * 0.16) : 0;
-        let eqH   = musicMode     ? Math.round(H * 0.16) : 0;
+        // Das EQ-Band kostet Chart-Hoehe -- es wird deshalb erst reserviert,
+        // wenn wirklich ein Track geladen ist. Musik-Modus ohne Musik sieht
+        // dadurch exakt aus wie der normale Chart.
+        let eqH   = (musicMode && audio.currentSrc) ? Math.round(H * 0.16) : 0;
         const avail = Math.max(60, H - AXIS_H - TOP_PAD);
         let extra = volH + rsiH + macdH + eqH;
         const maxExtra = Math.max(0, avail - Math.max(110, avail * 0.5));
@@ -1663,6 +1668,11 @@
 
       function pumpGlow() {
         const blur = Math.round(bassEnv * 60 + beatFlash * 46);
+        if (blur < 1) {
+          // Kein Ton -> exakt der Rahmen aus dem CSS, kein Dauer-Leuchten.
+          if (panelEl.style.boxShadow) panelEl.style.boxShadow = '';
+          return;
+        }
         const a = (0.3 + bassEnv * 0.65).toFixed(2);
         panelEl.style.boxShadow = '0 0 ' + (16 + blur) + 'px rgba(0,255,255,' + a + '), ' +
           'inset 0 0 ' + Math.round(beatFlash * 42) + 'px rgba(255,0,255,0.28)';
@@ -1859,14 +1869,10 @@
         cctx.fillStyle = bg;
         cctx.fillRect(0, 0, W, H);
 
-        if (musicMode) {
-          const auraR = Math.max(W, H) * 0.65;
-          const aura = cctx.createRadialGradient(W / 2, H * 0.4, 0, W / 2, H * 0.4, auraR);
-          aura.addColorStop(0, 'hsla(' + specHue + ',85%,55%,' + (0.06 + bassEnv * 0.22 + beatFlash * 0.10).toFixed(3) + ')');
-          aura.addColorStop(1, 'hsla(' + specHue + ',85%,55%,0)');
-          cctx.fillStyle = aura;
-          cctx.fillRect(0, 0, W, H);
-        }
+        // (Frueher lag hier eine Hintergrund-Aura ueber der ganzen Flaeche --
+        // sie faerbte auch Achsen und Beschriftung mit und liess den Chart
+        // im Takt "atmen". Raus: der Untergrund bleibt derselbe wie ohne
+        // Musik, reagieren sollen nur die Kerzen.)
 
         const g = geom();
         const { i0, i1, slot, plotW, plotH, plotY0 } = g;
@@ -1885,7 +1891,6 @@
         }
         cctx.strokeStyle = 'rgba(255,255,255,0.09)';
         cctx.setLineDash([4, 4]);
-        cctx.lineDashOffset = musicMode ? -ambientT * 8 : 0;
         priceTicks.forEach(p => {
           const y = g.yOf(p);
           if (y < plotY0 - 1 || y > g.plotY1 + 1) return;
@@ -1906,20 +1911,18 @@
           cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, g.axisY0); cctx.stroke();
         });
 
-        // ── Kursserie (im Musik-Kamera-Puls) ────────────────────────────
-        const scaleAmt = musicMode ? 1 + bassEnv * 0.09 + beatFlash * 0.05 : 1;
-        const shk = musicMode ? beatFlash * 13 : 0;
-        const tilt = musicMode ? midSm * 0.28 + Math.sin(ambientT * 0.5) * 0.015 : 0;
+        // ── Kursserie ───────────────────────────────────────────────────
+        // Der Chart selbst steht IMMER still -- auch im Musik-Modus. Kein
+        // Kippen, kein Zoom-Puls, kein Beat-Wackler: die Kerzen sollen
+        // ablesbar bleiben. Auf die Musik reagieren nur die Kerzen selbst
+        // (Ausschlag, Breite, Glut, Farbton) und das EQ-Band unten -- und
+        // zwar ausschliesslich, solange wirklich Ton laeuft.
         cctx.save();
         cctx.beginPath(); cctx.rect(0, 0, plotW, g.plotY1 + 1); cctx.clip();
-        if (musicMode) {
-          cctx.translate(plotW / 2, plotY0 + plotH / 2);
-          cctx.rotate(tilt);
-          cctx.scale(scaleAmt, scaleAmt);
-          cctx.translate(-plotW / 2 + Math.sin(ambientT * 40) * shk * 0.4,
-                         -(plotY0 + plotH / 2) + Math.cos(ambientT * 37) * shk * 0.3);
-        }
-        const hueShift = musicMode ? (Math.sin(ambientT * 0.6) * 8 + trebSm * 40 + beatFlash * 45 + midSm * 16) : 0;
+        // Farbton wandert im Takt, aber nur leicht: frueher kippte Gruen bei
+        // jedem Beat nach Blau und Rot nach Gelb -- damit war nicht mehr
+        // erkennbar, welche Kerze steigt und welche faellt.
+        const hueShift = musicMode ? (trebSm * 10 + beatFlash * 14 + midSm * 5) : 0;
         const eqBase = Math.floor(viewStart);
         const eqAt = i => (musicMode && eqVals) ? (eqVals[i - eqBase] || 0) : 0;
 
@@ -2054,17 +2057,9 @@
           cctx.fillText(label, plotW + 8, ly + 4);
         }
 
-        if (musicMode && beatFlash > 0.02) {
-          cctx.fillStyle = 'rgba(255,0,255,' + (beatFlash * 0.18).toFixed(3) + ')';
-          cctx.fillRect(0, 0, W, H);
-        }
-        if (musicMode && beatFlash > 0.03) {
-          const cx = plotW / 2, cy = plotY0 + plotH / 2;
-          const ringR = (1 - beatFlash) * Math.max(W, H) * 0.55 + 8;
-          cctx.strokeStyle = 'rgba(0,255,255,' + (beatFlash * 0.55).toFixed(3) + ')';
-          cctx.lineWidth = 2.5;
-          cctx.beginPath(); cctx.arc(cx, cy, ringR, 0, Math.PI * 2); cctx.stroke();
-        }
+        // (Frueher lagen hier ein magentafarbener Vollbild-Blitz und ein
+        // aufziehender Ring ueber dem ganzen Chart. Beide sind raus: der
+        // Beat zeigt sich jetzt nur noch an den Kerzen selbst.)
 
         // ── Zeichnungen: auf die Chartflaeche geclippt, ausserhalb des
         // Musik-Kamera-Pulses (sie sollen exakt am Kurs kleben) ──────────
@@ -2305,7 +2300,6 @@
         raf = requestAnimationFrame(draw);
         if (document.hidden) return;
         if (cssW < 40 || cssH < 40) { fitCanvas(); return; }
-        ambientT += 0.016;
         if (musicMode) updateAudioBands();
         if (candles.length) {
           try { renderChart(); }
