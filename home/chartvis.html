@@ -349,6 +349,11 @@
           zwei Finger = Pinch-Zoom. Ziehen an der <strong>Preisachse</strong> (oder Mausrad dort) skaliert die H&ouml;he,
           senkrechtes Ziehen im Chart verschiebt sie &mdash; Doppelklick auf die Achse schaltet zur&uuml;ck auf
           <em>Auto</em>. Doppelklick im Chart oder das Zielkreuz-Symbol springt zur&uuml;ck zum aktuellen Kurs.
+          <strong>Volumen, RSI und MACD haben jeweils eine eigene Achse:</strong> Mausrad oder Ziehen
+          <em>rechts neben dem Panel</em> zoomt genau dieses Panel senkrecht (der Faktor steht dann als
+          &bdquo;x3.0&ldquo; daneben), senkrechtes Ziehen <em>im</em> Panel verschiebt seinen Ausschnitt, und an der
+          <strong>Trennlinie</strong> zwischen zwei Panels l&auml;sst sich deren H&ouml;he ziehen &mdash; so werden
+          auch winzige Ausschl&auml;ge gross und lesbar. Doppelklick setzt Zoom bzw. H&ouml;he wieder zur&uuml;ck.
           <strong>Zeichnen:</strong> alle Objekte h&auml;ngen an Zeitpunkt&nbsp;+&nbsp;Preis &mdash; sie bleiben beim
           Zoomen, Scrollen, Nachladen alter Historie und beim Intervall-Wechsel exakt an ihrer Kerze. Mit dem
           Fadenkreuz-Werkzeug lassen sie sich anklicken, verschieben und an den Griffen neu ziehen; die kleine Leiste
@@ -529,6 +534,7 @@
       let cssW = 0, cssH = 0, dpr = Math.max(1, window.devicePixelRatio || 1);
       let raf = 0;
       let hoverX = -1, hoverY = -1, hoverSlot = null, hoverIndex = -1, mouseIn = false;
+      let hoverZone = '';
 
       // --- Einstellungen dauerhaft merken -------------------------------
       const PREF_KEY = 'glappa-chartvis-prefs';
@@ -543,11 +549,47 @@
       if (prefs.interval && BAR_MS[prefs.interval]) currentInterval = prefs.interval;
       if (prefs.type) chartType = prefs.type;
 
+      // --- Unter-Panels (Volumen/RSI/MACD) ------------------------------
+      // Jedes Panel hat eine eigene Werteachse: Hoehe (Anteil der Chart-
+      // hoehe, per Trennlinie ziehbar), vertikaler Zoom und Verschiebung.
+      // Ohne das quetschen sich z.B. die Volumen-Balken in 60 px und kleine
+      // Ausschlaege sind schlicht nicht zu sehen.
+      const PANEL_KEYS = ['vol', 'rsi', 'macd'];
+      const PANEL_DEF_FRAC = { vol: 0.13, rsi: 0.16, macd: 0.16 };
+      const PANEL_MIN_FRAC = 0.05, PANEL_MAX_FRAC = 0.5;
+      const PANEL_MIN_ZOOM = 0.2, PANEL_MAX_ZOOM = 60;
+      const panelFrac = Object.assign({}, PANEL_DEF_FRAC);
+      const panelZoom = { vol: 1, rsi: 1, macd: 1 };
+      const panelPan  = { vol: 0, rsi: 0, macd: 0 };
+      if (prefs.panelFrac) for (const k of PANEL_KEYS) {
+        const v = prefs.panelFrac[k];
+        if (typeof v === 'number' && isFinite(v)) panelFrac[k] = Math.min(PANEL_MAX_FRAC, Math.max(PANEL_MIN_FRAC, v));
+      }
+      function resetPanel(key) { panelZoom[key] = 1; panelPan[key] = 0; }
+      function resetAllPanels() { PANEL_KEYS.forEach(resetPanel); }
+      function setPanelZoom(key, z) {
+        panelZoom[key] = Math.max(PANEL_MIN_ZOOM, Math.min(PANEL_MAX_ZOOM, z));
+      }
+      // Werte-Fenster eines Panels: Basisbereich [lo0,hi0] aus den Daten,
+      // darauf Zoom (schrumpft die Spanne) und Verschiebung.
+      // anchor 'bottom' = Balken bleiben auf der Grundlinie stehen (Volumen),
+      // anchor 'center' = um die Mitte herum zoomen (RSI, MACD).
+      function panelWindow(key, lo0, hi0, anchor) {
+        const span0 = Math.max(1e-12, hi0 - lo0);
+        const span = span0 / Math.max(PANEL_MIN_ZOOM, panelZoom[key] || 1);
+        const shift = (panelPan[key] || 0) * span0;
+        const lo = anchor === 'center'
+          ? (lo0 + hi0) / 2 + shift - span / 2
+          : lo0 + shift;
+        return { lo, hi: lo + span, span };
+      }
+
       function savePrefs() {
         try {
           localStorage.setItem(PREF_KEY, JSON.stringify({
             interval: currentInterval, type: chartType, log: logScale,
-            magnet: magnetOn, ind: indState, symbol: currentSymbol
+            magnet: magnetOn, ind: indState, symbol: currentSymbol,
+            panelFrac: panelFrac
           }));
         } catch (e) {}
       }
@@ -569,6 +611,16 @@
         if (v >= 1e6) return (v / 1e6).toFixed(2) + ' Mio';
         if (v >= 1e3) return (v / 1e3).toFixed(1) + ' Tsd';
         return v.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+      }
+      function fmtCompact(v) {
+        const a = Math.abs(v);
+        if (a < 1e-9) return '0';
+        if (a >= 1e9) return (v / 1e9).toFixed(1) + 'G';
+        if (a >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+        if (a >= 1e3) return (v / 1e3).toFixed(1) + 'k';
+        if (a >= 1) return v.toFixed(1);
+        if (a >= 0.01) return v.toFixed(3);
+        return v.toExponential(1);
       }
       function axisLabel(ts) {
         const d = new Date(ts);
@@ -742,16 +794,18 @@
       // ── Geometrie: die EINZIGE Quelle fuer Pixel<->Daten ───────────────
       function geom() {
         const W = cssW, H = cssH;
-        let volH  = indState.vol  ? Math.round(H * 0.13) : 0;
-        let rsiH  = indState.rsi  ? Math.round(H * 0.16) : 0;
-        let macdH = indState.macd ? Math.round(H * 0.16) : 0;
+        let volH  = indState.vol  ? Math.round(H * panelFrac.vol)  : 0;
+        let rsiH  = indState.rsi  ? Math.round(H * panelFrac.rsi)  : 0;
+        let macdH = indState.macd ? Math.round(H * panelFrac.macd) : 0;
         // Das EQ-Band kostet Chart-Hoehe -- es wird deshalb erst reserviert,
         // wenn wirklich ein Track geladen ist. Musik-Modus ohne Musik sieht
         // dadurch exakt aus wie der normale Chart.
         let eqH   = (musicMode && audio.currentSrc) ? Math.round(H * 0.16) : 0;
         const avail = Math.max(60, H - AXIS_H - TOP_PAD);
         let extra = volH + rsiH + macdH + eqH;
-        const maxExtra = Math.max(0, avail - Math.max(110, avail * 0.5));
+        // Die Panels duerfen bis zu drei Viertel der Hoehe belegen -- wer ein
+        // Panel gross zieht, will es auch gross sehen.
+        const maxExtra = Math.max(0, avail - Math.max(80, avail * 0.25));
         if (extra > maxExtra && extra > 0) {
           const f = maxExtra / extra;
           volH = Math.round(volH * f); rsiH = Math.round(rsiH * f);
@@ -805,6 +859,10 @@
           volY0, volH, rsiY0, rsiH, macdY0, macdH, eqY0, eqH,
           axisY0: H - AXIS_H, slot, i0, i1, lo, hi, tLo, tHi, tSpan
         };
+        g.panels = [];
+        if (volH  > 4) g.panels.push({ key: 'vol',  y0: volY0,  h: volH  });
+        if (rsiH  > 4) g.panels.push({ key: 'rsi',  y0: rsiY0,  h: rsiH  });
+        if (macdH > 4) g.panels.push({ key: 'macd', y0: macdY0, h: macdH });
         g.xOf = i => (i - viewStart) * slot + slot / 2;
         g.iOf = x => viewStart + (x - slot / 2) / slot;
         g.yOf = p => plotY0 + plotH - (tp(p) - tLo) / tSpan * plotH;
@@ -1062,14 +1120,35 @@
         const r = canvas.getBoundingClientRect();
         return { x: e.clientX - r.left, y: e.clientY - r.top };
       }
+      // Welches Unter-Panel liegt unter y? Und liegt y auf einer Trennlinie
+      // zwischen zwei Panels (dort laesst sich die Hoehe ziehen)?
+      const SEP_TOL = 3;
+      function panelAt(g, y) {
+        for (const p of g.panels) if (y >= p.y0 && y < p.y0 + p.h) return p;
+        return null;
+      }
+      function separatorAt(g, y) {
+        for (const p of g.panels) if (Math.abs(y - p.y0) <= SEP_TOL) return p;
+        return null;
+      }
       function zoneOf(g, x, y) {
-        if (x >= g.plotW) return 'paxis';
+        if (x >= g.plotW) {
+          if (y >= g.axisY0) return 'corner';
+          const p = panelAt(g, y);
+          return p ? 'axis:' + p.key : 'paxis';
+        }
         if (y >= g.axisY0) return 'taxis';
+        const s = separatorAt(g, y);
+        if (s) return 'sep:' + s.key;
+        const p = panelAt(g, y);
+        if (p) return 'panel:' + p.key;
         return 'plot';
       }
       function applyCursor(zone, hit) {
+        zone = zone || 'plot';   // setTool() ruft ohne Zone auf
         let c;
-        if (zone === 'paxis') c = 'ns-resize';
+        if (zone === 'paxis' || zone.indexOf('axis:') === 0) c = 'ns-resize';
+        else if (zone.indexOf('sep:') === 0) c = 'row-resize';
         else if (zone === 'taxis') c = 'ew-resize';
         else if (dragState && dragState.mode === 'pan') c = 'grabbing';
         else if (hit && !locked) c = (hit.part === 'body') ? 'move' : 'nwse-resize';
@@ -1106,6 +1185,16 @@
           dragState = { mode: 'paxis', startY: y, tLo: g.tLo, tHi: g.tHi, moved: false };
           return;
         }
+        if (zone.indexOf('axis:') === 0) {            // Werteachse eines Panels
+          const key = zone.slice(5);
+          dragState = { mode: 'pzoom', key, startY: y, zoom0: panelZoom[key] };
+          return;
+        }
+        if (zone.indexOf('sep:') === 0) {             // Trennlinie = Panel-Hoehe
+          const key = zone.slice(4);
+          dragState = { mode: 'psize', key, startY: y, frac0: panelFrac[key] };
+          return;
+        }
         if (zone === 'taxis') {
           dragState = { mode: 'taxis', startX: x, count: viewCount, centerIdx: g.iOf(g.plotW / 2) };
           return;
@@ -1131,7 +1220,14 @@
         }
         if (currentTool === 'pan') {
           selectDrawing(null);
-          dragState = { mode: 'pan', startX: x, startY: y, startView: viewStart, tLo: g.tLo, tHi: g.tHi, vpan: false };
+          const p = panelAt(g, y);
+          dragState = {
+            mode: 'pan', startX: x, startY: y, startView: viewStart,
+            tLo: g.tLo, tHi: g.tHi, vpan: false,
+            // Senkrecht ziehen verschiebt im Panel dessen Werteachse,
+            // im Kursbereich die Preisskala.
+            panel: p ? p.key : null, pan0: p ? panelPan[p.key] : 0, panelH: p ? p.h : 0
+          };
           applyCursor(zone, null);
           return;
         }
@@ -1185,6 +1281,7 @@
 
         if (!dragState) {
           const zone = zoneOf(g, x, y);
+          hoverZone = zone;
           hoverHit = (zone === 'plot' && !locked) ? hitTest(g, x, y) : null;
           applyCursor(zone, hoverHit);
           return;
@@ -1199,12 +1296,28 @@
           // Scrollen nicht versehentlich die Skala verstellt.
           if (dragState.vpan || Math.abs(dy) > 10) {
             dragState.vpan = true;
-            autoScale = false;
-            const shift = (dy / g.plotH) * (dragState.tHi - dragState.tLo);
-            scaleMin = untp(dragState.tLo + shift);
-            scaleMax = untp(dragState.tHi + shift);
+            if (dragState.panel) {
+              panelPan[dragState.panel] = dragState.pan0 +
+                (dy / Math.max(1, dragState.panelH)) / Math.max(PANEL_MIN_ZOOM, panelZoom[dragState.panel]);
+            } else {
+              autoScale = false;
+              const shift = (dy / g.plotH) * (dragState.tHi - dragState.tLo);
+              scaleMin = untp(dragState.tLo + shift);
+              scaleMax = untp(dragState.tHi + shift);
+            }
           }
           maybeLoadMore();
+          return;
+        }
+        if (dragState.mode === 'pzoom') {
+          // hoch ziehen = reinzoomen (gleiche Richtung wie an der Preisachse)
+          setPanelZoom(dragState.key, dragState.zoom0 * Math.pow(1.012, dragState.startY - y));
+          return;
+        }
+        if (dragState.mode === 'psize') {
+          const dy2 = y - dragState.startY;
+          panelFrac[dragState.key] = Math.max(PANEL_MIN_FRAC,
+            Math.min(PANEL_MAX_FRAC, dragState.frac0 - dy2 / Math.max(1, cssH)));
           return;
         }
         if (dragState.mode === 'paxis') {
@@ -1267,6 +1380,8 @@
         } else if (dragState.mode === 'move') {
           if (dragState.moved) saveDrawings(); else undoStack.pop();
           updateUndoBtns();
+        } else if (dragState.mode === 'psize') {
+          savePrefs();                      // Panel-Hoehen ueberdauern den Reload
         }
         dragState = null;
         applyCursor('plot', hoverHit);
@@ -1274,7 +1389,7 @@
       canvas.addEventListener('pointerup', endPointer);
       canvas.addEventListener('pointercancel', endPointer);
       canvas.addEventListener('pointerleave', () => {
-        mouseIn = false; hoverIndex = -1; hoverSlot = null; hoverX = -1; hoverY = -1;
+        mouseIn = false; hoverIndex = -1; hoverSlot = null; hoverX = -1; hoverY = -1; hoverZone = '';
       });
 
       function updateHover(g, x, y) {
@@ -1297,6 +1412,11 @@
           scaleMin = untp(mid - half); scaleMax = untp(mid + half);
           return;
         }
+        if (zone.indexOf('axis:') === 0) {     // Werteachse eines Panels
+          const key = zone.slice(5);
+          setPanelZoom(key, panelZoom[key] * (e.deltaY > 0 ? 1 / 1.2 : 1.2));
+          return;
+        }
         if (e.shiftKey) {                       // Shift+Rad = seitlich scrollen
           viewStart += (e.deltaY > 0 ? 1 : -1) * Math.max(1, viewCount * 0.08);
           clampView(); maybeLoadMore();
@@ -1316,6 +1436,14 @@
         const g = geom();
         const zone = zoneOf(g, x, y);
         if (zone === 'paxis') { autoScale = true; return; }
+        if (zone.indexOf('axis:') === 0)  { resetPanel(zone.slice(5)); return; }
+        if (zone.indexOf('panel:') === 0) { resetPanel(zone.slice(6)); return; }
+        if (zone.indexOf('sep:') === 0) {
+          const key = zone.slice(4);
+          panelFrac[key] = PANEL_DEF_FRAC[key];
+          savePrefs();
+          return;
+        }
         if (zone === 'taxis') { resetView(); return; }
         const hit = locked ? null : hitTest(g, x, y);
         if (hit && hit.d.type === 'text') {
@@ -1518,7 +1646,7 @@
       }
       logBtn.addEventListener('click', toggleLog);
       logBtn.classList.toggle('active', logScale);
-      fitBtn.addEventListener('click', () => { resetView(); });
+      fitBtn.addEventListener('click', () => { resetView(); resetAllPanels(); });
 
       fsBtn.addEventListener('click', () => {
         if (document.fullscreenElement) document.exitFullscreen();
@@ -1878,6 +2006,39 @@
         const { i0, i1, slot, plotW, plotH, plotY0 } = g;
         const total = candles.length;
 
+        // Panel-Beschriftung mit dunklem Ruecken -- sonst verschwindet sie
+        // hinter den Balken, sobald das Panel hochgezoomt ist.
+        function panelTitle(text, y0) {
+          cctx.font = '10px "Courier New", monospace';
+          cctx.textAlign = 'left';
+          const w = cctx.measureText(text).width;
+          cctx.fillStyle = 'rgba(3,5,10,0.72)';
+          cctx.fillRect(2, y0 + 2, w + 6, 13);
+          cctx.fillStyle = 'rgba(255,255,255,0.5)';
+          cctx.fillText(text, 4, y0 + 11);
+        }
+
+        // Werteachse eines Unter-Panels: Skalenwerte rechts in der Achsen-
+        // spalte, dazu der Zoomfaktor, sobald er nicht mehr 1 ist.
+        function panelAxis(key, y0, h, values, fmt, yFn) {
+          const z = panelZoom[key] || 1;
+          const zoomed = Math.abs(z - 1) > 0.01;
+          const top = y0 + (zoomed ? 16 : 3);
+          cctx.textAlign = 'left';
+          cctx.font = '9px "Courier New", monospace';
+          cctx.fillStyle = 'rgba(255,255,255,0.45)';
+          values.forEach(v => {
+            const y = yFn(v);
+            if (y < top || y > y0 + h - 2) return;
+            cctx.fillText(fmt(v), plotW + 5, y + 3);
+          });
+          if (zoomed) {
+            cctx.fillStyle = 'rgba(255,214,102,0.9)';
+            cctx.font = 'bold 9px "Courier New", monospace';
+            cctx.fillText('x' + (z >= 10 ? z.toFixed(0) : z.toFixed(1)), plotW + 5, y0 + 11);
+          }
+        }
+
         // ── Gitter: Preislinien (runde Werte) + Zeitlinien ──────────────
         cctx.font = '10px "Courier New", monospace';
         cctx.textAlign = 'left';
@@ -2117,32 +2278,40 @@
           let maxV = 0;
           for (let i = i0; i <= i1; i++) if (candles[i] && candles[i].v > maxV) maxV = candles[i].v;
           maxV = maxV || 1;
+          const w = panelWindow('vol', 0, maxV, 'bottom');
+          const inner = Math.max(4, g.volH - 2);
+          const vY = v => g.volY0 + g.volH - ((v - w.lo) / w.span) * inner;
+          const base = vY(w.lo);
           const bw = Math.max(1, slot * 0.66);
+          cctx.save();
+          cctx.beginPath(); cctx.rect(0, g.volY0, plotW, g.volH); cctx.clip();
           for (let i = i0; i <= i1; i++) {
             const c = candles[i]; if (!c) continue;
-            const h = (c.v / maxV) * (g.volH - 12);
+            const yTop = vY(c.v);
             cctx.fillStyle = c.c >= c.o ? 'rgba(59,230,160,0.5)' : 'rgba(255,95,109,0.5)';
-            cctx.fillRect(g.xOf(i) - bw / 2, g.volY0 + g.volH - h, bw, h);
+            cctx.fillRect(g.xOf(i) - bw / 2, Math.min(yTop, base), bw, Math.abs(base - yTop));
           }
+          cctx.restore();
+          panelAxis('vol', g.volY0, g.volH, [w.lo + w.span * 0.5, w.hi], v => fmtVol(v), vY);
           cctx.strokeStyle = 'rgba(255,255,255,0.12)';
           cctx.beginPath(); cctx.moveTo(0, g.volY0 + 0.5); cctx.lineTo(plotW, g.volY0 + 0.5); cctx.stroke();
-          cctx.fillStyle = 'rgba(255,255,255,0.4)';
-          cctx.font = '10px "Courier New", monospace';
-          cctx.textAlign = 'left';
           const vi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
-          cctx.fillText('Vol  ' + fmtVol(candles[vi] ? candles[vi].v : 0), 4, g.volY0 + 11);
+          panelTitle('Vol  ' + fmtVol(candles[vi] ? candles[vi].v : 0), g.volY0);
         }
 
         // ── RSI ─────────────────────────────────────────────────────────
         if (indState.rsi && rsiData && g.rsiH > 4) {
-          const rsiYFor = v => g.rsiY0 + g.rsiH - (v / 100) * (g.rsiH - 6) - 3;
+          const w = panelWindow('rsi', 0, 100, 'center');
+          const rsiYFor = v => g.rsiY0 + g.rsiH - ((v - w.lo) / w.span) * (g.rsiH - 6) - 3;
           cctx.strokeStyle = 'rgba(255,255,255,0.12)';
           cctx.beginPath(); cctx.moveTo(0, g.rsiY0 + 0.5); cctx.lineTo(plotW, g.rsiY0 + 0.5); cctx.stroke();
+          cctx.save();
+          cctx.beginPath(); cctx.rect(0, g.rsiY0, plotW, g.rsiH); cctx.clip();
           cctx.fillStyle = 'rgba(192,132,252,0.08)';
           cctx.fillRect(0, rsiYFor(70), plotW, rsiYFor(30) - rsiYFor(70));
           cctx.setLineDash([3, 3]);
           cctx.strokeStyle = 'rgba(255,255,255,0.18)';
-          [30, 70].forEach(v => { cctx.beginPath(); cctx.moveTo(0, rsiYFor(v)); cctx.lineTo(plotW, rsiYFor(v)); cctx.stroke(); });
+          [30, 50, 70].forEach(v => { cctx.beginPath(); cctx.moveTo(0, rsiYFor(v)); cctx.lineTo(plotW, rsiYFor(v)); cctx.stroke(); });
           cctx.setLineDash([]);
           cctx.strokeStyle = '#c084fc';
           cctx.lineWidth = 1.5;
@@ -2154,11 +2323,10 @@
             if (!st) { cctx.moveTo(x, y); st = true; } else cctx.lineTo(x, y);
           }
           if (st) cctx.stroke();
+          cctx.restore();
+          panelAxis('rsi', g.rsiY0, g.rsiH, [30, 50, 70], v => v.toFixed(0), rsiYFor);
           const ri = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
-          cctx.fillStyle = 'rgba(255,255,255,0.45)';
-          cctx.font = '10px "Courier New", monospace';
-          cctx.textAlign = 'left';
-          cctx.fillText('RSI 14  ' + (rsiData[ri] != null ? rsiData[ri].toFixed(1) : '—'), 4, g.rsiY0 + 11);
+          panelTitle('RSI 14  ' + (rsiData[ri] != null ? rsiData[ri].toFixed(1) : '—'), g.rsiY0);
         }
 
         // ── MACD ────────────────────────────────────────────────────────
@@ -2168,10 +2336,13 @@
             for (const a of [macd.line[i], macd.signal[i], macd.hist[i]])
               if (a != null && Math.abs(a) > mx) mx = Math.abs(a);
           }
-          const mid = g.macdY0 + g.macdH / 2;
-          const mY = v => mid - (v / mx) * (g.macdH / 2 - 6);
+          const w = panelWindow('macd', -mx, mx, 'center');
+          const mY = v => g.macdY0 + g.macdH - ((v - w.lo) / w.span) * (g.macdH - 6) - 3;
+          const mid = mY(0);
           cctx.strokeStyle = 'rgba(255,255,255,0.12)';
           cctx.beginPath(); cctx.moveTo(0, g.macdY0 + 0.5); cctx.lineTo(plotW, g.macdY0 + 0.5); cctx.stroke();
+          cctx.save();
+          cctx.beginPath(); cctx.rect(0, g.macdY0, plotW, g.macdH); cctx.clip();
           cctx.strokeStyle = 'rgba(255,255,255,0.15)';
           cctx.beginPath(); cctx.moveTo(0, mid); cctx.lineTo(plotW, mid); cctx.stroke();
           const bw = Math.max(1, slot * 0.6);
@@ -2194,10 +2365,9 @@
           };
           line(macd.line, '#00e5ff');
           line(macd.signal, '#ffd866');
-          cctx.fillStyle = 'rgba(255,255,255,0.45)';
-          cctx.font = '10px "Courier New", monospace';
-          cctx.textAlign = 'left';
-          cctx.fillText('MACD 12/26/9', 4, g.macdY0 + 11);
+          cctx.restore();
+          panelAxis('macd', g.macdY0, g.macdH, [w.lo, 0, w.hi], v => fmtCompact(v), mY);
+          panelTitle('MACD 12/26/9', g.macdY0);
         }
 
         // ── EQ-Band (nur Musik-Modus) ───────────────────────────────────
@@ -2217,6 +2387,18 @@
           }
           cctx.strokeStyle = 'rgba(255,255,255,0.12)';
           cctx.beginPath(); cctx.moveTo(0, g.eqY0 + 0.5); cctx.lineTo(plotW, g.eqY0 + 0.5); cctx.stroke();
+        }
+
+        // ── Anfasser der Panel-Trennlinie sichtbar machen ───────────────
+        if (hoverZone && hoverZone.indexOf('sep:') === 0 && !dragState) {
+          const p = g.panels.find(q => q.key === hoverZone.slice(4));
+          if (p) {
+            cctx.strokeStyle = 'rgba(0,255,255,0.75)';
+            cctx.lineWidth = 2;
+            cctx.beginPath(); cctx.moveTo(0, p.y0 + 0.5); cctx.lineTo(plotW, p.y0 + 0.5); cctx.stroke();
+            cctx.fillStyle = 'rgba(0,255,255,0.75)';
+            cctx.fillRect(plotW / 2 - 14, p.y0 - 2, 28, 4);
+          }
         }
 
         // ── Legende oben links (TradingView-Stil) ───────────────────────
