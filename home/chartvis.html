@@ -354,6 +354,9 @@
           &bdquo;x3.0&ldquo; daneben), senkrechtes Ziehen <em>im</em> Panel verschiebt seinen Ausschnitt, und an der
           <strong>Trennlinie</strong> zwischen zwei Panels l&auml;sst sich deren H&ouml;he ziehen &mdash; so werden
           auch winzige Ausschl&auml;ge gross und lesbar. Doppelklick setzt Zoom bzw. H&ouml;he wieder zur&uuml;ck.
+          Den <strong>aktuellen Stand</strong> zeigt jedes Panel als farbiges Schild genau auf seiner H&ouml;he an
+          (RSI rot ab 70, gr&uuml;n unter 30) &mdash; f&auml;hrt man mit der Maus hinein, steht der Wert an der
+          Zeigerposition zus&auml;tzlich t&uuml;rkis daneben.
           <strong>Zeichnen:</strong> alle Objekte h&auml;ngen an Zeitpunkt&nbsp;+&nbsp;Preis &mdash; sie bleiben beim
           Zoomen, Scrollen, Nachladen alter Historie und beim Intervall-Wechsel exakt an ihrer Kerze. Mit dem
           Fadenkreuz-Werkzeug lassen sie sich anklicken, verschieben und an den Griffen neu ziehen; die kleine Leiste
@@ -2008,14 +2011,22 @@
 
         // Panel-Beschriftung mit dunklem Ruecken -- sonst verschwindet sie
         // hinter den Balken, sobald das Panel hochgezoomt ist.
-        function panelTitle(text, y0) {
-          cctx.font = '10px "Courier New", monospace';
+        function panelTitle(label, value, color, y0) {
           cctx.textAlign = 'left';
-          const w = cctx.measureText(text).width;
-          cctx.fillStyle = 'rgba(3,5,10,0.72)';
-          cctx.fillRect(2, y0 + 2, w + 6, 13);
+          cctx.font = '10px "Courier New", monospace';
+          const lw = cctx.measureText(label + '  ').width;
+          cctx.font = 'bold 11px "Courier New", monospace';
+          const vw = value ? cctx.measureText(value).width : 0;
+          cctx.fillStyle = 'rgba(3,5,10,0.78)';
+          cctx.fillRect(2, y0 + 2, lw + vw + 8, 14);
+          cctx.font = '10px "Courier New", monospace';
           cctx.fillStyle = 'rgba(255,255,255,0.5)';
-          cctx.fillText(text, 4, y0 + 11);
+          cctx.fillText(label, 4, y0 + 12);
+          if (value) {
+            cctx.font = 'bold 11px "Courier New", monospace';
+            cctx.fillStyle = color || '#fff';
+            cctx.fillText(value, 4 + lw, y0 + 12);
+          }
         }
 
         // Werteachse eines Unter-Panels: Skalenwerte rechts in der Achsen-
@@ -2023,21 +2034,50 @@
         function panelAxis(key, y0, h, values, fmt, yFn) {
           const z = panelZoom[key] || 1;
           const zoomed = Math.abs(z - 1) > 0.01;
-          const top = y0 + (zoomed ? 16 : 3);
+          const bottom = y0 + h - (zoomed ? 14 : 2);
           cctx.textAlign = 'left';
-          cctx.font = '9px "Courier New", monospace';
-          cctx.fillStyle = 'rgba(255,255,255,0.45)';
+          cctx.font = '10px "Courier New", monospace';
+          cctx.fillStyle = 'rgba(255,255,255,0.6)';
           values.forEach(v => {
             const y = yFn(v);
-            if (y < top || y > y0 + h - 2) return;
+            if (y < y0 + 4 || y > bottom) return;
             cctx.fillText(fmt(v), plotW + 5, y + 3);
           });
           if (zoomed) {
+            // Zoomfaktor unten in die Achsenspalte -- oben stoert er sonst
+            // das Wert-Schild des aktuellen Standes.
             cctx.fillStyle = 'rgba(255,214,102,0.9)';
             cctx.font = 'bold 9px "Courier New", monospace';
-            cctx.fillText('x' + (z >= 10 ? z.toFixed(0) : z.toFixed(1)), plotW + 5, y0 + 11);
+            cctx.fillText('x' + (z >= 10 ? z.toFixed(0) : z.toFixed(1)), plotW + 5, y0 + h - 3);
           }
         }
+
+        // Farbiges Wert-Schild in der Achsenspalte -- so laesst sich der
+        // aktuelle Stand eines Panels genauso direkt ablesen wie der Kurs.
+        function panelBadge(y, text, bg, y0, h) {
+          if (h < 18) return;
+          // Liegt der Wert ausserhalb (z.B. kleines Volumen ganz unten oder
+          // beim Reinzoomen weggerutscht), klebt das Schild am Panelrand,
+          // statt zu verschwinden -- ablesbar bleibt es immer.
+          y = Math.max(y0 + 8, Math.min(y0 + h - 8, y));
+          cctx.font = 'bold 10px "Courier New", monospace';
+          const tw = cctx.measureText(text).width;
+          cctx.fillStyle = bg;
+          cctx.fillRect(plotW + 2, y - 8, Math.max(AXIS_W - 4, tw + 12), 16);
+          cctx.fillStyle = '#000';
+          cctx.textAlign = 'left';
+          cctx.fillText(text, plotW + 8, y + 3.5);
+        }
+        // Markierungslinie quer durchs Panel auf Hoehe des aktuellen Werts
+        function panelMarker(y, rgba) {
+          cctx.setLineDash([4, 4]);
+          cctx.strokeStyle = rgba;
+          cctx.lineWidth = 1;
+          cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(plotW, y); cctx.stroke();
+          cctx.setLineDash([]);
+        }
+        // Umrechnung Pixel -> Wert je Panel, fuers Fadenkreuz-Schild
+        const panelValueAt = {};
 
         // ── Gitter: Preislinien (runde Werte) + Zeitlinien ──────────────
         cctx.font = '10px "Courier New", monospace';
@@ -2174,7 +2214,7 @@
         cctx.beginPath(); cctx.moveTo(0, g.axisY0 + 0.5); cctx.lineTo(W, g.axisY0 + 0.5); cctx.stroke();
 
         cctx.font = '10px "Courier New", monospace';
-        cctx.fillStyle = 'rgba(255,255,255,0.55)';
+        cctx.fillStyle = 'rgba(255,255,255,0.72)';
         cctx.textAlign = 'left';
         priceTicks.forEach(p => {
           const y = g.yOf(p);
@@ -2188,7 +2228,7 @@
         }
 
         // Zeitachsen-Beschriftung
-        cctx.fillStyle = 'rgba(255,255,255,0.45)';
+        cctx.fillStyle = 'rgba(255,255,255,0.62)';
         cctx.font = '10px "Courier New", monospace';
         cctx.textAlign = 'center';
         timeTicks.forEach(i => {
@@ -2291,12 +2331,19 @@
             cctx.fillStyle = c.c >= c.o ? 'rgba(59,230,160,0.5)' : 'rgba(255,95,109,0.5)';
             cctx.fillRect(g.xOf(i) - bw / 2, Math.min(yTop, base), bw, Math.abs(base - yTop));
           }
+          const lastVol = candles[total - 1];
+          if (lastVol) panelMarker(vY(lastVol.v), lastVol.c >= lastVol.o ? 'rgba(59,230,160,0.5)' : 'rgba(255,95,109,0.5)');
           cctx.restore();
           panelAxis('vol', g.volY0, g.volH, [w.lo + w.span * 0.5, w.hi], v => fmtVol(v), vY);
+          if (lastVol) panelBadge(vY(lastVol.v), fmtVol(lastVol.v),
+            lastVol.c >= lastVol.o ? '#3be6a0' : '#ff5f6d', g.volY0, g.volH);
+          panelValueAt.vol = y => w.lo + ((g.volY0 + g.volH - y) / inner) * w.span;
           cctx.strokeStyle = 'rgba(255,255,255,0.12)';
           cctx.beginPath(); cctx.moveTo(0, g.volY0 + 0.5); cctx.lineTo(plotW, g.volY0 + 0.5); cctx.stroke();
           const vi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
-          panelTitle('Vol  ' + fmtVol(candles[vi] ? candles[vi].v : 0), g.volY0);
+          const vc = candles[vi];
+          panelTitle('Vol', vc ? fmtVol(vc.v) : '—',
+            vc && vc.c >= vc.o ? '#3be6a0' : '#ff5f6d', g.volY0);
         }
 
         // ── RSI ─────────────────────────────────────────────────────────
@@ -2323,10 +2370,19 @@
             if (!st) { cctx.moveTo(x, y); st = true; } else cctx.lineTo(x, y);
           }
           if (st) cctx.stroke();
+          const rsiNow = rsiData[total - 1];
+          if (rsiNow != null) panelMarker(rsiYFor(rsiNow), 'rgba(192,132,252,0.6)');
           cctx.restore();
           panelAxis('rsi', g.rsiY0, g.rsiH, [30, 50, 70], v => v.toFixed(0), rsiYFor);
+          // Aktueller RSI als farbiges Schild direkt auf seiner Hoehe:
+          // rot ueberkauft (>=70), gruen ueberverkauft (<=30), sonst violett.
+          if (rsiNow != null) panelBadge(rsiYFor(rsiNow), rsiNow.toFixed(1),
+            rsiNow >= 70 ? '#ff5f6d' : rsiNow <= 30 ? '#3be6a0' : '#c084fc', g.rsiY0, g.rsiH);
+          panelValueAt.rsi = y => w.lo + ((g.rsiY0 + g.rsiH - 3 - y) / Math.max(1, g.rsiH - 6)) * w.span;
           const ri = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
-          panelTitle('RSI 14  ' + (rsiData[ri] != null ? rsiData[ri].toFixed(1) : '—'), g.rsiY0);
+          const rv = rsiData[ri];
+          panelTitle('RSI 14', rv != null ? rv.toFixed(1) : '—',
+            rv == null ? '#fff' : rv >= 70 ? '#ff5f6d' : rv <= 30 ? '#3be6a0' : '#c084fc', g.rsiY0);
         }
 
         // ── MACD ────────────────────────────────────────────────────────
@@ -2365,9 +2421,18 @@
           };
           line(macd.line, '#00e5ff');
           line(macd.signal, '#ffd866');
+          const macdNow = macd.line[total - 1];
+          if (macdNow != null) panelMarker(mY(macdNow), 'rgba(0,229,255,0.55)');
           cctx.restore();
           panelAxis('macd', g.macdY0, g.macdH, [w.lo, 0, w.hi], v => fmtCompact(v), mY);
-          panelTitle('MACD 12/26/9', g.macdY0);
+          if (macdNow != null) panelBadge(mY(macdNow), fmtCompact(macdNow), '#00e5ff', g.macdY0, g.macdH);
+          panelValueAt.macd = y => w.lo + ((g.macdY0 + g.macdH - 3 - y) / Math.max(1, g.macdH - 6)) * w.span;
+          const mi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
+          const mh = macd.hist[mi];
+          panelTitle('MACD 12/26/9',
+            (macd.line[mi] != null ? fmtCompact(macd.line[mi]) : '—') + ' / ' +
+            (macd.signal[mi] != null ? fmtCompact(macd.signal[mi]) : '—'),
+            mh == null ? '#fff' : mh >= 0 ? '#3be6a0' : '#ff5f6d', g.macdY0);
         }
 
         // ── EQ-Band (nur Musik-Modus) ───────────────────────────────────
@@ -2387,6 +2452,24 @@
           }
           cctx.strokeStyle = 'rgba(255,255,255,0.12)';
           cctx.beginPath(); cctx.moveTo(0, g.eqY0 + 0.5); cctx.lineTo(plotW, g.eqY0 + 0.5); cctx.stroke();
+        }
+
+        // ── Fadenkreuz im Unter-Panel: Wert an der Mausposition ─────────
+        // (nach den Panels gezeichnet, damit das Schild obenauf liegt)
+        if (mouseIn && hoverSlot !== null && hoverY >= 0) {
+          const hp = panelAt(g, hoverY);
+          const conv = hp && panelValueAt[hp.key];
+          if (conv) {
+            const v = conv(hoverY);
+            const txt = hp.key === 'rsi' ? v.toFixed(1) : hp.key === 'vol' ? fmtVol(v) : fmtCompact(v);
+            cctx.font = '10px "Courier New", monospace';
+            const tw = cctx.measureText(txt).width;
+            cctx.fillStyle = 'rgba(0,255,255,0.92)';
+            cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+            cctx.fillStyle = '#000';
+            cctx.textAlign = 'left';
+            cctx.fillText(txt, plotW + 6, hoverY + 3);
+          }
         }
 
         // ── Anfasser der Panel-Trennlinie sichtbar machen ───────────────
