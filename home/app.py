@@ -49,9 +49,20 @@ except (OSError, PermissionError):
 
 Downloader = Flask(__name__)
 
-# job_id → { queue, file_id, filename }
+# job_id → { queue, file_id, filename, born }
 JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
+
+# Wie lange ein Job-Eintrag im Speicher bleibt. Die zugehoerige Datei ist
+# nach cleanup_later() schon nach 900s geloescht — danach braucht den
+# Eintrag niemand mehr (auch serve_file nicht, das nur den Dateinamen
+# nachschlaegt). Ohne dieses Limit wuchs JOBS mit JEDEM Download weiter:
+# ein Dienst, der wochenlang durchlaeuft, wird davon langsam fett.
+JOB_TTL = 3600
+
+# Startzeitpunkt fuer /healthz (Uptime -> verraet im Log, ob der Prozess
+# zwischendurch neu gestartet ist).
+START_TIME = time.time()
 
 # ── Embedded HTML (Glappa Retro Style) ────────────────────────────
 # Basis-URL wird per Request bestimmt -> lokal zeigt's auf localhost:8099,
@@ -753,6 +764,20 @@ def sizeof_fmt(b: int) -> str:
         b /= 1024
     return f'{b:.1f} TB'
 
+def _prune_jobs() -> None:
+    """
+    Abgelaufene Job-Eintraege wegwerfen. MUSS mit gehaltenem JOBS_LOCK laufen.
+
+    Bis dahin blieb jeder jemals gestartete Download fuer immer in JOBS
+    stehen (samt Queue) — ein langsames Leck, das erst nach Wochen
+    Dauerbetrieb auffaellt, und serve_file laeuft die Liste bei jedem
+    Abruf durch.
+    """
+    now = time.time()
+    for jid in [j for j, v in JOBS.items() if now - (v.get('born') or 0) > JOB_TTL]:
+        JOBS.pop(jid, None)
+
+
 def cleanup_later(path: str, delay: int = 900):
     def _rm():
         time.sleep(delay)
@@ -850,6 +875,31 @@ def index():
     return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
 
 
+# ── /healthz: der Puls des Dienstes ───────────────────────────────
+# Absichtlich das Billigste, was 200 zurueckgeben kann: keine Datei, kein
+# Ollama, kein blockierendes Lock. Antwortet DAS nicht mehr, haengt der
+# Server wirklich — und nicht bloss ein einzelner Job.
+#
+# Drei Instanzen fragen hier an:
+#   1. _selfheal_loop() im selben Prozess  (unten in dieser Datei)
+#   2. der Docker-HEALTHCHECK              (home/healthcheck.py)
+#   3. der Host-Watchdog                   (_docker/glappa-watchdog.sh)
+@Downloader.route('/healthz')
+def healthz():
+    # JOBS_LOCK NICHT blockierend nehmen: haengt gerade ein Handler damit
+    # fest, soll /healthz das MELDEN und nicht selbst mit haengen.
+    free = JOBS_LOCK.acquire(blocking=False)
+    if free:
+        JOBS_LOCK.release()
+    return jsonify({
+        'ok':        True,
+        'uptime':    round(time.time() - START_TIME, 1),
+        'threads':   threading.active_count(),
+        'jobs':      len(JOBS),
+        'jobs_lock': 'free' if free else 'busy',
+    }), 200, {'Cache-Control': 'no-store'}
+
+
 # ── Same-origin Assets (Bilder, Cursor, Favicon) ──────────────────
 # Werden direkt aus der Repo-Wurzel ausgeliefert. send_from_directory
 # schuetzt automatisch gegen Path-Traversal. Lange Cache-Zeit, da statisch.
@@ -914,7 +964,9 @@ def start():
     q: queue.Queue = queue.Queue()
 
     with JOBS_LOCK:
-        JOBS[job_id] = {'queue': q, 'file_id': file_id, 'filename': None}
+        _prune_jobs()
+        JOBS[job_id] = {'queue': q, 'file_id': file_id, 'filename': None,
+                        'born': time.time()}
 
     def run():
         try:
@@ -1031,12 +1083,29 @@ def progress(job_id: str):
     q = job['queue']
 
     def stream():
+        # Jeder offene Stream ist ein eigener Thread im Werkzeug-Server.
+        # Verschwindet ein Client ohne sauberes FIN (Handy im Funkloch,
+        # zugeklapptes Notebook), merkt der Server das erst beim naechsten
+        # Schreibfehler — und wenn der Job dazu laengst tot ist, kommt nie
+        # wieder etwas in die Queue: der Thread haengt dann FUER IMMER.
+        # Genau so sammeln sich ueber Wochen Threads an, bis der Server
+        # keine neuen Verbindungen mehr annimmt. Nach 30 stillen Minuten
+        # ist hier Schluss.
+        idle = 0
         while True:
             try:
                 msg = q.get(timeout=60)
             except queue.Empty:
+                idle += 1
+                if idle > 30:
+                    yield ('event: done\ndata: '
+                           + json.dumps({'type': 'done',
+                                         'error': 'Zeitueberschreitung — Job antwortet nicht mehr.'})
+                           + '\n\n')
+                    break
                 yield 'event: ping\ndata: {}\n\n'
                 continue
+            idle = 0
             if msg['type'] == 'progress':
                 yield f"event: progress\ndata: {json.dumps(msg)}\n\n"
             elif msg['type'] == 'done':
@@ -2979,6 +3048,109 @@ def handle_error(e):
     return jsonify({'error': 'Internal Server Error'}), 500
 
 
+# ── Selbstheilung: der Dienst prueft seinen EIGENEN Puls ──────────
+# Warum ueberhaupt? `restart: unless-stopped` in Docker greift nur, wenn der
+# Prozess STIRBT. Der haeufigere Ausfall ist aber der stille: der Prozess
+# lebt, der Port ist gebunden (docker-proxy nimmt sogar noch Verbindungen
+# an), nur der Werkzeug-Server nimmt nichts mehr an — im Browser sieht das
+# aus wie "The connection has timed out", und Docker meint, alles sei gut.
+#
+# Deshalb klopft ein Thread hier regelmaessig von innen an den eigenen
+# Listener. Antwortet der dreimal hintereinander nicht, ist der Dienst fuer
+# alle draussen ohnehin kaputt: Diagnose ins Log und os._exit(1) — Docker
+# startet den Container daraufhin in Sekunden neu.
+#
+# Abschaltbar per SELFHEAL=0 (z.B. zum Debuggen eines Haengers).
+#
+# Die Puls-Anfragen selbst (Selbstheilung alle 30s + Docker-Healthcheck alle
+# 30s) fliegen aus dem Zugriffslog: sonst besteht `docker logs glappa` bald
+# nur noch aus "GET /healthz 200" und die interessanten Zeilen ersaufen.
+import logging as _logging
+
+
+class _NoHealthzFilter(_logging.Filter):
+    def filter(self, record):
+        try:
+            return '/healthz' not in record.getMessage()
+        except Exception:
+            return True
+
+
+_logging.getLogger('werkzeug').addFilter(_NoHealthzFilter())
+
+SELFHEAL          = os.environ.get('SELFHEAL', '1').lower() not in ('0', 'false', 'no')
+SELFHEAL_INTERVAL = int(os.environ.get('SELFHEAL_INTERVAL', '30'))
+SELFHEAL_TIMEOUT  = int(os.environ.get('SELFHEAL_TIMEOUT', '10'))
+SELFHEAL_STRIKES  = int(os.environ.get('SELFHEAL_STRIKES', '3'))
+# Warnschwelle / harte Grenze fuer die Threadzahl. Normalbetrieb sind ein
+# paar Dutzend; wer hier ankommt, hat ein Leck und faellt bald sowieso aus.
+SELFHEAL_THREADS_WARN = int(os.environ.get('SELFHEAL_THREADS_WARN', '250'))
+SELFHEAL_THREADS_MAX  = int(os.environ.get('SELFHEAL_THREADS_MAX', '600'))
+
+
+def _selfheal_probe(port: int, use_ssl: bool) -> bool:
+    """Ein echter HTTP-Request an den eigenen Listener (nicht bloss ein
+    Blick auf interne Variablen — genau der Netzwerkweg soll geprueft
+    werden, den auch ein Browser nimmt)."""
+    import http.client
+    if use_ssl:
+        conn = http.client.HTTPSConnection(
+            '127.0.0.1', port, timeout=SELFHEAL_TIMEOUT,
+            context=ssl._create_unverified_context())   # Cert lautet auf home.glappa.de
+    else:
+        conn = http.client.HTTPConnection('127.0.0.1', port, timeout=SELFHEAL_TIMEOUT)
+    try:
+        conn.request('GET', '/healthz')
+        resp = conn.getresponse()
+        resp.read()
+        return resp.status == 200
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+
+def _selfheal_loop(port: int, use_ssl: bool) -> None:
+    fails = 0
+    warned = False
+    time.sleep(60)   # Anlaufzeit: waehrend des Starts noch nichts bewerten
+    while True:
+        try:
+            alive = _selfheal_probe(port, use_ssl)
+            why = 'HTTP != 200'
+        except Exception as e:
+            alive, why = False, f'{type(e).__name__}: {e}'
+
+        if alive:
+            if fails:
+                print(f'[selfheal] wieder erreichbar nach {fails} Fehlversuch(en).', flush=True)
+            fails = 0
+        else:
+            fails += 1
+            print(f'[selfheal] Puls fehlt ({fails}/{SELFHEAL_STRIKES}): {why}', flush=True)
+            if fails >= SELFHEAL_STRIKES:
+                print(f'[selfheal] Server antwortet sich selbst nicht mehr — '
+                      f'Threads={threading.active_count()}, Jobs={len(JOBS)}, '
+                      f'Uptime={round(time.time() - START_TIME)}s. Beende Prozess, '
+                      f'damit Docker neu startet.', flush=True)
+                sys.stdout.flush(); sys.stderr.flush()
+                os._exit(1)
+
+        n = threading.active_count()
+        if n >= SELFHEAL_THREADS_MAX:
+            print(f'[selfheal] {n} Threads (Limit {SELFHEAL_THREADS_MAX}) — '
+                  f'Neustart bevor der Server keine Verbindungen mehr annimmt.', flush=True)
+            sys.stdout.flush(); sys.stderr.flush()
+            os._exit(1)
+        if n >= SELFHEAL_THREADS_WARN and not warned:
+            print(f'[selfheal] WARNUNG: {n} Threads offen (normal sind ein paar Dutzend).',
+                  flush=True)
+            warned = True
+        elif n < SELFHEAL_THREADS_WARN:
+            warned = False
+
+        time.sleep(SELFHEAL_INTERVAL)
+
+
 if __name__ == '__main__':
     # Lokal-Dev: Firefox-Cookies als Default, damit Bot-Check kein Showstopper ist.
     # Im Container/Production wird das ueber env vars / gunicorn gesteuert.
@@ -2986,12 +3158,17 @@ if __name__ == '__main__':
         os.environ['YT_COOKIE_BROWSER'] = 'firefox'
 
     # Production UND Lokal/Dev jetzt einheitlich :8080 (Dev = Plain HTTP, Prod = HTTPS).
-    port = int(os.environ.get('DOWNLOADER_PORT', '0'))
+    port = int(os.environ.get('DOWNLOADER_PORT', '0')) or 8080
     host = os.environ.get('DOWNLOADER_HOST', '0.0.0.0')
+
+    if SELFHEAL:
+        threading.Thread(target=_selfheal_loop, args=(port, context is not None),
+                         daemon=True, name='selfheal').start()
+
     if context is not None:
-        Downloader.run(host=host, port=port or 8080, ssl_context=context,
+        Downloader.run(host=host, port=port, ssl_context=context,
                        threaded=True, debug=False)
     else:
-        print(f'[YT.DL] Dev mode (no SSL). Listening on http://{host}:{port or 8080}/')
-        Downloader.run(host=host, port=port or 8080,
+        print(f'[YT.DL] Dev mode (no SSL). Listening on http://{host}:{port}/')
+        Downloader.run(host=host, port=port,
                        threaded=True, debug=False)

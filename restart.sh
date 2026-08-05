@@ -12,6 +12,7 @@
 #   bash restart.sh --no-build (nur restart, kein rebuild — schneller)
 #   bash restart.sh --pull     (vorher 'git pull' — neuesten Code holen)
 #   bash restart.sh --no-cron  (den taeglichen Auto-Restart-Cron nicht setzen)
+#   bash restart.sh --no-watchdog (den :8080-Watchdog nicht einrichten)
 #   bash restart.sh -logs      (NICHTS neu starten — nur die Live-Logs
 #                               ALLER laufenden Container zeigen)
 #   bash restart.sh --log-link (NICHTS neu starten — Klick-Log des
@@ -86,6 +87,7 @@ COMPOSE=""
 BUILD="--build"
 PULL=0
 CRON=1
+WATCHDOG=1
 LOGS_ONLY=0
 LOG_LINK=0
 for arg in "$@"; do
@@ -95,6 +97,7 @@ for arg in "$@"; do
         --no-build)   BUILD="" ;;
         --pull)       PULL=1 ;;
         --no-cron)    CRON=0 ;;
+        --no-watchdog) WATCHDOG=0 ;;
         -logs|--logs) LOGS_ONLY=1 ;;
         --log-link|-log-link) LOG_LINK=1 ;;
         *)            echo "Unbekanntes Flag: $arg" >&2; exit 1 ;;
@@ -405,6 +408,89 @@ ensure_daily_restart_cron() {
     fi
 }
 
+# Watchdog einrichten: prueft jede Minute, ob der Downloader auf :8080
+# antwortet, und holt ihn zurueck wenn nicht (Details + Eskalationsstufen
+# stehen in _docker/glappa-watchdog.sh). Idempotent — schreibt die Units
+# nur neu, wenn sich wirklich etwas geaendert hat.
+ensure_watchdog() {
+    [ "$WATCHDOG" = "1" ] || return 0
+    [ "$COMPOSE" = "$VPS_COMPOSE" ] || return 0
+    [ -f "_docker/glappa-watchdog.sh" ] || return 0   # Feature noch nicht im Checkout
+
+    local script="$PROJECT/_docker/glappa-watchdog.sh"
+    chmod +x "$script" 2>/dev/null || true
+
+    # Docker selbst muss nach einem Server-Neustart von allein hochkommen —
+    # sonst nuetzt die beste restart-policy nichts.
+    $HOST_SUDO systemctl enable docker >/dev/null 2>&1 || true
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        # Kein systemd -> cron jede Minute. Gleiche Wirkung, groebere Aufloesung.
+        command -v crontab >/dev/null 2>&1 || { warn "weder systemd noch cron — Watchdog uebersprungen."; return 0; }
+        local tag="# glappa-site watchdog"
+        local line="* * * * * GLAPPA_PROJECT=$PROJECT GLAPPA_COMPOSE=$PROJECT/$COMPOSE /bin/bash $script >/dev/null 2>&1  $tag"
+        local existing
+        existing="$(crontab -l 2>/dev/null || true)"
+        printf '%s\n' "$existing" | grep -qxF "$line" && return 0
+        existing="$(printf '%s\n' "$existing" | grep -vF "$tag" || true)"
+        if { [ -n "$existing" ] && printf '%s\n' "$existing"; printf '%s\n' "$line"; } | crontab - 2>/dev/null; then
+            ok "Watchdog per cron eingerichtet (jede Minute)."
+        else
+            warn "cron nicht setzbar — Watchdog uebersprungen."
+        fi
+        return 0
+    fi
+
+    local svc="/etc/systemd/system/glappa-watchdog.service"
+    local tmr="/etc/systemd/system/glappa-watchdog.timer"
+    local changed=0
+
+    local svc_body tmr_body
+    svc_body="[Unit]
+Description=GLAPPA Downloader Watchdog (prueft :8080 und holt den Dienst zurueck)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+Environment=GLAPPA_PROJECT=$PROJECT
+Environment=GLAPPA_COMPOSE=$PROJECT/$COMPOSE
+ExecStart=/bin/bash $script
+# Ein haengender Durchlauf (z.B. blockierendes docker inspect) darf den
+# Timer nicht dauerhaft belegen.
+TimeoutStartSec=120"
+
+    tmr_body="[Unit]
+Description=GLAPPA Downloader Watchdog jede Minute
+
+[Timer]
+# Erst 90s nach dem Boot: Docker soll seine Container vorher selbst starten
+# duerfen, sonst greift der Watchdog dem Systemstart vor.
+OnBootSec=90s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=glappa-watchdog.service
+
+[Install]
+WantedBy=timers.target"
+
+    if ! printf '%s\n' "$svc_body" | cmp -s - "$svc" 2>/dev/null; then
+        printf '%s\n' "$svc_body" | $HOST_SUDO tee "$svc" >/dev/null && changed=1
+    fi
+    if ! printf '%s\n' "$tmr_body" | cmp -s - "$tmr" 2>/dev/null; then
+        printf '%s\n' "$tmr_body" | $HOST_SUDO tee "$tmr" >/dev/null && changed=1
+    fi
+
+    if [ "$changed" = "1" ]; then
+        $HOST_SUDO systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    if $HOST_SUDO systemctl enable --now glappa-watchdog.timer >/dev/null 2>&1; then
+        ok "Watchdog aktiv (systemd-Timer, jede Minute). Log: /var/log/glappa-watchdog.log"
+    else
+        warn "Watchdog-Timer liess sich nicht aktivieren (systemctl-Rechte?)."
+    fi
+}
+
 # ── Apache-vhost synchronisieren (NEUE Proxy-Regeln aus dem Repo live
 #    schalten) + auf fehlenden real-shell-Passwort-Hash hinweisen ──────
 sync_apache_vhost
@@ -464,7 +550,9 @@ $SUDO docker compose -f "$COMPOSE" up -d --remove-orphans
 echo
 say "warte auf Healthcheck..."
 STATUS="starting"
-for i in $(seq 1 20); do
+# 30 Runden a 2s: der Container hat start_period 45s, vorher meldet er
+# ohnehin nur "starting".
+for i in $(seq 1 30); do
     STATUS=$($SUDO docker inspect --format '{{.State.Health.Status}}' glappa 2>/dev/null || echo "starting")
     [ "$STATUS" = "healthy" ] && break
     [ "$STATUS" = "unhealthy" ] && { err "unhealthy"; break; }
@@ -475,10 +563,11 @@ ok "Status: $STATUS"
 echo
 $SUDO docker compose -f "$COMPOSE" ps
 
-# ── Taeglichen Auto-Restart (cron) sicherstellen ────────────────────
+# ── Taeglichen Auto-Restart (cron) + Watchdog sicherstellen ─────────
 # Muss VOR dem 'exec logs' passieren — exec ersetzt den Prozess, danach
 # laeuft nichts mehr.
 ensure_daily_restart_cron
+ensure_watchdog
 
 # ── Logs (live, Ctrl+C zum verlassen) — ALLE Container ──────────────
 echo

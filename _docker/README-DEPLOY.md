@@ -80,6 +80,49 @@ Caddy holt die Letsencrypt-Certs automatisch. Die in `app.py` eingebaute SSL-Log
 
 Code ändern → `docker compose up -d --build`. Das Layer-Caching auf `requirements.txt` sorgt dafür, dass Python-Deps nur neu installiert werden, wenn sich die Datei ändert.
 
+## Damit `:8080` erreichbar bleibt (Watchdog)
+
+`restart: always` allein reicht nicht: Docker startet nur neu, wenn der
+**Prozess stirbt**. Der Ausfall, den man im Browser als *„The connection has
+timed out"* sieht, ist meist der stille — Container läuft, Port ist gebunden,
+nur der Python-Server nimmt nichts mehr an. Für Docker ist dann alles in
+Ordnung. Deshalb hängen drei Schichten ineinander:
+
+| Schicht | Wo | Merkt was | Reaktion |
+|---|---|---|---|
+| 1. Selbstheilung | `home/app.py` (`_selfheal_loop`) | Server antwortet sich alle 30 s selbst nicht mehr (3×) oder die Threadzahl läuft weg | Prozess beendet sich → Docker startet neu (~5 s) |
+| 2. Healthcheck | `home/healthcheck.py`, im Compose | `/healthz` antwortet nicht | Container wird `unhealthy` (sichtbar in `docker ps`) |
+| 3. Watchdog | `_docker/glappa-watchdog.sh` (systemd-Timer, jede Minute) | Container weg, Docker weg, Port-Weiterleitung kaputt, Server neu gebootet | 2× Fehler → `docker restart`, 4× → `force-recreate`, 6×+ → ganzer Stack + ALARM ins Log |
+
+Eingerichtet wird Schicht 3 automatisch von `restart.sh` auf dem VPS
+(`ensure_watchdog`, idempotent) — abschaltbar mit `--no-watchdog`.
+
+```bash
+# Nachsehen, wie es dem Dienst geht
+sudo bash _docker/glappa-watchdog.sh --status
+
+# Watchdog-Protokoll (wer hat wann warum neu gestartet)
+sudo bash _docker/glappa-watchdog.sh --log
+sudo systemctl status glappa-watchdog.timer
+```
+
+**Vor** jedem Eingriff schreibt der Watchdog eine Diagnose ins Log
+(`/var/log/glappa-watchdog.log`): Container-Status, ExitCode, `OOMKilled`,
+RestartCount, freier Speicher, OOM-Killer-Meldungen aus `dmesg` und die
+letzten Container-Logzeilen. Genau die Spuren wischt ein Neustart sonst weg —
+nach dem nächsten Ausfall steht dort, **warum** der Dienst weg war.
+
+Der Puls-Endpunkt selbst ist aufrufbar und verrät den inneren Zustand:
+
+```bash
+curl -sk https://home.glappa.de:8080/healthz
+# {"ok":true,"uptime":8134.2,"threads":11,"jobs":3,"jobs_lock":"free"}
+```
+
+Steigt `threads` über Tage in die Hunderte, leckt etwas Verbindungen —
+`SELFHEAL_THREADS_WARN` (Default 250) schreibt dann eine Warnung ins
+Container-Log, bei `SELFHEAL_THREADS_MAX` (600) startet der Dienst sich neu.
+
 ## Hinweis zum YOUTUBE-MP3-Link
 
 Die Home-Seite (`home/index.html`) hat eine kleine Hostname-Erkennung:

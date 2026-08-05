@@ -39,7 +39,29 @@ services:
       - glappa-downloads:/downloads
       - ./cookies:/cookies
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    restart: unless-stopped
+    # 'always' statt 'unless-stopped': unless-stopped laesst einen einmal
+    # manuell (oder von einem abgebrochenen Deploy) gestoppten Container
+    # auch nach einem Docker- oder Server-Neustart AUS. Der Downloader soll
+    # immer wieder hochkommen — genau darum geht es hier.
+    restart: always
+    # Puls-Pruefung von innen. Ohne healthcheck stand hier bislang gar kein
+    # Gesundheitswert: ein haengender (aber laufender) Container galt Docker
+    # als in Ordnung, und restart.sh wartete beim Deploy auf ein Feld, das
+    # es nie gab. Skript siehe home/healthcheck.py.
+    healthcheck:
+      test: ["CMD", "python", "/app/glappa-site/home/healthcheck.py"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+    # Wie bei den anderen Diensten: Logs begrenzen. Ohne Deckel waechst das
+    # json-Log eines Containers, der monatelang laeuft, unbegrenzt — und
+    # eine volle Platte legt am Ende alles lahm.
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
     # app.py mit eingebauter SSL-Logik statt der gunicorn-Plain-Variante.
     # Findet die Letsencrypt-Certs unter /etc/letsencrypt/live/home.glappa.de/
     # automatisch (try/except in app.py) und faehrt damit auf :8080 HTTPS hoch.
