@@ -553,6 +553,9 @@
           zwei Finger = Pinch-Zoom. Ziehen an der <strong>Preisachse</strong> (oder Mausrad dort) skaliert die H&ouml;he,
           senkrechtes Ziehen im Chart verschiebt sie &mdash; Doppelklick auf die Achse schaltet zur&uuml;ck auf
           <em>Auto</em>. Doppelklick im Chart oder das Zielkreuz-Symbol springt zur&uuml;ck zum aktuellen Kurs.
+          Das <strong>Volumen-Panel</strong> zeigt den <em>Umsatz</em> in der Kurs-W&auml;hrung, also bei BTC/USDT in
+          Dollar (&bdquo;$525&nbsp;Mio&ldquo;); die gehandelte Menge steht klein daneben (&bdquo;8,1&nbsp;Tsd&nbsp;BTC&ldquo;)
+          &mdash; das sind dieselben Daten, nur einmal in Geld und einmal in St&uuml;ck.
           <strong>Volumen, RSI und MACD haben jeweils eine eigene Achse:</strong> Mausrad oder Ziehen
           <em>rechts neben dem Panel</em> zoomt genau dieses Panel senkrecht (der Faktor steht dann als
           &bdquo;x3.0&ldquo; daneben), senkrechtes Ziehen <em>im</em> Panel verschiebt seinen Ausschnitt, und an der
@@ -566,8 +569,9 @@
           das den jeweiligen Liquidationspreis (Longs <em>unter</em>, Shorts <em>&uuml;ber</em> dem Einstieg). Diese
           Liquidit&auml;t bleibt liegen, bis der Kurs sie ber&uuml;hrt &mdash; daher die waagerechten B&auml;nder, die
           abrupt enden. Hell (gelb) = viel offene Liquidation = <em>Magnet</em>, dunkelviolett = leer. Die Farbskala
-          links unten nennt den Maximalwert, am rechten Rand stehen die drei gr&ouml;&szlig;ten noch offenen Zonen, und
-          das Fadenkreuz zeigt den Wert an der Zeigerstelle in der Legende.
+          links unten nennt den Maximalwert, am rechten Rand stehen die drei gr&ouml;&szlig;ten noch offenen Zonen.
+          <strong>Mit der Maus &uuml;ber eine Zone</strong> fahren zeigt in einem Schild direkt am Zeiger, wie viel
+          Liquidit&auml;t dort h&auml;ngt &mdash; samt Zeitpunkt, Kurs und Preisebene.
           <em>Wichtig:</em> das ist eine <strong>Modellrechnung</strong> aus Kurs und Volumen, wie sie auch kommerzielle
           Anbieter fahren &mdash; keine echten Positionsdaten der B&ouml;rse. Sie taugt zur Orientierung, nicht als
           Gewissheit.
@@ -771,6 +775,7 @@
           accent: '#00e5ff', accentTxt: '#000', warn: '#ffd866',
           cross: 'rgba(255,255,255,0.35)', crossBg: 'rgba(0,255,255,0.92)',
           glowRGB: '0,255,255', glowRGB2: '255,0,255', liqA: 1,
+          tipBg: 'rgba(6,9,16,0.94)', tipBorder: 'rgba(0,255,255,0.45)',
           up: '#3be6a0', dn: '#ff5f6d',
           upFill: 'rgba(59,230,160,0.5)', dnFill: 'rgba(255,95,109,0.5)',
           upLine: 'rgba(59,230,160,0.65)', dnLine: 'rgba(255,95,109,0.65)',
@@ -789,6 +794,7 @@
           accent: '#6fd18c', accentTxt: '#0e0f12', warn: '#c9a848',
           cross: 'rgba(255,255,255,0.28)', crossBg: '#6fd18c',
           glowRGB: '111,209,140', glowRGB2: '111,209,140', liqA: 0.78,
+          tipBg: 'rgba(22,24,29,0.96)', tipBorder: '#3a3f47',
           up: '#3fc0b0', dn: '#f46d6a',
           upFill: 'rgba(38,166,154,0.45)', dnFill: 'rgba(239,83,80,0.45)',
           upLine: 'rgba(38,166,154,0.6)', dnLine: 'rgba(239,83,80,0.6)',
@@ -882,6 +888,34 @@
         return p.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: dec });
       }
       function fmtCurrency(p) { return '$' + fmtPrice(p); }
+      // --- Volumen: Menge vs. Umsatz ------------------------------------
+      // Binance gibt je Kerze ZWEI Volumina: die gehandelte Menge in der
+      // Basiswaehrung (bei BTCUSDT also BTC) und den Umsatz in der Quote-
+      // waehrung (Dollar). Frueher stand hier die Menge -- "8,1 Tsd" bei
+      // Bitcoin las sich wie ein laecherlich kleines Volumen, gemeint waren
+      // aber 8100 BTC, also rund eine halbe Milliarde Dollar. Angezeigt wird
+      // deshalb der Umsatz; die Menge steht als Zusatz daneben.
+      const QUOTE_ASSETS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'TUSD', 'DAI', 'USD',
+                            'EUR', 'TRY', 'BRL', 'JPY', 'BTC', 'ETH', 'BNB'];
+      function quoteAsset(sym) {
+        for (const q of QUOTE_ASSETS) if (sym.length > q.length && sym.endsWith(q)) return q;
+        return '';
+      }
+      function baseAsset(sym) {
+        const q = quoteAsset(sym);
+        return q ? sym.slice(0, -q.length) : sym;
+      }
+      const isCashQuote = q => /^(USDT|USDC|FDUSD|BUSD|TUSD|DAI|USD)$/.test(q);
+      // Umsatz einer Kerze; alte Datensaetze ohne q fallen auf Menge x Kurs zurueck
+      function quoteVol(c) { return (c && c.q > 0) ? c.q : (c ? c.v * c.c : 0); }
+      function volUnit() {
+        const q = quoteAsset(currentSymbol);
+        return isCashQuote(q) ? '$' : '';
+      }
+      function fmtQuoteVol(v) {
+        const q = quoteAsset(currentSymbol);
+        return isCashQuote(q) ? '$' + fmtVol(v) : fmtVol(v) + (q ? ' ' + q : '');
+      }
       function fmtVol(v) {
         if (v >= 1e9) return (v / 1e9).toFixed(2) + ' Mrd';
         if (v >= 1e6) return (v / 1e6).toFixed(2) + ' Mio';
@@ -1255,7 +1289,7 @@
             for (let b = bl; b <= bh; b++) live[b] = 0;
           }
           // 2) Frisches Volumen als neue Positionen einbuchen.
-          const notional = c.v * c.c;
+          const notional = quoteVol(c);
           if (notional > 0) {
             const range = (c.h - c.l) || Math.abs(c.c) * 1e-6;
             const dir = Math.max(-1, Math.min(1, ((c.c - c.o) / range) * 2));
@@ -1963,7 +1997,7 @@
         }
         const data = await resp.json();
         if (!Array.isArray(data)) throw new Error('Keine Daten erhalten.');
-        return data.map(k => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }));
+        return data.map(k => ({ t: k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5], q: +k[7] }));
       }
 
       const LOAD_MORE_THRESHOLD = 30;
@@ -2021,7 +2055,7 @@
           let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
           const k = m && m.k;
           if (!k) return;
-          applyLiveBar({ t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.v });
+          applyLiveBar({ t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.v, q: +k.q });
         };
       }
       function applyLiveBar(bar) {
@@ -2631,7 +2665,7 @@
           const lb = candles[total - 1] || {};
           const key = [currentSymbol, currentInterval, total, viewStart.toFixed(2), viewCount.toFixed(2),
                        g.lo, g.hi, logScale ? 1 : 0, liqLev, liqSide, liqThr, themeName(),
-                       Math.round(plotH), Math.round(plotW), lb.c, lb.v].join('|');
+                       Math.round(plotH), Math.round(plotW), lb.c, lb.v, lb.q].join('|');
           if (key !== liqKey) { liqKey = key; liqMap = buildLiqMap(g); }
           if (liqMap) {
             const hx0 = g.xOf(liqMap.i0) - slot / 2;
@@ -2897,7 +2931,7 @@
         // ── Volumen ─────────────────────────────────────────────────────
         if (indState.vol && g.volH > 4) {
           let maxV = 0;
-          for (let i = i0; i <= i1; i++) if (candles[i] && candles[i].v > maxV) maxV = candles[i].v;
+          for (let i = i0; i <= i1; i++) if (candles[i] && quoteVol(candles[i]) > maxV) maxV = quoteVol(candles[i]);
           maxV = maxV || 1;
           const w = panelWindow('vol', 0, maxV, 'bottom');
           const inner = Math.max(4, g.volH - 2);
@@ -2908,22 +2942,25 @@
           cctx.beginPath(); cctx.rect(0, g.volY0, plotW, g.volH); cctx.clip();
           for (let i = i0; i <= i1; i++) {
             const c = candles[i]; if (!c) continue;
-            const yTop = vY(c.v);
+            const yTop = vY(quoteVol(c));
             cctx.fillStyle = c.c >= c.o ? TH.upFill : TH.dnFill;
             cctx.fillRect(g.xOf(i) - bw / 2, Math.min(yTop, base), bw, Math.abs(base - yTop));
           }
           const lastVol = candles[total - 1];
-          if (lastVol) panelMarker(vY(lastVol.v), lastVol.c >= lastVol.o ? TH.upFill : TH.dnFill);
+          if (lastVol) panelMarker(vY(quoteVol(lastVol)), lastVol.c >= lastVol.o ? TH.upFill : TH.dnFill);
           cctx.restore();
-          panelAxis('vol', g.volY0, g.volH, [w.lo + w.span * 0.5, w.hi], v => fmtVol(v), vY);
-          if (lastVol) panelBadge(vY(lastVol.v), fmtVol(lastVol.v),
+          panelAxis('vol', g.volY0, g.volH, [w.lo + w.span * 0.5, w.hi], v => fmtQuoteVol(v), vY);
+          if (lastVol) panelBadge(vY(quoteVol(lastVol)), fmtQuoteVol(quoteVol(lastVol)),
             lastVol.c >= lastVol.o ? TH.up : TH.dn, g.volY0, g.volH);
           panelValueAt.vol = y => w.lo + ((g.volY0 + g.volH - y) / inner) * w.span;
           cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.volY0 + 0.5); cctx.lineTo(plotW, g.volY0 + 0.5); cctx.stroke();
           const vi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
           const vc = candles[vi];
-          panelTitle('Vol', vc ? fmtVol(vc.v) : '—',
+          // Umsatz gross, gehandelte Menge klein dahinter -- damit klar ist,
+          // was die Zahl bedeutet.
+          panelTitle('Vol', vc ? fmtQuoteVol(quoteVol(vc)) +
+              (vc.v > 0 ? '  (' + fmtVol(vc.v) + ' ' + baseAsset(currentSymbol) + ')' : '') : '—',
             vc && vc.c >= vc.o ? TH.up : TH.dn, g.volY0);
         }
 
@@ -3042,7 +3079,7 @@
           const conv = hp && panelValueAt[hp.key];
           if (conv) {
             const v = conv(hoverY);
-            const txt = hp.key === 'rsi' ? v.toFixed(1) : hp.key === 'vol' ? fmtVol(v) : fmtCompact(v);
+            const txt = hp.key === 'rsi' ? v.toFixed(1) : hp.key === 'vol' ? fmtQuoteVol(v) : fmtCompact(v);
             cctx.font = '10px ' + TH.font;
             const tw = cctx.measureText(txt).width;
             cctx.fillStyle = TH.crossBg;
@@ -3083,15 +3120,11 @@
           // Stelle, sonst die staerkste offene Zone.
           let l4 = '';
           if (indState.liq && liqMap) {
-            if (mouseIn && hoverY >= plotY0 && hoverY <= g.plotY1 && hoverIndex >= 0) {
-              const hp = g.pOf(hoverY);
-              const hv = liqMap.valueAt(hp, hoverIndex);
-              l4 = 'LIQ ' + (hv > 0 ? '≈ $' + fmtCompact(hv) : '—') + ' @ ' + fmtCurrency(hp);
-            } else {
-              const top = liqTopZones(liqMap, 1)[0];
-              l4 = top ? 'LIQ max ≈ $' + fmtCompact(top.v) + ' @ ' + fmtCurrency(liqMap.priceOf(top.b))
-                       : 'LIQ — keine Zone offen';
-            }
+            // Den Wert unter dem Zeiger zeigt das Schild am Fadenkreuz --
+            // hier steht die staerkste offene Zone.
+            const top = liqTopZones(liqMap, 1)[0];
+            l4 = top ? 'LIQ max ≈ $' + fmtCompact(top.v) + ' @ ' + fmtCurrency(liqMap.priceOf(top.b))
+                     : 'LIQ — keine Zone offen';
           }
           const wMax = Math.max(cctx.measureText(l1).width, cctx.measureText(l2).width,
                                 cctx.measureText(l3).width, l4 ? cctx.measureText(l4).width : 0);
@@ -3142,6 +3175,67 @@
             propsEl.style.left = Math.round(px) + 'px';
             propsEl.style.top  = Math.round(py) + 'px';
           }
+        }
+
+        // ── Heatmap-Schild am Zeiger ────────────────────────────────────
+        // Was Coinglass beim Ueberfahren einer hellen Zone zeigt: Zeitpunkt,
+        // Kurs und wie viel Liquidation an genau dieser Preisebene haengt.
+        if (indState.liq && liqMap && mouseIn && hoverSlot !== null &&
+            hoverY >= plotY0 && hoverY <= g.plotY1 && hoverIndex >= 0 && candles[hoverIndex]) {
+          const hc = candles[hoverIndex];
+          const hp = g.pOf(hoverY);
+          const hv = liqMap.valueAt(hp, hoverIndex);
+          const rgb = liqColor(Math.min(1, hv / Math.max(1e-9, liqMap.max * Math.max(0.05, liqThr))));
+          const heatCol = 'rgb(' + (rgb[0] | 0) + ',' + (rgb[1] | 0) + ',' + (rgb[2] | 0) + ')';
+          // Der Punkt traegt die exakte Farbe der Zone unter dem Zeiger, die
+          // Zahl selbst bleibt hell -- sonst ist sie bei schwachen Zonen
+          // (dunkelviolett) schlicht nicht zu lesen.
+          const rows = [
+            { dot: TH.accent, k: 'Kurs',        v: fmtCurrency(hc.c),  col: TH.accent },
+            { dot: heatCol,   k: 'Liquidation', v: hv > 0 ? '≈ $' + fmtCompact(hv) : '—',
+              col: hv > 0 ? '#fde725' : TH.panelTxt },
+            { dot: TH.cross,  k: 'Preisebene',  v: fmtCurrency(hp),    col: TH.axisTxt }
+          ];
+          const head = fmtFull(hc.t);
+          const PAD = 8, LH = 15, GAP = 16;
+          cctx.font = 'bold 10px ' + TH.font;
+          let wBox = cctx.measureText(head).width;
+          cctx.font = '10px ' + TH.font;
+          rows.forEach(r => {
+            const w = 12 + cctx.measureText(r.k).width + GAP + cctx.measureText(r.v).width;
+            if (w > wBox) wBox = w;
+          });
+          wBox += PAD * 2;
+          const hBox = PAD * 2 + 14 + rows.length * LH;
+          // Neben dem Zeiger, aber immer im Bild: kippt an den Raendern um.
+          let bx = hoverX + 16, by = hoverY + 16;
+          if (bx + wBox > plotW - 4) bx = hoverX - 16 - wBox;
+          if (bx < 4) bx = 4;
+          if (by + hBox > g.plotY1 - 4) by = hoverY - 16 - hBox;
+          if (by < plotY0 + 2) by = plotY0 + 2;
+
+          cctx.fillStyle = TH.tipBg;
+          cctx.strokeStyle = TH.tipBorder;
+          cctx.lineWidth = 1;
+          cctx.fillRect(bx, by, wBox, hBox);
+          cctx.strokeRect(bx + 0.5, by + 0.5, wBox - 1, hBox - 1);
+
+          cctx.textAlign = 'left';
+          cctx.font = 'bold 10px ' + TH.font;
+          cctx.fillStyle = TH.axisTxt;
+          cctx.fillText(head, bx + PAD, by + PAD + 9);
+          cctx.font = '10px ' + TH.font;
+          rows.forEach((r, i) => {
+            const y = by + PAD + 14 + i * LH + 9;
+            cctx.fillStyle = r.dot;
+            cctx.beginPath(); cctx.arc(bx + PAD + 3.5, y - 3.5, 3.5, 0, Math.PI * 2); cctx.fill();
+            cctx.fillStyle = TH.panelTxt;
+            cctx.fillText(r.k, bx + PAD + 12, y);
+            cctx.textAlign = 'right';
+            cctx.fillStyle = r.col;
+            cctx.fillText(r.v, bx + wBox - PAD, y);
+            cctx.textAlign = 'left';
+          });
         }
 
         // ── Funken ──────────────────────────────────────────────────────
