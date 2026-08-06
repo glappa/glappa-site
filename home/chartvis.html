@@ -101,7 +101,7 @@
       display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
       margin-bottom: 8px; padding: 6px 9px;
       background: linear-gradient(90deg, rgba(68,1,84,0.55), rgba(33,145,140,0.18) 60%, rgba(253,231,37,0.10));
-      border: 1px solid #3d2a5c; border-radius: 2px; font-size: 0.78em; color: #cfc4e6;
+      border: 1px solid #3d2a5c; border-radius: 2px; font-size: 0.82em; color: #cfc4e6;
     }
     .chart-liqbar[hidden] { display: none; }
     .chart-liqbar label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -116,7 +116,7 @@
     .chart-liqbar .liq-val { color: #7ee787; min-width: 3.2em; display: inline-block; }
     .chart-liqbar .liq-note { color: #9b8fb5; font-size: 0.92em; flex: 1 1 220px; min-width: 180px; }
 
-    .chart-status { font-size: 0.8em; color: #ffd866; min-height: 1.2em; margin-bottom: 8px; }
+    .chart-status { font-size: 0.85em; color: #ffd866; min-height: 1.2em; margin-bottom: 8px; }
     .chart-status .err { color: #ff5f6d; }
     .chart-status .blink { animation: cvblink 1s steps(1) infinite; }
     @keyframes cvblink { 50% { opacity: 0; } }
@@ -189,7 +189,7 @@
     .chart-panel:fullscreen .chart-canvas-wrap { height: 100%; max-height: none; resize: none; }
     .chart-panel:fullscreen .chart-hint, .chart-panel:fullscreen .chart-foot { display: none; }
 
-    .chart-hint { font-size: 0.74em; color: #888; margin: 8px 4px 0; font-style: italic; }
+    .chart-hint { font-size: 0.8em; line-height: 1.55; color: #999; margin: 8px 4px 0; font-style: italic; }
     .chart-hint kbd {
       font-family: inherit; background: #111; border: 1px solid #444; border-radius: 2px;
       padding: 0 4px; color: #0ff; font-style: normal; font-size: 0.95em;
@@ -592,6 +592,10 @@
           (B&auml;sse links, H&ouml;hen rechts), unten das Spektrum-Band &mdash; und oben rechts zeigt ein
           <strong>Band-Meter</strong> BASS/MID/HIGH getrennt an, samt erkannter Schl&auml;ge und gesch&auml;tztem
           Tempo in BPM. Die Farbtemperatur aller Effekte folgt der Klangfarbe: dumpfe Passagen orange, helle cyan.
+          Auch die <strong>eigenen Zeichnungen</strong> spielen mit: Trendlinien, Zonen, Pfeile und Notizen pumpen
+          und gl&uuml;hen im Takt des Basses, gestrichelte Linien marschieren zur Musik, und beim
+          Fibonacci-Retracement pulsiert jede Ebene mit ihrem eigenen Frequenzband &mdash; Lage und Werte bleiben
+          dabei unangetastet, abgelesen wird wie immer.
         </p>
       </div>
     </section>
@@ -745,8 +749,8 @@
       };
 
       const PAGE = 1000;              // Kerzen pro Binance-Anfrage (API-Maximum)
-      const AXIS_W = 78;              // Breite der Preisachsen-Spalte rechts
-      const AXIS_H = 22;              // Hoehe der Zeitachsen-Zeile unten
+      const AXIS_W = 84;              // Breite der Preisachsen-Spalte rechts (11-px-Schrift braucht Luft)
+      const AXIS_H = 24;              // Hoehe der Zeitachsen-Zeile unten
       const TOP_PAD = 8;
       const MIN_BARS = 8;             // engster Zeit-Zoom
       const HIT_TOL = 7;              // Trefferradius fuer Zeichnungen (px)
@@ -774,8 +778,8 @@
           bg0: '#0c0e16', bg1: '#020204',
           grid: 'rgba(255,255,255,0.09)', gridV: 'rgba(255,255,255,0.06)',
           axisBg: 'rgba(255,255,255,0.03)', axisLine: 'rgba(255,255,255,0.15)',
-          axisTxt: 'rgba(255,255,255,0.72)', axisTxt2: 'rgba(255,255,255,0.62)',
-          panelTxt: 'rgba(255,255,255,0.5)', panelAxisTxt: 'rgba(255,255,255,0.6)',
+          axisTxt: 'rgba(255,255,255,0.85)', axisTxt2: 'rgba(255,255,255,0.72)',
+          panelTxt: 'rgba(255,255,255,0.65)', panelAxisTxt: 'rgba(255,255,255,0.72)',
           panelSep: 'rgba(255,255,255,0.12)',
           boxBg: 'rgba(3,5,10,0.72)', boxBg2: 'rgba(3,5,10,0.78)',
           accent: '#00e5ff', accentTxt: '#000', warn: '#ffd866',
@@ -793,8 +797,8 @@
           bg0: '#15171c', bg1: '#101216',
           grid: 'rgba(255,255,255,0.055)', gridV: 'rgba(255,255,255,0.04)',
           axisBg: 'rgba(255,255,255,0.02)', axisLine: 'rgba(255,255,255,0.12)',
-          axisTxt: '#9aa0a6', axisTxt2: '#7c8288',
-          panelTxt: '#7c8288', panelAxisTxt: '#7c8288',
+          axisTxt: '#aab2ba', axisTxt2: '#8b939b',
+          panelTxt: '#8b939b', panelAxisTxt: '#8b939b',
           panelSep: 'rgba(255,255,255,0.09)',
           boxBg: 'rgba(14,15,18,0.82)', boxBg2: 'rgba(14,15,18,0.86)',
           accent: '#6fd18c', accentTxt: '#0e0f12', warn: '#c9a848',
@@ -1473,9 +1477,9 @@
           case 'vline':
             return Math.abs(x - P[0].x) < HIT_TOL ? 'body' : null;
           case 'text': {
-            cctx.font = 'bold ' + (11 + (d.width || 2) * 1.5) + 'px ' + TH.font;
+            cctx.font = 'bold ' + (12 + (d.width || 2) * 2) + 'px ' + TH.font;
             const w = cctx.measureText(d.text || '').width;
-            return (x > P[0].x - 6 && x < P[0].x + w + 8 && y > P[0].y - 16 && y < P[0].y + 6) ? 'body' : null;
+            return (x > P[0].x - 6 && x < P[0].x + w + 8 && y > P[0].y - 20 && y < P[0].y + 6) ? 'body' : null;
           }
           case 'brush': {
             for (let k = 1; k < P.length; k++)
@@ -1667,6 +1671,11 @@
         if (!candles.length) return;
         canvas.focus && canvas.focus();
         const { x, y } = localXY(e);
+        // Nicht-linke Maustasten gar nicht erst verfolgen: nach einem Rechts-
+        // klick schluckt das Kontextmenue mitunter das pointerup, der Geister-
+        // Zeiger bliebe in der Map haengen und der naechste Drag wuerde
+        // faelschlich als Zwei-Finger-Pinch gedeutet.
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
         pointers.set(e.pointerId, { x, y });
         if (pointers.size === 2) {
           const [a, b] = [...pointers.values()];
@@ -1680,7 +1689,7 @@
           dragState = null;
           return;
         }
-        if (pointers.size > 2 || e.button !== 0 && e.pointerType === 'mouse') return;
+        if (pointers.size > 2) return;
         e.preventDefault();
         try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
         const g = geom();
@@ -1715,11 +1724,14 @@
         }
         if (hit && (currentTool === 'pan' || hit.d.id === selectedId)) {
           selectDrawing(hit.d);
-          snapshot();
+          // Undo-Eintrag erst, wenn WIRKLICH verschoben wurde (endPointer):
+          // ein snapshot() schon beim Anklicken leerte jedes Mal die Redo-
+          // Liste, obwohl sich gar nichts geaendert hatte.
           dragState = {
             mode: 'move', part: hit.part, d: hit.d,
             startT: timeFromIdx(g.iOf(x)), startTP: tp(g.pOf(y)),
-            orig: JSON.parse(JSON.stringify(hit.d.pts)), moved: false
+            orig: JSON.parse(JSON.stringify(hit.d.pts)),
+            preState: JSON.stringify(drawings), moved: false
           };
           return;
         }
@@ -1883,8 +1895,13 @@
           if (keep) { snapshot(); drawings.push(pending); saveDrawings(); selectDrawing(pending); }
           pending = null;
         } else if (dragState.mode === 'move') {
-          if (dragState.moved) saveDrawings(); else undoStack.pop();
-          updateUndoBtns();
+          if (dragState.moved) {
+            undoStack.push(dragState.preState);
+            if (undoStack.length > 80) undoStack.shift();
+            redoStack.length = 0;
+            saveDrawings();
+            updateUndoBtns();
+          }
         } else if (dragState.mode === 'psize') {
           savePrefs();                      // Panel-Hoehen ueberdauern den Reload
         }
@@ -1982,7 +1999,11 @@
           if (selectedId) { e.preventDefault(); deleteSelected(); }
           return;
         }
-        if (e.key === 'Escape') { pending = null; dragState = null; selectDrawing(null); return; }
+        if (e.key === 'Escape') {
+          // laufendes Verschieben abbrechen = Objekt springt an die Ausgangslage zurueck
+          if (dragState && dragState.mode === 'move' && dragState.moved) dragState.d.pts = dragState.orig;
+          pending = null; dragState = null; selectDrawing(null); return;
+        }
         const map = { a: 'pan', t: 'line', h: 'hline', v: 'vline', r: 'rect', f: 'fib', m: 'ruler', b: 'brush', x: 'eraser' };
         if (!mod && map[e.key.toLowerCase()]) { setTool(map[e.key.toLowerCase()]); return; }
         if (!mod && e.key.toLowerCase() === 'l') { toggleLog(); }
@@ -2236,6 +2257,7 @@
           bassEnv = 0; beatFlash = 0; midSm = 0; trebSm = 0; totalSm = 0;
           midEnv = 0; trebEnv = 0; snareFlash = 0; hatFlash = 0; hatBurst = false;
           rings.length = 0; kickTimes.length = 0; bpmEst = 0; lastKickAt = 0;
+          dashPhase = 0;
           meterPeak[0] = meterPeak[1] = meterPeak[2] = 0;
           particles.length = 0;
         }
@@ -2266,6 +2288,8 @@
       let rings = [];                               // Schockwellen der Kicks
       let kickTimes = [], lastKickAt = 0, bpmEst = 0;
       let meterPeak = [0, 0, 0];                    // Peak-Hold-Striche des Band-Meters
+      let dashPhase = 0;                            // marschierende Strichelung der Zeichnungen
+      let liveAnchor = null;                        // Bildposition des Live-Kurses (Startpunkt der Kick-Effekte)
 
       // Klangfarbe -> Farbton: dumpfe Passagen warm (orange), helle kuehl (cyan)
       const centHue = () => (18 + centroidSm * 195) % 360;
@@ -2319,9 +2343,11 @@
         if (!candles.length || !cssW) return;
         // Kick-Funken sind bewusst WARM (orange/rot) -- die Hoehen glitzern
         // kuehl, so ist am Farbton ablesbar, welches Band gerade feuert.
+        const ax = liveAnchor ? liveAnchor.x : cssW - 14;
+        const ay = liveAnchor ? liveAnchor.y : cssH * 0.3;
         for (let i = 0; i < 20; i++) {
           particles.push({
-            x: cssW - 14, y: cssH * 0.3,
+            x: ax, y: ay,
             vx: (Math.random() - 0.5) * 3.2, vy: -(1.5 + Math.random() * 4),
             life: 1, sz: 2 + Math.random() * 3, hue: 8 + Math.random() * 42
           });
@@ -2414,6 +2440,7 @@
           else hatFlash = Math.max(0, hatFlash - 0.08);
 
           specHue = (specHue + 0.2 + trebSm * 5 + beatFlash * 2.5) % 360;
+          dashPhase = (dashPhase + 0.5 + trebSm * 2.5 + beatFlash * 2.5) % 10000;
 
           if (bassEnv > 0.32 && Math.random() < (bassEnv - 0.3) * 0.5) spawnAmbientSpark();
 
@@ -2480,12 +2507,23 @@
       function renderDrawing(g, d, opts) {
         const sel = opts.selected, ghost = opts.ghost;
         const col = d.color || DEF_COLOR[d.type] || '#ffd866';
-        const lw  = d.width || 2;
+        // Musik-Modus: die Zeichnungen bleiben exakt, wo sie sind (Lage und
+        // Werte muessen ablesbar bleiben) -- aber sie LEBEN mit: der Bass
+        // pumpt Linienstaerke und Glut, die Snare laesst sie aufblitzen,
+        // gestrichelte Linien marschieren im Takt.
+        const music = musicMode && audio.currentSrc && !audio.paused;
+        const pulse = music ? bassEnv * 0.45 + beatFlash * 0.3 : 0;
+        const lw  = (d.width || 2) * (1 + pulse * 0.6);
         const P = d.pts.map(pt => scr(g, pt));
         cctx.lineWidth = lw;
         cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col;
         cctx.fillStyle = cctx.strokeStyle;
         cctx.setLineDash([]);
+        cctx.lineDashOffset = music ? -dashPhase : 0;
+        if (music) {
+          cctx.shadowColor = col;
+          cctx.shadowBlur = 1 + bassEnv * 12 + beatFlash * 16 + snareFlash * 8;
+        }
 
         switch (d.type) {
           case 'line':
@@ -2516,7 +2554,7 @@
           case 'rect': {
             const x = Math.min(P[0].x, P[1].x), y = Math.min(P[0].y, P[1].y);
             const w = Math.abs(P[1].x - P[0].x) || 1, h = Math.abs(P[1].y - P[0].y) || 1;
-            cctx.fillStyle = withAlpha(col, ghost ? 0.08 : 0.14);
+            cctx.fillStyle = withAlpha(col, ghost ? 0.08 : 0.14 + (music ? midEnv * 0.1 + snareFlash * 0.06 : 0));
             cctx.fillRect(x, y, w, h);
             cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col;
             cctx.strokeRect(x, y, w, h);
@@ -2526,7 +2564,7 @@
             const cx = (P[0].x + P[1].x) / 2, cy = (P[0].y + P[1].y) / 2;
             const rx = Math.abs(P[1].x - P[0].x) / 2 || 1, ry = Math.abs(P[1].y - P[0].y) / 2 || 1;
             cctx.beginPath(); cctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-            cctx.fillStyle = withAlpha(col, ghost ? 0.07 : 0.12); cctx.fill();
+            cctx.fillStyle = withAlpha(col, ghost ? 0.07 : 0.12 + (music ? midEnv * 0.1 + snareFlash * 0.06 : 0)); cctx.fill();
             cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col; cctx.stroke();
             break;
           }
@@ -2535,32 +2573,42 @@
             const colors = ['#9aa', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#9aa', '#ff8fd0'];
             const xMin = Math.min(P[0].x, P[1].x), xMax = Math.max(P[0].x, P[1].x);
             const p0 = d.pts[0].p, p1 = d.pts[1].p;
-            cctx.font = '10px ' + TH.font;
+            cctx.font = '11px ' + TH.font;
             cctx.textAlign = 'left';
+            // Im Musik-Modus haengt jede Fibo-Ebene an "ihrem" Frequenzband
+            // (Bass/Mitten/Hoehen im Wechsel) und pulsiert damit -- das
+            // Retracement wird zum Equalizer.
+            const bandEnv = music ? [bassEnv, midEnv, trebEnv] : null;
             let prevY = null;
             levels.forEach((lv, k) => {
               const price = p0 + (p1 - p0) * lv;
               const y = g.yOf(price);
+              const env = bandEnv ? bandEnv[k % 3] : 0;
               if (prevY !== null && k > 0 && lv <= 1) {
-                cctx.fillStyle = withAlpha(colors[k], 0.07);
+                cctx.fillStyle = withAlpha(colors[k], 0.07 + env * 0.07);
                 cctx.fillRect(xMin, Math.min(prevY, y), Math.max(1, xMax - xMin), Math.abs(y - prevY));
               }
               prevY = y;
-              cctx.strokeStyle = withAlpha(colors[k], ghost ? 0.5 : 0.85);
+              if (bandEnv) { cctx.shadowColor = colors[k]; cctx.shadowBlur = env * 16; }
+              cctx.strokeStyle = withAlpha(colors[k], ghost ? 0.5 : Math.min(1, 0.85 + env * 0.15));
               cctx.setLineDash(lv === 0 || lv === 1 ? [] : [4, 3]);
-              cctx.lineWidth = (lv === 0 || lv === 1) ? lw : 1.2;
+              cctx.lineWidth = (lv === 0 || lv === 1) ? lw : 1.2 + env * 1.6;
               cctx.beginPath(); cctx.moveTo(xMin, y); cctx.lineTo(xMax, y); cctx.stroke();
               cctx.setLineDash([]);
+              if (bandEnv) cctx.shadowBlur = 0;
               const label = (lv * 100).toFixed(1).replace('.0', '') + '%  ' + fmtPrice(price);
               const tw = cctx.measureText(label).width;
               const lx = Math.min(xMax + 5, g.plotW - tw - 3);
+              // dunkler Ruecken -- die Prozentzahlen standen sonst nackt auf den Kerzen
+              cctx.fillStyle = 'rgba(0,0,0,0.55)';
+              cctx.fillRect(lx - 2, y - 12, tw + 5, 13);
               cctx.fillStyle = colors[k];
               cctx.fillText(label, lx, y - 2);
             });
             break;
           }
           case 'text': {
-            const size = 11 + lw * 1.5;
+            const size = 12 + (d.width || 2) * 2;
             cctx.font = 'bold ' + size + 'px ' + TH.font;
             cctx.textAlign = 'left';
             const tw = cctx.measureText(d.text || '').width;
@@ -2601,22 +2649,25 @@
             const label = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%   ' +
               (d.pts[1].p - d.pts[0].p >= 0 ? '+' : '-') + fmtCurrency(Math.abs(d.pts[1].p - d.pts[0].p)) +
               '   ' + Math.abs(bars) + ' Kerzen / ' + durTxt;
-            cctx.font = 'bold 11px ' + TH.font;
+            cctx.font = 'bold 12px ' + TH.font;
             const tw = cctx.measureText(label).width;
             let lx = P[1].x + 10;
             if (lx + tw + 10 > g.plotW) lx = Math.max(2, P[1].x - tw - 18);
-            const ly = Math.max(g.plotY0 + 14, P[1].y - 16);
+            const ly = Math.max(g.plotY0 + 15, P[1].y - 17);
             cctx.fillStyle = 'rgba(0,0,0,0.85)';
-            cctx.fillRect(lx - 5, ly - 12, tw + 10, 18);
+            cctx.fillRect(lx - 5, ly - 13, tw + 10, 20);
             cctx.strokeStyle = 'rgba(' + rgb + ',0.85)';
             cctx.lineWidth = 1;
-            cctx.strokeRect(lx - 5, ly - 12, tw + 10, 18);
+            cctx.strokeRect(lx - 5, ly - 13, tw + 10, 20);
             cctx.fillStyle = up ? TH.up : TH.dn;
             cctx.textAlign = 'left';
-            cctx.fillText(label, lx, ly + 1);
+            cctx.fillText(label, lx, ly + 2);
             break;
           }
         }
+
+        cctx.shadowBlur = 0;
+        cctx.lineDashOffset = 0;
 
         if (sel || (hoverHit && hoverHit.d === d && !dragState)) {
           if (d.type === 'brush') {
@@ -2658,19 +2709,19 @@
         // hinter den Balken, sobald das Panel hochgezoomt ist.
         function panelTitle(label, value, color, y0) {
           cctx.textAlign = 'left';
-          cctx.font = '10px ' + TH.font;
+          cctx.font = '11px ' + TH.font;
           const lw = cctx.measureText(label + '  ').width;
-          cctx.font = 'bold 11px ' + TH.font;
+          cctx.font = 'bold 12px ' + TH.font;
           const vw = value ? cctx.measureText(value).width : 0;
           cctx.fillStyle = TH.boxBg2;
-          cctx.fillRect(2, y0 + 2, lw + vw + 8, 14);
-          cctx.font = '10px ' + TH.font;
+          cctx.fillRect(2, y0 + 2, lw + vw + 9, 16);
+          cctx.font = '11px ' + TH.font;
           cctx.fillStyle = TH.panelTxt;
-          cctx.fillText(label, 4, y0 + 12);
+          cctx.fillText(label, 4, y0 + 14);
           if (value) {
-            cctx.font = 'bold 11px ' + TH.font;
+            cctx.font = 'bold 12px ' + TH.font;
             cctx.fillStyle = color || '#fff';
-            cctx.fillText(value, 4 + lw, y0 + 12);
+            cctx.fillText(value, 4 + lw, y0 + 14);
           }
         }
 
@@ -2679,20 +2730,20 @@
         function panelAxis(key, y0, h, values, fmt, yFn) {
           const z = panelZoom[key] || 1;
           const zoomed = Math.abs(z - 1) > 0.01;
-          const bottom = y0 + h - (zoomed ? 14 : 2);
+          const bottom = y0 + h - (zoomed ? 15 : 2);
           cctx.textAlign = 'left';
-          cctx.font = '10px ' + TH.font;
+          cctx.font = '11px ' + TH.font;
           cctx.fillStyle = TH.panelAxisTxt;
           values.forEach(v => {
             const y = yFn(v);
             if (y < y0 + 4 || y > bottom) return;
-            cctx.fillText(fmt(v), plotW + 5, y + 3);
+            cctx.fillText(fmt(v), plotW + 5, y + 4);
           });
           if (zoomed) {
             // Zoomfaktor unten in die Achsenspalte -- oben stoert er sonst
             // das Wert-Schild des aktuellen Standes.
             cctx.fillStyle = TH.warn;
-            cctx.font = 'bold 9px ' + TH.font;
+            cctx.font = 'bold 10px ' + TH.font;
             cctx.fillText('x' + (z >= 10 ? z.toFixed(0) : z.toFixed(1)), plotW + 5, y0 + h - 3);
           }
         }
@@ -2704,14 +2755,14 @@
           // Liegt der Wert ausserhalb (z.B. kleines Volumen ganz unten oder
           // beim Reinzoomen weggerutscht), klebt das Schild am Panelrand,
           // statt zu verschwinden -- ablesbar bleibt es immer.
-          y = Math.max(y0 + 8, Math.min(y0 + h - 8, y));
-          cctx.font = 'bold 10px ' + TH.font;
+          y = Math.max(y0 + 9, Math.min(y0 + h - 9, y));
+          cctx.font = 'bold 11px ' + TH.font;
           const tw = cctx.measureText(text).width;
           cctx.fillStyle = bg;
-          cctx.fillRect(plotW + 2, y - 8, Math.max(AXIS_W - 4, tw + 12), 16);
+          cctx.fillRect(plotW + 2, y - 9, Math.max(AXIS_W - 4, tw + 12), 18);
           cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
-          cctx.fillText(text, plotW + 8, y + 3.5);
+          cctx.fillText(text, plotW + 8, y + 4);
         }
         // Markierungslinie quer durchs Panel auf Hoehe des aktuellen Werts
         function panelMarker(y, rgba) {
@@ -2725,7 +2776,7 @@
         const panelValueAt = {};
 
         // ── Gitter: Preislinien (runde Werte) + Zeitlinien ──────────────
-        cctx.font = '10px ' + TH.font;
+        cctx.font = '11px ' + TH.font;
         cctx.textAlign = 'left';
         cctx.lineWidth = 1;
         const priceTicks = [];
@@ -2786,7 +2837,7 @@
         // Das ganze Frequenzbild liegt schemenhaft HINTER den Kerzen:
         // Baesse links, Hoehen rechts, Farbtemperatur folgt der Klangfarbe
         // des Tracks. Bewusst blass, damit die Kerzen lesbar bleiben.
-        const eqBase = Math.floor(viewStart);
+        const eqBase = Math.max(0, Math.floor(viewStart));   // muss zu getView().start passen (eqVals beginnt bei Kerze 0)
         const eqAt = i => (musicMode && eqVals) ? (eqVals[i - eqBase] || 0) : 0;
         if (musicMode && eqVals && audio.currentSrc && !audio.paused) {
           cctx.save();
@@ -2941,12 +2992,13 @@
           }
 
           // Kick-Schockwellen: Ring fuer Ring vom Live-Kurs nach aussen
+          const anchorI = Math.min(i1, total - 1);
+          const ac = candles[anchorI];
+          const ax = Math.max(4, Math.min(plotW - 4, g.xOf(anchorI)));
+          const ay = ac ? Math.max(plotY0 + 4, Math.min(plotY0 + plotH - 4, g.yOf(ac.c)))
+                        : plotY0 + plotH / 2;
+          liveAnchor = { x: ax, y: ay };     // hier starten auch die Kick-Funken
           if (rings.length) {
-            const anchorI = Math.min(i1, total - 1);
-            const ac = candles[anchorI];
-            const ax = Math.max(4, Math.min(plotW - 4, g.xOf(anchorI)));
-            const ay = ac ? Math.max(plotY0 + 4, Math.min(plotY0 + plotH - 4, g.yOf(ac.c)))
-                          : plotY0 + plotH / 2;
             for (let ri = rings.length - 1; ri >= 0; ri--) {
               const rg = rings[ri];
               rg.r += rg.v; rg.v *= 1.015; rg.life -= 0.022;
@@ -2967,28 +3019,28 @@
         cctx.beginPath(); cctx.moveTo(plotW + 0.5, 0); cctx.lineTo(plotW + 0.5, H); cctx.stroke();
         cctx.beginPath(); cctx.moveTo(0, g.axisY0 + 0.5); cctx.lineTo(W, g.axisY0 + 0.5); cctx.stroke();
 
-        cctx.font = '10px ' + TH.font;
+        cctx.font = '11px ' + TH.font;
         cctx.fillStyle = TH.axisTxt;
         cctx.textAlign = 'left';
         priceTicks.forEach(p => {
           const y = g.yOf(p);
           if (y < 8 || y > g.plotY1 + 2) return;
-          cctx.fillText(fmtCurrency(p), plotW + 6, y + 3);
+          cctx.fillText(fmtCurrency(p), plotW + 6, y + 4);
         });
         if (!autoScale) {
           cctx.fillStyle = TH.warn;
-          cctx.font = 'bold 9px ' + TH.font;
+          cctx.font = 'bold 10px ' + TH.font;
           cctx.fillText('MANUELL', plotW + 6, g.plotY1 - 4);
         }
 
         // Zeitachsen-Beschriftung
         cctx.fillStyle = TH.axisTxt2;
-        cctx.font = '10px ' + TH.font;
+        cctx.font = '11px ' + TH.font;
         cctx.textAlign = 'center';
         timeTicks.forEach(i => {
           const x = g.xOf(i);
           if (x < 20 || x > plotW - 20) return;
-          cctx.fillText(axisLabel(candles[i].t), x, H - 7);
+          cctx.fillText(axisLabel(candles[i].t), x, H - 8);
         });
 
         // ── Letzter Kurs: Linie + Label ─────────────────────────────────
@@ -3010,10 +3062,10 @@
           cctx.shadowBlur = 0;
           cctx.setLineDash([]);
           const label = fmtCurrency(lastC);
-          cctx.font = 'bold 11px ' + TH.font;
+          cctx.font = 'bold 12px ' + TH.font;
           const tw = cctx.measureText(label).width;
           cctx.fillStyle = lastUp ? TH.up : TH.dn;
-          cctx.fillRect(plotW + 2, ly - 9, Math.max(AXIS_W - 4, tw + 12), 18);
+          cctx.fillRect(plotW + 2, ly - 10, Math.max(AXIS_W - 4, tw + 12), 20);
           cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
           cctx.fillText(label, plotW + 8, ly + 4);
@@ -3033,16 +3085,16 @@
           cctx.fillRect(bx, by, barW, barH);
           cctx.strokeStyle = 'rgba(255,255,255,0.28)'; cctx.lineWidth = 1;
           cctx.strokeRect(bx + 0.5, by + 0.5, barW, barH);
-          cctx.font = '9px ' + TH.font;
+          cctx.font = '10px ' + TH.font;
           cctx.textAlign = 'left';
           // Beschriftung mit dunklem Ruecken -- sonst geht sie in den Kerzen unter
           const capTxt = '$' + fmtCompact(liqMap.max * Math.max(0.05, liqThr));
-          const capW = Math.max(cctx.measureText(capTxt).width, 8) + 5;
+          const capW = Math.max(cctx.measureText(capTxt).width, 8) + 6;
           cctx.fillStyle = 'rgba(3,5,10,0.8)';
-          cctx.fillRect(bx + barW + 2, by, capW, 11);
-          cctx.fillRect(bx + barW + 2, by + barH - 8, 12, 11);
-          cctx.fillStyle = 'rgba(255,255,255,0.85)';
-          cctx.fillText(capTxt, bx + barW + 4, by + 8);
+          cctx.fillRect(bx + barW + 2, by, capW, 12);
+          cctx.fillRect(bx + barW + 2, by + barH - 9, 13, 12);
+          cctx.fillStyle = 'rgba(255,255,255,0.9)';
+          cctx.fillText(capTxt, bx + barW + 4, by + 9);
           cctx.fillText('0', bx + barW + 4, by + barH);
 
           // Die groessten Cluster, die JETZT noch offen sind: gestrichelte
@@ -3058,13 +3110,13 @@
             cctx.beginPath(); cctx.moveTo(Math.max(0, plotW - 150), y); cctx.lineTo(plotW, y); cctx.stroke();
             cctx.setLineDash([]);
             const txt = '≈ $' + fmtCompact(z.v) + (p < lastC ? ' ▼Longs' : ' ▲Shorts');
-            cctx.font = 'bold 9px ' + TH.font;
+            cctx.font = 'bold 10px ' + TH.font;
             const tw = cctx.measureText(txt).width;
             cctx.fillStyle = 'rgba(3,5,10,0.8)';
-            cctx.fillRect(plotW - tw - 10, y - 11, tw + 8, 11);
+            cctx.fillRect(plotW - tw - 10, y - 13, tw + 8, 13);
             cctx.fillStyle = col;
             cctx.textAlign = 'left';
-            cctx.fillText(txt, plotW - tw - 6, y - 2.5);
+            cctx.fillText(txt, plotW - tw - 6, y - 3);
           });
         }
 
@@ -3082,15 +3134,15 @@
         cctx.restore();
         axisLabels.forEach(l => {
           if (l.y < 8 || l.y > g.plotY1) return;
-          cctx.font = 'bold 10px ' + TH.font;
+          cctx.font = 'bold 11px ' + TH.font;
           const tw = cctx.measureText(l.text).width;
           cctx.fillStyle = 'rgba(0,0,0,0.85)';
-          cctx.fillRect(plotW + 2, l.y - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+          cctx.fillRect(plotW + 2, l.y - 9, Math.max(AXIS_W - 6, tw + 8), 18);
           cctx.strokeStyle = l.col; cctx.lineWidth = 1;
-          cctx.strokeRect(plotW + 2, l.y - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+          cctx.strokeRect(plotW + 2, l.y - 9, Math.max(AXIS_W - 6, tw + 8), 18);
           cctx.fillStyle = l.col;
           cctx.textAlign = 'left';
-          cctx.fillText(l.text, plotW + 6, l.y + 3);
+          cctx.fillText(l.text, plotW + 6, l.y + 4);
         });
 
         // ── Fadenkreuz ──────────────────────────────────────────────────
@@ -3104,23 +3156,23 @@
           cctx.setLineDash([]);
           if (hoverY <= g.plotY1) {
             const label = fmtCurrency(g.pOf(hoverY));
-            cctx.font = '10px ' + TH.font;
+            cctx.font = '11px ' + TH.font;
             const tw = cctx.measureText(label).width;
             cctx.fillStyle = TH.crossBg;
-            cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+            cctx.fillRect(plotW + 2, hoverY - 9, Math.max(AXIS_W - 6, tw + 8), 18);
             cctx.fillStyle = '#000';
             cctx.textAlign = 'left';
-            cctx.fillText(label, plotW + 6, hoverY + 3);
+            cctx.fillText(label, plotW + 6, hoverY + 4);
           }
           const tLabel = fmtFull(timeFromIdx(hoverSlot));
-          cctx.font = '10px ' + TH.font;
+          cctx.font = '11px ' + TH.font;
           const ttw = cctx.measureText(tLabel).width;
-          const bx = Math.max(0, Math.min(plotW - ttw - 10, x - ttw / 2 - 5));
+          const bx = Math.max(0, Math.min(plotW - ttw - 12, x - ttw / 2 - 6));
           cctx.fillStyle = TH.crossBg;
-          cctx.fillRect(bx, g.axisY0 + 3, ttw + 10, 16);
+          cctx.fillRect(bx, g.axisY0 + 3, ttw + 12, 18);
           cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
-          cctx.fillText(tLabel, bx + 5, g.axisY0 + 14);
+          cctx.fillText(tLabel, bx + 6, g.axisY0 + 16);
         }
 
         // ── Volumen ─────────────────────────────────────────────────────
@@ -3275,13 +3327,13 @@
           if (conv) {
             const v = conv(hoverY);
             const txt = hp.key === 'rsi' ? v.toFixed(1) : hp.key === 'vol' ? fmtQuoteVol(v) : fmtCompact(v);
-            cctx.font = '10px ' + TH.font;
+            cctx.font = '11px ' + TH.font;
             const tw = cctx.measureText(txt).width;
             cctx.fillStyle = TH.crossBg;
-            cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 16);
+            cctx.fillRect(plotW + 2, hoverY - 9, Math.max(AXIS_W - 6, tw + 8), 18);
             cctx.fillStyle = '#000';
             cctx.textAlign = 'left';
-            cctx.fillText(txt, plotW + 6, hoverY + 3);
+            cctx.fillText(txt, plotW + 6, hoverY + 4);
           }
         }
 
@@ -3305,7 +3357,7 @@
           const prev = candles[li - 1];
           const chg = prev ? ((lc.c - prev.c) / prev.c) * 100 : 0;
           const up = dc.c >= dc.o;
-          cctx.font = 'bold 11px ' + TH.font;
+          cctx.font = 'bold 12px ' + TH.font;
           cctx.textAlign = 'left';
           const l1 = currentSymbol + ' · ' + currentInterval + ' · Binance' + (logScale ? ' · LOG' : '');
           const l2 = 'O ' + fmtPrice(dc.o) + '  H ' + fmtPrice(dc.h) + '  L ' + fmtPrice(dc.l) + '  C ' + fmtPrice(dc.c);
@@ -3324,24 +3376,24 @@
           const wMax = Math.max(cctx.measureText(l1).width, cctx.measureText(l2).width,
                                 cctx.measureText(l3).width, l4 ? cctx.measureText(l4).width : 0);
           cctx.fillStyle = TH.boxBg;
-          cctx.fillRect(2, plotY0 + 1, wMax + 12, (showMA ? 74 : 48) + (l4 ? 13 : 0));
+          cctx.fillRect(2, plotY0 + 1, wMax + 14, (showMA ? 84 : 54) + (l4 ? 15 : 0));
           cctx.fillStyle = TH.accent;
-          cctx.fillText(l1, 8, plotY0 + 14);
+          cctx.fillText(l1, 8, plotY0 + 16);
           cctx.fillStyle = up ? TH.up : TH.dn;
-          cctx.fillText(l2, 8, plotY0 + 28);
+          cctx.fillText(l2, 8, plotY0 + 33);
           cctx.fillStyle = chg >= 0 ? TH.up : TH.dn;
-          cctx.font = '10px ' + TH.font;
-          cctx.fillText(l3, 8, plotY0 + 42);
+          cctx.font = '11px ' + TH.font;
+          cctx.fillText(l3, 8, plotY0 + 48);
           if (showMA) {
             const t20 = ma20[li] != null ? fmtPrice(ma20[li]) : '—';
             const t50 = ma50[li] != null ? fmtPrice(ma50[li]) : '—';
-            cctx.fillStyle = '#ffd866'; cctx.fillText('MA20 ' + t20, 8, plotY0 + 56);
-            cctx.fillStyle = '#00e5ff'; cctx.fillText('MA50 ' + t50, 8, plotY0 + 68);
+            cctx.fillStyle = '#ffd866'; cctx.fillText('MA20 ' + t20, 8, plotY0 + 63);
+            cctx.fillStyle = '#00e5ff'; cctx.fillText('MA50 ' + t50, 8, plotY0 + 77);
           }
           if (l4) {
-            cctx.font = '10px ' + TH.font;
+            cctx.font = '11px ' + TH.font;
             cctx.fillStyle = '#fde725';
-            cctx.fillText(l4, 8, plotY0 + (showMA ? 81 : 55));
+            cctx.fillText(l4, 8, plotY0 + (showMA ? 92 : 63));
           }
         }
 
@@ -3392,16 +3444,16 @@
             { dot: TH.cross,  k: 'Preisebene',  v: fmtCurrency(hp),    col: TH.axisTxt }
           ];
           const head = fmtFull(hc.t);
-          const PAD = 8, LH = 15, GAP = 16;
-          cctx.font = 'bold 10px ' + TH.font;
+          const PAD = 9, LH = 17, GAP = 16;
+          cctx.font = 'bold 11px ' + TH.font;
           let wBox = cctx.measureText(head).width;
-          cctx.font = '10px ' + TH.font;
+          cctx.font = '11px ' + TH.font;
           rows.forEach(r => {
             const w = 12 + cctx.measureText(r.k).width + GAP + cctx.measureText(r.v).width;
             if (w > wBox) wBox = w;
           });
           wBox += PAD * 2;
-          const hBox = PAD * 2 + 14 + rows.length * LH;
+          const hBox = PAD * 2 + 15 + rows.length * LH;
           // Neben dem Zeiger, aber immer im Bild: kippt an den Raendern um.
           let bx = hoverX + 16, by = hoverY + 16;
           if (bx + wBox > plotW - 4) bx = hoverX - 16 - wBox;
@@ -3416,14 +3468,14 @@
           cctx.strokeRect(bx + 0.5, by + 0.5, wBox - 1, hBox - 1);
 
           cctx.textAlign = 'left';
-          cctx.font = 'bold 10px ' + TH.font;
+          cctx.font = 'bold 11px ' + TH.font;
           cctx.fillStyle = TH.axisTxt;
-          cctx.fillText(head, bx + PAD, by + PAD + 9);
-          cctx.font = '10px ' + TH.font;
+          cctx.fillText(head, bx + PAD, by + PAD + 10);
+          cctx.font = '11px ' + TH.font;
           rows.forEach((r, i) => {
-            const y = by + PAD + 14 + i * LH + 9;
+            const y = by + PAD + 15 + i * LH + 10;
             cctx.fillStyle = r.dot;
-            cctx.beginPath(); cctx.arc(bx + PAD + 3.5, y - 3.5, 3.5, 0, Math.PI * 2); cctx.fill();
+            cctx.beginPath(); cctx.arc(bx + PAD + 4, y - 4, 4, 0, Math.PI * 2); cctx.fill();
             cctx.fillStyle = TH.panelTxt;
             cctx.fillText(r.k, bx + PAD + 12, y);
             cctx.textAlign = 'right';
@@ -3438,7 +3490,7 @@
         // Mitten und Hoehen getrennt gehoert werden -- samt Onset-Blitz
         // ueber dem Balken und geschaetztem Tempo darunter.
         if (musicMode && audio.currentSrc) {
-          const mw = 92, mh = 76;
+          const mw = 104, mh = 84;
           const mx = plotW - mw - 8, my = plotY0 + 6;
           cctx.fillStyle = TH.boxBg;
           cctx.fillRect(mx, my, mw, mh);
@@ -3447,8 +3499,8 @@
             { l: 'MID',  v: midEnv,  hue: 130, fl: snareFlash },
             { l: 'HIGH', v: trebEnv, hue: 197, fl: hatFlash }
           ];
-          const bw = 16, gap = (mw - defs.length * bw) / (defs.length + 1);
-          const bh0 = mh - 32, byB = my + 8 + bh0;
+          const bw = 20, gap = (mw - defs.length * bw) / (defs.length + 1);
+          const bh0 = mh - 34, byB = my + 8 + bh0;
           defs.forEach((d, di) => {
             const bx = mx + gap + di * (bw + gap);
             cctx.fillStyle = 'rgba(255,255,255,0.07)';
@@ -3467,16 +3519,16 @@
               cctx.fillStyle = 'hsla(' + d.hue + ',100%,70%,' + d.fl.toFixed(2) + ')';
               cctx.fillRect(bx, my + 3, bw, 3);
             }
-            cctx.font = '8px ' + TH.font;
+            cctx.font = '9px ' + TH.font;
             cctx.textAlign = 'center';
             cctx.fillStyle = TH.axisTxt2;
-            cctx.fillText(d.l, bx + bw / 2, byB + 10);
+            cctx.fillText(d.l, bx + bw / 2, byB + 11);
           });
-          cctx.font = 'bold 9px ' + TH.font;
+          cctx.font = 'bold 10px ' + TH.font;
           cctx.textAlign = 'center';
           cctx.fillStyle = TH.accent;
           const bpmFresh = bpmEst >= 40 && (performance.now() - lastKickAt) < 4000;
-          cctx.fillText(bpmFresh ? ('~' + Math.round(bpmEst) + ' BPM') : '— BPM', mx + mw / 2, my + mh - 5);
+          cctx.fillText(bpmFresh ? ('~' + Math.round(bpmEst) + ' BPM') : '— BPM', mx + mw / 2, my + mh - 6);
           cctx.textAlign = 'left';
         }
 
@@ -3665,9 +3717,11 @@
         if (e.target === playerEl || ev !== 'dragleave') playerEl.classList.remove('drag');
       }));
       document.addEventListener('keydown', e => {
-        if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
-        if (e.key === ' ') { e.preventDefault(); togglePlay(); }
-        else if (e.key === 'Escape' && pending) { pending = null; dragState = null; }
+        const ae = document.activeElement;
+        if (ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
+        // Leertaste steuert den Player nur bei offenem Musik-Modus -- sonst
+        // war das normale Scrollen der Seite per Leertaste blockiert.
+        if (e.key === ' ' && musicMode) { e.preventDefault(); togglePlay(); }
       });
 
       // ── Anfangszustand ───────────────────────────────────────────────
@@ -3695,6 +3749,26 @@
         applyMusicMode();
         loadChart();
       })();
+
+      // ── Test-Hook ────────────────────────────────────────────────────
+      // Eingebettete Vorschau-Fenster frieren requestAnimationFrame ein;
+      // ueber window.__chartvis laesst sich ein Frame von Hand zeichnen und
+      // der Musik-Zustand ablesen. Fuer die Seite selbst ohne Funktion.
+      window.__chartvis = {
+        frame() {
+          fitCanvas();
+          if (musicMode) updateAudioBands();
+          if (candles.length) renderChart();
+          if (musicMode) pumpGlow();
+          return { w: cssW, h: cssH, candles: candles.length };
+        },
+        state() {
+          return { bassEnv, midEnv, trebEnv, beatFlash, snareFlash, hatFlash,
+                   bpmEst, particles: particles.length, rings: rings.length,
+                   drawings: drawings.length, musicMode };
+        },
+        png() { return canvas.toDataURL('image/png'); }
+      };
     })();
   </script>
 </body>
