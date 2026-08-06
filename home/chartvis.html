@@ -7,6 +7,19 @@
   <meta name="keywords" content="Glappa Bitcoin Chart Visualizer Musik Binance Kerzenchart RSI Trendlinie Fibonacci Volumen">
   <meta name="description" content="Vollwertiges Kerzenchart-Tool (Binance-Live-Daten): Zoom, Volumen, RSI, Trendlinien, Fibonacci, Lineal &mdash; optional musik-reaktiv.">
   <link rel="icon" href="../favicon.ico">
+  <!-- Theme-Bootstrap VOR dem Stylesheet: gespeicherte Wahl setzen, bevor
+       irgendwas rendert -- kein Flackern (gleiches Prinzip wie werkzeuge.html
+       und der search.glappa.de-Umschalter). Der Schluessel ist derselbe wie
+       bei den Werkzeugen: wer dort schlicht waehlt, bekommt es auch hier.
+       Ohne gespeicherte Wahl bleibt DIESE Seite beim 90er-Look, mit dem sie
+       schon immer kam. -->
+  <script>
+    (function () {
+      var t = 'retro';
+      try { t = localStorage.getItem('glappa-tools-theme') || 'retro'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t === 'clean' ? 'clean' : 'retro');
+    })();
+  </script>
   <link rel="stylesheet" href="home.css?v=12">
   <style>
     /* ── Chart-Visualizer: eigene Karte im selben Neon-Look wie der Player ── */
@@ -82,6 +95,26 @@
     }
     .chart-seg-btn:hover { color: #ccc; }
     .chart-seg-btn.active { background: var(--neon-cyan); color: #000; font-weight: bold; }
+
+    /* ── Leiste der Liquidations-Heatmap (nur sichtbar, wenn sie an ist) ── */
+    .chart-liqbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+      margin-bottom: 8px; padding: 6px 9px;
+      background: linear-gradient(90deg, rgba(68,1,84,0.55), rgba(33,145,140,0.18) 60%, rgba(253,231,37,0.10));
+      border: 1px solid #3d2a5c; border-radius: 2px; font-size: 0.78em; color: #cfc4e6;
+    }
+    .chart-liqbar[hidden] { display: none; }
+    .chart-liqbar label { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .chart-liqbar select {
+      background: #000; color: #d9c6ff; border: 1px solid #444; border-radius: 2px;
+      padding: 3px 5px; font-family: inherit; font-size: 1em;
+    }
+    .chart-liqbar input[type="range"] { width: 96px; accent-color: #c084fc; }
+    .chart-liqbar .liq-tag {
+      color: #ffd866; font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 6px rgba(255,216,102,0.6);
+    }
+    .chart-liqbar .liq-val { color: #7ee787; min-width: 3.2em; display: inline-block; }
+    .chart-liqbar .liq-note { color: #9b8fb5; font-size: 0.92em; flex: 1 1 220px; min-width: 180px; }
 
     .chart-status { font-size: 0.8em; color: #ffd866; min-height: 1.2em; margin-bottom: 8px; }
     .chart-status .err { color: #ff5f6d; }
@@ -161,6 +194,142 @@
       font-family: inherit; background: #111; border: 1px solid #444; border-radius: 2px;
       padding: 0 4px; color: #0ff; font-style: normal; font-size: 0.95em;
     }
+
+    /* ════════════════════════════════════════════════════════════════
+       Zwei Stile, umschaltbar (Knopf oben rechts, localStorage) --
+       identisch aufgebaut wie in werkzeuge.html:
+         retro (Default hier) — der 90er-Look aus home.css.
+         clean                — schlicht, dunkel, ruhig, keine Deko.
+       Alles Schlicht-spezifische haengt an html[data-theme="clean"]
+       und ueberstimmt so home.css. Auch die Chart-Flaeche selbst faerbt
+       sich um: die Leinwand-Farben stecken in CANVAS_THEMES im Skript.
+       ════════════════════════════════════════════════════════════════ */
+    .page-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; flex-wrap: wrap; max-width: 1040px; margin: 14px auto 4px; padding: 0 16px;
+    }
+    html[data-theme="retro"] .page-topbar { justify-content: flex-end; }
+    .page-title { display: none; }
+    #themeBtn { cursor: pointer; font-family: inherit; }
+    html[data-theme="retro"] #themeBtn {
+      background: #000; color: var(--neon-yellow, #ffff00); border: 2px solid var(--neon-yellow, #ffff00);
+      border-radius: 2px; padding: 6px 12px; font-family: "Courier New", monospace;
+      font-weight: bold; font-size: 0.8em; text-shadow: 0 0 6px var(--neon-yellow, #ffff00);
+    }
+    html[data-theme="clean"] #themeBtn {
+      background: none; color: #9aa0a6; border: 1px solid #33363b;
+      border-radius: 4px; padding: 6px 12px; font-size: 0.8em;
+    }
+    html[data-theme="clean"] #themeBtn:hover { color: #fff; border-color: #9aa0a6; }
+
+    /* ── SCHLICHT: Grundflaeche ── */
+    html[data-theme="clean"] { background: #0e0f12; background-image: none; }
+    html[data-theme="clean"] body {
+      background: #0e0f12; background-image: none; color: #e6e6e6;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      cursor: auto; padding-top: 0; padding-bottom: 0;
+    }
+    html[data-theme="clean"] .marquee,
+    html[data-theme="clean"] .header,
+    html[data-theme="clean"] .construction,
+    html[data-theme="clean"] .footer-actions,
+    html[data-theme="clean"] .footer .firefox,
+    html[data-theme="clean"] .footer .badges,
+    html[data-theme="clean"] .retro-only { display: none !important; }
+    html[data-theme="clean"] .page-topbar { margin-top: 22px; }
+    html[data-theme="clean"] .page-title {
+      display: block; margin: 0; font-size: 1.45em; font-weight: 600; color: #fff;
+    }
+    html[data-theme="clean"] a { color: #6fd18c; }
+    html[data-theme="clean"] a:visited { color: #6fd18c; }
+    html[data-theme="clean"] .nav {
+      background: none; border: none; box-shadow: none; text-align: center;
+      font-size: 0.85em; margin: 6px auto 0; padding: 0 16px;
+    }
+    html[data-theme="clean"] .nav a { color: #9aa0a6; text-decoration: none; text-shadow: none; margin: 0 2px; }
+    html[data-theme="clean"] .nav a:hover { color: #fff; }
+    html[data-theme="clean"] .nav a.current { color: #6fd18c; }
+    html[data-theme="clean"] .nav .sep { color: #33363b; margin: 0 4px; }
+    html[data-theme="clean"] .footer {
+      background: none; border: none; text-align: center;
+      color: #6c7178; font-size: 0.8em; padding-bottom: 24px;
+    }
+    html[data-theme="clean"] .copyright { color: #6c7178; text-shadow: none; font-family: inherit; }
+
+    /* ── SCHLICHT: die Chart-Karte ── */
+    html[data-theme="clean"] .chart-panel {
+      background: #16181d; border: 1px solid #2a2d34; border-radius: 6px;
+      box-shadow: none; font-family: inherit;
+    }
+    html[data-theme="clean"] .chart-head { border-bottom: 1px solid #2a2d34; }
+    html[data-theme="clean"] .chart-title {
+      color: #fff; text-shadow: none; letter-spacing: 0; font-weight: 600;
+    }
+    html[data-theme="clean"] .chart-price .chg-up   { color: #6fd18c; text-shadow: none; }
+    html[data-theme="clean"] .chart-price .chg-down { color: #e5715f; text-shadow: none; }
+    html[data-theme="clean"] .chart-live { color: #6c7178; border-color: #2a2d34; }
+    html[data-theme="clean"] .chart-live.on { color: #6fd18c; border-color: #6fd18c; text-shadow: none; }
+    html[data-theme="clean"] .chart-btn {
+      background: #1d2026; border: 1px solid #33363b; color: #c8ccd2;
+      text-shadow: none; border-radius: 4px; font-weight: 500;
+    }
+    html[data-theme="clean"] .chart-btn:hover:not(:disabled) { background: #24272e; color: #fff; border-color: #4a4f57; }
+    html[data-theme="clean"] .chart-btn:active { border-style: solid; }
+    html[data-theme="clean"] .chart-btn.active { background: #6fd18c; color: #0e0f12; border-color: #6fd18c; }
+    html[data-theme="clean"] .chart-controls select,
+    html[data-theme="clean"] .chart-controls input[type="text"] {
+      background: #0e0f12; color: #e6e6e6; border: 1px solid #33363b; border-radius: 4px;
+    }
+    html[data-theme="clean"] .chart-controls select:focus,
+    html[data-theme="clean"] .chart-controls input:focus {
+      border-color: #6fd18c; box-shadow: none; outline: 2px solid #6fd18c;
+    }
+    html[data-theme="clean"] .chart-sep { background: #2a2d34; }
+    html[data-theme="clean"] .chart-seg-group { background: #0e0f12; border: 1px solid #2a2d34; border-radius: 4px; }
+    html[data-theme="clean"] .chart-seg-btn { color: #9aa0a6; }
+    html[data-theme="clean"] .chart-seg-btn:hover { color: #fff; }
+    html[data-theme="clean"] .chart-seg-btn.active { background: #6fd18c; color: #0e0f12; }
+    html[data-theme="clean"] .chart-status { color: #c9a848; }
+    html[data-theme="clean"] .chart-status .err { color: #e5715f; }
+    html[data-theme="clean"] .chart-vtoolbar { background: #0e0f12; border: 1px solid #2a2d34; border-radius: 4px; }
+    html[data-theme="clean"] .chart-vtoolbar button { color: #9aa0a6; }
+    html[data-theme="clean"] .chart-vtoolbar button:hover { color: #fff; background: #24272e; }
+    html[data-theme="clean"] .chart-vtoolbar button.active { background: #6fd18c; color: #0e0f12; }
+    html[data-theme="clean"] .chart-vtoolbar-sep { background: #2a2d34; }
+    html[data-theme="clean"] .chart-canvas-wrap {
+      background: #101216; border: 1px solid #2a2d34; border-radius: 4px;
+    }
+    html[data-theme="clean"] .chart-empty { color: #6c7178; letter-spacing: 0; }
+    html[data-theme="clean"] .chart-props {
+      background: #16181d; border: 1px solid #33363b; box-shadow: 0 2px 10px rgba(0,0,0,0.55);
+    }
+    html[data-theme="clean"] .chart-props .wbtn.active { border-color: #6fd18c; color: #6fd18c; }
+    html[data-theme="clean"] .chart-hint { color: #6c7178; font-style: normal; }
+    html[data-theme="clean"] .chart-hint kbd { background: #0e0f12; border: 1px solid #33363b; color: #c8ccd2; }
+    html[data-theme="clean"] .chart-liqbar {
+      background: #0e0f12; border: 1px solid #2a2d34; border-radius: 4px; color: #c8ccd2;
+    }
+    html[data-theme="clean"] .chart-liqbar .liq-tag { color: #e6e6e6; text-shadow: none; letter-spacing: 0.04em; }
+    html[data-theme="clean"] .chart-liqbar .liq-val { color: #6fd18c; }
+    html[data-theme="clean"] .chart-liqbar .liq-note { color: #6c7178; }
+    html[data-theme="clean"] .chart-liqbar select { background: #16181d; color: #e6e6e6; border-color: #33363b; }
+    html[data-theme="clean"] .chart-liqbar input[type="range"] { accent-color: #6fd18c; }
+    /* Musik-Player: bleibt nutzbar, wird aber ebenfalls ruhig gestellt */
+    html[data-theme="clean"] .player {
+      background: #16181d; border: 1px solid #2a2d34; box-shadow: none; font-family: inherit;
+    }
+    html[data-theme="clean"] .player-title,
+    html[data-theme="clean"] .player-track { color: #e6e6e6; text-shadow: none; }
+    html[data-theme="clean"] .player-version, html[data-theme="clean"] .player-time { color: #9aa0a6; }
+    html[data-theme="clean"] .player-btn, html[data-theme="clean"] .player-mode-btn {
+      background: #1d2026; border: 1px solid #33363b; color: #c8ccd2;
+      text-shadow: none; border-radius: 4px;
+    }
+    html[data-theme="clean"] .player-btn:hover, html[data-theme="clean"] .player-mode-btn:hover {
+      background: #24272e; color: #fff; border-color: #4a4f57;
+    }
+    html[data-theme="clean"] .player-mode-btn.active { background: #6fd18c; color: #0e0f12; border-color: #6fd18c; }
+    html[data-theme="clean"] .player-display { background: #0e0f12; border-color: #2a2d34; }
   </style>
 </head>
 <body>
@@ -176,6 +345,11 @@
     </div>
     <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
   </header>
+
+  <div class="page-topbar">
+    <h1 class="page-title">Chart-Visualizer</h1>
+    <button type="button" id="themeBtn" aria-pressed="false">&#9679; Schlicht-Modus</button>
+  </div>
 
   <nav class="nav" data-glappa-nav>
     <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
@@ -232,6 +406,7 @@
           <button type="button" class="chart-btn chart-btn--mini" data-ind="macd" title="MACD 12/26/9 ein/aus">MACD</button>
           <button type="button" class="chart-btn chart-btn--mini" data-ind="ma" title="Gleitende Durchschnitte MA20/MA50">MA</button>
           <button type="button" class="chart-btn chart-btn--mini" data-ind="bb" title="Bollinger-B&auml;nder (20, 2&sigma;)">BB</button>
+          <button type="button" class="chart-btn chart-btn--mini" data-ind="liq" title="Liquidations-Heatmap: gesch&auml;tzte Liquidationszonen (Modell aus Kurs + Volumen)">LIQ</button>
           <span class="chart-sep"></span>
           <button type="button" class="chart-btn chart-btn--mini" id="logBtn" title="Logarithmische Preisachse (Taste L)">LOG</button>
           <button type="button" class="chart-btn chart-btn--icon" id="undoBtn" title="R&uuml;ckg&auml;ngig (Strg+Z)" aria-label="R&uuml;ckg&auml;ngig" disabled>
@@ -268,6 +443,35 @@
             <button type="button" class="chart-seg-btn" data-charttype="line" title="Linienchart (Schlusskurse)">Linie</button>
             <button type="button" class="chart-seg-btn" data-charttype="area" title="Fl&auml;chenchart">Fl&auml;che</button>
           </div>
+        </div>
+
+        <!-- Steuerung der Liquidations-Heatmap: taucht erst auf, wenn LIQ an ist -->
+        <div class="chart-liqbar" id="liqBar" hidden>
+          <span class="liq-tag">&#9632; LIQ-HEATMAP</span>
+          <label title="Welche Hebelstufen ins Modell einflie&szlig;en. 100&times; liegt dicht am Kurs, 10&times; weit entfernt.">
+            Hebel
+            <select id="liqLev">
+              <option value="all">alle (10&times;&hellip;100&times;)</option>
+              <option value="100">nur 100&times;</option>
+              <option value="50">nur 50&times;</option>
+              <option value="25">nur 25&times;</option>
+              <option value="10">nur 10&times;</option>
+            </select>
+          </label>
+          <label title="Welche Seite gezeigt wird. Long-Liquidationen liegen UNTER dem Kurs, Short-Liquidationen dar&uuml;ber.">
+            Seite
+            <select id="liqSide">
+              <option value="both">Longs + Shorts</option>
+              <option value="long">nur Longs</option>
+              <option value="short">nur Shorts</option>
+            </select>
+          </label>
+          <label title="Ab welchem Anteil des Maximums eine Zone voll ausleuchtet &mdash; kleiner Wert = mehr Glut.">
+            Schwelle
+            <input type="range" id="liqThr" min="5" max="100" step="5" value="55">
+            <span class="liq-val" id="liqThrVal">0.55</span>
+          </label>
+          <span class="liq-note">Modellrechnung aus Kurs&nbsp;+&nbsp;Volumen &mdash; keine echten Positionsdaten der B&ouml;rse.</span>
         </div>
 
         <div class="chart-status" id="chartStatus" role="status" aria-live="polite"></div>
@@ -357,6 +561,16 @@
           Den <strong>aktuellen Stand</strong> zeigt jedes Panel als farbiges Schild genau auf seiner H&ouml;he an
           (RSI rot ab 70, gr&uuml;n unter 30) &mdash; f&auml;hrt man mit der Maus hinein, steht der Wert an der
           Zeigerposition zus&auml;tzlich t&uuml;rkis daneben.
+          <strong>LIQ &mdash; Liquidations-Heatmap:</strong> zeigt, wo sich Liquidationen aufstauen. Jede Kerze gilt mit
+          ihrem Volumen als frisch er&ouml;ffnete Position; verteilt auf die Hebelstufen 10&times;&hellip;100&times; ergibt
+          das den jeweiligen Liquidationspreis (Longs <em>unter</em>, Shorts <em>&uuml;ber</em> dem Einstieg). Diese
+          Liquidit&auml;t bleibt liegen, bis der Kurs sie ber&uuml;hrt &mdash; daher die waagerechten B&auml;nder, die
+          abrupt enden. Hell (gelb) = viel offene Liquidation = <em>Magnet</em>, dunkelviolett = leer. Die Farbskala
+          links unten nennt den Maximalwert, am rechten Rand stehen die drei gr&ouml;&szlig;ten noch offenen Zonen, und
+          das Fadenkreuz zeigt den Wert an der Zeigerstelle in der Legende.
+          <em>Wichtig:</em> das ist eine <strong>Modellrechnung</strong> aus Kurs und Volumen, wie sie auch kommerzielle
+          Anbieter fahren &mdash; keine echten Positionsdaten der B&ouml;rse. Sie taugt zur Orientierung, nicht als
+          Gewissheit.
           <strong>Zeichnen:</strong> alle Objekte h&auml;ngen an Zeitpunkt&nbsp;+&nbsp;Preis &mdash; sie bleiben beim
           Zoomen, Scrollen, Nachladen alter Historie und beim Intervall-Wechsel exakt an ihrer Kerze. Mit dem
           Fadenkreuz-Werkzeug lassen sie sich anklicken, verschieben und an den Griffen neu ziehen; die kleine Leiste
@@ -539,13 +753,71 @@
       let hoverX = -1, hoverY = -1, hoverSlot = null, hoverIndex = -1, mouseIn = false;
       let hoverZone = '';
 
+      // --- Leinwand-Farben je Stil --------------------------------------
+      // Der Umschalter oben rechts faerbt nicht nur die Seite: die Chart-
+      // flaeche ist ein Canvas und kennt kein CSS. Alle Farben und Schriften,
+      // die dort gezeichnet werden, stehen deshalb hier -- retro bleibt der
+      // Neon-Look, clean ist ruhig und kontrastarm wie ein Broker-Chart.
+      const CANVAS_THEMES = {
+        retro: {
+          font: '"Courier New", monospace',
+          bg0: '#0c0e16', bg1: '#020204',
+          grid: 'rgba(255,255,255,0.09)', gridV: 'rgba(255,255,255,0.06)',
+          axisBg: 'rgba(255,255,255,0.03)', axisLine: 'rgba(255,255,255,0.15)',
+          axisTxt: 'rgba(255,255,255,0.72)', axisTxt2: 'rgba(255,255,255,0.62)',
+          panelTxt: 'rgba(255,255,255,0.5)', panelAxisTxt: 'rgba(255,255,255,0.6)',
+          panelSep: 'rgba(255,255,255,0.12)',
+          boxBg: 'rgba(3,5,10,0.72)', boxBg2: 'rgba(3,5,10,0.78)',
+          accent: '#00e5ff', accentTxt: '#000', warn: '#ffd866',
+          cross: 'rgba(255,255,255,0.35)', crossBg: 'rgba(0,255,255,0.92)',
+          glowRGB: '0,255,255', glowRGB2: '255,0,255', liqA: 1,
+          up: '#3be6a0', dn: '#ff5f6d',
+          upFill: 'rgba(59,230,160,0.5)', dnFill: 'rgba(255,95,109,0.5)',
+          upLine: 'rgba(59,230,160,0.65)', dnLine: 'rgba(255,95,109,0.65)',
+          area0: 'rgba(59,230,160,0.30)', area1: 'rgba(59,230,160,0)',
+          upH: 156, dnH: 355, satS: 85, ligS: 52, satF: 80, ligF: 45
+        },
+        clean: {
+          font: '"Segoe UI", system-ui, -apple-system, sans-serif',
+          bg0: '#15171c', bg1: '#101216',
+          grid: 'rgba(255,255,255,0.055)', gridV: 'rgba(255,255,255,0.04)',
+          axisBg: 'rgba(255,255,255,0.02)', axisLine: 'rgba(255,255,255,0.12)',
+          axisTxt: '#9aa0a6', axisTxt2: '#7c8288',
+          panelTxt: '#7c8288', panelAxisTxt: '#7c8288',
+          panelSep: 'rgba(255,255,255,0.09)',
+          boxBg: 'rgba(14,15,18,0.82)', boxBg2: 'rgba(14,15,18,0.86)',
+          accent: '#6fd18c', accentTxt: '#0e0f12', warn: '#c9a848',
+          cross: 'rgba(255,255,255,0.28)', crossBg: '#6fd18c',
+          glowRGB: '111,209,140', glowRGB2: '111,209,140', liqA: 0.78,
+          up: '#3fc0b0', dn: '#f46d6a',
+          upFill: 'rgba(38,166,154,0.45)', dnFill: 'rgba(239,83,80,0.45)',
+          upLine: 'rgba(38,166,154,0.6)', dnLine: 'rgba(239,83,80,0.6)',
+          area0: 'rgba(38,166,154,0.22)', area1: 'rgba(38,166,154,0)',
+          upH: 172, dnH: 1, satS: 58, ligS: 50, satF: 58, ligF: 43
+        }
+      };
+      const themeName = () =>
+        document.documentElement.getAttribute('data-theme') === 'clean' ? 'clean' : 'retro';
+      let TH = CANVAS_THEMES[themeName()];
+
       // --- Einstellungen dauerhaft merken -------------------------------
       const PREF_KEY = 'glappa-chartvis-prefs';
       let prefs = {};
       try { prefs = JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch (e) { prefs = {}; }
 
-      const indState = { vol: true, rsi: false, macd: false, ma: false, bb: false };
+      const indState = { vol: true, rsi: false, macd: false, ma: false, bb: false, liq: false };
       if (prefs.ind) for (const k in indState) if (typeof prefs.ind[k] === 'boolean') indState[k] = prefs.ind[k];
+
+      // --- Liquidations-Heatmap: Einstellungen --------------------------
+      // Hebelstufen mit Gewicht: wie viel des frischen Volumens landet in
+      // welcher Hebelklasse. 100x steht dicht am Einstieg, 10x weit weg.
+      const LIQ_TIERS = {
+        all: [[10, 0.18], [25, 0.27], [50, 0.28], [100, 0.27]],
+        100: [[100, 1]], 50: [[50, 1]], 25: [[25, 1]], 10: [[10, 1]]
+      };
+      let liqLev  = LIQ_TIERS[prefs.liqLev] ? prefs.liqLev : 'all';
+      let liqSide = /^(both|long|short)$/.test(prefs.liqSide) ? prefs.liqSide : 'both';
+      let liqThr  = (typeof prefs.liqThr === 'number' && prefs.liqThr > 0) ? Math.min(1, prefs.liqThr) : 0.55;
       let logScale = !!prefs.log;
       let magnetOn = !!prefs.magnet;
       let locked = false;
@@ -592,7 +864,8 @@
           localStorage.setItem(PREF_KEY, JSON.stringify({
             interval: currentInterval, type: chartType, log: logScale,
             magnet: magnetOn, ind: indState, symbol: currentSymbol,
-            panelFrac: panelFrac
+            panelFrac: panelFrac,
+            liqLev: liqLev, liqSide: liqSide, liqThr: liqThr
           }));
         } catch (e) {}
       }
@@ -873,6 +1146,195 @@
         return g;
       }
 
+      // ── Liquidations-Heatmap ───────────────────────────────────────────
+      // Echte historische Liquidationslevel gibt es oeffentlich nirgends --
+      // was Coinglass & Co. zeigen, ist ebenfalls ein Modell. Dieses hier
+      // rechnet ausschliesslich mit dem, was jede Kerze ohnehin verraet:
+      //
+      //   1. Das Volumen einer Kerze gilt als frisch eroeffnete Position.
+      //   2. Es wird auf Hebelstufen verteilt; jede Stufe hat ihren
+      //      Liquidationspreis (Long darunter, Short darueber).
+      //   3. Diese Liquiditaet bleibt liegen -- bis der Kurs sie beruehrt.
+      //      Dann ist sie abgeraeumt und verschwindet.
+      //
+      // Genau daraus entstehen die waagerechten Baender, die abrupt enden,
+      // sobald der Kurs sie erwischt hat: das Bild, das man von Coinglass
+      // kennt. Helle Zone = viel aufgestaute Liquidation = Magnet.
+      const LIQ_MMR = 0.004;          // Erhaltungsmarge (Binance-Groessenordnung)
+      const LIQ_DECAY = 0.995;        // je Kerze: Positionen werden auch freiwillig geschlossen
+      const liqCanvas = document.createElement('canvas');
+      const liqCtx = liqCanvas.getContext('2d');
+      let liqMap = null;              // Ergebnis der letzten Rechnung
+      let liqKey = '';                // Cache-Schluessel (nur neu rechnen, wenn noetig)
+      let liqGrid = null, liqImg = null;
+
+      // Viridis-Stuetzpunkte: dunkelviolett -> blau -> tuerkis -> gruen -> gelb
+      const LIQ_RAMP = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
+      function liqColor(t) {
+        const s = Math.max(0, Math.min(0.9999, t)) * (LIQ_RAMP.length - 1);
+        const i = Math.floor(s), f = s - i;
+        const a = LIQ_RAMP[i], b = LIQ_RAMP[i + 1] || a;
+        return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+      }
+      // 256 Stufen vorgerechnet: die Farbe wird bis zu 60.000-mal je Neurechnung
+      // gebraucht -- dabei jedes Mal ein Array zu bauen kostet mehr als alles andere.
+      const LIQ_LUT = (() => {
+        const t = new Uint8Array(768);
+        for (let i = 0; i < 256; i++) {
+          const c = liqColor(i / 255);
+          t[i * 3] = c[0]; t[i * 3 + 1] = c[1]; t[i * 3 + 2] = c[2];
+        }
+        return t;
+      })();
+      // Betrag auf die zwei benachbarten Preis-Zeilen verteilen -- sonst
+      // springt ein Level bei jedem Pixel-Zoom eine Zeile weiter.
+      function liqAdd(arr, rows, bf, amt) {
+        if (!(amt > 0) || !isFinite(bf)) return;
+        const b = Math.floor(bf), f = bf - b;
+        if (b >= 0 && b < rows) arr[b] += amt * (1 - f);
+        if (b + 1 >= 0 && b + 1 < rows) arr[b + 1] += amt * f;
+      }
+
+      function buildLiqMap(g) {
+        const i0 = g.i0, i1 = g.i1, n = i1 - i0 + 1;
+        if (n < 3 || g.plotH < 30 || g.plotW < 30) return null;
+        const rows = Math.max(40, Math.min(240, Math.round(g.plotH / 2)));
+        const cols = Math.max(2, Math.min(480, n));
+        const tiers = LIQ_TIERS[liqLev] || LIQ_TIERS.all;
+        const wantLong = liqSide !== 'short', wantShort = liqSide !== 'long';
+        const tLo = g.tLo, tSpan = g.tSpan;
+        const binF  = p => (tp(p) - tLo) / tSpan * rows - 0.5;
+        const binOf = p => Math.round(binF(p));
+        // Spalte x deckt die Kerzen [colStart(x), colStart(x+1)-1] ab. Die
+        // Grenzen werden EINMAL ausgerechnet statt je Kerze zurueckgerechnet:
+        // sonst kippt (k/n*cols) bei glatten Verhaeltnissen gern mal knapp
+        // unter die ganze Zahl und eine Spalte bleibt leer -- als schwarzer
+        // Strich mitten in der Heatmap.
+        const colStart = x => i0 + Math.min(n, Math.ceil(x * n / cols));
+        const colOf = i => {
+          let lo = 0, hi = cols - 1;
+          while (lo < hi) { const m = (lo + hi + 1) >> 1; if (colStart(m) <= i) lo = m; else hi = m - 1; }
+          return lo;
+        };
+
+        const need = cols * rows;
+        if (!liqGrid || liqGrid.length < need) liqGrid = new Float32Array(need);
+        const grid = liqGrid;
+        grid.fill(0, 0, need);
+        const live = new Float64Array(rows);   // gerade offene Liquiditaet je Preiszeile
+        let max = 0;
+        let col = 0, colEnd = colStart(1) - 1;
+        // Das Verblassen wird NICHT Zeile fuer Zeile gerechnet, sondern in
+        // einem gemeinsamen Faktor mitgefuehrt -- sonst laeuft je Kerze eine
+        // Schleife ueber alle Preiszeilen mit.
+        let gain = 1;
+        const freeze = x => {
+          const off = x * rows;
+          for (let b = 0; b < rows; b++) {
+            const v = live[b] * gain;
+            grid[off + b] = v;
+            if (v > max) max = v;
+          }
+        };
+
+        for (let i = i0; i <= i1; i++) {
+          const c = candles[i];
+          if (!c) continue;
+          // 0) Positionen werden auch freiwillig geschlossen -- alte Level
+          //    verblassen deshalb langsam, statt ewig stehenzubleiben.
+          if (i > i0) gain *= LIQ_DECAY;
+          if (gain < 1e-30) {   // Zahlenbereich retten (sehr lange Historie)
+            for (let b = 0; b < rows; b++) live[b] *= gain;
+            gain = 1;
+          }
+          // 1) Alles, was der Kurs in dieser Kerze durchlaufen hat, ist weg.
+          let bl = Math.floor(binF(c.l)), bh = Math.ceil(binF(c.h));
+          if (bh >= 0 && bl < rows) {
+            if (bl < 0) bl = 0;
+            if (bh > rows - 1) bh = rows - 1;
+            for (let b = bl; b <= bh; b++) live[b] = 0;
+          }
+          // 2) Frisches Volumen als neue Positionen einbuchen.
+          const notional = c.v * c.c;
+          if (notional > 0) {
+            const range = (c.h - c.l) || Math.abs(c.c) * 1e-6;
+            const dir = Math.max(-1, Math.min(1, ((c.c - c.o) / range) * 2));
+            const longShare = 0.5 + 0.25 * dir;      // gruene Kerze -> mehr frische Longs
+            for (let k = 0; k < tiers.length; k++) {
+              const f = 1 / tiers[k][0] - LIQ_MMR, w = tiers[k][1];
+              if (f <= 0) continue;
+              if (wantLong)  liqAdd(live, rows, binF(c.c * (1 - f)), notional * w * longShare / gain);
+              if (wantShort) liqAdd(live, rows, binF(c.c * (1 + f)), notional * w * (1 - longShare) / gain);
+            }
+          }
+          // 3) Am Ende einer Spalte den Stand einfrieren.
+          while (col < cols && i >= colEnd) {
+            freeze(col++);
+            colEnd = col < cols ? colStart(col + 1) - 1 : i1;
+          }
+        }
+        while (col < cols) freeze(col++);   // Rest (falls Kerzen fehlten)
+        if (max <= 0) return null;
+
+        // Farbe: die Schwelle kappt die Skala nach oben -- kleiner Wert heisst,
+        // dass schon wenig Liquiditaet hell leuchtet (mehr Glut im ganzen Bild).
+        if (!liqImg || liqImg.width !== cols || liqImg.height !== rows) {
+          liqImg = liqCtx.createImageData(cols, rows);
+        } else {
+          liqImg.data.fill(0);
+        }
+        const px = liqImg.data;
+        const scale = 1 / (max * Math.max(0.05, liqThr));
+        for (let x = 0; x < cols; x++) {
+          const off = x * rows;
+          for (let b = 0; b < rows; b++) {
+            const v = grid[off + b];
+            if (v <= 0) continue;
+            let t = v * scale;
+            if (t > 1) t = 1;
+            if (t < 0.02) continue;
+            const li = ((t * 255) | 0) * 3;
+            const p = ((rows - 1 - b) * cols + x) * 4;   // Zeile 0 = tiefster Preis
+            px[p] = LIQ_LUT[li]; px[p + 1] = LIQ_LUT[li + 1]; px[p + 2] = LIQ_LUT[li + 2];
+            px[p + 3] = Math.min(0.94, 0.16 + t * 0.82) * TH.liqA * 255;
+          }
+        }
+        liqCanvas.width = cols; liqCanvas.height = rows;
+        liqCtx.putImageData(liqImg, 0, 0);
+
+        return {
+          cols, rows, grid, max, i0, n, binOf, colOf,
+          priceOf: b => untp(tLo + ((b + 0.5) / rows) * tSpan),
+          valueAt: (price, i) => {
+            const b = binOf(price);
+            if (b < 0 || b >= rows) return 0;
+            return grid[colOf(Math.max(i0, Math.min(i1, i))) * rows + b];
+          }
+        };
+      }
+
+      // Die staerksten Zonen der letzten Spalte -- also das, was JETZT
+      // offen ueber bzw. unter dem Kurs liegt.
+      function liqTopZones(map, count) {
+        if (!map) return [];
+        const off = (map.cols - 1) * map.rows, out = [];
+        for (let b = 1; b < map.rows - 1; b++) {
+          const v = map.grid[off + b];
+          if (v <= 0) continue;
+          if (v >= map.grid[off + b - 1] && v >= map.grid[off + b + 1]) out.push({ v, b });
+        }
+        out.sort((a, c) => c.v - a.v);
+        const gap = Math.max(3, Math.round(map.rows / 15));
+        const picks = [];
+        for (const z of out) {
+          if (picks.length >= (count || 3)) break;
+          if (z.v < out[0].v * 0.22) break;
+          if (picks.some(p => Math.abs(p.b - z.b) < gap)) continue;
+          picks.push(z);
+        }
+        return picks;
+      }
+
       // ── Zeichnungen ────────────────────────────────────────────────────
       // Modell: {id, type, pts:[{t,p}], color, width, text}
       const DEF_COLOR = {
@@ -971,7 +1433,7 @@
           case 'vline':
             return Math.abs(x - P[0].x) < HIT_TOL ? 'body' : null;
           case 'text': {
-            cctx.font = 'bold ' + (11 + (d.width || 2) * 1.5) + 'px "Courier New", monospace';
+            cctx.font = 'bold ' + (11 + (d.width || 2) * 1.5) + 'px ' + TH.font;
             const w = cctx.measureText(d.text || '').width;
             return (x > P[0].x - 6 && x < P[0].x + w + 8 && y > P[0].y - 16 && y < P[0].y + 6) ? 'body' : null;
           }
@@ -1638,9 +2100,59 @@
         btn.addEventListener('click', () => {
           indState[btn.dataset.ind] = !indState[btn.dataset.ind];
           btn.classList.toggle('active', indState[btn.dataset.ind]);
+          if (btn.dataset.ind === 'liq') syncLiqBar();
           savePrefs();
         });
       });
+
+      // ── Design-Umschalter: retro (Default hier) <-> clean ──────────────
+      // Gleicher Speicher-Schluessel wie werkzeuge.html: die Wahl gilt fuer
+      // den ganzen Werkzeugkasten. Die Leinwand kennt kein CSS, deshalb wird
+      // zusaetzlich die Farbtabelle getauscht -- der naechste Frame zeichnet
+      // dann von selbst im neuen Stil.
+      (function () {
+        const KEY = 'glappa-tools-theme';
+        const btn = $('themeBtn');
+        function refresh() {
+          const clean = themeName() === 'clean';
+          TH = CANVAS_THEMES[clean ? 'clean' : 'retro'];
+          btn.innerHTML = clean ? '&#9733; 90er-Modus' : '&#9679; Schlicht-Modus';
+          btn.setAttribute('aria-pressed', clean ? 'true' : 'false');
+        }
+        btn.addEventListener('click', () => {
+          const next = themeName() === 'clean' ? 'retro' : 'clean';
+          document.documentElement.setAttribute('data-theme', next);
+          try { localStorage.setItem(KEY, next); } catch (e) {}
+          refresh();
+          fitCanvas();          // Kartenbreite kann sich mit dem Stil aendern
+        });
+        // Wahl in einem anderen Tab (z.B. auf werkzeuge.html) mitnehmen
+        window.addEventListener('storage', e => {
+          if (e.key !== KEY || !e.newValue) return;
+          document.documentElement.setAttribute('data-theme', e.newValue === 'clean' ? 'clean' : 'retro');
+          refresh();
+        });
+        refresh();
+      })();
+
+      // ── Bedienelemente der Liquidations-Heatmap ────────────────────────
+      const liqBar = $('liqBar'), liqLevSel = $('liqLev'), liqSideSel = $('liqSide');
+      const liqThrIn = $('liqThr'), liqThrVal = $('liqThrVal');
+      function syncLiqBar() {
+        liqBar.hidden = !indState.liq;
+        liqLevSel.value = liqLev;
+        liqSideSel.value = liqSide;
+        liqThrIn.value = Math.round(liqThr * 100);
+        liqThrVal.textContent = liqThr.toFixed(2);
+      }
+      liqLevSel.addEventListener('change', () => { liqLev = liqLevSel.value; savePrefs(); });
+      liqSideSel.addEventListener('change', () => { liqSide = liqSideSel.value; savePrefs(); });
+      liqThrIn.addEventListener('input', () => {
+        liqThr = Math.max(0.05, Math.min(1, (+liqThrIn.value || 55) / 100));
+        liqThrVal.textContent = liqThr.toFixed(2);
+        savePrefs();
+      });
+      syncLiqBar();
       function toggleLog() {
         logScale = !logScale;
         logBtn.classList.toggle('active', logScale);
@@ -1805,8 +2317,8 @@
           return;
         }
         const a = (0.3 + bassEnv * 0.65).toFixed(2);
-        panelEl.style.boxShadow = '0 0 ' + (16 + blur) + 'px rgba(0,255,255,' + a + '), ' +
-          'inset 0 0 ' + Math.round(beatFlash * 42) + 'px rgba(255,0,255,0.28)';
+        panelEl.style.boxShadow = '0 0 ' + (16 + blur) + 'px rgba(' + TH.glowRGB + ',' + a + '), ' +
+          'inset 0 0 ' + Math.round(beatFlash * 42) + 'px rgba(' + TH.glowRGB2 + ',0.28)';
       }
 
       // ── Zeichnungs-Renderer ────────────────────────────────────────────
@@ -1890,7 +2402,7 @@
             const colors = ['#9aa', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#9aa', '#ff8fd0'];
             const xMin = Math.min(P[0].x, P[1].x), xMax = Math.max(P[0].x, P[1].x);
             const p0 = d.pts[0].p, p1 = d.pts[1].p;
-            cctx.font = '10px "Courier New", monospace';
+            cctx.font = '10px ' + TH.font;
             cctx.textAlign = 'left';
             let prevY = null;
             levels.forEach((lv, k) => {
@@ -1916,7 +2428,7 @@
           }
           case 'text': {
             const size = 11 + lw * 1.5;
-            cctx.font = 'bold ' + size + 'px "Courier New", monospace';
+            cctx.font = 'bold ' + size + 'px ' + TH.font;
             cctx.textAlign = 'left';
             const tw = cctx.measureText(d.text || '').width;
             cctx.fillStyle = 'rgba(0,0,0,0.72)';
@@ -1956,7 +2468,7 @@
             const label = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%   ' +
               (d.pts[1].p - d.pts[0].p >= 0 ? '+' : '-') + fmtCurrency(Math.abs(d.pts[1].p - d.pts[0].p)) +
               '   ' + Math.abs(bars) + ' Kerzen / ' + durTxt;
-            cctx.font = 'bold 11px "Courier New", monospace';
+            cctx.font = 'bold 11px ' + TH.font;
             const tw = cctx.measureText(label).width;
             let lx = P[1].x + 10;
             if (lx + tw + 10 > g.plotW) lx = Math.max(2, P[1].x - tw - 18);
@@ -1966,7 +2478,7 @@
             cctx.strokeStyle = 'rgba(' + rgb + ',0.85)';
             cctx.lineWidth = 1;
             cctx.strokeRect(lx - 5, ly - 12, tw + 10, 18);
-            cctx.fillStyle = up ? '#3be6a0' : '#ff5f6d';
+            cctx.fillStyle = up ? TH.up : TH.dn;
             cctx.textAlign = 'left';
             cctx.fillText(label, lx, ly + 1);
             break;
@@ -1996,7 +2508,7 @@
         const W = cssW, H = cssH;
         cctx.clearRect(0, 0, W, H);
         const bg = cctx.createLinearGradient(0, 0, 0, H);
-        bg.addColorStop(0, '#0c0e16'); bg.addColorStop(1, '#020204');
+        bg.addColorStop(0, TH.bg0); bg.addColorStop(1, TH.bg1);
         cctx.fillStyle = bg;
         cctx.fillRect(0, 0, W, H);
 
@@ -2013,17 +2525,17 @@
         // hinter den Balken, sobald das Panel hochgezoomt ist.
         function panelTitle(label, value, color, y0) {
           cctx.textAlign = 'left';
-          cctx.font = '10px "Courier New", monospace';
+          cctx.font = '10px ' + TH.font;
           const lw = cctx.measureText(label + '  ').width;
-          cctx.font = 'bold 11px "Courier New", monospace';
+          cctx.font = 'bold 11px ' + TH.font;
           const vw = value ? cctx.measureText(value).width : 0;
-          cctx.fillStyle = 'rgba(3,5,10,0.78)';
+          cctx.fillStyle = TH.boxBg2;
           cctx.fillRect(2, y0 + 2, lw + vw + 8, 14);
-          cctx.font = '10px "Courier New", monospace';
-          cctx.fillStyle = 'rgba(255,255,255,0.5)';
+          cctx.font = '10px ' + TH.font;
+          cctx.fillStyle = TH.panelTxt;
           cctx.fillText(label, 4, y0 + 12);
           if (value) {
-            cctx.font = 'bold 11px "Courier New", monospace';
+            cctx.font = 'bold 11px ' + TH.font;
             cctx.fillStyle = color || '#fff';
             cctx.fillText(value, 4 + lw, y0 + 12);
           }
@@ -2036,8 +2548,8 @@
           const zoomed = Math.abs(z - 1) > 0.01;
           const bottom = y0 + h - (zoomed ? 14 : 2);
           cctx.textAlign = 'left';
-          cctx.font = '10px "Courier New", monospace';
-          cctx.fillStyle = 'rgba(255,255,255,0.6)';
+          cctx.font = '10px ' + TH.font;
+          cctx.fillStyle = TH.panelAxisTxt;
           values.forEach(v => {
             const y = yFn(v);
             if (y < y0 + 4 || y > bottom) return;
@@ -2046,8 +2558,8 @@
           if (zoomed) {
             // Zoomfaktor unten in die Achsenspalte -- oben stoert er sonst
             // das Wert-Schild des aktuellen Standes.
-            cctx.fillStyle = 'rgba(255,214,102,0.9)';
-            cctx.font = 'bold 9px "Courier New", monospace';
+            cctx.fillStyle = TH.warn;
+            cctx.font = 'bold 9px ' + TH.font;
             cctx.fillText('x' + (z >= 10 ? z.toFixed(0) : z.toFixed(1)), plotW + 5, y0 + h - 3);
           }
         }
@@ -2060,7 +2572,7 @@
           // beim Reinzoomen weggerutscht), klebt das Schild am Panelrand,
           // statt zu verschwinden -- ablesbar bleibt es immer.
           y = Math.max(y0 + 8, Math.min(y0 + h - 8, y));
-          cctx.font = 'bold 10px "Courier New", monospace';
+          cctx.font = 'bold 10px ' + TH.font;
           const tw = cctx.measureText(text).width;
           cctx.fillStyle = bg;
           cctx.fillRect(plotW + 2, y - 8, Math.max(AXIS_W - 4, tw + 12), 16);
@@ -2080,7 +2592,7 @@
         const panelValueAt = {};
 
         // ── Gitter: Preislinien (runde Werte) + Zeitlinien ──────────────
-        cctx.font = '10px "Courier New", monospace';
+        cctx.font = '10px ' + TH.font;
         cctx.textAlign = 'left';
         cctx.lineWidth = 1;
         const priceTicks = [];
@@ -2090,7 +2602,7 @@
           const step = niceNum((g.hi - g.lo) / 5, true);
           for (let p = Math.ceil(g.lo / step) * step; p <= g.hi; p += step) priceTicks.push(p);
         }
-        cctx.strokeStyle = 'rgba(255,255,255,0.09)';
+        cctx.strokeStyle = TH.grid;
         cctx.setLineDash([4, 4]);
         priceTicks.forEach(p => {
           const y = g.yOf(p);
@@ -2106,11 +2618,31 @@
         const timeTicks = [];
         const firstTick = Math.ceil(Math.max(0, viewStart) / stepBars) * stepBars;
         for (let i = firstTick; i <= Math.min(total - 1, viewStart + viewCount); i += stepBars) timeTicks.push(i);
-        cctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        cctx.strokeStyle = TH.gridV;
         timeTicks.forEach(i => {
           const x = g.xOf(i);
           cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, g.axisY0); cctx.stroke();
         });
+
+        // ── Liquidations-Heatmap (liegt HINTER den Kerzen) ──────────────
+        // Neu gerechnet wird nur, wenn sich wirklich etwas geaendert hat --
+        // sonst laeuft die Rechnung sinnlos 60-mal pro Sekunde.
+        if (indState.liq) {
+          const lb = candles[total - 1] || {};
+          const key = [currentSymbol, currentInterval, total, viewStart.toFixed(2), viewCount.toFixed(2),
+                       g.lo, g.hi, logScale ? 1 : 0, liqLev, liqSide, liqThr, themeName(),
+                       Math.round(plotH), Math.round(plotW), lb.c, lb.v].join('|');
+          if (key !== liqKey) { liqKey = key; liqMap = buildLiqMap(g); }
+          if (liqMap) {
+            const hx0 = g.xOf(liqMap.i0) - slot / 2;
+            const hx1 = g.xOf(liqMap.i0 + liqMap.n - 1) + slot / 2;
+            cctx.save();
+            cctx.beginPath(); cctx.rect(0, plotY0, plotW, plotH); cctx.clip();
+            cctx.imageSmoothingEnabled = true;
+            cctx.drawImage(liqCanvas, hx0, plotY0, Math.max(1, hx1 - hx0), plotH);
+            cctx.restore();
+          }
+        } else if (liqMap) { liqMap = null; liqKey = ''; }
 
         // ── Kursserie ───────────────────────────────────────────────────
         // Der Chart selbst steht IMMER still -- auch im Musik-Modus. Kein
@@ -2135,7 +2667,7 @@
             const x = g.xOf(i), y = g.yOf(c.c) - eqAt(i) * plotH * 0.16;
             if (!started) { cctx.moveTo(x, y); started = true; } else cctx.lineTo(x, y);
           }
-          cctx.strokeStyle = musicMode ? ('hsl(' + (156 + hueShift) + ',85%,55%)') : '#3be6a0';
+          cctx.strokeStyle = musicMode ? ('hsl(' + (TH.upH + hueShift) + ',85%,55%)') : TH.up;
           cctx.lineWidth = 2;
           cctx.stroke();
           if (chartType === 'area' && started) {
@@ -2143,8 +2675,8 @@
             cctx.lineTo(g.xOf(i0), g.plotY1);
             cctx.closePath();
             const lgrad = cctx.createLinearGradient(0, plotY0, 0, g.plotY1);
-            lgrad.addColorStop(0, 'rgba(59,230,160,0.30)');
-            lgrad.addColorStop(1, 'rgba(59,230,160,0)');
+            lgrad.addColorStop(0, TH.area0);
+            lgrad.addColorStop(1, TH.area1);
             cctx.fillStyle = lgrad;
             cctx.fill();
           }
@@ -2158,9 +2690,9 @@
             const yO = g.yOf(c.o) - wob, yC = g.yOf(c.c) - wob;
             const yH = g.yOf(c.h) - wob, yL = g.yOf(c.l) - wob;
             const up = c.c >= c.o;
-            const hue = (up ? 156 : 355) + hueShift;
-            cctx.strokeStyle = 'hsl(' + hue + ',85%,52%)';
-            cctx.fillStyle   = 'hsl(' + hue + ',80%,45%)';
+            const hue = (up ? TH.upH : TH.dnH) + hueShift;
+            cctx.strokeStyle = 'hsl(' + hue + ',' + TH.satS + '%,' + TH.ligS + '%)';
+            cctx.fillStyle   = 'hsl(' + hue + ',' + TH.satF + '%,' + TH.ligF + '%)';
             cctx.lineWidth = 1;
             if (musicMode) {
               const glow = eqAt(i) * 24 + (i === total - 1 ? beatFlash * 26 : 0);
@@ -2206,15 +2738,15 @@
         cctx.restore();
 
         // ── Preisachse ──────────────────────────────────────────────────
-        cctx.fillStyle = 'rgba(255,255,255,0.03)';
+        cctx.fillStyle = TH.axisBg;
         cctx.fillRect(plotW, 0, AXIS_W, H);
-        cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        cctx.strokeStyle = TH.axisLine;
         cctx.lineWidth = 1;
         cctx.beginPath(); cctx.moveTo(plotW + 0.5, 0); cctx.lineTo(plotW + 0.5, H); cctx.stroke();
         cctx.beginPath(); cctx.moveTo(0, g.axisY0 + 0.5); cctx.lineTo(W, g.axisY0 + 0.5); cctx.stroke();
 
-        cctx.font = '10px "Courier New", monospace';
-        cctx.fillStyle = 'rgba(255,255,255,0.72)';
+        cctx.font = '10px ' + TH.font;
+        cctx.fillStyle = TH.axisTxt;
         cctx.textAlign = 'left';
         priceTicks.forEach(p => {
           const y = g.yOf(p);
@@ -2222,14 +2754,14 @@
           cctx.fillText(fmtCurrency(p), plotW + 6, y + 3);
         });
         if (!autoScale) {
-          cctx.fillStyle = 'rgba(255,214,102,0.85)';
-          cctx.font = 'bold 9px "Courier New", monospace';
+          cctx.fillStyle = TH.warn;
+          cctx.font = 'bold 9px ' + TH.font;
           cctx.fillText('MANUELL', plotW + 6, g.plotY1 - 4);
         }
 
         // Zeitachsen-Beschriftung
-        cctx.fillStyle = 'rgba(255,255,255,0.62)';
-        cctx.font = '10px "Courier New", monospace';
+        cctx.fillStyle = TH.axisTxt2;
+        cctx.font = '10px ' + TH.font;
         cctx.textAlign = 'center';
         timeTicks.forEach(i => {
           const x = g.xOf(i);
@@ -2243,19 +2775,68 @@
         const lastUp = lastCandle.c >= lastCandle.o;
         if (lastC >= g.lo && lastC <= g.hi) {
           const ly = g.yOf(lastC);
-          cctx.strokeStyle = lastUp ? 'rgba(59,230,160,0.65)' : 'rgba(255,95,109,0.65)';
+          cctx.strokeStyle = lastUp ? TH.upLine : TH.dnLine;
           cctx.setLineDash([6, 4]);
           cctx.lineWidth = 1;
           cctx.beginPath(); cctx.moveTo(0, ly); cctx.lineTo(plotW, ly); cctx.stroke();
           cctx.setLineDash([]);
           const label = fmtCurrency(lastC);
-          cctx.font = 'bold 11px "Courier New", monospace';
+          cctx.font = 'bold 11px ' + TH.font;
           const tw = cctx.measureText(label).width;
-          cctx.fillStyle = lastUp ? '#3be6a0' : '#ff5f6d';
+          cctx.fillStyle = lastUp ? TH.up : TH.dn;
           cctx.fillRect(plotW + 2, ly - 9, Math.max(AXIS_W - 4, tw + 12), 18);
           cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
           cctx.fillText(label, plotW + 8, ly + 4);
+        }
+
+        // ── Heatmap: Farbskala + die staerksten offenen Zonen ───────────
+        if (indState.liq && liqMap) {
+          // Farbleiste links unten (wie bei Coinglass: oben = Maximum)
+          const barH = Math.min(150, Math.max(50, plotH * 0.38)), barW = 9;
+          const bx = 8, by = Math.max(plotY0 + 4, g.plotY1 - 18 - barH);
+          const grad = cctx.createLinearGradient(0, by, 0, by + barH);
+          for (let s = 0; s <= 10; s++) {
+            const rgb = liqColor(1 - s / 10);
+            grad.addColorStop(s / 10, 'rgb(' + (rgb[0] | 0) + ',' + (rgb[1] | 0) + ',' + (rgb[2] | 0) + ')');
+          }
+          cctx.fillStyle = grad;
+          cctx.fillRect(bx, by, barW, barH);
+          cctx.strokeStyle = 'rgba(255,255,255,0.28)'; cctx.lineWidth = 1;
+          cctx.strokeRect(bx + 0.5, by + 0.5, barW, barH);
+          cctx.font = '9px ' + TH.font;
+          cctx.textAlign = 'left';
+          // Beschriftung mit dunklem Ruecken -- sonst geht sie in den Kerzen unter
+          const capTxt = '$' + fmtCompact(liqMap.max * Math.max(0.05, liqThr));
+          const capW = Math.max(cctx.measureText(capTxt).width, 8) + 5;
+          cctx.fillStyle = 'rgba(3,5,10,0.8)';
+          cctx.fillRect(bx + barW + 2, by, capW, 11);
+          cctx.fillRect(bx + barW + 2, by + barH - 8, 12, 11);
+          cctx.fillStyle = 'rgba(255,255,255,0.85)';
+          cctx.fillText(capTxt, bx + barW + 4, by + 8);
+          cctx.fillText('0', bx + barW + 4, by + barH);
+
+          // Die groessten Cluster, die JETZT noch offen sind: gestrichelte
+          // Marke am rechten Rand mit geschaetztem Volumen.
+          liqTopZones(liqMap, 3).forEach(z => {
+            const p = liqMap.priceOf(z.b), y = g.yOf(p);
+            if (y < plotY0 + 6 || y > g.plotY1 - 6) return;
+            const rgb = liqColor(0.95);
+            const col = 'rgb(' + (rgb[0] | 0) + ',' + (rgb[1] | 0) + ',' + (rgb[2] | 0) + ')';
+            cctx.setLineDash([3, 3]);
+            cctx.strokeStyle = 'rgba(253,231,37,0.55)';
+            cctx.lineWidth = 1;
+            cctx.beginPath(); cctx.moveTo(Math.max(0, plotW - 150), y); cctx.lineTo(plotW, y); cctx.stroke();
+            cctx.setLineDash([]);
+            const txt = '≈ $' + fmtCompact(z.v) + (p < lastC ? ' ▼Longs' : ' ▲Shorts');
+            cctx.font = 'bold 9px ' + TH.font;
+            const tw = cctx.measureText(txt).width;
+            cctx.fillStyle = 'rgba(3,5,10,0.8)';
+            cctx.fillRect(plotW - tw - 10, y - 11, tw + 8, 11);
+            cctx.fillStyle = col;
+            cctx.textAlign = 'left';
+            cctx.fillText(txt, plotW - tw - 6, y - 2.5);
+          });
         }
 
         // (Frueher lagen hier ein magentafarbener Vollbild-Blitz und ein
@@ -2272,7 +2853,7 @@
         cctx.restore();
         axisLabels.forEach(l => {
           if (l.y < 8 || l.y > g.plotY1) return;
-          cctx.font = 'bold 10px "Courier New", monospace';
+          cctx.font = 'bold 10px ' + TH.font;
           const tw = cctx.measureText(l.text).width;
           cctx.fillStyle = 'rgba(0,0,0,0.85)';
           cctx.fillRect(plotW + 2, l.y - 8, Math.max(AXIS_W - 6, tw + 8), 16);
@@ -2286,7 +2867,7 @@
         // ── Fadenkreuz ──────────────────────────────────────────────────
         if (mouseIn && hoverSlot !== null && hoverY >= plotY0 && hoverY <= g.axisY0) {
           const x = g.xOf(hoverSlot);
-          cctx.strokeStyle = 'rgba(255,255,255,0.35)';
+          cctx.strokeStyle = TH.cross;
           cctx.lineWidth = 1;
           cctx.setLineDash([2, 3]);
           cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, g.axisY0); cctx.stroke();
@@ -2294,19 +2875,19 @@
           cctx.setLineDash([]);
           if (hoverY <= g.plotY1) {
             const label = fmtCurrency(g.pOf(hoverY));
-            cctx.font = '10px "Courier New", monospace';
+            cctx.font = '10px ' + TH.font;
             const tw = cctx.measureText(label).width;
-            cctx.fillStyle = 'rgba(0,255,255,0.92)';
+            cctx.fillStyle = TH.crossBg;
             cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 16);
             cctx.fillStyle = '#000';
             cctx.textAlign = 'left';
             cctx.fillText(label, plotW + 6, hoverY + 3);
           }
           const tLabel = fmtFull(timeFromIdx(hoverSlot));
-          cctx.font = '10px "Courier New", monospace';
+          cctx.font = '10px ' + TH.font;
           const ttw = cctx.measureText(tLabel).width;
           const bx = Math.max(0, Math.min(plotW - ttw - 10, x - ttw / 2 - 5));
-          cctx.fillStyle = 'rgba(0,255,255,0.92)';
+          cctx.fillStyle = TH.crossBg;
           cctx.fillRect(bx, g.axisY0 + 3, ttw + 10, 16);
           cctx.fillStyle = '#000';
           cctx.textAlign = 'left';
@@ -2328,29 +2909,29 @@
           for (let i = i0; i <= i1; i++) {
             const c = candles[i]; if (!c) continue;
             const yTop = vY(c.v);
-            cctx.fillStyle = c.c >= c.o ? 'rgba(59,230,160,0.5)' : 'rgba(255,95,109,0.5)';
+            cctx.fillStyle = c.c >= c.o ? TH.upFill : TH.dnFill;
             cctx.fillRect(g.xOf(i) - bw / 2, Math.min(yTop, base), bw, Math.abs(base - yTop));
           }
           const lastVol = candles[total - 1];
-          if (lastVol) panelMarker(vY(lastVol.v), lastVol.c >= lastVol.o ? 'rgba(59,230,160,0.5)' : 'rgba(255,95,109,0.5)');
+          if (lastVol) panelMarker(vY(lastVol.v), lastVol.c >= lastVol.o ? TH.upFill : TH.dnFill);
           cctx.restore();
           panelAxis('vol', g.volY0, g.volH, [w.lo + w.span * 0.5, w.hi], v => fmtVol(v), vY);
           if (lastVol) panelBadge(vY(lastVol.v), fmtVol(lastVol.v),
-            lastVol.c >= lastVol.o ? '#3be6a0' : '#ff5f6d', g.volY0, g.volH);
+            lastVol.c >= lastVol.o ? TH.up : TH.dn, g.volY0, g.volH);
           panelValueAt.vol = y => w.lo + ((g.volY0 + g.volH - y) / inner) * w.span;
-          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.volY0 + 0.5); cctx.lineTo(plotW, g.volY0 + 0.5); cctx.stroke();
           const vi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
           const vc = candles[vi];
           panelTitle('Vol', vc ? fmtVol(vc.v) : '—',
-            vc && vc.c >= vc.o ? '#3be6a0' : '#ff5f6d', g.volY0);
+            vc && vc.c >= vc.o ? TH.up : TH.dn, g.volY0);
         }
 
         // ── RSI ─────────────────────────────────────────────────────────
         if (indState.rsi && rsiData && g.rsiH > 4) {
           const w = panelWindow('rsi', 0, 100, 'center');
           const rsiYFor = v => g.rsiY0 + g.rsiH - ((v - w.lo) / w.span) * (g.rsiH - 6) - 3;
-          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.rsiY0 + 0.5); cctx.lineTo(plotW, g.rsiY0 + 0.5); cctx.stroke();
           cctx.save();
           cctx.beginPath(); cctx.rect(0, g.rsiY0, plotW, g.rsiH); cctx.clip();
@@ -2377,12 +2958,12 @@
           // Aktueller RSI als farbiges Schild direkt auf seiner Hoehe:
           // rot ueberkauft (>=70), gruen ueberverkauft (<=30), sonst violett.
           if (rsiNow != null) panelBadge(rsiYFor(rsiNow), rsiNow.toFixed(1),
-            rsiNow >= 70 ? '#ff5f6d' : rsiNow <= 30 ? '#3be6a0' : '#c084fc', g.rsiY0, g.rsiH);
+            rsiNow >= 70 ? TH.dn : rsiNow <= 30 ? TH.up : '#c084fc', g.rsiY0, g.rsiH);
           panelValueAt.rsi = y => w.lo + ((g.rsiY0 + g.rsiH - 3 - y) / Math.max(1, g.rsiH - 6)) * w.span;
           const ri = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
           const rv = rsiData[ri];
           panelTitle('RSI 14', rv != null ? rv.toFixed(1) : '—',
-            rv == null ? '#fff' : rv >= 70 ? '#ff5f6d' : rv <= 30 ? '#3be6a0' : '#c084fc', g.rsiY0);
+            rv == null ? TH.axisTxt : rv >= 70 ? TH.dn : rv <= 30 ? TH.up : '#c084fc', g.rsiY0);
         }
 
         // ── MACD ────────────────────────────────────────────────────────
@@ -2395,16 +2976,16 @@
           const w = panelWindow('macd', -mx, mx, 'center');
           const mY = v => g.macdY0 + g.macdH - ((v - w.lo) / w.span) * (g.macdH - 6) - 3;
           const mid = mY(0);
-          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.macdY0 + 0.5); cctx.lineTo(plotW, g.macdY0 + 0.5); cctx.stroke();
           cctx.save();
           cctx.beginPath(); cctx.rect(0, g.macdY0, plotW, g.macdH); cctx.clip();
-          cctx.strokeStyle = 'rgba(255,255,255,0.15)';
+          cctx.strokeStyle = TH.axisLine;
           cctx.beginPath(); cctx.moveTo(0, mid); cctx.lineTo(plotW, mid); cctx.stroke();
           const bw = Math.max(1, slot * 0.6);
           for (let i = i0; i <= i1; i++) {
             const hv = macd.hist[i]; if (hv == null) continue;
-            cctx.fillStyle = hv >= 0 ? 'rgba(59,230,160,0.55)' : 'rgba(255,95,109,0.55)';
+            cctx.fillStyle = hv >= 0 ? TH.upFill : TH.dnFill;
             const y = mY(hv);
             cctx.fillRect(g.xOf(i) - bw / 2, Math.min(y, mid), bw, Math.abs(mid - y));
           }
@@ -2432,7 +3013,7 @@
           panelTitle('MACD 12/26/9',
             (macd.line[mi] != null ? fmtCompact(macd.line[mi]) : '—') + ' / ' +
             (macd.signal[mi] != null ? fmtCompact(macd.signal[mi]) : '—'),
-            mh == null ? '#fff' : mh >= 0 ? '#3be6a0' : '#ff5f6d', g.macdY0);
+            mh == null ? TH.axisTxt : mh >= 0 ? TH.up : TH.dn, g.macdY0);
         }
 
         // ── EQ-Band (nur Musik-Modus) ───────────────────────────────────
@@ -2450,7 +3031,7 @@
             }
             cctx.shadowBlur = 0;
           }
-          cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.eqY0 + 0.5); cctx.lineTo(plotW, g.eqY0 + 0.5); cctx.stroke();
         }
 
@@ -2462,9 +3043,9 @@
           if (conv) {
             const v = conv(hoverY);
             const txt = hp.key === 'rsi' ? v.toFixed(1) : hp.key === 'vol' ? fmtVol(v) : fmtCompact(v);
-            cctx.font = '10px "Courier New", monospace';
+            cctx.font = '10px ' + TH.font;
             const tw = cctx.measureText(txt).width;
-            cctx.fillStyle = 'rgba(0,255,255,0.92)';
+            cctx.fillStyle = TH.crossBg;
             cctx.fillRect(plotW + 2, hoverY - 8, Math.max(AXIS_W - 6, tw + 8), 16);
             cctx.fillStyle = '#000';
             cctx.textAlign = 'left';
@@ -2476,10 +3057,10 @@
         if (hoverZone && hoverZone.indexOf('sep:') === 0 && !dragState) {
           const p = g.panels.find(q => q.key === hoverZone.slice(4));
           if (p) {
-            cctx.strokeStyle = 'rgba(0,255,255,0.75)';
+            cctx.strokeStyle = TH.accent;
             cctx.lineWidth = 2;
             cctx.beginPath(); cctx.moveTo(0, p.y0 + 0.5); cctx.lineTo(plotW, p.y0 + 0.5); cctx.stroke();
-            cctx.fillStyle = 'rgba(0,255,255,0.75)';
+            cctx.fillStyle = TH.accent;
             cctx.fillRect(plotW / 2 - 14, p.y0 - 2, 28, 4);
           }
         }
@@ -2492,27 +3073,47 @@
           const prev = candles[li - 1];
           const chg = prev ? ((lc.c - prev.c) / prev.c) * 100 : 0;
           const up = dc.c >= dc.o;
-          cctx.font = 'bold 11px "Courier New", monospace';
+          cctx.font = 'bold 11px ' + TH.font;
           cctx.textAlign = 'left';
           const l1 = currentSymbol + ' · ' + currentInterval + ' · Binance' + (logScale ? ' · LOG' : '');
           const l2 = 'O ' + fmtPrice(dc.o) + '  H ' + fmtPrice(dc.h) + '  L ' + fmtPrice(dc.l) + '  C ' + fmtPrice(dc.c);
           const l3 = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%   ' + fmtFull(lc.t);
           const showMA = indState.ma && ma20;
-          const wMax = Math.max(cctx.measureText(l1).width, cctx.measureText(l2).width, cctx.measureText(l3).width);
-          cctx.fillStyle = 'rgba(3,5,10,0.72)';
-          cctx.fillRect(2, plotY0 + 1, wMax + 12, showMA ? 74 : 48);
-          cctx.fillStyle = 'rgba(0,255,255,0.9)';
+          // Heatmap-Zeile: unter dem Fadenkreuz der Wert an genau dieser
+          // Stelle, sonst die staerkste offene Zone.
+          let l4 = '';
+          if (indState.liq && liqMap) {
+            if (mouseIn && hoverY >= plotY0 && hoverY <= g.plotY1 && hoverIndex >= 0) {
+              const hp = g.pOf(hoverY);
+              const hv = liqMap.valueAt(hp, hoverIndex);
+              l4 = 'LIQ ' + (hv > 0 ? '≈ $' + fmtCompact(hv) : '—') + ' @ ' + fmtCurrency(hp);
+            } else {
+              const top = liqTopZones(liqMap, 1)[0];
+              l4 = top ? 'LIQ max ≈ $' + fmtCompact(top.v) + ' @ ' + fmtCurrency(liqMap.priceOf(top.b))
+                       : 'LIQ — keine Zone offen';
+            }
+          }
+          const wMax = Math.max(cctx.measureText(l1).width, cctx.measureText(l2).width,
+                                cctx.measureText(l3).width, l4 ? cctx.measureText(l4).width : 0);
+          cctx.fillStyle = TH.boxBg;
+          cctx.fillRect(2, plotY0 + 1, wMax + 12, (showMA ? 74 : 48) + (l4 ? 13 : 0));
+          cctx.fillStyle = TH.accent;
           cctx.fillText(l1, 8, plotY0 + 14);
-          cctx.fillStyle = up ? '#3be6a0' : '#ff5f6d';
+          cctx.fillStyle = up ? TH.up : TH.dn;
           cctx.fillText(l2, 8, plotY0 + 28);
-          cctx.fillStyle = chg >= 0 ? 'rgba(59,230,160,0.85)' : 'rgba(255,95,109,0.85)';
-          cctx.font = '10px "Courier New", monospace';
+          cctx.fillStyle = chg >= 0 ? TH.up : TH.dn;
+          cctx.font = '10px ' + TH.font;
           cctx.fillText(l3, 8, plotY0 + 42);
           if (showMA) {
             const t20 = ma20[li] != null ? fmtPrice(ma20[li]) : '—';
             const t50 = ma50[li] != null ? fmtPrice(ma50[li]) : '—';
             cctx.fillStyle = '#ffd866'; cctx.fillText('MA20 ' + t20, 8, plotY0 + 56);
             cctx.fillStyle = '#00e5ff'; cctx.fillText('MA50 ' + t50, 8, plotY0 + 68);
+          }
+          if (l4) {
+            cctx.font = '10px ' + TH.font;
+            cctx.fillStyle = '#fde725';
+            cctx.fillText(l4, 8, plotY0 + (showMA ? 81 : 55));
           }
         }
 
