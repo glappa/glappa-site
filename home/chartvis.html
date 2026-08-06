@@ -584,8 +584,14 @@
           Radiergummi, <kbd>L</kbd> Log-Achse, <kbd>Entf</kbd> l&ouml;schen, <kbd>Esc</kbd> abbrechen,
           <kbd>Strg</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> r&uuml;ckg&auml;ngig.
           &bdquo;Musik-Reaktiv&ldquo; blendet unten den Player ein. Der Chart selbst bleibt dabei ruhig stehen &mdash;
-          er kippt und wackelt nicht: im Takt reagieren nur die <strong>Kerzen</strong> (Breite, Glut, Farbton) und
-          das Spektrum-Band, das erst mit dem geladenen Track erscheint.
+          er kippt und wackelt nicht &mdash;, aber jedes Frequenzband bekommt seinen eigenen Auftritt:
+          der <strong>Bass</strong> (Kick) schiebt Schockwellen vom Live-Kurs nach au&szlig;en, l&auml;sst Gitter,
+          Kerzenbreite und Rahmen pulsieren; die <strong>Mitten</strong> (Snare, Gesang, Melodie) laufen als echte
+          Wellenform quer durchs Bild und lassen die Kurslinie aufblitzen; die <strong>H&ouml;hen</strong> (HiHats)
+          spr&uuml;hen Funken von den Kerzendochten. Dahinter liegt schemenhaft das ganze Spektrum als Skyline
+          (B&auml;sse links, H&ouml;hen rechts), unten das Spektrum-Band &mdash; und oben rechts zeigt ein
+          <strong>Band-Meter</strong> BASS/MID/HIGH getrennt an, samt erkannter Schl&auml;ge und gesch&auml;tztem
+          Tempo in BPM. Die Farbtemperatur aller Effekte folgt der Klangfarbe: dumpfe Passagen orange, helle cyan.
         </p>
       </div>
     </section>
@@ -2228,6 +2234,9 @@
         if (!musicMode) {
           panelEl.style.boxShadow = '';
           bassEnv = 0; beatFlash = 0; midSm = 0; trebSm = 0; totalSm = 0;
+          midEnv = 0; trebEnv = 0; snareFlash = 0; hatFlash = 0; hatBurst = false;
+          rings.length = 0; kickTimes.length = 0; bpmEst = 0; lastKickAt = 0;
+          meterPeak[0] = meterPeak[1] = meterPeak[2] = 0;
           particles.length = 0;
         }
       }
@@ -2238,14 +2247,28 @@
       });
 
       // ── Audio-Analyse (Web Audio API) ──────────────────────────────────
+      // Drei getrennte Frequenzbaender, jedes mit eigener Huellkurve und
+      // eigener Schlag-Erkennung -- damit Kick, Snare und HiHat auch drei
+      // verschiedene Dinge im Bild ausloesen statt einem Einheitswackeln.
       const audio = document.getElementById('audio');
       audio.volume = 0.8;
-      let audioCtx = null, analyser = null, visData = null;
-      let bassEnv = 0, bassAvg = 0, beatFlash = 0;
+      let audioCtx = null, analyser = null, visData = null, waveData = null;
+      let bandBins = null;                          // Bin-Grenzen der Baender (haengt an der Samplerate)
+      let bassEnv = 0, bassAvg = 0, beatFlash = 0;  // Kick + Bassline (ca. 25-160 Hz)
+      let midEnv = 0,  midAvg = 0,  snareFlash = 0; // Snare, Gesang, Melodie (ca. 160-2000 Hz)
+      let trebEnv = 0, trebAvg = 0, hatFlash = 0;   // HiHats, Glitzer (ab ca. 4 kHz)
+      let hatBurst = false;                         // frischer HiHat-Schlag -> Funken an den Dochten
       let midSm = 0, trebSm = 0, totalSm = 0;
+      let centroidSm = 0.35;                        // Klangfarbe: 0 = dumpf/basslastig, 1 = hell
       let specHue = 0;
       let eqVals = null, eqBands = null;
       let particles = [];
+      let rings = [];                               // Schockwellen der Kicks
+      let kickTimes = [], lastKickAt = 0, bpmEst = 0;
+      let meterPeak = [0, 0, 0];                    // Peak-Hold-Striche des Band-Meters
+
+      // Klangfarbe -> Farbton: dumpfe Passagen warm (orange), helle kuehl (cyan)
+      const centHue = () => (18 + centroidSm * 195) % 360;
 
       function ensureAudioCtx() {
         if (audioCtx) return true;
@@ -2255,20 +2278,36 @@
           audioCtx = new Ctx();
           const src = audioCtx.createMediaElementSource(audio);
           analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 512;
-          analyser.smoothingTimeConstant = 0.6;
+          // 2048er-FFT: erst damit bekommt der Bass eigene Bins -- bei 512
+          // steckten Kick und Bassline zusammen in zwei, drei Werten.
+          analyser.fftSize = 2048;
+          // Wenig eingebaute Glaettung: die wuerde Transienten (Kick/HiHat)
+          // verschlucken -- gegleattet wird unten selbst, je Band passend.
+          analyser.smoothingTimeConstant = 0.45;
+          // Das Standard-Pegelfenster (-100..-30 dB) uebersteuert bei laut
+          // gemasterter Musik: die Bass-Bins kleben dann dauerhaft am
+          // Maximum und keine Schlag-Erkennung feuert mehr. Also oben
+          // Headroom schaffen und unten den Rauschboden abschneiden:
+          analyser.minDecibels = -85;
+          analyser.maxDecibels = -12;
           visData = new Uint8Array(analyser.frequencyBinCount);
+          waveData = new Uint8Array(1024);
           src.connect(analyser);
           analyser.connect(audioCtx.destination);
           return true;
         } catch (e) { audioCtx = null; return false; }
       }
 
+      const binOf = hz => Math.max(1, Math.min(visData.length - 1,
+        Math.round(hz * analyser.fftSize / audioCtx.sampleRate)));
+
       function buildEqBands(bars) {
         if (!visData || !bars) { eqBands = null; eqVals = null; return; }
         const n = visData.length;
         eqBands = new Int32Array(bars + 1);
-        const minBin = 1, maxBin = n;
+        // Oberhalb von ~16 kHz steht in Musik praktisch nichts mehr -- ohne
+        // die Kappung waere das rechte Viertel des Spektrums immer leer.
+        const minBin = 1, maxBin = Math.min(n, binOf(16000));
         for (let b = 0; b <= bars; b++) {
           const t = b / bars;
           eqBands[b] = Math.min(maxBin, Math.max(minBin, Math.round(minBin * Math.pow(maxBin / minBin, t))));
@@ -2278,15 +2317,23 @@
 
       function spawnBeatParticles() {
         if (!candles.length || !cssW) return;
-        const hue = (specHue + 300) % 360;
+        // Kick-Funken sind bewusst WARM (orange/rot) -- die Hoehen glitzern
+        // kuehl, so ist am Farbton ablesbar, welches Band gerade feuert.
         for (let i = 0; i < 20; i++) {
           particles.push({
             x: cssW - 14, y: cssH * 0.3,
             vx: (Math.random() - 0.5) * 3.2, vy: -(1.5 + Math.random() * 4),
-            life: 1, sz: 2 + Math.random() * 3, hue: (hue + Math.random() * 80) % 360
+            life: 1, sz: 2 + Math.random() * 3, hue: 8 + Math.random() * 42
           });
         }
-        if (particles.length > 200) particles.splice(0, particles.length - 200);
+        if (particles.length > 260) particles.splice(0, particles.length - 260);
+      }
+
+      function spawnRing() {
+        // Schockwelle vom Live-Kurs aus -- Radius und Tempo haengen daran,
+        // wie hart der Kick war.
+        rings.push({ r: 5, v: 2 + bassEnv * 5.5, life: 1, hue: centHue(), lw: 1.5 + bassEnv * 3.5 });
+        if (rings.length > 10) rings.shift();
       }
 
       function spawnAmbientSpark() {
@@ -2299,27 +2346,73 @@
         });
       }
 
+      function bandLevel(b0, b1) {
+        let s = 0; for (let i = b0; i < b1; i++) s += visData[i];
+        return s / (Math.max(1, b1 - b0) * 255);
+      }
+
       function updateAudioBands() {
         if (analyser && !audio.paused) {
           analyser.getByteFrequencyData(visData);
+          analyser.getByteTimeDomainData(waveData);
           const n = visData.length;
-          const hi = Math.max(2, Math.floor(n * 0.06));
-          let s = 0; for (let i = 1; i < hi; i++) s += visData[i];
-          const bass = s / ((hi - 1) * 255);
-          if (bass > bassEnv) bassEnv = bass; else bassEnv += (bass - bassEnv) * 0.22;
-          bassAvg += (bass - bassAvg) * 0.05;
-          if (bass > bassAvg * 1.25 + 0.05 && beatFlash < 0.4) { beatFlash = 1; spawnBeatParticles(); }
-          else beatFlash = Math.max(0, beatFlash - 0.055);
+          if (!bandBins) bandBins = [binOf(25), binOf(160), binOf(2000), binOf(4000), binOf(14000)];
 
-          const trebStart = Math.floor(n * 0.55);
-          let mid = 0, treb = 0, total = 0;
-          for (let i = hi; i < trebStart; i++) mid += visData[i];
-          for (let i = trebStart; i < n; i++) treb += visData[i];
-          for (let i = 0; i < n; i++) total += visData[i];
-          mid /= ((trebStart - hi) * 255); treb /= ((n - trebStart) * 255); total /= (n * 255);
+          const bass = bandLevel(bandBins[0], bandBins[1]);
+          const mid  = bandLevel(bandBins[1], bandBins[2]);
+          const treb = bandLevel(bandBins[3], bandBins[4]);
+          const total = bandLevel(1, n);
+
+          // Huellkurven: sofort hoch, langsam runter -- Bass am traegsten,
+          // damit ein Kick sichtbar nachglueht, Hoehen am flinksten.
+          if (bass > bassEnv) bassEnv = bass; else bassEnv += (bass - bassEnv) * 0.16;
+          if (mid  > midEnv)  midEnv  = mid;  else midEnv  += (mid  - midEnv)  * 0.2;
+          if (treb > trebEnv) trebEnv = treb; else trebEnv += (treb - trebEnv) * 0.26;
+          bassAvg += (bass - bassAvg) * 0.04;
+          midAvg  += (mid  - midAvg)  * 0.04;
+          trebAvg += (treb - trebAvg) * 0.04;
           midSm += (mid - midSm) * 0.22;
           trebSm += (treb - trebSm) * 0.22;
           totalSm += (total - totalSm) * 0.12;
+
+          // Klangfarbe (Spektral-Schwerpunkt): steuert die Farbtemperatur
+          // aller Musik-Ebenen -- Bassbrocken orange, helle Passagen cyan.
+          let num = 0, den = 0;
+          for (let i = 1; i < n; i++) { const v = visData[i]; num += i * v; den += v; }
+          const cent = den ? Math.min(1, (num / den) / (n * 0.32)) : centroidSm;
+          centroidSm += (cent - centroidSm) * 0.08;
+
+          // Kick: Schockwelle + Funken + BPM-Zaehlung. Die Sperrzeit von
+          // 240 ms (= max. 250 BPM) verhindert, dass Snare-Rauschen, das
+          // bis ins Bassband reicht, als eigener Kick mitgezaehlt wird.
+          const now = performance.now();
+          if (bass > bassAvg * 1.28 + 0.04 && beatFlash < 0.35 && now - lastKickAt > 240) {
+            beatFlash = 1;
+            spawnBeatParticles();
+            spawnRing();
+            if (lastKickAt && now - lastKickAt > 2200) kickTimes.length = 0;
+            kickTimes.push(now);
+            lastKickAt = now;
+            if (kickTimes.length > 9) kickTimes.shift();
+            if (kickTimes.length >= 4) {
+              const iv = [];
+              for (let i = 1; i < kickTimes.length; i++) iv.push(kickTimes[i] - kickTimes[i - 1]);
+              iv.sort((a, b) => a - b);
+              let bpm = 60000 / iv[Math.floor(iv.length / 2)];
+              while (bpm > 190) bpm /= 2;
+              while (bpm > 0 && bpm < 60) bpm *= 2;
+              bpmEst += (bpm - bpmEst) * (bpmEst ? 0.3 : 1);
+            }
+          } else beatFlash = Math.max(0, beatFlash - 0.055);
+
+          // Snare/Clap: laesst Kurslinie und Rahmen-Innenseite aufblitzen
+          if (mid > midAvg * 1.35 + 0.035 && snareFlash < 0.35) snareFlash = 1;
+          else snareFlash = Math.max(0, snareFlash - 0.07);
+
+          // HiHat: Funkenregen an den Kerzendochten
+          if (treb > trebAvg * 1.3 + 0.025 && hatFlash < 0.4) { hatFlash = 1; hatBurst = true; }
+          else hatFlash = Math.max(0, hatFlash - 0.08);
+
           specHue = (specHue + 0.2 + trebSm * 5 + beatFlash * 2.5) % 360;
 
           if (bassEnv > 0.32 && Math.random() < (bassEnv - 0.3) * 0.5) spawnAmbientSpark();
@@ -2337,7 +2430,10 @@
             }
           }
         } else {
-          bassEnv *= 0.9; beatFlash = Math.max(0, beatFlash - 0.05);
+          bassEnv *= 0.9; midEnv *= 0.9; trebEnv *= 0.9;
+          beatFlash = Math.max(0, beatFlash - 0.05);
+          snareFlash = Math.max(0, snareFlash - 0.06);
+          hatFlash = Math.max(0, hatFlash - 0.07);
           midSm *= 0.95; trebSm *= 0.95; totalSm *= 0.95;
           if (eqVals) for (let i = 0; i < eqVals.length; i++) eqVals[i] *= 0.9;
         }
@@ -2345,14 +2441,17 @@
 
       function pumpGlow() {
         const blur = Math.round(bassEnv * 60 + beatFlash * 46);
-        if (blur < 1) {
+        const inn = Math.round(snareFlash * 46);
+        if (blur < 1 && inn < 1) {
           // Kein Ton -> exakt der Rahmen aus dem CSS, kein Dauer-Leuchten.
           if (panelEl.style.boxShadow) panelEl.style.boxShadow = '';
           return;
         }
         const a = (0.3 + bassEnv * 0.65).toFixed(2);
+        // Aussen pumpt der Bass, innen blitzt die Snare -- zwei Baender,
+        // zwei getrennt sichtbare Reaktionen am Rahmen.
         panelEl.style.boxShadow = '0 0 ' + (16 + blur) + 'px rgba(' + TH.glowRGB + ',' + a + '), ' +
-          'inset 0 0 ' + Math.round(beatFlash * 42) + 'px rgba(' + TH.glowRGB2 + ',0.28)';
+          'inset 0 0 ' + inn + 'px rgba(' + TH.glowRGB2 + ',0.3)';
       }
 
       // ── Zeichnungs-Renderer ────────────────────────────────────────────
@@ -2636,7 +2735,11 @@
           const step = niceNum((g.hi - g.lo) / 5, true);
           for (let p = Math.ceil(g.lo / step) * step; p <= g.hi; p += step) priceTicks.push(p);
         }
-        cctx.strokeStyle = TH.grid;
+        // Im Musik-Modus atmet das Gitter mit dem Bass: je haerter der
+        // Tiefton, desto heller die Linien -- ohne Ton exakt die Theme-Farbe.
+        const gridPump = musicMode ? Math.min(0.2, bassEnv * 0.22) : 0;
+        cctx.strokeStyle = gridPump > 0.01
+          ? 'rgba(255,255,255,' + (0.09 + gridPump).toFixed(3) + ')' : TH.grid;
         cctx.setLineDash([4, 4]);
         priceTicks.forEach(p => {
           const y = g.yOf(p);
@@ -2652,7 +2755,8 @@
         const timeTicks = [];
         const firstTick = Math.ceil(Math.max(0, viewStart) / stepBars) * stepBars;
         for (let i = firstTick; i <= Math.min(total - 1, viewStart + viewCount); i += stepBars) timeTicks.push(i);
-        cctx.strokeStyle = TH.gridV;
+        cctx.strokeStyle = gridPump > 0.01
+          ? 'rgba(255,255,255,' + (0.06 + gridPump * 0.7).toFixed(3) + ')' : TH.gridV;
         timeTicks.forEach(i => {
           const x = g.xOf(i);
           cctx.beginPath(); cctx.moveTo(x, plotY0); cctx.lineTo(x, g.axisY0); cctx.stroke();
@@ -2678,11 +2782,32 @@
           }
         } else if (liqMap) { liqMap = null; liqKey = ''; }
 
+        // ── Spektrum-Skyline (nur Musik-Modus) ──────────────────────────
+        // Das ganze Frequenzbild liegt schemenhaft HINTER den Kerzen:
+        // Baesse links, Hoehen rechts, Farbtemperatur folgt der Klangfarbe
+        // des Tracks. Bewusst blass, damit die Kerzen lesbar bleiben.
+        const eqBase = Math.floor(viewStart);
+        const eqAt = i => (musicMode && eqVals) ? (eqVals[i - eqBase] || 0) : 0;
+        if (musicMode && eqVals && audio.currentSrc && !audio.paused) {
+          cctx.save();
+          cctx.beginPath(); cctx.rect(0, plotY0, plotW, plotH); cctx.clip();
+          const skyHue = centHue();
+          for (let i = i0; i <= i1; i++) {
+            const v = eqAt(i);
+            if (v < 0.02) continue;
+            const bh = v * plotH * 0.85;
+            const hue = (skyHue + ((i - i0) / Math.max(1, i1 - i0)) * 120) % 360;
+            cctx.fillStyle = 'hsla(' + hue + ',90%,55%,' + (0.04 + v * 0.11).toFixed(3) + ')';
+            cctx.fillRect(g.xOf(i) - slot / 2, plotY0 + plotH - bh, Math.max(1, slot - 1), bh);
+          }
+          cctx.restore();
+        }
+
         // ── Kursserie ───────────────────────────────────────────────────
         // Der Chart selbst steht IMMER still -- auch im Musik-Modus. Kein
         // Kippen, kein Zoom-Puls, kein Beat-Wackler: die Kerzen sollen
-        // ablesbar bleiben. Auf die Musik reagieren nur die Kerzen selbst
-        // (Ausschlag, Breite, Glut, Farbton) und das EQ-Band unten -- und
+        // ablesbar bleiben. Auf die Musik reagieren die Kerzen (Ausschlag,
+        // Breite, Glut, Farbton) und die Effekt-Ebenen drumherum -- und
         // zwar ausschliesslich, solange wirklich Ton laeuft.
         cctx.save();
         cctx.beginPath(); cctx.rect(0, 0, plotW, g.plotY1 + 1); cctx.clip();
@@ -2690,8 +2815,6 @@
         // jedem Beat nach Blau und Rot nach Gelb -- damit war nicht mehr
         // erkennbar, welche Kerze steigt und welche faellt.
         const hueShift = musicMode ? (trebSm * 10 + beatFlash * 14 + midSm * 5) : 0;
-        const eqBase = Math.floor(viewStart);
-        const eqAt = i => (musicMode && eqVals) ? (eqVals[i - eqBase] || 0) : 0;
 
         if (chartType === 'line' || chartType === 'area') {
           cctx.beginPath();
@@ -2771,6 +2894,71 @@
         }
         cctx.restore();
 
+        // ── Musik-Ebenen im Kursfeld ────────────────────────────────────
+        // Jedes Band hat seinen eigenen Auftritt: der Kick schiebt Schock-
+        // wellen vom Live-Kurs nach aussen, die Mitten laufen als echte
+        // Wellenform quer durchs Bild, die Hoehen spruehen Funken von den
+        // Kerzendochten.
+        if (musicMode && audio.currentSrc) {
+          // HiHat-Schlag: Funken starten oben an zufaelligen Dochten
+          if (hatBurst) {
+            hatBurst = false;
+            for (let k = 0; k < 10; k++) {
+              const idx = i0 + Math.floor(Math.random() * Math.max(1, i1 - i0 + 1));
+              const c = dispBar(idx); if (!c) continue;
+              particles.push({
+                x: g.xOf(idx), y: g.yOf(c.h) - eqAt(idx) * plotH * 0.16 - 2,
+                vx: (Math.random() - 0.5) * 1.4, vy: -(0.8 + Math.random() * 2.2),
+                life: 0.85, sz: 1 + Math.random() * 2,
+                hue: 170 + Math.random() * 70   // Hoehen glitzern kuehl (cyan/blau)
+              });
+            }
+            if (particles.length > 260) particles.splice(0, particles.length - 260);
+          }
+
+          cctx.save();
+          cctx.beginPath(); cctx.rect(0, plotY0, plotW, plotH); cctx.clip();
+
+          // Oszilloskop: die echte Wellenform des Moments -- sie macht
+          // Melodie und Stimme sichtbar, nicht den Beat.
+          if (waveData && !audio.paused) {
+            const cy = plotY0 + plotH * 0.5;
+            const amp = plotH * (0.04 + midEnv * 0.34);
+            const wHue = centHue();
+            cctx.strokeStyle = 'hsla(' + wHue + ',95%,62%,' + Math.min(0.7, 0.12 + midEnv * 1.2).toFixed(2) + ')';
+            cctx.lineWidth = 1.5 + snareFlash * 1.5;
+            cctx.shadowColor = 'hsl(' + wHue + ',100%,60%)';
+            cctx.shadowBlur = 5 + snareFlash * 14;
+            cctx.beginPath();
+            const step = waveData.length / Math.max(1, plotW);
+            for (let x = 0; x <= plotW; x++) {
+              const w = waveData[Math.min(waveData.length - 1, Math.floor(x * step))];
+              const y = cy + ((w - 128) / 128) * amp;
+              if (x === 0) cctx.moveTo(0, y); else cctx.lineTo(x, y);
+            }
+            cctx.stroke();
+            cctx.shadowBlur = 0;
+          }
+
+          // Kick-Schockwellen: Ring fuer Ring vom Live-Kurs nach aussen
+          if (rings.length) {
+            const anchorI = Math.min(i1, total - 1);
+            const ac = candles[anchorI];
+            const ax = Math.max(4, Math.min(plotW - 4, g.xOf(anchorI)));
+            const ay = ac ? Math.max(plotY0 + 4, Math.min(plotY0 + plotH - 4, g.yOf(ac.c)))
+                          : plotY0 + plotH / 2;
+            for (let ri = rings.length - 1; ri >= 0; ri--) {
+              const rg = rings[ri];
+              rg.r += rg.v; rg.v *= 1.015; rg.life -= 0.022;
+              if (rg.life <= 0) { rings.splice(ri, 1); continue; }
+              cctx.strokeStyle = 'hsla(' + rg.hue + ',95%,60%,' + (rg.life * 0.5).toFixed(2) + ')';
+              cctx.lineWidth = rg.lw * rg.life + 0.5;
+              cctx.beginPath(); cctx.arc(ax, ay, rg.r, 0, Math.PI * 2); cctx.stroke();
+            }
+          }
+          cctx.restore();
+        } else if (rings.length) rings.length = 0;
+
         // ── Preisachse ──────────────────────────────────────────────────
         cctx.fillStyle = TH.axisBg;
         cctx.fillRect(plotW, 0, AXIS_W, H);
@@ -2812,7 +3000,14 @@
           cctx.strokeStyle = lastUp ? TH.upLine : TH.dnLine;
           cctx.setLineDash([6, 4]);
           cctx.lineWidth = 1;
+          if (musicMode && snareFlash > 0.03) {
+            // Snare/Clap laesst die Kurslinie kurz aufblitzen
+            cctx.lineWidth = 1 + snareFlash * 2.2;
+            cctx.shadowColor = 'hsl(' + centHue() + ',100%,65%)';
+            cctx.shadowBlur = snareFlash * 22;
+          }
           cctx.beginPath(); cctx.moveTo(0, ly); cctx.lineTo(plotW, ly); cctx.stroke();
+          cctx.shadowBlur = 0;
           cctx.setLineDash([]);
           const label = fmtCurrency(lastC);
           cctx.font = 'bold 11px ' + TH.font;
@@ -3236,6 +3431,53 @@
             cctx.fillText(r.v, bx + wBox - PAD, y);
             cctx.textAlign = 'left';
           });
+        }
+
+        // ── Band-Meter (nur Musik-Modus) ────────────────────────────────
+        // Drei beschriftete Pegel zeigen SCHWARZ AUF WEISS, dass Bass,
+        // Mitten und Hoehen getrennt gehoert werden -- samt Onset-Blitz
+        // ueber dem Balken und geschaetztem Tempo darunter.
+        if (musicMode && audio.currentSrc) {
+          const mw = 92, mh = 76;
+          const mx = plotW - mw - 8, my = plotY0 + 6;
+          cctx.fillStyle = TH.boxBg;
+          cctx.fillRect(mx, my, mw, mh);
+          const defs = [
+            { l: 'BASS', v: bassEnv, hue: 14,  fl: beatFlash },
+            { l: 'MID',  v: midEnv,  hue: 130, fl: snareFlash },
+            { l: 'HIGH', v: trebEnv, hue: 197, fl: hatFlash }
+          ];
+          const bw = 16, gap = (mw - defs.length * bw) / (defs.length + 1);
+          const bh0 = mh - 32, byB = my + 8 + bh0;
+          defs.forEach((d, di) => {
+            const bx = mx + gap + di * (bw + gap);
+            cctx.fillStyle = 'rgba(255,255,255,0.07)';
+            cctx.fillRect(bx, my + 8, bw, bh0);
+            const lvl = Math.min(1, d.v * 1.6);
+            cctx.fillStyle = 'hsla(' + d.hue + ',90%,' + Math.round(48 + d.fl * 18) + '%,0.92)';
+            cctx.fillRect(bx, byB - Math.max(1, lvl * bh0), bw, Math.max(1, lvl * bh0));
+            // Peak-Hold: kurzer Merkstrich, sinkt langsam ab
+            if (lvl > meterPeak[di]) meterPeak[di] = lvl;
+            else meterPeak[di] = Math.max(0, meterPeak[di] - 0.006);
+            if (meterPeak[di] > 0.02) {
+              cctx.fillStyle = 'hsla(' + d.hue + ',95%,72%,0.9)';
+              cctx.fillRect(bx, byB - meterPeak[di] * bh0 - 1, bw, 2);
+            }
+            if (d.fl > 0.03) {   // Schlag erkannt -> Blitz ueber dem Balken
+              cctx.fillStyle = 'hsla(' + d.hue + ',100%,70%,' + d.fl.toFixed(2) + ')';
+              cctx.fillRect(bx, my + 3, bw, 3);
+            }
+            cctx.font = '8px ' + TH.font;
+            cctx.textAlign = 'center';
+            cctx.fillStyle = TH.axisTxt2;
+            cctx.fillText(d.l, bx + bw / 2, byB + 10);
+          });
+          cctx.font = 'bold 9px ' + TH.font;
+          cctx.textAlign = 'center';
+          cctx.fillStyle = TH.accent;
+          const bpmFresh = bpmEst >= 40 && (performance.now() - lastKickAt) < 4000;
+          cctx.fillText(bpmFresh ? ('~' + Math.round(bpmEst) + ' BPM') : '— BPM', mx + mw / 2, my + mh - 5);
+          cctx.textAlign = 'left';
         }
 
         // ── Funken ──────────────────────────────────────────────────────
