@@ -13,11 +13,18 @@
        bei den Werkzeugen: wer dort schlicht waehlt, bekommt es auch hier.
        Ohne gespeicherte Wahl bleibt DIESE Seite beim 90er-Look, mit dem sie
        schon immer kam. -->
+  <!-- Ansicht-Bootstrap: "pro" ist die Vollbild-Arbeitsflaeche (Default),
+       "classic" holt die alte 90er-Seite mit Marquee, Aliens und Kachel-
+       Hintergrund zurueck. Getrennt vom Theme-Schluessel, damit die Wahl
+       auf werkzeuge.html unangetastet bleibt. -->
   <script>
     (function () {
       var t = 'retro';
       try { t = localStorage.getItem('glappa-tools-theme') || 'retro'; } catch (e) {}
       document.documentElement.setAttribute('data-theme', t === 'clean' ? 'clean' : 'retro');
+      var v = 'pro';
+      try { v = localStorage.getItem('glappa-chartvis-view') || 'pro'; } catch (e) {}
+      document.documentElement.setAttribute('data-view', v === 'classic' ? 'classic' : 'pro');
     })();
   </script>
   <link rel="stylesheet" href="home.css?v=12">
@@ -331,6 +338,580 @@
     html[data-theme="clean"] .player-mode-btn.active { background: #6fd18c; color: #0e0f12; border-color: #6fd18c; }
     html[data-theme="clean"] .player-display { background: #0e0f12; border-color: #2a2d34; }
   </style>
+
+  <style>
+    /* ════════════════════════════════════════════════════════════════════
+       PRO-ANSICHT  (html[data-view="pro"] -- Default)
+
+       Das hier ist keine dritte Farbvariante, sondern ein anderer
+       Seiten-TYP: aus der 1040-px-Karte mitten in einer Bastelseite wird
+       eine Arbeitsflaeche, die den ganzen Viewport ausfuellt -- feste
+       Werkzeugleiste oben, Zeichenleiste als Schiene links, Statuszeile
+       unten, dazwischen NUR Chart. Kein Seiten-Scroll, nichts wandert.
+       Das ist der Grund, warum Terminals wie TradingView "teuer" wirken:
+       jedes Pixel gehoert dem Kurs, die Bedienung sitzt am Rand.
+
+       Die klassische 90er-Seite bleibt vollstaendig erhalten und ist ueber
+       den Knopf oben rechts jederzeit zurueckzuholen (data-view="classic").
+       Alle Pro-Regeln haengen deshalb an html[data-view="pro"] und fassen
+       den Rest der Datei nicht an.
+
+       Merke: die Chartflaeche selbst ist ein Canvas und kennt kein CSS --
+       ihre Farben stehen als CANVAS_THEMES.pro im Skript und muessen zu
+       den Variablen hier passen.
+       ════════════════════════════════════════════════════════════════════ */
+    html[data-view="pro"] {
+      /* Grautoene eines Profi-Terminals: sehr dunkel, leicht blaustichig,
+         Kontraste knapp ueber der Wahrnehmungsschwelle. Nichts leuchtet
+         ausser den Daten. */
+      --cv-bg:       #0d1017;   /* Rahmen / hinter allem            */
+      --cv-surface:  #131722;   /* Chartflaeche (== CANVAS_THEMES.pro.bg0) */
+      --cv-panel:    #161a25;   /* Leisten                          */
+      --cv-elev:     #1c2130;   /* Hover, Eingabefelder             */
+      --cv-elev-2:   #242a3a;   /* aktiv gedrueckt                  */
+      --cv-line:     #232735;   /* Trennlinien                      */
+      --cv-line-2:   #2f3646;   /* Rahmen von Bedienelementen       */
+      --cv-txt:      #d6dae4;
+      --cv-txt-2:    #8b93a7;   /* Sekundaertext, Icons in Ruhe     */
+      --cv-txt-3:    #5d6577;   /* Deaktiviert                      */
+      --cv-accent:   #2e6bff;   /* Auswahl / aktiver Zustand        */
+      --cv-accent-2: #4d84ff;
+      --cv-up:       #22c58b;
+      --cv-down:     #e0405e;
+      --cv-warn:     #e8b33a;
+      --cv-r:        6px;       /* Eckenradius Bedienelemente       */
+      --cv-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+                 Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+      --cv-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
+                 Menlo, Consolas, monospace;
+
+      height: 100%;
+      background: var(--cv-bg);
+      background-image: none;
+      color-scheme: dark;
+    }
+
+    /* ── Grundgeruest: Bildschirm fuellen, nie scrollen ───────────────── */
+    html[data-view="pro"] body {
+      height: 100vh;
+      height: 100dvh;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: var(--cv-bg);
+      background-image: none;
+      color: var(--cv-txt);
+      font-family: var(--cv-font);
+      font-size: 13px;
+      line-height: 1.45;
+      cursor: auto;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* Der ganze 90er-Zierrat verschwindet -- inklusive des Glitzer-Trails
+       aus script.js, der bei einem Chart nur stoert. */
+    html[data-view="pro"] .marquee,
+    html[data-view="pro"] .header,
+    html[data-view="pro"] .nav,
+    html[data-view="pro"] .construction,
+    html[data-view="pro"] .footer,
+    html[data-view="pro"] .page-topbar,
+    html[data-view="pro"] .sparkle,
+    html[data-view="pro"] .retro-only { display: none !important; }
+
+    html[data-view="pro"] main {
+      flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+    }
+    html[data-view="pro"] .chart-section {
+      flex: 1 1 auto; min-height: 0; min-width: 0;
+      max-width: none; margin: 0; padding: 0; display: flex;
+    }
+    html[data-view="pro"] .chart-panel {
+      flex: 1 1 auto; min-width: 0; min-height: 0;
+      display: flex; flex-direction: column;
+      background: var(--cv-surface);
+      border: 0; border-radius: 0; box-shadow: none;
+      padding: 0; margin: 0;
+      color: var(--cv-txt); font-family: inherit;
+    }
+    /* Echtes Browser-Vollbild: die Seite IST schon randlos, F11/Knopf
+       nimmt nur noch die Browserleiste weg. Die alte Vollbild-Regel
+       blendet den Hinweistext aus -- in der Pro-Ansicht steckt der in der
+       Schublade und soll dort auch im Vollbild lesbar bleiben. */
+    html[data-view="pro"] .chart-panel:fullscreen { height: 100%; width: 100%; }
+    html[data-view="pro"] .chart-panel:fullscreen .chart-hint { display: block; }
+
+    /* ══ Kopfleiste ═══════════════════════════════════════════════════ */
+    html[data-view="pro"] .cv-top {
+      flex: 0 0 auto;
+      display: flex; align-items: center; flex-wrap: wrap;
+      gap: 0 8px; padding: 0 10px;
+      min-height: 46px;
+      background: var(--cv-panel);
+      border-bottom: 1px solid var(--cv-line);
+    }
+    html[data-view="pro"] .cv-toolbar {
+      display: flex; align-items: center; flex-wrap: wrap;
+      gap: 6px; flex: 1 1 auto; min-width: 0; padding: 4px 0;
+    }
+
+    /* Symbol-Chip: Klick oeffnet die Suche (wie das Ticker-Feld oben links
+       bei den grossen Terminals). Das <select> bleibt im DOM und traegt
+       weiterhin den Wert -- es ist nur unsichtbar. */
+    html[data-view="pro"] .chart-head {
+      display: flex; align-items: center; gap: 10px;
+      border: 0; padding: 4px 0; margin: 0; flex: 0 1 auto; min-width: 0;
+    }
+    html[data-view="pro"] .cv-symbol {
+      display: flex; align-items: center; gap: 8px;
+      background: none; border: 1px solid transparent; border-radius: var(--cv-r);
+      padding: 5px 8px; cursor: pointer; font: inherit; color: var(--cv-txt);
+      max-width: 44vw; min-width: 0;
+    }
+    html[data-view="pro"] .cv-symbol:hover { background: var(--cv-elev); border-color: var(--cv-line-2); }
+    html[data-view="pro"] .cv-badge {
+      flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: linear-gradient(140deg, var(--cv-accent-2), var(--cv-accent));
+      color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0;
+    }
+    html[data-view="pro"] .chart-title {
+      color: var(--cv-txt); text-shadow: none; letter-spacing: 0;
+      font-size: 14px; font-weight: 600; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    }
+    html[data-view="pro"] .cv-caret { width: 12px; height: 12px; flex: 0 0 auto; color: var(--cv-txt-2); }
+    html[data-view="pro"] .cv-symbol svg { stroke-width: 2; }
+
+    /* Kurs: Tabellenziffern, damit beim Ticken nichts zappelt. */
+    html[data-view="pro"] .chart-price {
+      display: flex; align-items: baseline; gap: 8px;
+      font-family: var(--cv-mono); font-variant-numeric: tabular-nums;
+      font-size: 15px; font-weight: 600;
+    }
+    html[data-view="pro"] .chart-price .chg-up,
+    html[data-view="pro"] .chart-price .chg-down {
+      margin: 0; font-size: 12px; font-weight: 600; text-shadow: none;
+      padding: 2px 6px; border-radius: 4px;
+    }
+    html[data-view="pro"] .chart-price .chg-up   { color: var(--cv-up);   background: rgba(34,197,139,0.12); }
+    html[data-view="pro"] .chart-price .chg-down { color: var(--cv-down); background: rgba(224,64,94,0.12); }
+    html[data-view="pro"] .chart-live {
+      font-family: var(--cv-font); font-size: 10px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--cv-txt-3); border: 1px solid var(--cv-line-2);
+      border-radius: 999px; padding: 2px 8px; margin: 0;
+    }
+    html[data-view="pro"] .chart-live.on {
+      color: var(--cv-up); border-color: rgba(34,197,139,0.45);
+      background: rgba(34,197,139,0.10); text-shadow: none;
+    }
+
+    /* ── Knoepfe, Segmentgruppen, Trenner ────────────────────────────── */
+    html[data-view="pro"] .chart-controls,
+    html[data-view="pro"] .chart-topbar {
+      display: flex; align-items: center; gap: 4px; margin: 0; flex-wrap: nowrap;
+    }
+    html[data-view="pro"] .cv-util { margin-left: auto; gap: 1px; }
+    html[data-view="pro"] .cv-util .chart-btn--icon { width: 28px; }
+
+    html[data-view="pro"] .chart-btn {
+      background: none; border: 1px solid transparent; border-radius: var(--cv-r);
+      color: var(--cv-txt-2); font: inherit; font-size: 12px; font-weight: 500;
+      text-shadow: none; padding: 6px 10px; height: 30px;
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      transition: background .12s, color .12s, border-color .12s;
+    }
+    html[data-view="pro"] .chart-btn:hover:not(:disabled) { background: var(--cv-elev); color: var(--cv-txt); border-color: transparent; }
+    html[data-view="pro"] .chart-btn:active:not(:disabled) { background: var(--cv-elev-2); border-style: solid; }
+    html[data-view="pro"] .chart-btn:disabled { opacity: 1; color: var(--cv-txt-3); }
+    html[data-view="pro"] .chart-btn.active {
+      background: rgba(46,107,255,0.16); color: var(--cv-accent-2);
+      border-color: rgba(46,107,255,0.35);
+    }
+    html[data-view="pro"] .chart-btn--mini { padding: 6px 9px; font-size: 11px; font-weight: 600; letter-spacing: 0.03em; }
+    html[data-view="pro"] .chart-btn--icon { padding: 0; width: 30px; justify-content: center; }
+    html[data-view="pro"] .chart-btn svg { width: 16px; height: 16px; stroke-width: 1.7; }
+
+    html[data-view="pro"] .chart-sep {
+      width: 1px; height: 18px; align-self: center; background: var(--cv-line-2); margin: 0 3px;
+    }
+    html[data-view="pro"] .chart-seg-group {
+      background: none; border: 0; border-radius: var(--cv-r); padding: 0; gap: 0;
+    }
+    html[data-view="pro"] .chart-seg-btn {
+      color: var(--cv-txt-2); font: inherit; font-size: 12px; font-weight: 500;
+      padding: 6px 7px; height: 30px; border-radius: var(--cv-r); min-width: 27px;
+      transition: background .12s, color .12s;
+    }
+    html[data-view="pro"] .chart-seg-btn:hover { background: var(--cv-elev); color: var(--cv-txt); }
+    html[data-view="pro"] .chart-seg-btn.active {
+      background: var(--cv-elev-2); color: #fff; font-weight: 600;
+      box-shadow: inset 0 -2px 0 var(--cv-accent);
+    }
+
+    html[data-view="pro"] .chart-controls select,
+    html[data-view="pro"] .chart-controls input[type="text"] {
+      background: var(--cv-elev); color: var(--cv-txt); border: 1px solid var(--cv-line-2);
+      border-radius: var(--cv-r); font: inherit; font-size: 12px; padding: 6px 8px; height: 30px;
+    }
+    html[data-view="pro"] .chart-controls select:focus,
+    html[data-view="pro"] .chart-controls input:focus {
+      outline: none; border-color: var(--cv-accent); box-shadow: 0 0 0 2px rgba(46,107,255,0.25);
+    }
+    /* Das Original-<select> und das Freitextfeld steuert jetzt der Dialog. */
+    html[data-view="pro"] #symbolSelect,
+    html[data-view="pro"] #symbolCustom { display: none !important; }
+
+    /* ══ Arbeitsflaeche: Schiene links + Chart ════════════════════════ */
+    html[data-view="pro"] .chart-body {
+      flex: 1 1 auto; min-height: 0; gap: 0; position: relative;
+    }
+    /* overflow bleibt sichtbar, sonst wuerde die Schiene die Tooltips
+       rechts von sich abschneiden. Erst auf sehr flachen Fenstern (siehe
+       unten) darf sie scrollen. */
+    html[data-view="pro"] .chart-vtoolbar {
+      background: var(--cv-panel); border: 0; border-right: 1px solid var(--cv-line);
+      border-radius: 0; padding: 6px 4px; height: auto; gap: 2px; overflow: visible;
+    }
+    html[data-view="pro"] .chart-vtoolbar button {
+      width: 32px; height: 30px; border-radius: var(--cv-r); color: var(--cv-txt-2);
+      position: relative; transition: background .12s, color .12s;
+    }
+    html[data-view="pro"] .chart-vtoolbar button:hover { background: var(--cv-elev); color: var(--cv-txt); }
+    html[data-view="pro"] .chart-vtoolbar button.active {
+      background: rgba(46,107,255,0.16); color: var(--cv-accent-2);
+      box-shadow: inset 2px 0 0 var(--cv-accent);
+    }
+    html[data-view="pro"] .chart-vtoolbar button svg { width: 18px; height: 18px; }
+    html[data-view="pro"] .chart-vtoolbar-sep { background: var(--cv-line-2); margin: 5px 6px; }
+    html[data-view="pro"] .chart-canvas-wrap {
+      background: var(--cv-surface); border: 0; border-radius: 0;
+      height: auto; max-height: none; min-height: 0; resize: none; flex: 1 1 auto;
+    }
+    html[data-view="pro"] .chart-empty { color: var(--cv-txt-3); letter-spacing: 0; font-size: 13px; }
+    html[data-view="pro"] .chart-props {
+      background: var(--cv-elev); border: 1px solid var(--cv-line-2); border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.55); padding: 5px 7px;
+    }
+    html[data-view="pro"] .chart-props .wbtn { border-color: var(--cv-line-2); color: var(--cv-txt-2); border-radius: 4px; }
+    html[data-view="pro"] .chart-props .wbtn.active { border-color: var(--cv-accent); color: var(--cv-accent-2); }
+    html[data-view="pro"] .chart-props .pdel { border-color: var(--cv-line-2); color: var(--cv-down); border-radius: 4px; }
+
+    /* ══ Statuszeile unten ════════════════════════════════════════════ */
+    html[data-view="pro"] .cv-status {
+      flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+      height: 26px; padding: 0 10px; margin: 0;
+      background: var(--cv-panel); border-top: 1px solid var(--cv-line);
+      font-size: 11px; color: var(--cv-txt-3);
+    }
+    html[data-view="pro"] .chart-status {
+      margin: 0; min-height: 0; flex: 1 1 auto; color: var(--cv-txt-2);
+      font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    html[data-view="pro"] .chart-status .err { color: var(--cv-down); }
+    html[data-view="pro"] .cv-clock {
+      font-family: var(--cv-mono); font-variant-numeric: tabular-nums;
+      color: var(--cv-txt-2); letter-spacing: 0.02em;
+    }
+    html[data-view="pro"] .cv-status-tag {
+      color: var(--cv-txt-3); border-left: 1px solid var(--cv-line-2); padding-left: 10px;
+    }
+
+    /* ══ LIQ-Einstellungen: schwebende Karte statt Leiste ═════════════ */
+    /* Verankert an .chart-panel und von UNTEN gemessen: die Kopfleiste darf
+       auf schmalen Fenstern umbrechen, ohne dass die Karte sie verdeckt.
+       Links neben der Mitte, damit sie dem Player unten rechts ausweicht. */
+    html[data-view="pro"] .chart-liqbar {
+      position: absolute; z-index: 14; bottom: 36px; left: 54px;
+      display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+      width: 260px; padding: 12px; margin: 0;
+      background: rgba(22,26,37,0.97); border: 1px solid var(--cv-line-2);
+      border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,0.6);
+      font-size: 12px; color: var(--cv-txt-2);
+      backdrop-filter: blur(6px);
+    }
+    html[data-view="pro"] .chart-liqbar label { justify-content: space-between; gap: 8px; }
+    html[data-view="pro"] .chart-liqbar select {
+      background: var(--cv-elev); color: var(--cv-txt); border: 1px solid var(--cv-line-2);
+      border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 12px; flex: 1 1 auto; min-width: 0;
+    }
+    html[data-view="pro"] .chart-liqbar input[type="range"] { accent-color: var(--cv-accent); width: 110px; }
+    html[data-view="pro"] .chart-liqbar .liq-tag {
+      color: var(--cv-txt); text-shadow: none; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    html[data-view="pro"] .chart-liqbar .liq-val { color: var(--cv-accent-2); font-family: var(--cv-mono); }
+    html[data-view="pro"] .chart-liqbar .liq-note {
+      color: var(--cv-txt-3); font-size: 11px; line-height: 1.5; flex: none; min-width: 0;
+      border-top: 1px solid var(--cv-line); padding-top: 8px;
+    }
+
+    /* ══ Hilfe als Schublade rechts ═══════════════════════════════════ */
+    /* Die Schublade legt sich nur ueber die CHARTFLAECHE, nicht ueber die
+       Leisten: --cv-top-h traegt die tatsaechliche Hoehe der Kopfleiste
+       nach (sie bricht auf schmalen Fenstern um), 26px ist die Statuszeile. */
+    html[data-view="pro"] .cv-help {
+      position: absolute; z-index: 20; right: 0;
+      top: var(--cv-top-h, 46px); bottom: 26px; width: min(430px, 92vw);
+      background: var(--cv-panel); border-left: 1px solid var(--cv-line);
+      box-shadow: -18px 0 40px rgba(0,0,0,0.45);
+      display: flex; flex-direction: column;
+      transform: translateX(100%); transition: transform .22s cubic-bezier(.4,0,.2,1);
+      visibility: hidden;
+    }
+    html[data-view="pro"] .cv-help[data-open="1"] { transform: none; visibility: visible; }
+    html[data-view="pro"] .cv-help-head {
+      flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--cv-line);
+      font-size: 13px; font-weight: 600; color: var(--cv-txt);
+    }
+    html[data-view="pro"] .cv-help-close {
+      background: none; border: 0; color: var(--cv-txt-2); cursor: pointer;
+      width: 26px; height: 26px; border-radius: 5px; display: grid; place-items: center;
+    }
+    html[data-view="pro"] .cv-help-close:hover { background: var(--cv-elev); color: var(--cv-txt); }
+    html[data-view="pro"] .cv-help-close svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+    html[data-view="pro"] .cv-help-body { flex: 1 1 auto; overflow-y: auto; padding: 4px 14px 18px; }
+    html[data-view="pro"] .cv-keys {
+      display: grid; grid-template-columns: max-content 1fr; gap: 5px 12px;
+      margin: 14px 0 0; padding: 0 0 14px; border-bottom: 1px solid var(--cv-line);
+      font-size: 12px; align-items: center;
+    }
+    html[data-view="pro"] .cv-keys dt { justify-self: end; white-space: nowrap; }
+    html[data-view="pro"] .cv-keys dd { margin: 0; color: var(--cv-txt-2); }
+    html[data-view="pro"] .cv-keys kbd,
+    html[data-view="pro"] .chart-hint kbd {
+      background: var(--cv-elev); border: 1px solid var(--cv-line-2); border-bottom-width: 2px;
+      border-radius: 4px; color: var(--cv-txt); font-family: var(--cv-mono);
+      font-size: 11px; padding: 1px 5px; font-style: normal;
+    }
+    html[data-view="pro"] .chart-hint {
+      color: var(--cv-txt-2); font-style: normal; font-size: 12px; line-height: 1.65; margin: 14px 0 0;
+    }
+    html[data-view="pro"] .chart-hint strong { color: var(--cv-txt); font-weight: 600; }
+    html[data-view="pro"] .chart-hint em { color: var(--cv-txt); font-style: italic; }
+    /* Schlanke Rollbalken -- Systemleisten sehen in einem dunklen
+       Terminal nach Fremdkoerper aus. */
+    html[data-view="pro"] .cv-help-body,
+    html[data-view="pro"] .cv-modal-list { scrollbar-width: thin; scrollbar-color: var(--cv-line-2) transparent; }
+    html[data-view="pro"] .cv-help-body::-webkit-scrollbar,
+    html[data-view="pro"] .cv-modal-list::-webkit-scrollbar { width: 9px; }
+    html[data-view="pro"] .cv-help-body::-webkit-scrollbar-thumb,
+    html[data-view="pro"] .cv-modal-list::-webkit-scrollbar-thumb {
+      background: var(--cv-line-2); border-radius: 9px; border: 3px solid transparent; background-clip: content-box;
+    }
+
+    /* ── Aufklapp-Menues (Diagrammtyp, Indikatoren) ─────────────────── */
+    html[data-view="pro"] .cv-menu { position: relative; display: flex; align-items: center; }
+    html[data-view="pro"] .cv-menu-btn { gap: 6px; }
+    html[data-view="pro"] .cv-menu-btn .cv-caret { width: 11px; height: 11px; opacity: 0.7; }
+    html[data-view="pro"] .cv-menu[data-open="1"] .cv-menu-btn { background: var(--cv-elev); color: var(--cv-txt); }
+    html[data-view="pro"] .cv-count {
+      background: var(--cv-accent); color: #fff; border-radius: 999px;
+      font-size: 10px; font-weight: 700; line-height: 1; padding: 3px 5px; min-width: 16px; text-align: center;
+    }
+    html[data-view="pro"] .cv-count[hidden] { display: none; }
+    html[data-view="pro"] .cv-menu-pop {
+      position: absolute; z-index: 50; top: calc(100% + 6px); left: 0;
+      display: none; flex-direction: column; gap: 1px; padding: 6px; min-width: 210px;
+      background: #171b26; border: 1px solid var(--cv-line-2); border-radius: 10px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.62);
+    }
+    html[data-view="pro"] .cv-menu[data-open="1"] .cv-menu-pop { display: flex; }
+    html[data-view="pro"] .cv-menu-pop .chart-seg-group { flex-direction: column; align-items: stretch; gap: 1px; }
+    html[data-view="pro"] .cv-menu-pop .chart-seg-btn,
+    html[data-view="pro"] .cv-menu-pop .chart-btn {
+      width: 100%; justify-content: flex-start; text-align: left;
+      padding: 7px 10px; height: 32px; font-size: 12.5px; font-weight: 500; letter-spacing: 0;
+    }
+    html[data-view="pro"] .cv-menu-pop .chart-seg-btn.active { box-shadow: none; background: var(--cv-elev-2); }
+    html[data-view="pro"] .cv-menu-sep { height: 1px; background: var(--cv-line); margin: 5px 4px; }
+
+    /* ══ Eigene Tooltips ══════════════════════════════════════════════
+       title="" waere der einfache Weg, sieht aber in jedem Browser anders
+       aus, kommt erst nach ~1 s und bleibt im Chart gern haengen. Deshalb
+       data-tip: gleiche Optik in beiden Ansichten, erscheint nach 0,25 s
+       und verschwindet mit dem Zeiger. */
+    [data-tip] { position: relative; }
+    [data-tip]::after {
+      content: attr(data-tip);
+      position: absolute; z-index: 60;
+      background: #242a3a; color: #e4e8f0; border: 1px solid #3a4256;
+      border-radius: 5px; padding: 4px 8px;
+      font-family: -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+      font-size: 11px; font-weight: 500; font-style: normal; letter-spacing: 0;
+      white-space: pre; text-shadow: none; text-transform: none;
+      pointer-events: none; opacity: 0; visibility: hidden;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.55);
+      transition: opacity .12s .28s, visibility 0s .28s;
+    }
+    [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; visibility: visible; }
+    /* Zeichenschiene links -> Hinweis nach rechts, Kopfleiste -> nach unten. */
+    .chart-vtoolbar [data-tip]::after { left: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
+    .cv-toolbar [data-tip]::after, .chart-head [data-tip]::after { top: calc(100% + 7px); left: 0; }
+    .cv-util [data-tip]::after { left: auto; right: 0; }
+    @media (prefers-reduced-motion: reduce) { [data-tip]::after { transition-delay: 0s; } }
+
+    /* ══ Symbol-Suche ═════════════════════════════════════════════════ */
+    .cv-modal[hidden] { display: none; }
+    .cv-modal {
+      position: fixed; inset: 0; z-index: 9990;
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 12vh 16px 16px; background: rgba(6,8,13,0.62);
+      backdrop-filter: blur(3px);
+      font-family: var(--cv-font, sans-serif);
+    }
+    .cv-modal-card {
+      width: min(480px, 100%); max-height: 68vh; display: flex; flex-direction: column;
+      background: #161a25; border: 1px solid #2f3646; border-radius: 12px;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.7); overflow: hidden;
+      animation: cvPop .16s ease-out;
+    }
+    @keyframes cvPop { from { opacity: 0; transform: translateY(-8px) scale(.985); } }
+    .cv-modal-search { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-bottom: 1px solid #232735; }
+    .cv-modal-search svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: #8b93a7; stroke-width: 1.8; }
+    .cv-modal-search input {
+      flex: 1 1 auto; min-width: 0; background: none; border: 0; outline: none;
+      color: #d6dae4; font: inherit; font-size: 15px;
+    }
+    .cv-modal-search input::placeholder { color: #5d6577; }
+    .cv-modal-list { overflow-y: auto; padding: 6px; }
+    .cv-opt {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      background: none; border: 0; border-radius: 7px; padding: 8px 10px;
+      color: #d6dae4; font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+    }
+    .cv-opt:hover, .cv-opt[data-cursor="1"] { background: #1c2130; }
+    .cv-opt-badge {
+      flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+      background: #242a3a; color: #b7c0d4; font-size: 11px; font-weight: 700;
+    }
+    .cv-opt-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cv-opt-tick { flex: 0 0 auto; color: #5d6577; font-size: 11px; font-family: var(--cv-mono, monospace); }
+    .cv-modal-foot {
+      padding: 8px 14px; border-top: 1px solid #232735; color: #5d6577; font-size: 11px;
+      display: flex; gap: 14px; flex-wrap: wrap;
+    }
+    .cv-modal-foot kbd {
+      background: #1c2130; border: 1px solid #2f3646; border-radius: 3px;
+      padding: 0 4px; font-family: var(--cv-mono, monospace); font-size: 10px; color: #b7c0d4;
+    }
+
+    /* ══ Musik-Player als angedocktes Fenster ═════════════════════════ */
+    html[data-view="pro"] .player-section {
+      position: fixed; z-index: 40; right: 14px; bottom: 40px;
+      width: min(400px, calc(100vw - 28px)); max-height: min(66vh, 640px);
+      margin: 0; padding: 0; overflow: auto;
+    }
+    html[data-view="pro"] .player {
+      background: rgba(22,26,37,0.98); border: 1px solid var(--cv-line-2); border-radius: 12px;
+      box-shadow: 0 20px 54px rgba(0,0,0,0.66); font-family: var(--cv-font);
+      color: var(--cv-txt); backdrop-filter: blur(6px);
+    }
+    html[data-view="pro"] .player-title,
+    html[data-view="pro"] .player-track { color: var(--cv-txt); text-shadow: none; }
+    html[data-view="pro"] .player-version, html[data-view="pro"] .player-time { color: var(--cv-txt-2); }
+    html[data-view="pro"] .player-display { background: var(--cv-bg); border-color: var(--cv-line); }
+    html[data-view="pro"] .player-btn,
+    html[data-view="pro"] .player-mode-btn,
+    html[data-view="pro"] .player-file-btn {
+      background: var(--cv-elev); border: 1px solid var(--cv-line-2); color: var(--cv-txt);
+      text-shadow: none; border-radius: var(--cv-r);
+    }
+    html[data-view="pro"] .player-btn:hover,
+    html[data-view="pro"] .player-mode-btn:hover,
+    html[data-view="pro"] .player-file-btn:hover { background: var(--cv-elev-2); border-color: var(--cv-txt-3); }
+    html[data-view="pro"] .player-mode-btn.active {
+      background: rgba(46,107,255,0.16); color: var(--cv-accent-2); border-color: rgba(46,107,255,0.35);
+    }
+    html[data-view="pro"] .player-seek,
+    html[data-view="pro"] .player-vol input[type="range"] { accent-color: var(--cv-accent); }
+
+    /* ══ Nur in der jeweiligen Ansicht sichtbare Bedienelemente ═══════ */
+    html[data-view="pro"] .classic-only,
+    html[data-view="classic"] .pro-only { display: none !important; }
+    /* Die Pro-Huellen duerfen die klassische Seite nicht umbauen: dort
+       verhalten sich ihre Kinder, als gaebe es die Huelle nicht. */
+    html[data-view="classic"] .cv-top,
+    html[data-view="classic"] .cv-toolbar,
+    html[data-view="classic"] .cv-status,
+    html[data-view="classic"] .cv-help,
+    html[data-view="classic"] .cv-help-body,
+    html[data-view="classic"] .cv-menu,
+    html[data-view="classic"] .cv-menu-pop { display: contents; }
+    html[data-view="classic"] .cv-help-head,
+    html[data-view="classic"] .cv-menu-btn,
+    html[data-view="classic"] .cv-menu-sep { display: none; }
+    /* Klassisch bleibt der Titel ein Titel -- gewaehlt wird dort wie
+       immer im Auswahlfeld darunter. */
+    html[data-view="classic"] .cv-symbol {
+      background: none; border: 0; padding: 0; cursor: default; font: inherit;
+      pointer-events: none; text-align: left;
+    }
+    html[data-view="classic"] .cv-badge, html[data-view="classic"] .cv-caret { display: none; }
+    html[data-view="classic"] .cv-clock, html[data-view="classic"] .cv-status-tag { display: none; }
+
+    /* ══ Schmale Fenster ══════════════════════════════════════════════ */
+    /* Schmale Fenster: die Leiste bricht um statt seitlich zu scrollen --
+       ein scrollender Container wuerde die Aufklapp-Menues abschneiden. */
+    @media (max-width: 900px) {
+      html[data-view="pro"] .cv-top { padding: 0 6px; }
+      html[data-view="pro"] .cv-symbol { max-width: 52vw; }
+      html[data-view="pro"] .chart-price { font-size: 13px; }
+      html[data-view="pro"] .chart-liqbar { left: 44px; width: min(260px, calc(100vw - 56px)); }
+      html[data-view="pro"] .player-section { right: 8px; left: 8px; width: auto; }
+    }
+    /* Handy: fester Dreizeiler statt Umbruch-Lotterie. Umbruch allein
+       genuegt hier nicht -- die Werkzeugspalte ist mit ~280 px so breit,
+       dass jeder Nachbar auf Streichholzbreite gequetscht wuerde. Also
+       Raster: Kurs oben, Intervalle + Indikatoren, Werkzeuge zuletzt.
+       .cv-toolbar loest sich dafuer auf, damit die vier Gruppen direkte
+       Rasterkinder sind. */
+    @media (max-width: 640px) {
+      html[data-view="pro"] .cv-toolbar { display: contents; }
+      html[data-view="pro"] .cv-top {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto;
+        gap: 2px 5px; padding: 4px 5px; min-height: 0; align-items: center;
+      }
+      html[data-view="pro"] .cv-toolbar > .chart-controls:not(.cv-ind):not(.cv-util) { display: none; }
+      html[data-view="pro"] .chart-head   { grid-column: 1 / -1; grid-row: 1; min-width: 0; overflow: hidden; gap: 7px; }
+      html[data-view="pro"] .chart-topbar { grid-column: 1;      grid-row: 2; min-width: 0; }
+      html[data-view="pro"] .cv-ind       { grid-column: 2;      grid-row: 2; }
+      html[data-view="pro"] .cv-util      { grid-column: 1 / -1; grid-row: 3; margin-left: 0; justify-content: flex-end; }
+      html[data-view="pro"] .cv-symbol { flex: 0 1 auto; min-width: 0; max-width: none; padding: 4px 6px; }
+      html[data-view="pro"] .chart-price { flex: 0 0 auto; gap: 6px; }
+      html[data-view="pro"] .chart-live { padding: 2px 6px; }
+      /* Die Intervalle scrollen in sich -- 10 Knoepfe passen nie in 375 px. */
+      html[data-view="pro"] .chart-tf-group {
+        overflow-x: auto; flex-wrap: nowrap; min-width: 0; scrollbar-width: none;
+      }
+      html[data-view="pro"] .chart-tf-group::-webkit-scrollbar { height: 0; }
+      html[data-view="pro"] .cv-menu-pop { left: auto; right: 0; }
+    }
+    @media (max-width: 560px) {
+      html[data-view="pro"] .chart-vtoolbar { padding: 4px 2px; }
+      html[data-view="pro"] .chart-vtoolbar button { width: 28px; height: 28px; }
+      html[data-view="pro"] .chart-vtoolbar button svg { width: 16px; height: 16px; }
+    }
+    /* Flache Fenster (Laptop im Querformat, Handy quer): Schiene enger,
+       zur Not scrollbar -- dann sind die Tooltips zwar beschnitten, aber
+       jedes Werkzeug bleibt erreichbar. */
+    @media (max-height: 720px) {
+      html[data-view="pro"] .chart-vtoolbar button { height: 26px; }
+      html[data-view="pro"] .chart-vtoolbar-sep { margin: 3px 6px; }
+    }
+    @media (max-height: 560px) {
+      html[data-view="pro"] .chart-vtoolbar { overflow-y: auto; scrollbar-width: none; }
+      html[data-view="pro"] .chart-vtoolbar::-webkit-scrollbar { width: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html[data-view="pro"] .cv-help { transition: none; }
+      .cv-modal-card { animation: none; }
+    }
+  </style>
 </head>
 <body>
 
@@ -371,14 +952,27 @@
     <!-- ── Kurs-Chart ── -->
     <section class="chart-section">
       <div class="chart-panel" id="chartPanel">
-        <div class="chart-head">
-          <span class="chart-title" id="coinTitle">Bitcoin (BTC/USDT)</span>
-          <span class="chart-price">
-            <span id="priceVal">&mdash;</span><span id="chgVal" class="chg-up"></span>
-            <span class="chart-live" id="liveTag">&#9675; offline</span>
-          </span>
-        </div>
+        <!-- ══ Kopfleiste ══
+             In der Pro-Ansicht sitzt hier alles in EINER Leiste (Symbol,
+             Kurs, Intervall, Typ, Indikatoren, Werkzeuge) -- .cv-top und
+             .cv-toolbar sind reine Layout-Huellen und in der klassischen
+             Ansicht per display:contents unsichtbar, dort stapeln sich die
+             Zeilen wie eh und je. -->
+        <div class="cv-top">
+          <div class="chart-head">
+            <button type="button" class="cv-symbol" id="symbolBtn" aria-haspopup="dialog"
+                    data-tip="Handelspaar wechseln &nbsp;S">
+              <span class="cv-badge" id="symbolBadge" aria-hidden="true">B</span>
+              <span class="chart-title" id="coinTitle">Bitcoin (BTC/USDT)</span>
+              <svg class="cv-caret" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg>
+            </button>
+            <span class="chart-price">
+              <span id="priceVal">&mdash;</span><span id="chgVal" class="chg-up"></span>
+              <span class="chart-live" id="liveTag">&#9675; offline</span>
+            </span>
+          </div>
 
+          <div class="cv-toolbar">
         <div class="chart-controls">
           <select id="symbolSelect" aria-label="Handelspaar">
             <option value="BTCUSDT" selected>&#8383; Bitcoin (BTC/USDT)</option>
@@ -394,33 +988,6 @@
             <option value="__custom">Anderes Binance-Symbol&hellip;</option>
           </select>
           <input type="text" id="symbolCustom" placeholder="z.B. PEPEUSDT" hidden>
-          <button type="button" class="chart-btn chart-btn--icon" id="reloadBtn" title="Neu laden" aria-label="Neu laden">
-            <svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M17 2v5h-5"/></svg>
-          </button>
-          <button type="button" class="chart-btn chart-btn--icon" id="fitBtn" title="Ansicht zur&uuml;cksetzen (zum aktuellen Kurs springen)" aria-label="Ansicht zur&uuml;cksetzen">
-            <svg viewBox="0 0 20 20"><path d="M3 10h4M13 10h4M10 3v4M10 13v4"/><circle cx="10" cy="10" r="3"/></svg>
-          </button>
-          <span class="chart-sep"></span>
-          <button type="button" class="chart-btn chart-btn--mini active" data-ind="vol" title="Volumen-Panel ein/aus">Vol</button>
-          <button type="button" class="chart-btn chart-btn--mini" data-ind="rsi" title="RSI(14) ein/aus">RSI</button>
-          <button type="button" class="chart-btn chart-btn--mini" data-ind="macd" title="MACD 12/26/9 ein/aus">MACD</button>
-          <button type="button" class="chart-btn chart-btn--mini" data-ind="ma" title="Gleitende Durchschnitte MA20/MA50">MA</button>
-          <button type="button" class="chart-btn chart-btn--mini" data-ind="bb" title="Bollinger-B&auml;nder (20, 2&sigma;)">BB</button>
-          <button type="button" class="chart-btn chart-btn--mini" data-ind="liq" title="Liquidations-Heatmap: gesch&auml;tzte Liquidationszonen (Modell aus Kurs + Volumen)">LIQ</button>
-          <span class="chart-sep"></span>
-          <button type="button" class="chart-btn chart-btn--mini" id="logBtn" title="Logarithmische Preisachse (Taste L)">LOG</button>
-          <button type="button" class="chart-btn chart-btn--icon" id="undoBtn" title="R&uuml;ckg&auml;ngig (Strg+Z)" aria-label="R&uuml;ckg&auml;ngig" disabled>
-            <svg viewBox="0 0 20 20"><path d="M4 9h8a4 4 0 0 1 0 8h-3"/><path d="M7 5 3 9l4 4"/></svg>
-          </button>
-          <button type="button" class="chart-btn chart-btn--icon" id="redoBtn" title="Wiederherstellen (Strg+Y)" aria-label="Wiederherstellen" disabled>
-            <svg viewBox="0 0 20 20"><path d="M16 9H8a4 4 0 0 0 0 8h3"/><path d="m13 5 4 4-4 4"/></svg>
-          </button>
-          <button type="button" class="chart-btn chart-btn--icon" id="shotBtn" title="Chart als PNG speichern" aria-label="Screenshot">
-            <svg viewBox="0 0 20 20"><rect x="2" y="6" width="16" height="11" rx="2"/><circle cx="10" cy="11.5" r="3.2"/><path d="M7 6l1.4-2h3.2L13 6"/></svg>
-          </button>
-          <button type="button" class="chart-btn chart-btn--icon" id="fsBtn" title="Vollbild an/aus" aria-label="Vollbild">
-            <svg viewBox="0 0 20 20"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/></svg>
-          </button>
         </div>
 
         <div class="chart-topbar">
@@ -436,14 +1003,91 @@
             <button type="button" class="chart-seg-btn" data-interval="1w">1W</button>
             <button type="button" class="chart-seg-btn" data-interval="1M">1M</button>
           </div>
-          <div class="chart-seg-group chart-type-group" role="group" aria-label="Diagrammtyp">
-            <button type="button" class="chart-seg-btn active" data-charttype="candles" title="Kerzenchart">Kerzen</button>
-            <button type="button" class="chart-seg-btn" data-charttype="ha" title="Heikin-Ashi: gegl&auml;ttete Kerzen, Trend besser sichtbar">Heikin</button>
-            <button type="button" class="chart-seg-btn" data-charttype="bars" title="OHLC-Balken">Balken</button>
-            <button type="button" class="chart-seg-btn" data-charttype="line" title="Linienchart (Schlusskurse)">Linie</button>
-            <button type="button" class="chart-seg-btn" data-charttype="area" title="Fl&auml;chenchart">Fl&auml;che</button>
+          <span class="chart-sep"></span>
+
+          <!-- Diagrammtyp: in der Pro-Ansicht ein Menue (fuenf Textknoepfe
+               nebeneinander fressen die halbe Leiste), klassisch bleibt es
+               die Segmentgruppe wie bisher -- .cv-menu loest sich dort auf. -->
+          <div class="cv-menu" id="typeMenu" data-open="0">
+            <button type="button" class="chart-btn cv-menu-btn" id="typeMenuBtn"
+                    aria-haspopup="true" aria-expanded="false" data-tip="Diagrammtyp">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4v12M6 6.5h0M13 6v8"/><rect x="4" y="7" width="4" height="7" rx="1"/><rect x="11" y="4.5" width="4" height="8" rx="1"/></svg>
+              <span id="typeMenuLabel">Kerzen</span>
+              <svg class="cv-caret" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg>
+            </button>
+            <div class="cv-menu-pop">
+              <div class="chart-seg-group chart-type-group" role="group" aria-label="Diagrammtyp">
+                <button type="button" class="chart-seg-btn active" data-charttype="candles">Kerzen</button>
+                <button type="button" class="chart-seg-btn" data-charttype="ha">Heikin-Ashi</button>
+                <button type="button" class="chart-seg-btn" data-charttype="bars">OHLC-Balken</button>
+                <button type="button" class="chart-seg-btn" data-charttype="line">Linie</button>
+                <button type="button" class="chart-seg-btn" data-charttype="area">Fl&auml;che</button>
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- Indikatoren: ebenfalls hinter einem Knopf, mit Zaehler der
+             aktiven Auflagen -- die Knoepfe selbst sind dieselben wie
+             vorher, nur umgezogen (die Engine findet sie ueber data-ind). -->
+        <div class="chart-controls cv-ind">
+          <span class="chart-sep"></span>
+          <div class="cv-menu" id="indMenu" data-open="0">
+            <button type="button" class="chart-btn cv-menu-btn" id="indMenuBtn"
+                    aria-haspopup="true" aria-expanded="false" data-tip="Indikatoren &amp; Preisachse">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 16 7 9l3 4 3-7 4 10"/></svg>
+              <span>Indikatoren</span>
+              <span class="cv-count" id="indCount" hidden>0</span>
+              <svg class="cv-caret" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg>
+            </button>
+            <div class="cv-menu-pop">
+              <button type="button" class="chart-btn chart-btn--mini active" data-ind="vol">Volumen</button>
+              <button type="button" class="chart-btn chart-btn--mini" data-ind="rsi">RSI (14)</button>
+              <button type="button" class="chart-btn chart-btn--mini" data-ind="macd">MACD 12/26/9</button>
+              <button type="button" class="chart-btn chart-btn--mini" data-ind="ma">Gleitende Durchschnitte</button>
+              <button type="button" class="chart-btn chart-btn--mini" data-ind="bb">Bollinger-B&auml;nder</button>
+              <button type="button" class="chart-btn chart-btn--mini" data-ind="liq">Liquidations-Heatmap</button>
+              <div class="cv-menu-sep"></div>
+              <button type="button" class="chart-btn chart-btn--mini" id="logBtn">Logarithmische Preisachse</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Werkzeuge rechts: Ansicht, Verlauf, Export, Ansichtswechsel -->
+        <div class="chart-controls cv-util">
+          <button type="button" class="chart-btn chart-btn--icon" id="reloadBtn" data-tip="Neu laden" aria-label="Neu laden">
+            <svg viewBox="0 0 20 20"><path d="M16.5 7A7 7 0 1 0 17 11"/><path d="M17 2v5h-5"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="fitBtn" data-tip="Zum aktuellen Kurs springen" aria-label="Ansicht zur&uuml;cksetzen">
+            <svg viewBox="0 0 20 20"><path d="M3 10h4M13 10h4M10 3v4M10 13v4"/><circle cx="10" cy="10" r="3"/></svg>
+          </button>
+          <span class="chart-sep"></span>
+          <button type="button" class="chart-btn chart-btn--icon" id="undoBtn" data-tip="R&uuml;ckg&auml;ngig &nbsp;Strg+Z" aria-label="R&uuml;ckg&auml;ngig" disabled>
+            <svg viewBox="0 0 20 20"><path d="M4 9h8a4 4 0 0 1 0 8h-3"/><path d="M7 5 3 9l4 4"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="redoBtn" data-tip="Wiederherstellen &nbsp;Strg+Y" aria-label="Wiederherstellen" disabled>
+            <svg viewBox="0 0 20 20"><path d="M16 9H8a4 4 0 0 0 0 8h3"/><path d="m13 5 4 4-4 4"/></svg>
+          </button>
+          <span class="chart-sep"></span>
+          <button type="button" class="chart-btn chart-btn--icon" id="shotBtn" data-tip="Chart als PNG speichern" aria-label="Screenshot">
+            <svg viewBox="0 0 20 20"><rect x="2" y="6" width="16" height="11" rx="2"/><circle cx="10" cy="11.5" r="3.2"/><path d="M7 6l1.4-2h3.2L13 6"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="musicModeBtn" data-tip="Musik-reaktiver Modus" aria-label="Musik-reaktiver Modus" aria-pressed="false">
+            <svg viewBox="0 0 20 20"><path d="M7 15V4l9-1.6V13"/><circle cx="5" cy="15.4" r="2.2"/><circle cx="14" cy="13.4" r="2.2"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon pro-only" id="helpBtn" data-tip="Hilfe &amp; Tastenk&uuml;rzel &nbsp;?" aria-label="Hilfe" aria-expanded="false">
+            <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/><path d="M7.8 7.6a2.3 2.3 0 1 1 2.9 2.6c-.5.2-.7.6-.7 1.1v.5"/><path d="M10 15h.01"/></svg>
+          </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="fsBtn" data-tip="Vollbild &nbsp;F11" aria-label="Vollbild">
+            <svg viewBox="0 0 20 20"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/></svg>
+          </button>
+          <span class="chart-sep"></span>
+          <button type="button" class="chart-btn chart-btn--icon" id="viewBtn" data-tip="Zur&uuml;ck zur 90er-Seite" aria-label="Ansicht wechseln">
+            <svg viewBox="0 0 20 20"><rect x="2" y="4" width="16" height="11" rx="1.5"/><path d="M7 18h6M10 15v3M5 7.5h10M5 10.5h6"/></svg>
+          </button>
+        </div>
+          </div><!-- /.cv-toolbar -->
+        </div><!-- /.cv-top -->
 
         <!-- Steuerung der Liquidations-Heatmap: taucht erst auf, wenn LIQ an ist -->
         <div class="chart-liqbar" id="liqBar" hidden>
@@ -474,57 +1118,55 @@
           <span class="liq-note">Modellrechnung aus Kurs&nbsp;+&nbsp;Volumen &mdash; keine echten Positionsdaten der B&ouml;rse.</span>
         </div>
 
-        <div class="chart-status" id="chartStatus" role="status" aria-live="polite"></div>
-
         <div class="chart-body">
           <div class="chart-vtoolbar" id="chartVToolbar" role="group" aria-label="Zeichenwerkzeuge">
-            <button type="button" data-tool="pan" class="active" title="Fadenkreuz: ziehen = scrollen, Mausrad = Zoom, Objekte anfassen (Taste A)" aria-label="Fadenkreuz">
+            <button type="button" data-tool="pan" class="active" data-tip="Fadenkreuz &nbsp;A&#10;ziehen = scrollen, Rad = Zoom" aria-label="Fadenkreuz">
               <svg viewBox="0 0 20 20"><path d="M10 1v6M10 13v6M1 10h6M13 10h6"/><circle cx="10" cy="10" r="2.2"/></svg>
             </button>
-            <button type="button" data-tool="line" title="Trendlinie (Taste T)" aria-label="Trendlinie">
+            <button type="button" data-tool="line" data-tip="Trendlinie &nbsp;T" aria-label="Trendlinie">
               <svg viewBox="0 0 20 20"><path d="M5.4 14.6 14.6 5.4"/><circle cx="4" cy="16" r="2"/><circle cx="16" cy="4" r="2"/></svg>
             </button>
-            <button type="button" data-tool="ray" title="Strahl: verl&auml;ngert sich bis zum Chartrand" aria-label="Strahl">
+            <button type="button" data-tool="ray" data-tip="Strahl&#10;verl&auml;ngert sich bis zum Chartrand" aria-label="Strahl">
               <svg viewBox="0 0 20 20"><path d="M4 16 17 3"/><circle cx="4" cy="16" r="2"/><path d="M12 3h5v5"/></svg>
             </button>
-            <button type="button" data-tool="hline" title="Horizontale Preislinie (Taste H)" aria-label="Horizontale Linie">
+            <button type="button" data-tool="hline" data-tip="Horizontale Preislinie &nbsp;H" aria-label="Horizontale Linie">
               <svg viewBox="0 0 20 20"><path d="M2 10h16"/><circle cx="10" cy="10" r="2.2"/></svg>
             </button>
-            <button type="button" data-tool="vline" title="Vertikale Zeitlinie (Taste V)" aria-label="Vertikale Linie">
+            <button type="button" data-tool="vline" data-tip="Vertikale Zeitlinie &nbsp;V" aria-label="Vertikale Linie">
               <svg viewBox="0 0 20 20"><path d="M10 2v16"/><circle cx="10" cy="10" r="2.2"/></svg>
             </button>
-            <button type="button" data-tool="arrow" title="Pfeil" aria-label="Pfeil">
+            <button type="button" data-tool="arrow" data-tip="Pfeil" aria-label="Pfeil">
               <svg viewBox="0 0 20 20"><path d="M3 17 16 4M9 4h7v7"/></svg>
             </button>
-            <button type="button" data-tool="fib" title="Fibonacci-Retracement (Taste F)" aria-label="Fibonacci">
+            <button type="button" data-tool="fib" data-tip="Fibonacci-Retracement &nbsp;F" aria-label="Fibonacci">
               <svg viewBox="0 0 20 20"><path d="M2 4h16M4 8h14M6 12h12M8 16h10"/></svg>
             </button>
-            <button type="button" data-tool="rect" title="Rechteck / Zone (Taste R)" aria-label="Rechteck">
+            <button type="button" data-tool="rect" data-tip="Rechteck / Zone &nbsp;R" aria-label="Rechteck">
               <svg viewBox="0 0 20 20"><rect x="3" y="5" width="14" height="10" rx="1"/></svg>
             </button>
-            <button type="button" data-tool="ellipse" title="Ellipse" aria-label="Ellipse">
+            <button type="button" data-tool="ellipse" data-tip="Ellipse" aria-label="Ellipse">
               <svg viewBox="0 0 20 20"><ellipse cx="10" cy="10" rx="7.5" ry="5"/></svg>
             </button>
-            <button type="button" data-tool="text" title="Textnotiz (Doppelklick zum Bearbeiten)" aria-label="Text">
+            <button type="button" data-tool="text" data-tip="Textnotiz&#10;Doppelklick zum Bearbeiten" aria-label="Text">
               <svg viewBox="0 0 20 20"><path d="M4 5h12M10 5v11M7.5 16h5"/></svg>
             </button>
-            <button type="button" data-tool="ruler" title="Lineal: Preis-, Prozent- und Zeitdifferenz messen (Taste M)" aria-label="Lineal">
+            <button type="button" data-tool="ruler" data-tip="Lineal &nbsp;M&#10;Preis-, Prozent- und Zeitdifferenz" aria-label="Lineal">
               <svg viewBox="0 0 20 20"><rect x="2" y="6" width="16" height="8" rx="1"/><path d="M6 6v3M10 6v4M14 6v3"/></svg>
             </button>
-            <button type="button" data-tool="brush" title="Freihand zeichnen (Taste B)" aria-label="Freihand">
+            <button type="button" data-tool="brush" data-tip="Freihand zeichnen &nbsp;B" aria-label="Freihand">
               <svg viewBox="0 0 20 20"><path d="m4 16 1.2-4L13 4.2 15.8 7 8 14.8z"/><path d="m11.5 5.7 2.8 2.8"/></svg>
             </button>
             <div class="chart-vtoolbar-sep"></div>
-            <button type="button" id="magnetBtn" title="Magnet: Punkte rasten an O/H/L/C der Kerze ein" aria-label="Magnet">
+            <button type="button" id="magnetBtn" data-tip="Magnet&#10;Punkte rasten an O/H/L/C ein" aria-label="Magnet">
               <svg viewBox="0 0 20 20"><path d="M5 3v7a5 5 0 0 0 10 0V3"/><path d="M5 8.5h4M11 8.5h4"/><path d="M5 3h4M11 3h4"/></svg>
             </button>
-            <button type="button" data-tool="eraser" title="Radiergummi: Klick auf eine Zeichnung entfernt sie (Taste X)" aria-label="Radiergummi">
+            <button type="button" data-tool="eraser" data-tip="Radiergummi &nbsp;X" aria-label="Radiergummi">
               <svg viewBox="0 0 20 20"><path d="M6 17h11"/><path d="m3.5 13.5 6-6 5 5-4 4h-5z"/><path d="m7 10 5 5"/></svg>
             </button>
-            <button type="button" id="lockBtn" title="Zeichnungen sperren (kein Bearbeiten/L&ouml;schen)" aria-label="Sperren">
+            <button type="button" id="lockBtn" data-tip="Zeichnungen sperren" aria-label="Sperren">
               <svg viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
             </button>
-            <button type="button" id="clearDrawBtn" title="Alle Zeichnungen dieses Symbols entfernen" aria-label="Alles l&ouml;schen">
+            <button type="button" id="clearDrawBtn" data-tip="Alle Zeichnungen entfernen" aria-label="Alles l&ouml;schen">
               <svg viewBox="0 0 20 20"><path d="M3.5 6h13M8 6V4h4v2M5.5 6l1 11h7l1-11"/><path d="M8.5 9v5M11.5 9v5"/></svg>
             </button>
           </div>
@@ -542,10 +1184,44 @@
           </div>
         </div>
 
-        <div class="chart-controls" style="margin-top:8px;">
-          <button type="button" class="chart-btn chart-btn--mini" id="musicModeBtn" title="Musik-reaktiven Modus ein/aus">&#127925; Musik-Reaktiv: AUS</button>
+        <!-- ══ Statuszeile ══ (in der klassischen Ansicht loest sich die
+             Huelle auf und die Meldung steht wieder als Zeile im Kasten) -->
+        <div class="cv-status">
+          <div class="chart-status" id="chartStatus" role="status" aria-live="polite"></div>
+          <span class="cv-status-tag" id="cvSource">Binance &middot; &ouml;ffentliche API</span>
+          <span class="cv-clock" id="cvClock">--:--:--</span>
         </div>
 
+        <!-- ══ Hilfe ══ Der lange Erklaertext wandert in eine Schublade:
+             im Pro-Modus soll die Flaeche dem Chart gehoeren, nicht einer
+             Textwand. Inhalt unveraendert, nur eingepackt. -->
+        <aside class="cv-help" id="cvHelp" aria-labelledby="cvHelpTitle" data-open="0">
+          <div class="cv-help-head">
+            <span id="cvHelpTitle">Bedienung &amp; Tastenk&uuml;rzel</span>
+            <button type="button" class="cv-help-close" id="cvHelpClose" aria-label="Hilfe schlie&szlig;en">
+              <svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></svg>
+            </button>
+          </div>
+          <div class="cv-help-body">
+            <!-- Schnellzugriff oben, damit man fuer "welche Taste war das
+                 nochmal" nicht durch den ganzen Fliesstext scrollen muss.
+                 Nur in der Pro-Ansicht -- klassisch steht alles im Text. -->
+            <dl class="cv-keys pro-only">
+              <dt><kbd>S</kbd></dt><dd>Symbol suchen</dd>
+              <dt><kbd>A</kbd></dt><dd>Fadenkreuz</dd>
+              <dt><kbd>T</kbd></dt><dd>Trendlinie</dd>
+              <dt><kbd>H</kbd> <kbd>V</kbd></dt><dd>Preis- / Zeitlinie</dd>
+              <dt><kbd>R</kbd></dt><dd>Rechteck</dd>
+              <dt><kbd>F</kbd></dt><dd>Fibonacci</dd>
+              <dt><kbd>M</kbd></dt><dd>Lineal</dd>
+              <dt><kbd>B</kbd></dt><dd>Freihand</dd>
+              <dt><kbd>X</kbd></dt><dd>Radiergummi</dd>
+              <dt><kbd>L</kbd></dt><dd>Log-Achse</dd>
+              <dt><kbd>Entf</kbd></dt><dd>Objekt l&ouml;schen</dd>
+              <dt><kbd>Esc</kbd></dt><dd>Abbrechen / schlie&szlig;en</dd>
+              <dt><kbd>Strg</kbd>+<kbd>Z</kbd></dt><dd>R&uuml;ckg&auml;ngig</dd>
+              <dt><kbd>?</kbd></dt><dd>Diese Hilfe</dd>
+            </dl>
         <p class="chart-hint" id="chartHint">
           Kerzendaten von Binance (&ouml;ffentliche API, keine Anmeldung) &mdash; Historie per REST, laufende Kerze per
           WebSocket in Echtzeit (&bdquo;LIVE&ldquo; oben rechts).
@@ -597,6 +1273,8 @@
           Fibonacci-Retracement pulsiert jede Ebene mit ihrem eigenen Frequenzband &mdash; Lage und Werte bleiben
           dabei unangetastet, abgelesen wird wie immer.
         </p>
+          </div><!-- /.cv-help-body -->
+        </aside>
       </div>
     </section>
 
@@ -810,10 +1488,36 @@
           upLine: 'rgba(38,166,154,0.6)', dnLine: 'rgba(239,83,80,0.6)',
           area0: 'rgba(38,166,154,0.22)', area1: 'rgba(38,166,154,0)',
           upH: 172, dnH: 1, satS: 58, ligS: 50, satF: 58, ligF: 43
+        },
+        // Pro-Ansicht: die Palette eines Handelsterminals. Fast schwarzer
+        // Blaugrund, Gitter knapp ueber der Sichtbarkeitsgrenze, Text in
+        // zwei Grauwerten -- damit im Bild nur die Kerzen Farbe haben.
+        // Muss zu den --cv-*-Variablen im zweiten <style>-Block passen.
+        pro: {
+          font: '-apple-system, "Segoe UI", Roboto, system-ui, sans-serif',
+          bg0: '#131722', bg1: '#131722',
+          grid: 'rgba(255,255,255,0.055)', gridV: 'rgba(255,255,255,0.04)',
+          axisBg: 'rgba(255,255,255,0.014)', axisLine: '#242936',
+          axisTxt: '#b7c0d4', axisTxt2: '#8b93a7',
+          panelTxt: '#8b93a7', panelAxisTxt: '#8b93a7',
+          panelSep: 'rgba(255,255,255,0.07)',
+          boxBg: 'rgba(19,23,34,0.88)', boxBg2: 'rgba(19,23,34,0.93)',
+          accent: '#2e6bff', accentTxt: '#fff', warn: '#e8b33a',
+          cross: 'rgba(255,255,255,0.30)', crossBg: '#2e6bff',
+          glowRGB: '46,107,255', glowRGB2: '34,197,139', liqA: 0.82,
+          tipBg: 'rgba(28,33,48,0.97)', tipBorder: '#3a4256',
+          up: '#22c58b', dn: '#e0405e',
+          upFill: 'rgba(34,197,139,0.45)', dnFill: 'rgba(224,64,94,0.45)',
+          upLine: 'rgba(34,197,139,0.60)', dnLine: 'rgba(224,64,94,0.60)',
+          area0: 'rgba(34,197,139,0.20)', area1: 'rgba(34,197,139,0)',
+          upH: 158, dnH: 348, satS: 70, ligS: 48, satF: 72, ligF: 45
         }
       };
+      // Die Pro-Ansicht bringt ihre eigene Leinwandfarbe mit und ueber-
+      // stimmt darum die retro/clean-Wahl aus dem Werkzeugkasten.
       const themeName = () =>
-        document.documentElement.getAttribute('data-theme') === 'clean' ? 'clean' : 'retro';
+        document.documentElement.getAttribute('data-view') === 'pro' ? 'pro'
+          : document.documentElement.getAttribute('data-theme') === 'clean' ? 'clean' : 'retro';
       let TH = CANVAS_THEMES[themeName()];
 
       // --- Einstellungen dauerhaft merken -------------------------------
@@ -2175,11 +2879,19 @@
         const KEY = 'glappa-tools-theme';
         const btn = $('themeBtn');
         function refresh() {
-          const clean = themeName() === 'clean';
-          TH = CANVAS_THEMES[clean ? 'clean' : 'retro'];
+          const clean = document.documentElement.getAttribute('data-theme') === 'clean';
+          TH = CANVAS_THEMES[themeName()] || CANVAS_THEMES.retro;
           btn.innerHTML = clean ? '&#9733; 90er-Modus' : '&#9679; Schlicht-Modus';
           btn.setAttribute('aria-pressed', clean ? 'true' : 'false');
         }
+        // Der Ansichtswechsel (pro <-> classic) sitzt weiter unten in einem
+        // eigenen Block; er meldet sich hier, weil nur diese Closure an TH
+        // herankommt.
+        window.addEventListener('glappa:viewchange', () => {
+          refresh();
+          fitCanvas();
+          lastHeader = '';   // Kurszeile neu schreiben: der Zusatz
+        });                  // "(Sichtfenster)" haengt an der Ansicht
         btn.addEventListener('click', () => {
           const next = themeName() === 'clean' ? 'retro' : 'clean';
           document.documentElement.setAttribute('data-theme', next);
@@ -2226,7 +2938,15 @@
 
       fsBtn.addEventListener('click', () => {
         if (document.fullscreenElement) document.exitFullscreen();
-        else panelEl.requestFullscreen && panelEl.requestFullscreen().catch(() => {});
+        else {
+          // In der Pro-Ansicht fuellt die Seite ohnehin den Viewport --
+          // dann geht das GANZE Dokument ins Vollbild, sonst blieben
+          // Schublade, Player und Symbol-Suche (Kinder von <body>) aussen
+          // vor. Klassisch bleibt es bei der Karte allein.
+          const target = document.documentElement.getAttribute('data-view') === 'pro'
+            ? document.documentElement : panelEl;
+          target.requestFullscreen && target.requestFullscreen().catch(() => {});
+        }
       });
       document.addEventListener('fullscreenchange', () => setTimeout(fitCanvas, 60));
 
@@ -2251,7 +2971,10 @@
       function applyMusicMode() {
         playerSection.hidden = !musicMode;
         musicModeBtn.classList.toggle('active', musicMode);
-        musicModeBtn.innerHTML = musicMode ? '&#127925; Musik-Reaktiv: AN' : '&#127925; Musik-Reaktiv: AUS';
+        // Der Knopf ist jetzt ein Symbol in der Kopfleiste -- Zustand steht
+        // im Tooltip und in aria-pressed, sein Inhalt bleibt unangetastet.
+        musicModeBtn.setAttribute('aria-pressed', musicMode ? 'true' : 'false');
+        musicModeBtn.setAttribute('data-tip', musicMode ? 'Musik-reaktiv: AN' : 'Musik-reaktiv: AUS');
         if (!musicMode) {
           panelEl.style.boxShadow = '';
           bassEnv = 0; beatFlash = 0; midSm = 0; trebSm = 0; totalSm = 0;
@@ -3404,7 +4127,13 @@
         if (head !== lastHeader) {
           lastHeader = head;
           priceEl.textContent = fmtCurrency(lastC);
-          chgEl.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(2) + '% (Sichtfenster)';
+          // In der Pro-Leiste steht nur die Zahl -- der Zusatz
+          // "(Sichtfenster)" kostet dort 100 px und steht ohnehin im
+          // Tooltip. Klassisch bleibt die ausgeschriebene Fassung.
+          const pctTxt = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct).toFixed(2) + '%';
+          const proView = document.documentElement.getAttribute('data-view') === 'pro';
+          chgEl.textContent = pctTxt + (proView ? '' : ' (Sichtfenster)');
+          chgEl.setAttribute('data-tip', 'Veränderung im sichtbaren Ausschnitt');
           chgEl.className = pct >= 0 ? 'chg-up' : 'chg-down';
         }
 
@@ -3769,6 +4498,291 @@
         },
         png() { return canvas.toDataURL('image/png'); }
       };
+    })();
+  </script>
+
+  <!-- ══ Symbol-Suche ══════════════════════════════════════════════════
+       Ersetzt in der Pro-Ansicht das Auswahlfeld. Das <select> bleibt im
+       DOM und behaelt den Wert -- der Dialog setzt ihn nur und loest das
+       normale change-Ereignis aus, die Ladelogik bleibt unangetastet. -->
+  <div class="cv-modal" id="symbolModal" hidden role="dialog" aria-modal="true" aria-label="Handelspaar suchen">
+    <div class="cv-modal-card">
+      <div class="cv-modal-search">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.8" cy="8.8" r="5.8"/><path d="m13.2 13.2 4.3 4.3"/></svg>
+        <input type="text" id="symbolSearch" placeholder="Symbol suchen &mdash; BTC, SOL, PEPEUSDT&hellip;"
+               autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Symbol suchen">
+      </div>
+      <div class="cv-modal-list" id="symbolList" role="listbox" aria-label="Handelspaare"></div>
+      <div class="cv-modal-foot">
+        <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd> w&auml;hlen</span>
+        <span><kbd>Enter</kbd> laden</span>
+        <span><kbd>Esc</kbd> schlie&szlig;en</span>
+        <span>jedes Binance-Paar eintippbar</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ══════════════════════════════════════════════════════════════════
+       Pro-Ansicht: Bedienteile, die es in der 90er-Fassung nicht gab.
+       Bewusst ein eigener Block NACH der Chart-Engine -- er fasst deren
+       Interna nicht an, sondern nur DOM-Elemente ueber ihre IDs. Der
+       Ansichtswechsel meldet sich per Ereignis 'glappa:viewchange' bei
+       der Engine, damit die Leinwandfarben mitwechseln.
+       ══════════════════════════════════════════════════════════════════ */
+    (function () {
+      const $ = id => document.getElementById(id);
+      const root = document.documentElement;
+
+      // ── Ansicht: pro (Arbeitsflaeche) <-> classic (90er-Seite) ───────
+      const VIEW_KEY = 'glappa-chartvis-view';
+      const viewBtn  = $('viewBtn');
+      const viewName = () => root.getAttribute('data-view') === 'classic' ? 'classic' : 'pro';
+
+      function refreshViewBtn() {
+        const pro = viewName() === 'pro';
+        // setAttribute schreibt roh -- hier also echte Zeichen, keine
+        // HTML-Entities wie im Markup.
+        viewBtn.setAttribute('data-tip', pro ? 'Zurück zur 90er-Seite' : 'Pro-Ansicht (Vollbild)');
+        viewBtn.setAttribute('aria-pressed', pro ? 'true' : 'false');
+      }
+      viewBtn.addEventListener('click', () => {
+        const next = viewName() === 'pro' ? 'classic' : 'pro';
+        root.setAttribute('data-view', next);
+        try { localStorage.setItem(VIEW_KEY, next); } catch (e) {}
+        if (next === 'classic') closeHelp();
+        refreshViewBtn();
+        // Die Engine haengt an diesem Ereignis: Farbtabelle tauschen und
+        // die Leinwand neu vermessen (die Karte ist jetzt anders gross).
+        window.dispatchEvent(new Event('glappa:viewchange'));
+      });
+      refreshViewBtn();
+
+      // Hoehe der Kopfleiste als CSS-Variable nachfuehren -- sie bricht
+      // auf schmalen Fenstern um, und Schublade wie Popover richten sich
+      // danach aus.
+      const topEl = document.querySelector('.cv-top'), panelEl = $('chartPanel');
+      function syncTopH() { panelEl.style.setProperty('--cv-top-h', topEl.offsetHeight + 'px'); }
+      syncTopH();
+      window.addEventListener('resize', syncTopH);
+      window.addEventListener('load', syncTopH);
+      if (window.ResizeObserver) new ResizeObserver(syncTopH).observe(topEl);
+
+      // ── Hilfe-Schublade ──────────────────────────────────────────────
+      const helpEl = $('cvHelp'), helpBtn = $('helpBtn');
+      const helpOpen = () => helpEl.getAttribute('data-open') === '1';
+      function setHelp(on) {
+        if (on) syncTopH();   // Kopfleiste kann inzwischen umgebrochen sein
+        helpEl.setAttribute('data-open', on ? '1' : '0');
+        helpBtn.classList.toggle('active', on);
+        helpBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      }
+      function closeHelp() { setHelp(false); }
+      helpBtn.addEventListener('click', () => setHelp(!helpOpen()));
+      $('cvHelpClose').addEventListener('click', closeHelp);
+
+      // ── Aufklapp-Menues (Diagrammtyp, Indikatoren) ───────────────────
+      // Die Knoepfe darin sind dieselben Elemente wie vorher in der Leiste;
+      // die Engine haengt an ihnen und merkt vom Umzug nichts. Hier wird
+      // nur auf- und zugeklappt und der Knopftext nachgefuehrt.
+      const menus = [...document.querySelectorAll('.cv-menu')];
+      function closeMenus(except) {
+        menus.forEach(m => {
+          if (m === except) return;
+          m.dataset.open = '0';
+          m.querySelector('.cv-menu-btn').setAttribute('aria-expanded', 'false');
+        });
+      }
+      menus.forEach(m => {
+        const btn = m.querySelector('.cv-menu-btn');
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const open = m.dataset.open !== '1';
+          closeMenus(m);
+          m.dataset.open = open ? '1' : '0';
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        // Klicks im Menue duerfen nicht bis zum document-Handler unten
+        // durchsacken -- der schliesst alles. Diagrammtyp ist eine
+        // Entweder-oder-Wahl und schliesst deshalb von selbst; Indikatoren
+        // sind Schalter und bleiben offen, man legt oft zwei, drei um.
+        m.querySelector('.cv-menu-pop').addEventListener('click', e => {
+          e.stopPropagation();
+          if (m.id === 'typeMenu') closeMenus(null);
+        });
+      });
+      document.addEventListener('click', () => closeMenus(null));
+
+      // Knopfbeschriftung bzw. Zaehler folgen dem Zustand der Knoepfe --
+      // die setzt die Engine selbst (auch beim Wiederherstellen der
+      // gespeicherten Einstellungen), deshalb wird beobachtet statt geraten.
+      const typeLabel = $('typeMenuLabel');
+      const typeGroup = document.querySelector('.chart-type-group');
+      function syncType() {
+        const on = typeGroup.querySelector('.chart-seg-btn.active');
+        if (on) typeLabel.textContent = on.textContent;
+      }
+      const indBtns  = [...document.querySelectorAll('[data-ind]')];
+      const indCount = $('indCount'), indMenuBtn = $('indMenuBtn');
+      function syncInd() {
+        const n = indBtns.filter(b => b.classList.contains('active')).length;
+        indCount.hidden = n === 0;
+        indCount.textContent = n;
+        indMenuBtn.classList.toggle('active', n > 0);
+      }
+      const watch = { attributes: true, attributeFilter: ['class'], subtree: true };
+      new MutationObserver(syncType).observe(typeGroup, watch);
+      new MutationObserver(syncInd).observe($('indMenu'), watch);
+      syncType(); syncInd();
+
+      // ── Uhr in der Statuszeile ───────────────────────────────────────
+      // Boersendaten ohne sichtbare Zeit sind unangenehm -- die Zeitachse
+      // zeigt Ortszeit, also zeigt die Zeile dieselbe Uhr dazu.
+      const clockEl = $('cvClock');
+      const zone = (() => {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) { return ''; }
+      })();
+      if (zone) clockEl.title = zone;
+      (function tick() {
+        const d = new Date();
+        const p = n => String(n).padStart(2, '0');
+        clockEl.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+        setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
+      })();
+
+      // ── Symbol-Chip: Kuerzel im Kreis aus dem Titel ableiten ─────────
+      // Die Engine schreibt den Namen weiter in #coinTitle; das Abzeichen
+      // liest einfach mit, statt eine zweite Quelle zu pflegen.
+      const badge = $('symbolBadge'), coinTitle = $('coinTitle');
+      function syncBadge() {
+        const m = /\(([A-Z0-9]{1,6})\//.exec(coinTitle.textContent || '');
+        const raw = m ? m[1] : (coinTitle.textContent || '?').trim();
+        badge.textContent = raw.slice(0, 2).toUpperCase() || '?';
+      }
+      new MutationObserver(syncBadge).observe(coinTitle, { childList: true, characterData: true, subtree: true });
+      syncBadge();
+
+      // ── Symbol-Suche ─────────────────────────────────────────────────
+      const modal    = $('symbolModal');
+      const search   = $('symbolSearch');
+      const listEl   = $('symbolList');
+      const symBtn   = $('symbolBtn');
+      const selectEl = $('symbolSelect');
+      const customEl = $('symbolCustom');
+
+      // Die Liste kommt aus dem <select> -- eine Quelle, keine Kopie, die
+      // beim Ergaenzen eines Paares vergessen werden koennte.
+      const PAIRS = [...selectEl.options]
+        .filter(o => o.value !== '__custom')
+        .map(o => ({ value: o.value, label: o.textContent.replace(/^[^A-Za-z0-9]+/, '').trim() }));
+
+      let cursor = 0, shown = [];
+
+      function render(q) {
+        const needle = q.trim().toUpperCase();
+        shown = PAIRS.filter(p => !needle ||
+          p.value.includes(needle) || p.label.toUpperCase().includes(needle));
+        // Freitext: alles, was nach einem Binance-Paar aussieht, laesst
+        // sich direkt laden -- auch wenn es nicht in der Liste steht.
+        const isNew = needle.length >= 5 && /^[A-Z0-9]+$/.test(needle) &&
+          !shown.some(p => p.value === needle);
+        if (isNew) shown = [{ value: needle, label: needle + ' — direkt laden', custom: true }, ...shown];
+        cursor = 0;
+
+        listEl.innerHTML = '';
+        if (!shown.length) {
+          const em = document.createElement('div');
+          em.className = 'cv-opt';
+          em.style.color = '#5d6577';
+          em.textContent = 'Nichts gefunden — vollständiges Paar eintippen, z.B. PEPEUSDT';
+          listEl.appendChild(em);
+          return;
+        }
+        shown.forEach((p, i) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'cv-opt';
+          b.setAttribute('role', 'option');
+          if (i === cursor) b.dataset.cursor = '1';
+          b.innerHTML =
+            '<span class="cv-opt-badge"></span>' +
+            '<span class="cv-opt-name"></span>' +
+            '<span class="cv-opt-tick"></span>';
+          b.querySelector('.cv-opt-badge').textContent = p.value.slice(0, 2);
+          b.querySelector('.cv-opt-name').textContent  = p.label;
+          b.querySelector('.cv-opt-tick').textContent  = p.value;
+          b.addEventListener('click', () => choose(p));
+          listEl.appendChild(b);
+        });
+      }
+
+      function moveCursor(step) {
+        const items = [...listEl.querySelectorAll('.cv-opt[role="option"]')];
+        if (!items.length) return;
+        items[cursor] && delete items[cursor].dataset.cursor;
+        cursor = (cursor + step + items.length) % items.length;
+        items[cursor].dataset.cursor = '1';
+        items[cursor].scrollIntoView({ block: 'nearest' });
+      }
+
+      // Laden laeuft ueber die vorhandenen Bedienelemente: Wert setzen,
+      // change ausloesen. Fuer freie Symbole zusaetzlich das Textfeld
+      // fuellen und dort Enter simulieren -- genau der Weg, den die
+      // Engine ohnehin kennt.
+      function choose(p) {
+        closeModal();
+        const known = PAIRS.some(x => x.value === p.value);
+        if (known) {
+          selectEl.value = p.value;
+          selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+          selectEl.value = '__custom';
+          selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+          customEl.value = p.value;
+          customEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        }
+      }
+
+      let lastFocus = null;
+      function openModal() {
+        lastFocus = document.activeElement;
+        modal.hidden = false;
+        search.value = '';
+        render('');
+        search.focus();
+      }
+      function closeModal() {
+        if (modal.hidden) return;
+        modal.hidden = true;
+        if (lastFocus && lastFocus.focus) lastFocus.focus();
+      }
+
+      symBtn.addEventListener('click', openModal);
+      search.addEventListener('input', () => render(search.value));
+      search.addEventListener('keydown', e => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); moveCursor(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); moveCursor(-1); }
+        else if (e.key === 'Enter')  { e.preventDefault(); if (shown[cursor]) choose(shown[cursor]); }
+      });
+      modal.addEventListener('mousedown', e => { if (e.target === modal) closeModal(); });
+
+      // ── Tastenkuerzel ────────────────────────────────────────────────
+      // Capture-Phase, damit Esc hier zuerst ankommt: die Engine wuerde
+      // sonst nur die laufende Zeichnung abbrechen und der Dialog bliebe
+      // offen stehen.
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          if (!modal.hidden)   { e.stopPropagation(); closeModal(); return; }
+          if (menus.some(m => m.dataset.open === '1')) { e.stopPropagation(); closeMenus(null); return; }
+          if (helpOpen())      { e.stopPropagation(); closeHelp();  return; }
+          return;
+        }
+        const ae = document.activeElement;
+        if (ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === 's' || e.key === 'S' || e.key === '/') { e.preventDefault(); openModal(); }
+        else if (e.key === '?' || e.key === 'F1') { e.preventDefault(); setHelp(!helpOpen()); }
+      }, true);
     })();
   </script>
 </body>
