@@ -633,6 +633,95 @@
       font-size: 12px; color: var(--cv-txt-2);
       backdrop-filter: blur(6px);
     }
+    /* Heim-Knopf: ein <a>, damit Mittelklick und "in neuem Tab oeffnen"
+       funktionieren -- als <button> mit location.href waere beides weg.
+       Er muss dafuer nur wie die anderen Icon-Knoepfe aussehen. */
+    .cv-home { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+    html[data-view="pro"] .cv-home, html[data-view="pro"] .cv-home:visited { color: var(--cv-txt-2); }
+    html[data-view="pro"] .cv-home:hover { color: var(--cv-txt); }
+    html[data-view="classic"] .cv-home:visited { color: var(--neon-yellow); }
+
+    /* ══ Marktbild ════════════════════════════════════════════════════ */
+    /* Schwebende Karte oben rechts, unter der Leiste. Bewusst schmal und
+       ohne eigene Bedienelemente -- sie wird gelesen, nicht bedient. */
+    html[data-view="pro"] .cv-read {
+      position: absolute; z-index: 15; top: calc(var(--cv-top-h, 46px) + 10px); right: 12px;
+      width: min(310px, calc(100vw - 24px)); max-height: calc(100% - var(--cv-top-h, 46px) - 48px);
+      display: flex; flex-direction: column;
+      background: rgba(22,26,37,0.97); border: 1px solid var(--cv-line-2);
+      border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px); font-size: 12px; color: var(--cv-txt-2);
+    }
+    html[data-view="pro"] .cv-read[hidden] { display: none; }
+    html[data-view="pro"] .cv-read-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 10px 7px 12px; border-bottom: 1px solid var(--cv-line);
+    }
+    html[data-view="pro"] .cv-read-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--cv-txt);
+    }
+    html[data-view="pro"] .cv-read-close {
+      background: none; border: 0; color: var(--cv-txt-3); cursor: pointer;
+      padding: 3px; border-radius: 4px; line-height: 0;
+    }
+    html[data-view="pro"] .cv-read-close:hover { background: var(--cv-elev); color: var(--cv-txt); }
+    html[data-view="pro"] .cv-read-close svg {
+      width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;
+    }
+    html[data-view="pro"] .cv-read-body { overflow-y: auto; padding: 10px 12px 4px; }
+    html[data-view="pro"] .cv-read-foot {
+      margin: 0; padding: 8px 12px 10px; border-top: 1px solid var(--cv-line);
+      font-size: 10px; line-height: 1.5; color: var(--cv-txt-3);
+    }
+    html[data-view="pro"] .cv-read-foot strong { color: var(--cv-txt-2); }
+    /* Ergebniszeile */
+    .cv-read-verdict { display: flex; align-items: baseline; gap: 8px; margin: 0 0 3px; }
+    .cv-read-verdict b { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+    .cv-read-verdict span { font-size: 11px; color: var(--cv-txt-3); }
+    .cv-read-scale {
+      position: relative; height: 6px; border-radius: 3px; margin: 6px 0 4px;
+      background: linear-gradient(90deg, var(--cv-down) 0%, #4a5163 50%, var(--cv-up) 100%);
+      opacity: 0.55;
+    }
+    .cv-read-scale i {
+      position: absolute; top: -3px; width: 2px; height: 12px; border-radius: 1px;
+      background: #fff; box-shadow: 0 0 5px rgba(0,0,0,0.8); transform: translateX(-1px);
+    }
+    .cv-read-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--cv-txt-3); }
+    /* Abschnitte */
+    .cv-read-h {
+      margin: 13px 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+      text-transform: uppercase; color: var(--cv-txt-3);
+    }
+    /* Liquiditaet nach Richtung */
+    .cv-read-liq { display: flex; flex-direction: column; gap: 6px; }
+    .cv-read-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: baseline; }
+    .cv-read-row .k { color: var(--cv-txt-2); }
+    .cv-read-row .v { font-family: var(--cv-mono); color: var(--cv-txt); white-space: nowrap; }
+    .cv-read-bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--cv-elev); overflow: hidden; }
+    .cv-read-bar i { display: block; height: 100%; border-radius: 3px; }
+    .cv-read-note { margin: 7px 0 0; font-size: 11px; line-height: 1.5; color: var(--cv-txt-2); }
+    .cv-read-note strong { color: var(--cv-txt); }
+    .cv-read-link {
+      background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+      color: var(--cv-accent-2); text-decoration: underline;
+    }
+    /* Signalliste */
+    .cv-read-sig { display: flex; flex-direction: column; gap: 7px; }
+    .cv-read-sig > div { display: grid; grid-template-columns: 1fr 46px; gap: 1px 8px; align-items: center; }
+    .cv-read-sig .k { font-size: 11px; color: var(--cv-txt); }
+    .cv-read-sig .n { grid-column: 1 / -1; font-size: 10px; line-height: 1.45; color: var(--cv-txt-3); }
+    .cv-read-mini { position: relative; height: 5px; border-radius: 3px; background: var(--cv-elev); }
+    .cv-read-mini i { position: absolute; top: 0; height: 100%; border-radius: 3px; }
+    .cv-read-mini u { position: absolute; top: -2px; left: 50%; width: 1px; height: 9px; background: var(--cv-line-2); }
+    /* In der klassischen Ansicht bleibt die Karte eine normale Box im Fluss */
+    html[data-view="classic"] .cv-read {
+      max-width: 1040px; margin: 14px auto; padding: 12px 16px;
+      border: 2px ridge var(--neon-cyan); background: rgba(6,8,16,0.9);
+    }
+    html[data-view="classic"] .cv-read-close { display: none; }
+
     /* Muss NACH der Regel darueber stehen und sie an Spezifitaet schlagen:
        das display:flex oben ist staerker als .chart-liqbar[hidden] weiter
        vorn und wuerde die Karte sonst auch bei ausgeschalteter Heatmap
@@ -851,8 +940,16 @@
            blieben die Karten dauerhaft blass und waeren kaum bedienbar. */
     @media (hover: hover) {
       html[data-view="pro"] .chart-liqbar,
+      html[data-view="pro"] .cv-read,
       html[data-view="pro"] .player {
         transition: opacity 0.13s ease, box-shadow 0.13s ease, backdrop-filter 0.13s ease;
+      }
+      /* Das Marktbild verblasst weniger stark als die beiden anderen: es
+         ist zum LESEN da, man soll auf einen Blick sehen, ob dort gerade
+         "aufwaerts" oder "abwaerts" steht, ohne erst hinzufahren. */
+      html[data-view="pro"] .cv-read:not(:hover):not(:focus-within) {
+        opacity: 0.5; box-shadow: none; backdrop-filter: none;
+        transition: opacity 0.4s ease 0.3s, box-shadow 0.4s ease 0.3s, backdrop-filter 0.4s ease 0.3s;
       }
       html[data-view="pro"] .chart-liqbar:not(:hover):not(:focus-within),
       html[data-view="pro"] .player-section:not(:hover):not(:focus-within) .player {
@@ -1108,6 +1205,9 @@
           <button type="button" class="chart-btn chart-btn--icon" id="musicModeBtn" data-tip="Musik-reaktiver Modus" aria-label="Musik-reaktiver Modus" aria-pressed="false">
             <svg viewBox="0 0 20 20"><path d="M7 15V4l9-1.6V13"/><circle cx="5" cy="15.4" r="2.2"/><circle cx="14" cy="13.4" r="2.2"/></svg>
           </button>
+          <button type="button" class="chart-btn chart-btn--icon" id="readBtn" data-tip="Marktbild: Liquidit&auml;t nach Richtung &amp; Indikatorlage" aria-label="Marktbild" aria-pressed="false">
+            <svg viewBox="0 0 20 20"><path d="M3 13a7 7 0 0 1 14 0"/><path d="M10 13 13.5 8.5"/><circle cx="10" cy="13" r="1.1"/></svg>
+          </button>
           <button type="button" class="chart-btn chart-btn--icon pro-only" id="helpBtn" data-tip="Hilfe &amp; Tastenk&uuml;rzel &nbsp;?" aria-label="Hilfe" aria-expanded="false">
             <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/><path d="M7.8 7.6a2.3 2.3 0 1 1 2.9 2.6c-.5.2-.7.6-.7 1.1v.5"/><path d="M10 15h.01"/></svg>
           </button>
@@ -1115,12 +1215,49 @@
             <svg viewBox="0 0 20 20"><path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4"/></svg>
           </button>
           <span class="chart-sep"></span>
-          <button type="button" class="chart-btn chart-btn--icon" id="viewBtn" data-tip="Zur&uuml;ck zur 90er-Seite" aria-label="Ansicht wechseln">
-            <svg viewBox="0 0 20 20"><rect x="2" y="4" width="16" height="11" rx="1.5"/><path d="M7 18h6M10 15v3M5 7.5h10M5 10.5h6"/></svg>
-          </button>
+          <!-- Ansicht: drei Stile direkt erreichbar statt "erst zurueck zur
+               alten Seite, dort dann umschalten". data-view trennt Pro von
+               der Bastelseite, data-theme trennt dort 90er von schlicht --
+               das Menue setzt beides in einem Rutsch. -->
+          <div class="cv-menu" id="viewMenu" data-open="0">
+            <button type="button" class="chart-btn cv-menu-btn chart-btn--icon" id="viewBtn"
+                    aria-haspopup="true" aria-expanded="false" data-tip="Ansicht &amp; Stil">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="4" width="16" height="11" rx="1.5"/><path d="M7 18h6M10 15v3"/></svg>
+              <svg class="cv-caret" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg>
+            </button>
+            <div class="cv-menu-pop">
+              <div class="chart-seg-group cv-view-group" role="group" aria-label="Ansicht">
+                <button type="button" class="chart-seg-btn" data-viewmode="pro">Pro (Vollbild)</button>
+                <button type="button" class="chart-seg-btn" data-viewmode="retro">90er-Stil</button>
+                <button type="button" class="chart-seg-btn" data-viewmode="clean">Schlicht</button>
+              </div>
+            </div>
+          </div>
+          <a class="chart-btn chart-btn--icon cv-home" id="homeBtn" href="../index.html"
+             data-tip="Zur&uuml;ck zu Glappa" aria-label="Zur&uuml;ck zur Startseite">
+            <svg viewBox="0 0 20 20"><path d="M3 9.5 10 3.5l7 6"/><path d="M5 8.8V16h10V8.8"/><path d="M8.4 16v-4h3.2v4"/></svg>
+          </a>
         </div>
           </div><!-- /.cv-toolbar -->
         </div><!-- /.cv-top -->
+
+        <!-- Marktbild: beantwortet zwei Fragen, die man sonst aus der
+             Heatmap heraussuchen muesste -- wie viel Liquidation liegt
+             ueber und wie viel unter dem Kurs, und was sagen die
+             Indikatoren zusammengenommen. Inhalt kommt aus dem Skript. -->
+        <div class="cv-read" id="readPanel" hidden>
+          <div class="cv-read-head">
+            <span class="cv-read-title">Marktbild</span>
+            <button type="button" class="cv-read-close" id="readClose" aria-label="Marktbild schlie&szlig;en">
+              <svg viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></svg>
+            </button>
+          </div>
+          <div class="cv-read-body" id="readBody"></div>
+          <p class="cv-read-foot">
+            Mechanische Auswertung der angezeigten Daten &mdash; <strong>keine Prognose</strong> und keine
+            Anlageberatung. Die Liquidationszahlen sind eine Modellrechnung aus Kurs und Volumen.
+          </p>
+        </div>
 
         <!-- Steuerung der Liquidations-Heatmap: taucht erst auf, wenn LIQ an ist -->
         <div class="chart-liqbar" id="liqBar" hidden>
@@ -2185,6 +2322,125 @@
         return picks;
       }
 
+      // ── Wie viel Liquidation liegt in welcher Richtung? ────────────────
+      // Die letzte Spalte der Heatmap ist der Stand JETZT: alles, was noch
+      // offen ist. Was UEBER dem Kurs liegt, sind Short-Liquidationen (die
+      // platzen, wenn es steigt), was DARUNTER liegt, Long-Liquidationen.
+      // Das Uebergewicht sagt, auf welcher Seite mehr Brennstoff liegt --
+      // ausgeloeste Liquidationen kaufen bzw. verkaufen selbst und ziehen
+      // den Kurs weiter in ihre Richtung.
+      function liqBalance(map, price) {
+        if (!map) return null;
+        const off = (map.cols - 1) * map.rows;
+        const b0 = map.binOf(price);
+        let above = 0, below = 0;
+        for (let b = 0; b < map.rows; b++) {
+          const v = map.grid[off + b];
+          if (!(v > 0)) continue;
+          if (b > b0) above += v; else if (b < b0) below += v;
+        }
+        const total = above + below;
+        return { above, below, total, share: total > 0 ? above / total : 0.5 };
+      }
+
+      // ── Marktbild: mechanische Auswertung der vorhandenen Daten ────────
+      // WICHTIG, auch im Text der Karte so gesagt: das ist KEINE Prognose.
+      // Es ist die zusammengefasste Aussage der Indikatoren, die ohnehin
+      // schon auf dem Schirm sind -- so wie das "Technical Rating" bei den
+      // grossen Anbietern. Maerkte sind auf kurze Sicht nicht vorhersagbar;
+      // die Zahl beschreibt die aktuelle LAGE, nicht die Zukunft.
+      //
+      // Jedes Signal liefert einen Wert in [-1, +1] (minus = abwaerts) und
+      // hat ein Gewicht. Das Ergebnis wird bewusst auf 25..75 % gestaucht:
+      // eine Anzeige mit "94 % aufwaerts" wuerde eine Treffsicherheit
+      // vortaeuschen, die eine Indikator-Summe nicht hat.
+      const clamp1 = v => Math.max(-1, Math.min(1, v));
+      function marketTendency() {
+        if (!candles.length) return null;
+        const n = candles.length, last = candles[n - 1], c = last.c;
+        const sig = [];
+        const add = (key, label, val, weight, note) => {
+          if (val == null || !isFinite(val)) return;
+          sig.push({ key, label, val: clamp1(val), weight, note });
+        };
+
+        // 1) Liquidations-Uebergewicht -- nur wenn die Heatmap gerechnet ist
+        const bal = liqBalance(liqMap, c);
+        if (bal && bal.total > 0) {
+          add('liq', 'Liquidations-Übergewicht', (bal.share - 0.5) * 2.6, 1.0,
+            bal.share >= 0.5
+              ? 'mehr offene Shorts über dem Kurs — platzen sie, wird gekauft'
+              : 'mehr offene Longs unter dem Kurs — platzen sie, wird verkauft');
+        }
+
+        // 2) Trend: MA20 gegen MA50, und wo der Kurs zu MA20 steht.
+        //    2 % Abstand gelten als voll ausgeschlagen.
+        if (ma20 && ma50 && ma20[n - 1] != null && ma50[n - 1] != null) {
+          const a = ma20[n - 1], b = ma50[n - 1];
+          const t = (clamp1(((a - b) / b) / 0.02) + clamp1(((c - a) / a) / 0.02)) / 2;
+          add('trend', 'Trend (MA20/MA50)', t, 1.0,
+            a >= b ? 'MA20 über MA50 — Aufwärtstrend' : 'MA20 unter MA50 — Abwärtstrend');
+        }
+
+        // 3) Momentum: MACD-Histogramm, gemessen an seinem eigenen Ausschlag
+        //    der letzten 100 Kerzen (absolute Werte sagen ohne Bezug nichts).
+        if (macd && macd.hist[n - 1] != null) {
+          let s = 0, k = 0;
+          for (let i = Math.max(0, n - 100); i < n; i++) {
+            const h = macd.hist[i]; if (h != null) { s += Math.abs(h); k++; }
+          }
+          const scale = k ? s / k : 0;
+          const h = macd.hist[n - 1];
+          if (scale > 0) add('macd', 'Momentum (MACD)', h / (scale * 1.5), 0.9,
+            h >= 0 ? 'Histogramm über null — Schwung nach oben' : 'Histogramm unter null — Schwung nach unten');
+        }
+
+        // 4) RSI als Rueckkehr zur Mitte: erst jenseits von 30/70 deutlich.
+        if (rsiData && rsiData[n - 1] != null) {
+          const r = rsiData[n - 1];
+          add('rsi', 'RSI (14)', -(r - 50) / 20, 0.7,
+            r >= 70 ? 'überkauft — Rücksetzer wahrscheinlicher'
+              : r <= 30 ? 'überverkauft — Gegenbewegung wahrscheinlicher'
+              : 'im neutralen Bereich');
+        }
+
+        // 5) Lage im Bollinger-Band (%B), ebenfalls Rueckkehr zur Mitte.
+        if (bb && bb.up[n - 1] != null && bb.lo[n - 1] != null) {
+          const u = bb.up[n - 1], l = bb.lo[n - 1];
+          if (u > l) {
+            const pctB = (c - l) / (u - l);
+            add('bb', 'Lage im Bollinger-Band', -(pctB - 0.5) * 2, 0.5,
+              pctB >= 0.9 ? 'am oberen Band' : pctB <= 0.1 ? 'am unteren Band' : 'zwischen den Bändern');
+          }
+        }
+
+        // 6) Kurzfrist-Drift: Bewegung der letzten 10 Kerzen, gemessen an
+        //    der eigenen Schwankungsbreite -- 1 % bei ruhigem Markt wiegt
+        //    schwerer als 1 % bei wildem.
+        if (n > 12) {
+          const back = candles[n - 11].c;
+          let s = 0, k = 0;
+          for (let i = Math.max(1, n - 30); i < n; i++) {
+            const pv = candles[i - 1].c; if (pv > 0) { s += Math.abs(candles[i].c / pv - 1); k++; }
+          }
+          const vol = k ? s / k : 0;
+          if (back > 0 && vol > 0)
+            add('drift', 'Drift (10 Kerzen)', ((c / back - 1) / (vol * 10)) * 0.8, 0.6,
+              c >= back ? 'zuletzt gestiegen' : 'zuletzt gefallen');
+        }
+
+        if (!sig.length) return null;
+        let num = 0, den = 0;
+        for (const s of sig) { num += s.val * s.weight; den += s.weight; }
+        const score = den ? num / den : 0;               // -1 .. +1
+        const up = 50 + 25 * score;                      // bewusst gestaucht
+        const strength = Math.abs(score);
+        const wording = strength < 0.08 ? 'ausgeglichen'
+          : (score > 0 ? 'aufwärts' : 'abwärts');
+        const grade = strength < 0.08 ? '' : strength < 0.25 ? 'leicht ' : strength < 0.5 ? 'deutlich ' : 'klar ';
+        return { sig, score, up, bal, label: grade + wording, neutral: strength < 0.08 };
+      }
+
       // ── Zeichnungen ────────────────────────────────────────────────────
       // Modell: {id, type, pts:[{t,p}], color, width, text}
       const DEF_COLOR = {
@@ -3073,6 +3329,98 @@
         savePrefs();
       });
       syncLiqBar();
+
+      // ── Marktbild-Karte ────────────────────────────────────────────────
+      // Beantwortet in Worten, was die Heatmap in Farben zeigt. Der Inhalt
+      // wird nicht je Bild neu gebaut (das waere 60-mal pro Sekunde fuer
+      // Text, der sich kaum aendert), sondern alle 500 ms, solange die
+      // Karte offen ist.
+      const readPanel = $('readPanel'), readBody = $('readBody');
+      const readBtn = $('readBtn'), readClose = $('readClose');
+      const READ_KEY = 'glappa-chartvis-read';
+      let readOpen = false;
+      try { readOpen = localStorage.getItem(READ_KEY) === '1'; } catch (e) {}
+      let readTimer = 0;
+
+      const esc = s => String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+      // Balken von der Mitte aus: rechts = aufwaerts, links = abwaerts.
+      function miniBar(val) {
+        const w = Math.abs(val) * 50;
+        const left = val >= 0 ? 50 : 50 - w;
+        const col = val >= 0 ? 'var(--cv-up)' : 'var(--cv-down)';
+        return '<span class="cv-read-mini"><u></u>' +
+          '<i style="left:' + left.toFixed(1) + '%;width:' + w.toFixed(1) + '%;background:' + col + '"></i></span>';
+      }
+
+      function renderRead() {
+        if (!readOpen) return;
+        const t = marketTendency();
+        if (!t) { readBody.innerHTML = '<p class="cv-read-note">Noch keine Daten geladen.</p>'; return; }
+        const col = t.neutral ? 'var(--cv-txt)' : (t.score > 0 ? 'var(--cv-up)' : 'var(--cv-down)');
+        let h = '';
+
+        // 1) Ergebnis zuerst -- das ist die Frage, mit der man herkommt.
+        h += '<div class="cv-read-verdict"><b style="color:' + col + '">' + esc(t.label) + '</b>' +
+             '<span>' + t.up.toFixed(0) + ' / 100</span></div>';
+        h += '<div class="cv-read-scale"><i style="left:' + t.up.toFixed(1) + '%"></i></div>';
+        h += '<div class="cv-read-ends"><span>abwärts</span><span>aufwärts</span></div>';
+
+        // 2) Liquiditaet nach Richtung -- in Geld, nicht in Kuerzeln.
+        h += '<div class="cv-read-h">Liquidation nach Richtung</div>';
+        if (t.bal && t.bal.total > 0) {
+          const b = t.bal, pAbove = b.share * 100, pBelow = 100 - pAbove;
+          h += '<div class="cv-read-liq">';
+          h += '<div class="cv-read-row"><span class="k">Über dem Kurs &middot; Shorts</span>' +
+               '<span class="v">' + fmtQuoteVol(b.above) + '</span>' +
+               '<span class="cv-read-bar"><i style="width:' + pAbove.toFixed(1) + '%;background:var(--cv-up)"></i></span></div>';
+          h += '<div class="cv-read-row"><span class="k">Unter dem Kurs &middot; Longs</span>' +
+               '<span class="v">' + fmtQuoteVol(b.below) + '</span>' +
+               '<span class="cv-read-bar"><i style="width:' + pBelow.toFixed(1) + '%;background:var(--cv-down)"></i></span></div>';
+          h += '</div>';
+          const mehr = b.above >= b.below;
+          h += '<p class="cv-read-note">Übergewicht <strong>' + (mehr ? 'oben' : 'unten') + '</strong>: ' +
+               fmtQuoteVol(Math.abs(b.above - b.below)) + ' (' +
+               Math.abs(pAbove - 50).toFixed(0) + ' Punkte). Platzen diese Positionen, wird ' +
+               (mehr ? 'gekauft — das zieht den Kurs nach oben.' : 'verkauft — das zieht den Kurs nach unten.') + '</p>';
+        } else {
+          h += '<p class="cv-read-note">Dafür muss die Heatmap laufen — ' +
+               '<button type="button" class="cv-read-link" id="readLiqOn">LIQ einschalten</button>.</p>';
+        }
+
+        // 3) Woraus sich das Ergebnis speist -- nachvollziehbar statt Orakel.
+        h += '<div class="cv-read-h">Signale</div><div class="cv-read-sig">';
+        for (const s of t.sig) {
+          h += '<div><span class="k">' + esc(s.label) + '</span>' + miniBar(s.val) +
+               '<span class="n">' + esc(s.note) + '</span></div>';
+        }
+        h += '</div>';
+        readBody.innerHTML = h;
+        const on = $('readLiqOn');
+        if (on) on.addEventListener('click', () => {
+          const b = document.querySelector('[data-ind="liq"]');
+          if (b && !b.classList.contains('active')) b.click();
+        });
+      }
+
+      function applyRead() {
+        readPanel.hidden = !readOpen;
+        readBtn.classList.toggle('active', readOpen);
+        readBtn.setAttribute('aria-pressed', readOpen ? 'true' : 'false');
+        clearInterval(readTimer);
+        if (readOpen) { renderRead(); readTimer = setInterval(renderRead, 500); }
+      }
+      readBtn.addEventListener('click', () => {
+        readOpen = !readOpen;
+        try { localStorage.setItem(READ_KEY, readOpen ? '1' : '0'); } catch (e) {}
+        applyRead();
+      });
+      readClose.addEventListener('click', () => {
+        readOpen = false;
+        try { localStorage.setItem(READ_KEY, '0'); } catch (e) {}
+        applyRead();
+      });
+      applyRead();
+
       function toggleLog() {
         logScale = !logScale;
         logBtn.classList.toggle('active', logScale);
@@ -3996,10 +4344,17 @@
             cctx.lineWidth = 1;
             cctx.beginPath(); cctx.moveTo(Math.max(0, plotW - 150), y); cctx.lineTo(plotW, y); cctx.stroke();
             cctx.setLineDash([]);
-            const txt = '≈ $' + fmtCompact(z.v) + (p < lastC ? ' ▼Longs' : ' ▲Shorts');
+            // Frueher stand hier "≈ $3.4G ▲Shorts" -- ein Kuerzel, mit dem
+            // man nichts anfangen kann. Jetzt in Klartext: wie viel Geld,
+            // wessen Positionen, und wie weit vom aktuellen Kurs entfernt.
+            const unten = p < lastC;
+            const dist = lastC > 0 ? (p / lastC - 1) * 100 : 0;
+            const txt = (unten ? '▼ ' : '▲ ') + fmtQuoteVol(z.v) + ' ' +
+              (unten ? 'Longs' : 'Shorts') + '  ' +
+              (dist >= 0 ? '+' : '') + dist.toFixed(1) + '%';
             cctx.font = 'bold 10px ' + TH.font;
             const tw = cctx.measureText(txt).width;
-            cctx.fillStyle = 'rgba(3,5,10,0.8)';
+            cctx.fillStyle = 'rgba(3,5,10,0.85)';
             cctx.fillRect(plotW - tw - 10, y - 13, tw + 8, 13);
             cctx.fillStyle = col;
             cctx.textAlign = 'left';
@@ -4336,9 +4691,13 @@
           // (dunkelviolett) schlicht nicht zu lesen.
           const rows = [
             { dot: TH.accent, k: 'Kurs',        v: fmtCurrency(hc.c),  col: TH.accent },
-            { dot: heatCol,   k: 'Liquidation', v: hv > 0 ? '≈ $' + fmtCompact(hv) : '—',
-              col: hv > 0 ? '#fde725' : TH.panelTxt },
-            { dot: TH.cross,  k: 'Preisebene',  v: fmtCurrency(hp),    col: TH.axisTxt }
+            // Klartext statt Kuerzel: welche Seite hier haengt und wie weit
+            // die Ebene vom aktuellen Kurs weg ist.
+            { dot: TH.cross,  k: 'Preisebene',  v: fmtCurrency(hp) + '  (' +
+                ((hp / hc.c - 1) >= 0 ? '+' : '') + ((hp / hc.c - 1) * 100).toFixed(1) + '%)', col: TH.axisTxt },
+            { dot: heatCol,   k: hp < hc.c ? 'Longs platzen hier' : 'Shorts platzen hier',
+              v: hv > 0 ? '≈ ' + fmtQuoteVol(hv) : '—',
+              col: hv > 0 ? '#fde725' : TH.panelTxt }
           ];
           const head = fmtFull(hc.t);
           const PAD = 9, LH = 17, GAP = 16;
@@ -4707,21 +5066,50 @@
       const viewBtn  = $('viewBtn');
       const viewName = () => root.getAttribute('data-view') === 'classic' ? 'classic' : 'pro';
 
-      function refreshViewBtn() {
-        const pro = viewName() === 'pro';
-        // setAttribute schreibt roh -- hier also echte Zeichen, keine
-        // HTML-Entities wie im Markup.
-        viewBtn.setAttribute('data-tip', pro ? 'Zurück zur 90er-Seite' : 'Pro-Ansicht (Vollbild)');
-        viewBtn.setAttribute('aria-pressed', pro ? 'true' : 'false');
+      // Drei Stile, ein Menue. Sie liegen auf ZWEI Attributen: data-view
+      // trennt die Pro-Vollbildflaeche von der Bastelseite, data-theme
+      // trennt dort 90er von schlicht. Der Schluessel fuer das Thema ist
+      // derselbe wie in werkzeuge.html -- wer dort schlicht waehlt, findet
+      // es hier wieder.
+      const THEME_KEY = 'glappa-tools-theme';
+      function currentMode() {
+        if (viewName() === 'pro') return 'pro';
+        return root.getAttribute('data-theme') === 'clean' ? 'clean' : 'retro';
       }
-      viewBtn.addEventListener('click', () => {
-        const next = viewName() === 'pro' ? 'classic' : 'pro';
-        root.setAttribute('data-view', next);
-        try { localStorage.setItem(VIEW_KEY, next); } catch (e) {}
-        if (next === 'classic') closeHelp();
+      function refreshViewBtn() {
+        const m = currentMode();
+        viewBtn.setAttribute('data-tip',
+          m === 'pro' ? 'Ansicht & Stil — jetzt: Pro'
+          : m === 'clean' ? 'Ansicht & Stil — jetzt: Schlicht'
+          : 'Ansicht & Stil — jetzt: 90er');
+        document.querySelectorAll('.cv-view-group .chart-seg-btn')
+          .forEach(b => b.classList.toggle('active', b.dataset.viewmode === m));
+      }
+      function setMode(mode) {
+        const view = mode === 'pro' ? 'pro' : 'classic';
+        root.setAttribute('data-view', view);
+        try { localStorage.setItem(VIEW_KEY, view); } catch (e) {}
+        // Das Thema nur anfassen, wenn wirklich ein Stil gewaehlt wurde --
+        // "Pro" soll die Wahl 90er/schlicht nicht ueberschreiben, sonst
+        // landet man beim Zurueckschalten im falschen Look.
+        if (mode === 'retro' || mode === 'clean') {
+          root.setAttribute('data-theme', mode);
+          try { localStorage.setItem(THEME_KEY, mode); } catch (e) {}
+        }
+        if (view === 'classic') closeHelp();
         refreshViewBtn();
         // Die Engine haengt an diesem Ereignis: Farbtabelle tauschen und
         // die Leinwand neu vermessen (die Karte ist jetzt anders gross).
+        window.dispatchEvent(new Event('glappa:viewchange'));
+      }
+      document.querySelectorAll('.cv-view-group .chart-seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => setMode(btn.dataset.viewmode));
+      });
+      // Wahl in einem anderen Tab (z.B. werkzeuge.html) mitnehmen
+      window.addEventListener('storage', e => {
+        if (e.key !== THEME_KEY || !e.newValue) return;
+        root.setAttribute('data-theme', e.newValue === 'clean' ? 'clean' : 'retro');
+        refreshViewBtn();
         window.dispatchEvent(new Event('glappa:viewchange'));
       });
       refreshViewBtn();
