@@ -830,6 +830,34 @@
     html[data-view="pro"] .player-seek,
     html[data-view="pro"] .player-vol input[type="range"] { accent-color: var(--cv-accent); }
 
+    /* ══ Schwebende Karten treten zurueck, solange sie keiner braucht ══ */
+    /* LIQ-Karte und Player liegen ueber dem Chart und verdecken Kerzen.
+       Ohne Zeiger darauf verblassen sie fast vollstaendig.
+         - Blur und Schlagschatten muessen dabei WEG: beide wirken auch
+           durch eine fast durchsichtige Karte hindurch und wuerden genau
+           den Ausschnitt truebe machen, den man sehen will.
+         - :focus-within haelt die Karte wach, solange ein Auswahlfeld
+           offen ist oder ein Regler gezogen wird -- dabei verlaesst der
+           Zeiger die Karte regelmaessig, und ein Wegblenden mitten im
+           Ziehen waere unbrauchbar.
+         - Verzoegerung beim Ausblenden, damit die Karte beim Hinausfahren
+           nicht sofort wegspringt; Einblenden laeuft ohne Verzoegerung.
+         - Nur fuer echte Zeigergeraete: auf Touch gibt es kein Hover, dort
+           blieben die Karten dauerhaft blass und waeren kaum bedienbar. */
+    @media (hover: hover) {
+      html[data-view="pro"] .chart-liqbar,
+      html[data-view="pro"] .player {
+        transition: opacity 0.13s ease, box-shadow 0.13s ease, backdrop-filter 0.13s ease;
+      }
+      html[data-view="pro"] .chart-liqbar:not(:hover):not(:focus-within),
+      html[data-view="pro"] .player-section:not(:hover):not(:focus-within) .player {
+        opacity: 0.16;
+        box-shadow: none;
+        backdrop-filter: none;
+        transition: opacity 0.4s ease 0.3s, box-shadow 0.4s ease 0.3s, backdrop-filter 0.4s ease 0.3s;
+      }
+    }
+
     /* ══ Nur in der jeweiligen Ansicht sichtbare Bedienelemente ═══════ */
     html[data-view="pro"] .classic-only,
     html[data-view="classic"] .pro-only { display: none !important; }
