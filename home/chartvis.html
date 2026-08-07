@@ -633,6 +633,11 @@
       font-size: 12px; color: var(--cv-txt-2);
       backdrop-filter: blur(6px);
     }
+    /* Muss NACH der Regel darueber stehen und sie an Spezifitaet schlagen:
+       das display:flex oben ist staerker als .chart-liqbar[hidden] weiter
+       vorn und wuerde die Karte sonst auch bei ausgeschalteter Heatmap
+       einblenden (syncLiqBar setzt nur das hidden-Attribut). */
+    html[data-view="pro"] .chart-liqbar[hidden] { display: none; }
     html[data-view="pro"] .chart-liqbar label { justify-content: space-between; gap: 8px; }
     html[data-view="pro"] .chart-liqbar select {
       background: var(--cv-elev); color: var(--cv-txt); border: 1px solid var(--cv-line-2);
@@ -1283,6 +1288,12 @@
           Zoomen, Scrollen, Nachladen alter Historie und beim Intervall-Wechsel exakt an ihrer Kerze. Mit dem
           Fadenkreuz-Werkzeug lassen sie sich anklicken, verschieben und an den Griffen neu ziehen; die kleine Leiste
           dar&uuml;ber &auml;ndert Farbe und Linienst&auml;rke. Zeichnungen werden je Symbol im Browser gespeichert.
+          <strong>Das geht in jedem Panel:</strong> Volumen, RSI und MACD lassen sich genauso bezeichnen wie der Kurs
+          &mdash; Trendlinie auf eine RSI-Divergenz, Zone um einen Volumen-Ausbruch, waagerechte Marke bei MACD&nbsp;0.
+          Eine Zeichnung geh&ouml;rt dabei zu dem Panel, in dem sie aufgesetzt wurde, und bleibt darin: sie h&auml;ngt am
+          <em>Wert</em> dieses Panels (RSI&nbsp;30, 750&nbsp;Mio&nbsp;Umsatz) statt an einem Preis, wandert also beim
+          Zoomen und Verschieben korrekt mit ihrer eigenen Kurve mit. Schaltet man ein Panel ab, ruhen seine
+          Zeichnungen und kommen beim Wiedereinschalten unver&auml;ndert zur&uuml;ck.
           <strong>Tasten:</strong> <kbd>A</kbd> Fadenkreuz, <kbd>T</kbd> Trendlinie, <kbd>H</kbd>/<kbd>V</kbd> Linien,
           <kbd>R</kbd> Rechteck, <kbd>F</kbd> Fibonacci, <kbd>M</kbd> Lineal, <kbd>B</kbd> Freihand, <kbd>X</kbd>
           Radiergummi, <kbd>L</kbd> Log-Achse, <kbd>Entf</kbd> l&ouml;schen, <kbd>Esc</kbd> abbrechen,
@@ -1919,6 +1930,69 @@
         g.iOf = x => viewStart + (x - slot / 2) / slot;
         g.yOf = p => plotY0 + plotH - (tp(p) - tLo) / tSpan * plotH;
         g.pOf = y => untp(tHi - (y - plotY0) / plotH * tSpan);
+
+        // ── Werteachsen der Unter-Panels ──────────────────────────────
+        // Bis hierher kannte nur der Preis eine Umrechnung (yOf/pOf). Damit
+        // sich auch in Volumen, RSI und MACD zeichnen laesst, braucht jedes
+        // Panel dieselbe -- und zwar an GENAU EINER Stelle. Frueher stand
+        // die Formel je Panel in der Zeichenroutine; eine zweite Kopie fuer
+        // die Zeichnungen waere exakt der Fehler, den der Kopf dieser Datei
+        // fuer geom() beschreibt (Objekte wandern gegenueber ihrer Kurve).
+        // Die Renderer holen ihre Achse deshalb ebenfalls hier ab.
+        //
+        // inner/pad bilden den Innenabstand nach: Volumenbalken stehen auf
+        // der Grundlinie (pad 0), RSI und MACD haben oben und unten 3 px Luft.
+        // Die Berechnung laeuft erst auf Nachfrage und wird gemerkt -- der
+        // Treffer-Test ruft sie je Zeichnung auf, und vol/macd tasten dabei
+        // den ganzen sichtbaren Bereich ab.
+        const axCache = {};
+        g.paneAxis = key => {
+          if (!key || key === 'price') return { y0: plotY0, h: plotH, price: true };
+          if (key in axCache) return axCache[key];
+          let ax = null;
+          if (key === 'vol' && volH > 4) {
+            let maxV = 0;
+            for (let i = i0; i <= i1; i++) if (candles[i] && quoteVol(candles[i]) > maxV) maxV = quoteVol(candles[i]);
+            const w = panelWindow('vol', 0, maxV || 1, 'bottom');
+            ax = { y0: volY0, h: volH, inner: Math.max(4, volH - 2), pad: 0, lo: w.lo, hi: w.hi, span: w.span };
+          } else if (key === 'rsi' && rsiH > 4) {
+            const w = panelWindow('rsi', 0, 100, 'center');
+            ax = { y0: rsiY0, h: rsiH, inner: rsiH - 6, pad: 3, lo: w.lo, hi: w.hi, span: w.span };
+          } else if (key === 'macd' && macdH > 4 && macd) {
+            let mx = 1e-9;
+            for (let i = i0; i <= i1; i++)
+              for (const a of [macd.line[i], macd.signal[i], macd.hist[i]])
+                if (a != null && Math.abs(a) > mx) mx = Math.abs(a);
+            const w = panelWindow('macd', -mx, mx, 'center');
+            ax = { y0: macdY0, h: macdH, inner: macdH - 6, pad: 3, lo: w.lo, hi: w.hi, span: w.span };
+          }
+          return (axCache[key] = ax);
+        };
+        // Wert -> y und zurueck, fuer jedes Panel einschliesslich Preis.
+        // Ein abgeschaltetes Panel liefert NaN: seine Zeichnungen fallen
+        // damit aus Treffer-Test und Darstellung heraus, statt irgendwo zu
+        // landen.
+        g.yIn = (pane, v) => {
+          if (!pane || pane === 'price') return g.yOf(v);
+          const a = g.paneAxis(pane);
+          return a ? a.y0 + a.h - ((v - a.lo) / a.span) * a.inner - a.pad : NaN;
+        };
+        g.vIn = (pane, y) => {
+          if (!pane || pane === 'price') return g.pOf(y);
+          const a = g.paneAxis(pane);
+          return a ? a.lo + ((a.y0 + a.h - a.pad - y) / a.inner) * a.span : NaN;
+        };
+        // In welchem Panel liegt dieses y? Bestimmt beim Anlegen, wohin eine
+        // neue Zeichnung gehoert.
+        g.paneOf = y => { const p = panelAt(g, y); return p ? p.key : 'price'; };
+        // Fensterausschnitt zum Clippen. Der Preisbereich reicht bis ganz
+        // nach oben (dort liegt die Kopfzeile mit O/H/L/C), die Panels
+        // genau ueber ihre eigene Hoehe.
+        g.paneRect = pane => {
+          if (!pane || pane === 'price') return { y0: 0, h: plotY0 + plotH + 1 };
+          const a = g.paneAxis(pane);
+          return a ? { y0: a.y0, h: a.h } : null;
+        };
         return g;
       }
 
@@ -2164,12 +2238,37 @@
       }
       function findDrawing(id) { return drawings.find(d => d.id === id) || null; }
 
-      // Magnet: Zeitpunkt auf die Kerze, Preis auf den naechsten O/H/L/C-Wert
-      function dataPoint(g, x, y, useMagnet) {
+      // ── Zeichnungen und ihr Panel ──────────────────────────────────────
+      // Jede Zeichnung merkt sich in d.pane, wo sie lebt: 'price' (Kurs),
+      // 'vol', 'rsi' oder 'macd'. Danach richtet sich die EINHEIT von pt.p --
+      // im Kursbereich ein Preis, im Volumen ein Umsatz, im RSI ein Wert
+      // 0..100, im MACD ein (auch negativer) Indikatorwert.
+      // Alte gespeicherte Zeichnungen haben kein pane; ueberall gilt deshalb
+      // "fehlt => 'price'", damit sie unveraendert weiterleben.
+      const paneOf = d => d.pane || 'price';
+      // Verschieben rechnet im transformierten Raum: beim Preis logarithmisch
+      // (damit ein Zug bei Log-Achse gleichmaessig wirkt), in den Panels
+      // linear -- MACD wird negativ, davon gibt es keinen Logarithmus.
+      const paneTp   = (pane, v) => (!pane || pane === 'price') ? tp(v)   : v;
+      const paneUntp = (pane, v) => (!pane || pane === 'price') ? untp(v) : v;
+      // Beschriftung in der Einheit des jeweiligen Panels.
+      function paneFmt(pane, v) {
+        if (!pane || pane === 'price') return fmtCurrency(v);
+        if (pane === 'vol') return fmtQuoteVol(v);
+        if (pane === 'rsi') return v.toFixed(1);
+        return fmtCompact(v);
+      }
+
+      // Magnet: Zeitpunkt auf die Kerze, Preis auf den naechsten O/H/L/C-Wert.
+      // pane wird beim Nachziehen eines Griffs vorgegeben -- sonst koennte ein
+      // Objekt mitten im Ziehen die Flaeche wechseln und seine Einheit mit ihr.
+      function dataPoint(g, x, y, useMagnet, pane) {
         const idx = g.iOf(x);
-        let price = g.pOf(y);
+        const pn = pane || g.paneOf(y);
+        let price = g.vIn(pn, y);
         let t;
-        if (useMagnet && magnetOn && candles.length) {
+        // Magnet rastet an O/H/L/C ein -- das gibt es nur im Kursbereich.
+        if (useMagnet && magnetOn && pn === 'price' && candles.length) {
           const ci = Math.max(0, Math.min(candles.length - 1, Math.round(idx)));
           const c = dispBar(ci) || candles[ci];
           t = candles[ci].t;
@@ -2193,11 +2292,19 @@
         t = Math.max(0, Math.min(1, t));
         return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
       }
-      function scr(g, pt) { return { x: g.xOf(idxFromTime(pt.t)), y: g.yOf(pt.p) }; }
+      function scr(g, pt, pane) { return { x: g.xOf(idxFromTime(pt.t)), y: g.yIn(pane, pt.p) }; }
 
       // Treffer-Test: liefert 'p0'/'p1'/'body' oder null
       function hitDrawing(g, d, x, y) {
-        const P = d.pts.map(pt => scr(g, pt));
+        // Ein abgeschaltetes (oder zu flach gezogenes) Panel hat gerade keine
+        // Flaeche -- seine Zeichnungen sind dann weder sichtbar noch greifbar.
+        const box = g.paneRect(paneOf(d));
+        if (!box) return null;
+        // Und ein Treffer zaehlt nur INNERHALB des eigenen Panels: sonst
+        // wuerde eine Preislinie im Volumen quer durch den ganzen Chart
+        // angeklickt werden koennen.
+        if (y < box.y0 || y > box.y0 + box.h) return null;
+        const P = d.pts.map(pt => scr(g, pt, paneOf(d)));
         const near = (a, b) => Math.hypot(x - a, y - b) < HIT_TOL + 2;
         if (d.type !== 'brush' && d.type !== 'hline' && d.type !== 'vline' && d.type !== 'text') {
           if (P[0] && near(P[0].x, P[0].y)) return 'p0';
@@ -2230,7 +2337,7 @@
             return v < 1.25 ? 'body' : null;
           }
           case 'ray': {
-            const e = rayEnd(P[0].x, P[0].y, P[1].x, P[1].y, g);
+            const e = rayEnd(P[0].x, P[0].y, P[1].x, P[1].y, g, paneOf(d));
             return distToSeg(x, y, P[0].x, P[0].y, e.x, e.y) < HIT_TOL ? 'body' : null;
           }
           default:
@@ -2248,13 +2355,17 @@
         }
         return null;
       }
-      function rayEnd(x1, y1, x2, y2, g) {
+      // Strahl bis an den Rand SEINER Flaeche -- im Kursbereich bis zum
+      // Chartrand, in einem Panel bis an dessen Ober- bzw. Unterkante.
+      function rayEnd(x1, y1, x2, y2, g, pane) {
+        const box = g.paneRect(pane) || { y0: g.plotY0, h: g.plotY1 - g.plotY0 };
+        const yTop = box.y0, yBot = box.y0 + box.h;
         let dx = x2 - x1, dy = y2 - y1;
         const len = Math.hypot(dx, dy) || 1;
         dx /= len; dy /= len;
         let t = Infinity;
         if (dx > 1e-9) t = Math.min(t, (g.plotW - x1) / dx); else if (dx < -1e-9) t = Math.min(t, -x1 / dx);
-        if (dy > 1e-9) t = Math.min(t, (g.plotY1 - y1) / dy); else if (dy < -1e-9) t = Math.min(t, (g.plotY0 - y1) / dy);
+        if (dy > 1e-9) t = Math.min(t, (yBot - y1) / dy); else if (dy < -1e-9) t = Math.min(t, (yTop - y1) / dy);
         if (!isFinite(t) || t < 0) t = len;
         return { x: x1 + dx * t, y: y1 + dy * t };
       }
@@ -2461,7 +2572,8 @@
           // Liste, obwohl sich gar nichts geaendert hatte.
           dragState = {
             mode: 'move', part: hit.part, d: hit.d,
-            startT: timeFromIdx(g.iOf(x)), startTP: tp(g.pOf(y)),
+            startT: timeFromIdx(g.iOf(x)),
+            startTP: paneTp(paneOf(hit.d), g.vIn(paneOf(hit.d), y)),
             orig: JSON.parse(JSON.stringify(hit.d.pts)),
             preState: JSON.stringify(drawings), moved: false
           };
@@ -2482,9 +2594,12 @@
         }
         if (locked) { statusEl.innerHTML = '<span class="err">Zeichnungen sind gesperrt (Schloss).</span>'; return; }
 
-        // Neues Objekt anlegen
-        const pt = dataPoint(g, x, y, true);
-        const base = { id: newId(), type: currentTool, color: DEF_COLOR[currentTool] || '#ffd866', width: 2 };
+        // Neues Objekt anlegen -- im Panel unter dem Zeiger. Aufgesetzt wird
+        // im Kursbereich wie in Volumen, RSI oder MACD; die Zeichnung bleibt
+        // danach in ihrer Flaeche.
+        const pane = g.paneOf(y);
+        const pt = dataPoint(g, x, y, true, pane);
+        const base = { id: newId(), type: currentTool, pane, color: DEF_COLOR[currentTool] || '#ffd866', width: 2 };
         if (currentTool === 'hline' || currentTool === 'vline') {
           const d = Object.assign(base, { pts: [pt] });
           snapshot(); drawings.push(d); saveDrawings(); selectDrawing(d);
@@ -2589,25 +2704,29 @@
         if (dragState.mode === 'move') {
           const d = dragState.d;
           dragState.moved = true;
+          const pn = paneOf(d);
           if (dragState.part === 'body') {
             const dIdx = g.iOf(x) - idxFromTime(dragState.startT);
-            const dTp  = tp(g.pOf(y)) - dragState.startTP;
+            const dTp  = paneTp(pn, g.vIn(pn, y)) - dragState.startTP;
             d.pts = dragState.orig.map(pt => ({
               t: timeFromIdx(idxFromTime(pt.t) + dIdx),
-              p: untp(tp(pt.p) + dTp)
+              p: paneUntp(pn, paneTp(pn, pt.p) + dTp)
             }));
           } else {
             const k = dragState.part === 'p0' ? 0 : 1;
-            d.pts[k] = dataPoint(g, x, y, true);
+            d.pts[k] = dataPoint(g, x, y, true, pn);
           }
           return;
         }
         if (dragState.mode === 'draw' && pending) {
-          const pt = dataPoint(g, x, y, true);
+          // Das Panel steht beim Aufsetzen fest -- ein Objekt, das mitten im
+          // Ziehen die Flaeche wechselt, wuerde seine Einheit mitwechseln.
+          const pn = paneOf(pending);
+          const pt = dataPoint(g, x, y, true, pn);
           if (pending.type === 'brush') {
             const last = pending.pts[pending.pts.length - 1];
-            const a = scr(g, last);
-            if (Math.hypot(a.x - x, a.y - y) > 2.5) pending.pts.push({ t: timeFromIdx(g.iOf(x)), p: g.pOf(y) });
+            const a = scr(g, last, pn);
+            if (Math.hypot(a.x - x, a.y - y) > 2.5) pending.pts.push({ t: timeFromIdx(g.iOf(x)), p: g.vIn(pn, y) });
           } else {
             pending.pts[1] = pt;
           }
@@ -3265,7 +3384,10 @@
         const music = musicMode && audio.currentSrc && !audio.paused;
         const pulse = music ? bassEnv * 0.45 + beatFlash * 0.3 : 0;
         const lw  = (d.width || 2) * (1 + pulse * 0.6);
-        const P = d.pts.map(pt => scr(g, pt));
+        const pane = paneOf(d);
+        const box = g.paneRect(pane);
+        if (!box) return;                    // Panel gerade abgeschaltet
+        const P = d.pts.map(pt => scr(g, pt, pane));
         cctx.lineWidth = lw;
         cctx.strokeStyle = ghost ? withAlpha(col, 0.6) : col;
         cctx.fillStyle = cctx.strokeStyle;
@@ -3281,7 +3403,7 @@
             cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(P[1].x, P[1].y); cctx.stroke();
             break;
           case 'ray': {
-            const e = rayEnd(P[0].x, P[0].y, P[1].x, P[1].y, g);
+            const e = rayEnd(P[0].x, P[0].y, P[1].x, P[1].y, g, pane);
             cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(e.x, e.y); cctx.stroke();
             break;
           }
@@ -3293,12 +3415,26 @@
             cctx.setLineDash([7, 4]);
             cctx.beginPath(); cctx.moveTo(0, P[0].y); cctx.lineTo(g.plotW, P[0].y); cctx.stroke();
             cctx.setLineDash([]);
-            opts.labels.push({ y: P[0].y, text: fmtCurrency(d.pts[0].p), col });
+            // Das Schild sitzt auf der PREISACHSE -- eine RSI- oder Volumen-
+            // Linie gehoert dort nicht hin, ihr Wert steht in anderer Einheit.
+            // Sie beschriftet sich stattdessen am linken Ende ihrer Linie.
+            if (pane === 'price') {
+              opts.labels.push({ y: P[0].y, text: fmtCurrency(d.pts[0].p), col });
+            } else {
+              cctx.font = 'bold 11px ' + TH.font;
+              cctx.textAlign = 'left';
+              const txt = paneFmt(pane, d.pts[0].p);
+              const tw = cctx.measureText(txt).width;
+              cctx.fillStyle = 'rgba(0,0,0,0.7)';
+              cctx.fillRect(3, P[0].y - 12, tw + 6, 13);
+              cctx.fillStyle = col;
+              cctx.fillText(txt, 6, P[0].y - 2);
+            }
             break;
           }
           case 'vline': {
             cctx.setLineDash([7, 4]);
-            cctx.beginPath(); cctx.moveTo(P[0].x, g.plotY0); cctx.lineTo(P[0].x, g.plotY1); cctx.stroke();
+            cctx.beginPath(); cctx.moveTo(P[0].x, box.y0); cctx.lineTo(P[0].x, box.y0 + box.h); cctx.stroke();
             cctx.setLineDash([]);
             break;
           }
@@ -3333,7 +3469,7 @@
             let prevY = null;
             levels.forEach((lv, k) => {
               const price = p0 + (p1 - p0) * lv;
-              const y = g.yOf(price);
+              const y = g.yIn(pane, price);
               const env = bandEnv ? bandEnv[k % 3] : 0;
               if (prevY !== null && k > 0 && lv <= 1) {
                 cctx.fillStyle = withAlpha(colors[k], 0.07 + env * 0.07);
@@ -3347,7 +3483,7 @@
               cctx.beginPath(); cctx.moveTo(xMin, y); cctx.lineTo(xMax, y); cctx.stroke();
               cctx.setLineDash([]);
               if (bandEnv) cctx.shadowBlur = 0;
-              const label = (lv * 100).toFixed(1).replace('.0', '') + '%  ' + fmtPrice(price);
+              const label = (lv * 100).toFixed(1).replace('.0', '') + '%  ' + paneFmt(pane, price);
               const tw = cctx.measureText(label).width;
               const lx = Math.min(xMax + 5, g.plotW - tw - 3);
               // dunkler Ruecken -- die Prozentzahlen standen sonst nackt auf den Kerzen
@@ -3398,13 +3534,13 @@
                         : dur >= 36e5 ? (dur / 36e5).toFixed(0) + ' h'
                         : dur >= 6e4 ? (dur / 6e4).toFixed(0) + ' min' : (dur / 1e3).toFixed(0) + ' s';
             const label = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%   ' +
-              (d.pts[1].p - d.pts[0].p >= 0 ? '+' : '-') + fmtCurrency(Math.abs(d.pts[1].p - d.pts[0].p)) +
+              (d.pts[1].p - d.pts[0].p >= 0 ? '+' : '-') + paneFmt(pane, Math.abs(d.pts[1].p - d.pts[0].p)) +
               '   ' + Math.abs(bars) + ' Kerzen / ' + durTxt;
             cctx.font = 'bold 12px ' + TH.font;
             const tw = cctx.measureText(label).width;
             let lx = P[1].x + 10;
             if (lx + tw + 10 > g.plotW) lx = Math.max(2, P[1].x - tw - 18);
-            const ly = Math.max(g.plotY0 + 15, P[1].y - 17);
+            const ly = Math.max(box.y0 + 15, P[1].y - 17);
             cctx.fillStyle = 'rgba(0,0,0,0.85)';
             cctx.fillRect(lx - 5, ly - 13, tw + 10, 20);
             cctx.strokeStyle = 'rgba(' + rgb + ',0.85)';
@@ -3426,7 +3562,7 @@
           } else if (d.type === 'hline') {
             if (sel) handleDot(g.plotW / 2, P[0].y);
           } else if (d.type === 'vline') {
-            if (sel) handleDot(P[0].x, (g.plotY0 + g.plotY1) / 2);
+            if (sel) handleDot(P[0].x, box.y0 + box.h / 2);
           } else if (d.type === 'text') {
             if (sel) handleDot(P[0].x, P[0].y);
           } else if (sel) {
@@ -3877,12 +4013,23 @@
 
         // ── Zeichnungen: auf die Chartflaeche geclippt, ausserhalb des
         // Musik-Kamera-Pulses (sie sollen exakt am Kurs kleben) ──────────
+        // Panelweise, jede Gruppe auf IHRE Flaeche geclippt: frueher lag hier
+        // ein einziger Clip auf den Kursbereich -- damit waere jede Zeichnung
+        // aus Volumen, RSI oder MACD unsichtbar. Reihenfolge von oben nach
+        // unten, damit sich Auswahl-Griffe an den Panelgrenzen sauber decken.
         const axisLabels = [];
-        cctx.save();
-        cctx.beginPath(); cctx.rect(0, 0, plotW, g.plotY1 + 1); cctx.clip();
-        for (const d of drawings) renderDrawing(g, d, { selected: d.id === selectedId, ghost: false, labels: axisLabels });
-        if (pending) renderDrawing(g, pending, { selected: false, ghost: true, labels: axisLabels });
-        cctx.restore();
+        for (const pane of ['price', 'vol', 'rsi', 'macd']) {
+          const box = g.paneRect(pane);
+          if (!box) continue;
+          const list = drawings.filter(d => paneOf(d) === pane);
+          const pend = (pending && paneOf(pending) === pane) ? pending : null;
+          if (!list.length && !pend) continue;
+          cctx.save();
+          cctx.beginPath(); cctx.rect(0, box.y0, plotW, box.h); cctx.clip();
+          for (const d of list) renderDrawing(g, d, { selected: d.id === selectedId, ghost: false, labels: axisLabels });
+          if (pend) renderDrawing(g, pend, { selected: false, ghost: true, labels: axisLabels });
+          cctx.restore();
+        }
         axisLabels.forEach(l => {
           if (l.y < 8 || l.y > g.plotY1) return;
           cctx.font = 'bold 11px ' + TH.font;
@@ -3928,12 +4075,10 @@
 
         // ── Volumen ─────────────────────────────────────────────────────
         if (indState.vol && g.volH > 4) {
-          let maxV = 0;
-          for (let i = i0; i <= i1; i++) if (candles[i] && quoteVol(candles[i]) > maxV) maxV = quoteVol(candles[i]);
-          maxV = maxV || 1;
-          const w = panelWindow('vol', 0, maxV, 'bottom');
-          const inner = Math.max(4, g.volH - 2);
-          const vY = v => g.volY0 + g.volH - ((v - w.lo) / w.span) * inner;
+          // Achse aus geom() statt hier gerechnet: daran haengen auch die
+          // Zeichnungen in diesem Panel, und beide muessen deckungsgleich sein.
+          const w = g.paneAxis('vol');
+          const vY = v => g.yIn('vol', v);
           const base = vY(w.lo);
           const bw = Math.max(1, slot * 0.66);
           cctx.save();
@@ -3950,7 +4095,7 @@
           panelAxis('vol', g.volY0, g.volH, [w.lo + w.span * 0.5, w.hi], v => fmtQuoteVol(v), vY);
           if (lastVol) panelBadge(vY(quoteVol(lastVol)), fmtQuoteVol(quoteVol(lastVol)),
             lastVol.c >= lastVol.o ? TH.up : TH.dn, g.volY0, g.volH);
-          panelValueAt.vol = y => w.lo + ((g.volY0 + g.volH - y) / inner) * w.span;
+          panelValueAt.vol = y => g.vIn('vol', y);
           cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.volY0 + 0.5); cctx.lineTo(plotW, g.volY0 + 0.5); cctx.stroke();
           const vi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
@@ -3964,8 +4109,8 @@
 
         // ── RSI ─────────────────────────────────────────────────────────
         if (indState.rsi && rsiData && g.rsiH > 4) {
-          const w = panelWindow('rsi', 0, 100, 'center');
-          const rsiYFor = v => g.rsiY0 + g.rsiH - ((v - w.lo) / w.span) * (g.rsiH - 6) - 3;
+          const w = g.paneAxis('rsi');            // siehe Volumen: eine Achse fuer beides
+          const rsiYFor = v => g.yIn('rsi', v);
           cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.rsiY0 + 0.5); cctx.lineTo(plotW, g.rsiY0 + 0.5); cctx.stroke();
           cctx.save();
@@ -3994,7 +4139,7 @@
           // rot ueberkauft (>=70), gruen ueberverkauft (<=30), sonst violett.
           if (rsiNow != null) panelBadge(rsiYFor(rsiNow), rsiNow.toFixed(1),
             rsiNow >= 70 ? TH.dn : rsiNow <= 30 ? TH.up : '#c084fc', g.rsiY0, g.rsiH);
-          panelValueAt.rsi = y => w.lo + ((g.rsiY0 + g.rsiH - 3 - y) / Math.max(1, g.rsiH - 6)) * w.span;
+          panelValueAt.rsi = y => g.vIn('rsi', y);
           const ri = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
           const rv = rsiData[ri];
           panelTitle('RSI 14', rv != null ? rv.toFixed(1) : '—',
@@ -4003,13 +4148,8 @@
 
         // ── MACD ────────────────────────────────────────────────────────
         if (indState.macd && macd && g.macdH > 4) {
-          let mx = 1e-9;
-          for (let i = i0; i <= i1; i++) {
-            for (const a of [macd.line[i], macd.signal[i], macd.hist[i]])
-              if (a != null && Math.abs(a) > mx) mx = Math.abs(a);
-          }
-          const w = panelWindow('macd', -mx, mx, 'center');
-          const mY = v => g.macdY0 + g.macdH - ((v - w.lo) / w.span) * (g.macdH - 6) - 3;
+          const w = g.paneAxis('macd');           // siehe Volumen: eine Achse fuer beides
+          const mY = v => g.yIn('macd', v);
           const mid = mY(0);
           cctx.strokeStyle = TH.panelSep;
           cctx.beginPath(); cctx.moveTo(0, g.macdY0 + 0.5); cctx.lineTo(plotW, g.macdY0 + 0.5); cctx.stroke();
@@ -4042,7 +4182,7 @@
           cctx.restore();
           panelAxis('macd', g.macdY0, g.macdH, [w.lo, 0, w.hi], v => fmtCompact(v), mY);
           if (macdNow != null) panelBadge(mY(macdNow), fmtCompact(macdNow), '#00e5ff', g.macdY0, g.macdH);
-          panelValueAt.macd = y => w.lo + ((g.macdY0 + g.macdH - 3 - y) / Math.max(1, g.macdH - 6)) * w.span;
+          panelValueAt.macd = y => g.vIn('macd', y);
           const mi = hoverIndex >= 0 ? hoverIndex : Math.min(i1, total - 1);
           const mh = macd.hist[mi];
           panelTitle('MACD 12/26/9',
@@ -4170,7 +4310,7 @@
           const d = findDrawing(selectedId);
           if (!d) hideProps();
           else {
-            const P = d.pts.map(pt => scr(g, pt));
+            const P = d.pts.map(pt => scr(g, pt, paneOf(d)));
             let px = Math.min(...P.map(p => p.x)), py = Math.min(...P.map(p => p.y));
             if (d.type === 'hline') px = plotW / 2 - 60;
             const bw = propsEl.offsetWidth || 190, bh = propsEl.offsetHeight || 28;
