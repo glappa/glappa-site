@@ -176,16 +176,36 @@
       padding: 0; cursor: pointer;
     }
     .chart-props .sw.active { box-shadow: 0 0 0 2px #fff; }
+    /* "A" = automatische Farbe: das Massband faerbt sich dann nach Richtung,
+       die Fibo behaelt ihre Ebenenfarben. */
+    .chart-props .sw.auto {
+      background: #0a0d14; color: #9fb0c0; font: bold 8px/13px inherit;
+      border-color: #445; text-align: center; letter-spacing: 0;
+    }
     .chart-props .wbtn {
       background: none; border: 1px solid #333; color: #999; font-size: 0.62rem;
       padding: 2px 4px; cursor: pointer; font-family: inherit; border-radius: 2px;
     }
     .chart-props .wbtn.active { border-color: var(--neon-cyan); color: var(--neon-cyan); }
+    .chart-props .plock {
+      background: none; border: 1px solid #444; color: #9aa; cursor: pointer;
+      padding: 3px 4px; border-radius: 2px; line-height: 0;
+    }
+    .chart-props .plock:hover { border-color: #999; color: #fff; }
+    .chart-props .plock.active { border-color: var(--neon-yellow); color: var(--neon-yellow); }
+    .chart-props .plock .ico-shut, .chart-props .plock.active .ico-open { display: none; }
+    .chart-props .plock.active .ico-shut { display: block; }
     .chart-props .pdel {
       background: none; border: 1px solid #553; color: #ff5f6d; cursor: pointer;
       padding: 3px 4px; border-radius: 2px; line-height: 0;
     }
     .chart-props .pdel:hover { border-color: #ff5f6d; background: rgba(255,95,109,0.15); }
+    /* Gesperrt: nur das Schloss wirkt noch. Der Rest bleibt anklickbar --
+       nicht um etwas zu aendern, sondern damit die Statuszeile erklaert,
+       warum gerade nichts passiert. */
+    .chart-props.is-locked .sw,
+    .chart-props.is-locked .wbtn,
+    .chart-props.is-locked .pdel { opacity: 0.3; cursor: not-allowed; }
 
     /* Vollbild: die ganze Karte, damit Werkzeuge + Kopfzeile mitkommen */
     .chart-panel:fullscreen {
@@ -311,6 +331,9 @@
       background: #16181d; border: 1px solid #33363b; box-shadow: 0 2px 10px rgba(0,0,0,0.55);
     }
     html[data-theme="clean"] .chart-props .wbtn.active { border-color: #6fd18c; color: #6fd18c; }
+    html[data-theme="clean"] .chart-props .sw.auto { background: #0e0f12; border-color: #33363b; color: #9aa0a6; }
+    html[data-theme="clean"] .chart-props .plock { border-color: #33363b; color: #9aa0a6; }
+    html[data-theme="clean"] .chart-props .plock.active { border-color: #6fd18c; color: #6fd18c; }
     html[data-theme="clean"] .chart-hint { color: #6c7178; font-style: normal; }
     html[data-theme="clean"] .chart-hint kbd { background: #0e0f12; border: 1px solid #33363b; color: #c8ccd2; }
     html[data-theme="clean"] .chart-liqbar {
@@ -599,6 +622,9 @@
     html[data-view="pro"] .chart-props .wbtn { border-color: var(--cv-line-2); color: var(--cv-txt-2); border-radius: 4px; }
     html[data-view="pro"] .chart-props .wbtn.active { border-color: var(--cv-accent); color: var(--cv-accent-2); }
     html[data-view="pro"] .chart-props .pdel { border-color: var(--cv-line-2); color: var(--cv-down); border-radius: 4px; }
+    html[data-view="pro"] .chart-props .sw.auto { background: var(--cv-panel); border-color: var(--cv-line-2); color: var(--cv-txt-2); }
+    html[data-view="pro"] .chart-props .plock { border-color: var(--cv-line-2); color: var(--cv-txt-2); border-radius: 4px; }
+    html[data-view="pro"] .chart-props .plock.active { border-color: var(--cv-accent); color: var(--cv-accent-2); }
 
     /* ══ Statuszeile unten ════════════════════════════════════════════ */
     html[data-view="pro"] .cv-status {
@@ -1346,6 +1372,10 @@
             <div class="chart-props" id="chartProps" hidden>
               <span class="pcolors"></span>
               <span class="pwidths"></span>
+              <button type="button" class="plock" title="Dieses Objekt sperren" aria-label="Objekt sperren">
+                <svg class="ico-open" viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 5.8-1"/></svg>
+                <svg class="ico-shut" viewBox="0 0 20 20"><rect x="4" y="9" width="12" height="8" rx="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg>
+              </button>
               <button type="button" class="pdel" title="Objekt l&ouml;schen (Entf)" aria-label="Objekt l&ouml;schen">
                 <svg viewBox="0 0 20 20"><path d="M3.5 6h13M8 6V4h4v2M5.5 6l1 11h7l1-11"/></svg>
               </button>
@@ -1425,6 +1455,14 @@
           Zoomen, Scrollen, Nachladen alter Historie und beim Intervall-Wechsel exakt an ihrer Kerze. Mit dem
           Fadenkreuz-Werkzeug lassen sie sich anklicken, verschieben und an den Griffen neu ziehen; die kleine Leiste
           dar&uuml;ber &auml;ndert Farbe und Linienst&auml;rke. Zeichnungen werden je Symbol im Browser gespeichert.
+          Das <strong>Schloss in dieser Leiste</strong> sperrt <em>ein einzelnes</em> Objekt: es l&auml;sst sich dann
+          nicht mehr verschieben, umf&auml;rben, l&ouml;schen oder wegradieren und &uuml;berlebt auch
+          &bdquo;alle Zeichnungen entfernen&ldquo; &mdash; anklicken geht weiter, damit man das Schloss wieder
+          &ouml;ffnen kann. (Das Schloss in der senkrechten Werkzeugleiste sperrt dagegen alle Zeichnungen auf einmal.)
+          Bei <strong>Ma&szlig;band und Fibonacci</strong> steht in der Farbreihe zus&auml;tzlich ein
+          <kbd>A</kbd>: das ist die automatische Farbgebung &mdash; das Ma&szlig;band gr&uuml;n bergauf/rot bergab, die
+          Fibo mit ihren gewohnten Ebenenfarben. Eine gew&auml;hlte Farbe &uuml;bersteuert sie, <kbd>A</kbd> holt sie
+          zur&uuml;ck.
           <strong>Das geht in jedem Panel:</strong> Volumen, RSI und MACD lassen sich genauso bezeichnen wie der Kurs
           &mdash; Trendlinie auf eine RSI-Divergenz, Zone um einen Volumen-Ausbruch, waagerechte Marke bei MACD&nbsp;0.
           Eine Zeichnung geh&ouml;rt dabei zu dem Panel, in dem sie aufgesetzt wurde, und bleibt darin: sie h&auml;ngt am
@@ -2442,7 +2480,7 @@
       }
 
       // ── Zeichnungen ────────────────────────────────────────────────────
-      // Modell: {id, type, pts:[{t,p}], color, width, text}
+      // Modell: {id, type, pts:[{t,p}], color, width, text, locked}
       const DEF_COLOR = {
         line: '#ffd866', ray: '#ffd866', arrow: '#ffd866', hline: '#00e5ff', vline: '#00e5ff',
         rect: '#00e5ff', ellipse: '#c084fc', fib: '#ffd866', text: '#ffd866',
@@ -2450,6 +2488,11 @@
       };
       const PALETTE = ['#ffd866', '#3be6a0', '#ff5f6d', '#00e5ff', '#c084fc', '#ffffff'];
       const TWO_POINT = { line: 1, ray: 1, arrow: 1, rect: 1, ellipse: 1, fib: 1, ruler: 1 };
+      // Diese beiden faerben sich von Haus aus selbst: das Massband gruen
+      // bergauf / rot bergab, die Fibo mit einer festen Farbe je Ebene. Sie
+      // starten deshalb OHNE d.color -- wer eine Farbe waehlt, uebersteuert
+      // das; das "A" in der Leiste gibt die Automatik zurueck.
+      const AUTO_COLOR = { ruler: 1, fib: 1 };
 
       let currentTool = 'pan';
       let drawings = [];
@@ -2468,6 +2511,11 @@
         let arr = [];
         try { arr = JSON.parse(localStorage.getItem(DRAW_KEY(sym))) || []; } catch (e) { arr = []; }
         drawings = Array.isArray(arr) ? arr.filter(d => d && d.type && Array.isArray(d.pts) && d.pts.length) : [];
+        // Aeltere Massband- und Fibo-Objekte trugen eine Farbe, die beim
+        // Zeichnen nie ankam. Steht dort noch der alte Vorgabewert, faellt er
+        // weg -- so sind sie wieder in der Automatik und die Farbknoepfe
+        // greifen sichtbar.
+        drawings.forEach(d => { if (AUTO_COLOR[d.type] && d.color === DEF_COLOR[d.type]) delete d.color; });
         selectedId = null;
       }
       function snapshot() {
@@ -2646,8 +2694,15 @@
       });
       clearDrawBtn.addEventListener('click', () => {
         if (!drawings.length) return;
-        if (!window.confirm('Alle ' + drawings.length + ' Zeichnungen dieses Symbols loeschen?')) return;
-        snapshot(); drawings = []; pending = null; selectedId = null; hideProps(); saveDrawings();
+        // Gesperrte Objekte ueberleben das Aufraeumen -- genau dafuer ist das
+        // Schloss da.
+        const keep = drawings.filter(d => d.locked);
+        const n = drawings.length - keep.length;
+        if (!n) { statusEl.textContent = 'Alle Zeichnungen sind gesperrt — nichts zu loeschen.'; return; }
+        const frage = 'Alle ' + n + ' Zeichnungen dieses Symbols loeschen?' +
+          (keep.length ? '\n(' + keep.length + ' gesperrte bleiben stehen.)' : '');
+        if (!window.confirm(frage)) return;
+        snapshot(); drawings = keep; pending = null; selectedId = null; hideProps(); saveDrawings();
       });
       undoBtn.addEventListener('click', undo);
       redoBtn.addEventListener('click', redo);
@@ -2656,35 +2711,75 @@
       // ── Eigenschaften-Leiste des ausgewaehlten Objekts ─────────────────
       const propColors = propsEl.querySelector('.pcolors');
       const propWidths = propsEl.querySelector('.pwidths');
+      const propLock   = propsEl.querySelector('.plock');
       PALETTE.forEach(col => {
         const b = document.createElement('button');
         b.className = 'sw'; b.style.background = col; b.dataset.col = col;
         b.title = 'Farbe ' + col;
         propColors.appendChild(b);
       });
+      // Nur dort anbieten, wo es eine Automatik gibt (Massband, Fibo).
+      const autoSw = document.createElement('button');
+      autoSw.className = 'sw auto'; autoSw.dataset.col = '';
+      autoSw.textContent = 'A';
+      autoSw.title = 'Automatische Farbe';
+      propColors.appendChild(autoSw);
       [1, 2, 3].forEach(w => {
         const b = document.createElement('button');
         b.className = 'wbtn'; b.dataset.w = w; b.textContent = w + 'px';
         propWidths.appendChild(b);
       });
+      // Die Leiste schwebt ueber der Zeichenflaeche: der Druck darf NICHT
+      // bis zur Leinwand durchfallen, sonst raeumt sie die Auswahl weg,
+      // bevor der Klick oben ankommt.
+      propsEl.addEventListener('pointerdown', e => e.stopPropagation());
       propsEl.addEventListener('click', e => {
         const d = findDrawing(selectedId);
         if (!d) return;
         const sw = e.target.closest('.sw');
         const wb = e.target.closest('.wbtn');
+        const lk = e.target.closest('.plock');
         const del = e.target.closest('.pdel');
-        if (sw)  { snapshot(); d.color = sw.dataset.col; saveDrawings(); syncProps(d); }
+        if (lk) {
+          snapshot(); d.locked = !d.locked; saveDrawings(); syncProps(d);
+          statusEl.textContent = d.locked
+            ? 'Objekt gesperrt — es laesst sich nicht mehr verschieben, aendern oder loeschen.'
+            : 'Objekt entsperrt.';
+          return;
+        }
+        if (d.locked) {                       // gesperrt = nur das Schloss zaehlt
+          if (sw || wb || del) statusEl.innerHTML = '<span class="err">Objekt ist gesperrt (Schloss in der Leiste).</span>';
+          return;
+        }
+        if (sw)  {
+          snapshot();
+          if (sw.dataset.col) d.color = sw.dataset.col; else delete d.color;
+          saveDrawings(); syncProps(d);
+        }
         if (wb)  { snapshot(); d.width = +wb.dataset.w; saveDrawings(); syncProps(d); }
         if (del) { deleteSelected(); }
       });
       function syncProps(d) {
-        propsEl.querySelectorAll('.sw').forEach(b => b.classList.toggle('active', b.dataset.col === (d.color || DEF_COLOR[d.type])));
+        const auto = !!AUTO_COLOR[d.type];
+        autoSw.hidden = !auto;
+        // Ohne d.color gilt die Automatik -- sonst die Vorgabefarbe des Typs.
+        const cur = d.color || (auto ? '' : (DEF_COLOR[d.type] || ''));
+        propsEl.querySelectorAll('.sw').forEach(b => b.classList.toggle('active', b.dataset.col === cur));
         propsEl.querySelectorAll('.wbtn').forEach(b => b.classList.toggle('active', +b.dataset.w === (d.width || 2)));
+        propLock.classList.toggle('active', !!d.locked);
+        propLock.title = d.locked ? 'Objekt entsperren' : 'Dieses Objekt sperren';
+        propLock.setAttribute('aria-label', propLock.title);
+        propLock.setAttribute('aria-pressed', d.locked ? 'true' : 'false');
+        propsEl.classList.toggle('is-locked', !!d.locked);
       }
       function hideProps() { propsEl.hidden = true; }
       function deleteSelected() {
         const i = drawings.findIndex(d => d.id === selectedId);
         if (i < 0) return;
+        if (drawings[i].locked) {
+          statusEl.innerHTML = '<span class="err">Objekt ist gesperrt — erst das Schloss oeffnen.</span>';
+          return;
+        }
         snapshot(); drawings.splice(i, 1); selectedId = null; hideProps(); saveDrawings();
       }
       function selectDrawing(d) {
@@ -2759,6 +2854,7 @@
         else if (zone.indexOf('sep:') === 0) c = 'row-resize';
         else if (zone === 'taxis') c = 'ew-resize';
         else if (dragState && dragState.mode === 'pan') c = 'grabbing';
+        else if (hit && hit.d.locked) c = 'not-allowed';
         else if (hit && !locked) c = (hit.part === 'body') ? 'move' : 'nwse-resize';
         else if (currentTool === 'pan') c = 'grab';
         else if (currentTool === 'eraser') c = 'crosshair';
@@ -2817,8 +2913,16 @@
         // werkzeug lassen sich vorhandene Objekte anfassen (wie TradingView).
         const hit = locked ? null : hitTest(g, x, y);
         if (currentTool === 'eraser') {
-          if (hit) { snapshot(); drawings.splice(drawings.indexOf(hit.d), 1); selectedId = null; hideProps(); saveDrawings(); }
+          if (hit && hit.d.locked) statusEl.innerHTML = '<span class="err">Objekt ist gesperrt — der Radiergummi laesst es stehen.</span>';
+          else if (hit) { snapshot(); drawings.splice(drawings.indexOf(hit.d), 1); selectedId = null; hideProps(); saveDrawings(); }
           else statusEl.textContent = 'Radiergummi: auf eine Zeichnung klicken.';
+          return;
+        }
+        // Gesperrtes bleibt anfassbar genug, um es auszuwaehlen -- sonst kaeme
+        // man an sein Schloss nicht mehr heran --, wandert aber nicht mit.
+        if (hit && hit.d.locked && (currentTool === 'pan' || hit.d.id === selectedId)) {
+          selectDrawing(hit.d);
+          statusEl.textContent = 'Objekt ist gesperrt — Schloss in der Leiste oeffnet es.';
           return;
         }
         if (hit && (currentTool === 'pan' || hit.d.id === selectedId)) {
@@ -2855,7 +2959,8 @@
         // danach in ihrer Flaeche.
         const pane = g.paneOf(y);
         const pt = dataPoint(g, x, y, true, pane);
-        const base = { id: newId(), type: currentTool, pane, color: DEF_COLOR[currentTool] || '#ffd866', width: 2 };
+        const base = { id: newId(), type: currentTool, pane, width: 2 };
+        if (!AUTO_COLOR[currentTool]) base.color = DEF_COLOR[currentTool] || '#ffd866';
         if (currentTool === 'hline' || currentTool === 'vline') {
           const d = Object.assign(base, { pts: [pt] });
           snapshot(); drawings.push(d); saveDrawings(); selectDrawing(d);
@@ -3715,11 +3820,32 @@
         cctx.lineWidth = 1.5;
         cctx.beginPath(); cctx.rect(x - 3.5, y - 3.5, 7, 7); cctx.fill(); cctx.stroke();
       }
-      function withAlpha(hex, a) {
+      function rgbTriple(hex) {
         const h = hex.replace('#', '');
         const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-        const r = parseInt(v.slice(0, 2), 16), g2 = parseInt(v.slice(2, 4), 16), b = parseInt(v.slice(4, 6), 16);
-        return 'rgba(' + r + ',' + g2 + ',' + b + ',' + a + ')';
+        return parseInt(v.slice(0, 2), 16) + ',' + parseInt(v.slice(2, 4), 16) + ',' + parseInt(v.slice(4, 6), 16);
+      }
+      function withAlpha(hex, a) {
+        return 'rgba(' + rgbTriple(hex) + ',' + a + ')';
+      }
+      // Ein kleines Schloss am Objekt: was gesperrt ist, sieht man auch ohne
+      // es anzuklicken.
+      function lockBadge(x, y) {
+        cctx.save();
+        cctx.setLineDash([]);
+        cctx.shadowBlur = 0;
+        cctx.fillStyle = 'rgba(0,0,0,0.75)';
+        cctx.beginPath(); cctx.arc(x, y, 8, 0, Math.PI * 2); cctx.fill();
+        cctx.strokeStyle = '#ffd866';
+        cctx.lineWidth = 1.4;
+        cctx.stroke();
+        cctx.beginPath();
+        cctx.rect(x - 3.5, y - 1, 7, 5.5);
+        cctx.stroke();
+        cctx.beginPath();
+        cctx.arc(x, y - 1, 2.3, Math.PI, 0);
+        cctx.stroke();
+        cctx.restore();
       }
 
       function renderDrawing(g, d, opts) {
@@ -3805,7 +3931,11 @@
           }
           case 'fib': {
             const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618];
-            const colors = ['#9aa', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#9aa', '#ff8fd0'];
+            // Ohne eigene Farbe traegt jede Ebene ihre gewohnte; waehlt jemand
+            // eine, faerbt sie das ganze Retracement.
+            const colors = d.color
+              ? levels.map(() => col)
+              : ['#9aa', '#ff6b6b', '#ffd166', '#06d6a0', '#118ab2', '#8338ec', '#9aa', '#ff8fd0'];
             const xMin = Math.min(P[0].x, P[1].x), xMax = Math.max(P[0].x, P[1].x);
             const p0 = d.pts[0].p, p1 = d.pts[1].p;
             cctx.font = '11px ' + TH.font;
@@ -3827,7 +3957,7 @@
               if (bandEnv) { cctx.shadowColor = colors[k]; cctx.shadowBlur = env * 16; }
               cctx.strokeStyle = withAlpha(colors[k], ghost ? 0.5 : Math.min(1, 0.85 + env * 0.15));
               cctx.setLineDash(lv === 0 || lv === 1 ? [] : [4, 3]);
-              cctx.lineWidth = (lv === 0 || lv === 1) ? lw : 1.2 + env * 1.6;
+              cctx.lineWidth = (lv === 0 || lv === 1) ? lw : Math.max(1, lw * 0.6) + env * 1.6;
               cctx.beginPath(); cctx.moveTo(xMin, y); cctx.lineTo(xMax, y); cctx.stroke();
               cctx.setLineDash([]);
               if (bandEnv) cctx.shadowBlur = 0;
@@ -3863,18 +3993,23 @@
           }
           case 'ruler': {
             const up = d.pts[1].p >= d.pts[0].p;
-            const rgb = up ? '59,230,160' : '255,95,109';
+            // Ohne eigene Farbe faerbt sich das Massband nach Richtung
+            // (gruen bergauf, rot bergab); waehlt jemand eine Farbe, gilt sie.
+            const auto = !d.color;
+            const rgb = auto ? (up ? '59,230,160' : '255,95,109') : rgbTriple(col);
+            const txtCol = auto ? (up ? TH.up : TH.dn) : col;
             const a = ghost ? 0.6 : 0.92;
             const x = Math.min(P[0].x, P[1].x), y = Math.min(P[0].y, P[1].y);
             const w = Math.max(1, Math.abs(P[1].x - P[0].x)), h = Math.max(1, Math.abs(P[1].y - P[0].y));
             cctx.fillStyle = 'rgba(' + rgb + ',' + (a * 0.14).toFixed(2) + ')';
             cctx.fillRect(x, y, w, h);
             cctx.strokeStyle = 'rgba(' + rgb + ',' + a.toFixed(2) + ')';
-            cctx.lineWidth = 1.5;
+            cctx.fillStyle = cctx.strokeStyle;
+            cctx.lineWidth = lw;
             cctx.setLineDash([5, 3]);
             cctx.beginPath(); cctx.moveTo(P[0].x, P[0].y); cctx.lineTo(P[1].x, P[1].y); cctx.stroke();
             cctx.setLineDash([]);
-            arrowHead(P[0].x, P[0].y, P[1].x, P[1].y, 10);
+            arrowHead(P[0].x, P[0].y, P[1].x, P[1].y, 9 + lw * 2);
             const pct = d.pts[0].p !== 0 ? ((d.pts[1].p - d.pts[0].p) / d.pts[0].p) * 100 : 0;
             const bars = Math.round(idxFromTime(d.pts[1].t) - idxFromTime(d.pts[0].t));
             const dur = Math.abs(bars) * barMs;
@@ -3894,7 +4029,7 @@
             cctx.strokeStyle = 'rgba(' + rgb + ',0.85)';
             cctx.lineWidth = 1;
             cctx.strokeRect(lx - 5, ly - 13, tw + 10, 20);
-            cctx.fillStyle = up ? TH.up : TH.dn;
+            cctx.fillStyle = txtCol;
             cctx.textAlign = 'left';
             cctx.fillText(label, lx, ly + 2);
             break;
@@ -3904,6 +4039,16 @@
         cctx.shadowBlur = 0;
         cctx.lineDashOffset = 0;
 
+        // Gesperrt: keine Griffe -- daran laesst sich ohnehin nichts ziehen.
+        // Stattdessen sagt ein Schloss, warum das Objekt bockt.
+        if (d.locked) {
+          if (sel || (hoverHit && hoverHit.d === d && !dragState)) {
+            const lx = d.type === 'hline' ? g.plotW / 2 : P[0].x;
+            const ly = d.type === 'vline' ? box.y0 + box.h / 2 : P[0].y;
+            lockBadge(lx, ly);
+          }
+          return;
+        }
         if (sel || (hoverHit && hoverHit.d === d && !dragState)) {
           if (d.type === 'brush') {
             if (sel) { handleDot(P[0].x, P[0].y); handleDot(P[P.length - 1].x, P[P.length - 1].y); }
