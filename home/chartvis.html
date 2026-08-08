@@ -1457,8 +1457,11 @@
           dar&uuml;ber &auml;ndert Farbe und Linienst&auml;rke. Zeichnungen werden je Symbol im Browser gespeichert.
           Das <strong>Schloss in dieser Leiste</strong> sperrt <em>ein einzelnes</em> Objekt: es l&auml;sst sich dann
           nicht mehr verschieben, umf&auml;rben, l&ouml;schen oder wegradieren und &uuml;berlebt auch
-          &bdquo;alle Zeichnungen entfernen&ldquo; &mdash; anklicken geht weiter, damit man das Schloss wieder
-          &ouml;ffnen kann. (Das Schloss in der senkrechten Werkzeugleiste sperrt dagegen alle Zeichnungen auf einmal.)
+          &bdquo;alle Zeichnungen entfernen&ldquo;. Es <em>h&auml;lt aber den Zeiger nicht auf</em>: der Chart
+          l&auml;sst sich dar&uuml;ber genauso schieben wie daneben, und ein Zeichenwerkzeug setzt darauf ganz normal
+          auf. Ein <strong>Klick ohne Zug</strong> (oder ein Rechtsklick) w&auml;hlt es aus &mdash; so kommt man
+          wieder an sein Schloss. (Das Schloss in der senkrechten Werkzeugleiste sperrt dagegen alle Zeichnungen
+          auf einmal.)
           Bei <strong>Ma&szlig;band und Fibonacci</strong> steht in der Farbreihe zus&auml;tzlich ein
           <kbd>A</kbd>: das ist die automatische Farbgebung &mdash; das Ma&szlig;band gr&uuml;n bergauf/rot bergab, die
           Fibo mit ihren gewohnten Ebenenfarben. Eine gew&auml;hlte Farbe &uuml;bersteuert sie, <kbd>A</kbd> holt sie
@@ -2854,8 +2857,9 @@
         else if (zone.indexOf('sep:') === 0) c = 'row-resize';
         else if (zone === 'taxis') c = 'ew-resize';
         else if (dragState && dragState.mode === 'pan') c = 'grabbing';
-        else if (hit && hit.d.locked) c = 'not-allowed';
-        else if (hit && !locked) c = (hit.part === 'body') ? 'move' : 'nwse-resize';
+        // Gesperrtes zeigt weiter den Werkzeug-Zeiger: darueber wird
+        // geschoben und gezeichnet wie ueber leerer Flaeche.
+        else if (hit && !hit.d.locked && !locked) c = (hit.part === 'body') ? 'move' : 'nwse-resize';
         else if (currentTool === 'pan') c = 'grab';
         else if (currentTool === 'eraser') c = 'crosshair';
         else c = 'crosshair';
@@ -2918,14 +2922,13 @@
           else statusEl.textContent = 'Radiergummi: auf eine Zeichnung klicken.';
           return;
         }
-        // Gesperrtes bleibt anfassbar genug, um es auszuwaehlen -- sonst kaeme
-        // man an sein Schloss nicht mehr heran --, wandert aber nicht mit.
-        if (hit && hit.d.locked && (currentTool === 'pan' || hit.d.id === selectedId)) {
-          selectDrawing(hit.d);
-          statusEl.textContent = 'Objekt ist gesperrt — Schloss in der Leiste oeffnet es.';
-          return;
-        }
-        if (hit && (currentTool === 'pan' || hit.d.id === selectedId)) {
+        // Gesperrtes haelt den Zeiger nicht auf: der Chart laesst sich
+        // darueber genauso schieben wie daneben, und ein Zeichenwerkzeug
+        // setzt darauf ganz normal auf. Nur ein Klick OHNE Zug waehlt es aus
+        // -- sonst kaeme man an sein Schloss nicht mehr heran (siehe
+        // endPointer). Rechtsklick tut es auch.
+        const lockPick = hit && hit.d.locked ? hit.d : null;
+        if (hit && !lockPick && (currentTool === 'pan' || hit.d.id === selectedId)) {
           selectDrawing(hit.d);
           // Undo-Eintrag erst, wenn WIRKLICH verschoben wurde (endPointer):
           // ein snapshot() schon beim Anklicken leerte jedes Mal die Redo-
@@ -2944,7 +2947,7 @@
           const p = panelAt(g, y);
           dragState = {
             mode: 'pan', startX: x, startY: y, startView: viewStart,
-            tLo: g.tLo, tHi: g.tHi, vpan: false,
+            tLo: g.tLo, tHi: g.tHi, vpan: false, moved: false, lockPick,
             // Senkrecht ziehen verschiebt im Panel dessen Werteachse,
             // im Kursbereich die Preisskala.
             panel: p ? p.key : null, pan0: p ? panelPan[p.key] : 0, panelH: p ? p.h : 0
@@ -3014,6 +3017,8 @@
 
         if (dragState.mode === 'pan') {
           const dx = x - dragState.startX, dy = y - dragState.startY;
+          // Ein paar Pixel Wackeln sind noch ein Klick, kein Zug.
+          if (!dragState.moved && Math.hypot(dx, dy) > 3) dragState.moved = true;
           viewStart = dragState.startView - dx / g.slot;
           clampView();
           // Vertikal ziehen schaltet (wie bei TradingView) auf manuelle
@@ -3113,6 +3118,13 @@
             redoStack.length = 0;
             saveDrawings();
             updateUndoBtns();
+          }
+        } else if (dragState.mode === 'pan') {
+          // Ueber einem gesperrten Objekt aufgesetzt und NICHT gezogen: das
+          // war kein Schieben, sondern der Griff nach seinem Schloss.
+          if (dragState.lockPick && !dragState.moved) {
+            selectDrawing(dragState.lockPick);
+            statusEl.textContent = 'Objekt ist gesperrt — das Schloss in der Leiste oeffnet es.';
           }
         } else if (dragState.mode === 'psize') {
           savePrefs();                      // Panel-Hoehen ueberdauern den Reload
