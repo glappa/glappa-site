@@ -59,9 +59,10 @@
       <a href="werkzeuge.html">&#128295; WERKZEUGE</a>
       <a href="aesthetik.html">&#9829; &Auml;STHETIK</a>
       <!-- NICHT direkt auf die .onion: ohne Tor endet das in der Fehlerseite
-           des Browsers. onion.html erklaert stattdessen, was fehlt — und
-           schickt Besucher, die schon ueber Tor kommen, sofort weiter. -->
-      <a href="onion.html">Onion Site</a>
+           des Browsers. onion.html erklaert stattdessen, was fehlt.
+           Kommt der Besucher ueber Tor, biegt das Skript unten den Link
+           direkt auf den Hidden Service um — dann ohne Zwischenseite. -->
+      <a id="onionLink" href="onion.html">Onion Site</a>
       <a href="https://vpn.glappa.de">VPN-Login</a>
       <a href="https://discord.gg/PA6THfttSj">Discord</a>
     </section>
@@ -143,6 +144,31 @@
       if (h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.')) {
         link.href = 'http://' + h + ':8080/';
       }
+    })();
+  </script>
+  <script>
+    // Onion-Link: wer schon ueber Tor kommt, soll nicht erst ueber die
+    // Erklaerseite laufen — dann zeigt der Knopf direkt auf den Hidden
+    // Service. Entschieden wird das serverseitig (app.py /onion/check
+    // vergleicht die Gegenstelle mit der Tor-Exit-Liste), NICHT am
+    // User-Agent. Antwortet der Server nicht, bleibt onion.html stehen —
+    // die erklaert dann, was fehlt. Das ist die sichere Richtung.
+    (function () {
+      const link = document.getElementById('onionLink');
+      if (!link) return;
+      const h = location.hostname;
+      const local = (h === 'localhost' || h === '127.0.0.1' ||
+                     h.startsWith('192.168.') || h.startsWith('10.'));
+      const url = local ? 'http://' + h + ':8080/onion/check' : '/api/onion';
+      fetch(url, { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (d) {
+          if (!d || !d.tor) return;
+          link.href = d.url;
+          link.title = 'Tor erkannt — direkt zum Hidden Service';
+          link.textContent = 'Onion Site ✓';
+        })
+        .catch(function () { /* dann eben ueber die Erklaerseite */ });
     })();
   </script>
   <script>
