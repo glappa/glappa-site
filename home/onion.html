@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onion Site &mdash; Tor Browser n&ouml;tig &mdash; Glappa Home</title>
+  <meta name="keywords" content="Glappa Onion Tor Hidden Service Darknet">
+  <meta name="description" content="Der Glappa-Onion-Dienst ist nur &uuml;ber das Tor-Netz erreichbar. Diese Seite erkl&auml;rt, wie du hinkommst.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="home.css?v=12">
+  <style>
+    /* ════════════════════════════════════════════════════════════════
+       Zwiebel-Tor: was ein Browser sieht, der KEIN .onion aufloesen kann.
+       Der Rest der Seite kommt aus home.css — hier steht nur, was diese
+       Seite extra braucht.
+       ════════════════════════════════════════════════════════════════ */
+    .gate {
+      max-width: 880px;
+      margin: 10px auto 40px;
+      padding: 0 16px;
+      text-align: center;
+    }
+
+    /* Statuszeile: erst neutral ("wird geprueft"), dann rot (kein Tor)
+       oder gruen (Tor erkannt). Feste Mindesthoehe, damit beim Umschalten
+       nichts springt. */
+    .gate-status {
+      min-height: 1.6em;
+      margin: 0 0 10px;
+      font-size: 0.95em;
+      letter-spacing: 0.06em;
+      color: #9f9f9f;
+    }
+    .gate-status.bad  { color: var(--neon-pink);  text-shadow: 0 0 8px var(--neon-pink); }
+    .gate-status.good { color: var(--neon-green); text-shadow: 0 0 8px var(--neon-green); }
+
+    /* ── Die Zwiebel ── zwei Groessen, per Media-Query getauscht:
+       ein 71 Zeichen breites Bild wird auf dem Handy zu Pixelmatsch. */
+    .onion-art {
+      font-family: "Courier New", Courier, monospace;
+      white-space: pre;
+      display: block;
+      margin: 6px auto 14px;
+      line-height: 1.02;
+      color: var(--neon-green);
+      text-shadow: 0 0 6px var(--neon-green), 0 0 18px rgba(0, 255, 0, 0.35);
+      animation: onion-glow 4s ease-in-out infinite;
+      user-select: none;
+    }
+    .onion-art--big   { font-size: clamp(0.42rem, 1.5vw, 1.05rem); }
+    .onion-art--small { font-size: clamp(0.5rem, 3.3vw, 1rem); display: none; }
+    @media (max-width: 700px) {
+      .onion-art--big   { display: none; }
+      .onion-art--small { display: block; }
+    }
+    @keyframes onion-glow {
+      0%, 100% { text-shadow: 0 0 6px var(--neon-green), 0 0 18px rgba(0,255,0,0.30); }
+      50%      { text-shadow: 0 0 9px var(--neon-green), 0 0 30px rgba(0,255,0,0.55); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .onion-art { animation: none; }
+    }
+
+    .gate h1 {
+      font-size: clamp(1.3rem, 4.5vw, 2.1rem);
+      color: var(--neon-yellow);
+      text-shadow: 2px 2px 0 #806000, 0 0 14px var(--neon-yellow);
+      margin: 6px 0 10px;
+    }
+    .gate p { line-height: 1.5; margin: 10px auto; max-width: 640px; }
+    .gate .dim { color: #bdbdbd; font-size: 0.88em; }
+
+    /* ── Adresse zum Kopieren ── */
+    .addr-box {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin: 18px auto;
+    }
+    .addr-box code {
+      font-family: "Courier New", Courier, monospace;
+      font-size: clamp(0.6rem, 2.1vw, 0.95rem);
+      /* Die Adresse ist 56 Zeichen lang — auf schmalen Schirmen muss sie
+         umbrechen duerfen, sonst schiebt sie die Seite quer. */
+      word-break: break-all;
+      max-width: 100%;
+      padding: 8px 12px;
+      border: 2px solid var(--neon-green);
+      background: rgba(0, 0, 0, 0.65);
+      color: var(--neon-green);
+      text-shadow: 0 0 5px var(--neon-green);
+    }
+    .gate button,
+    .gate .btn {
+      font-family: inherit;
+      font-size: 0.95em;
+      padding: 8px 16px;
+      border: 2px outset var(--neon-cyan);
+      background: #001a1a;
+      color: var(--neon-cyan);
+      cursor: url('../coursor/WoW Cursor.cur'), pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .gate button:hover,
+    .gate .btn:hover { background: #003333; text-shadow: 0 0 8px var(--neon-cyan); }
+    .gate button:active { border-style: inset; }
+    .gate .btn--go {
+      border-color: var(--neon-green);
+      background: #002200;
+      color: var(--neon-green);
+      font-size: 1.15em;
+      font-weight: bold;
+      padding: 12px 24px;
+    }
+    .gate .btn--go:hover { background: #004400; text-shadow: 0 0 10px var(--neon-green); }
+
+    /* ── Anleitung ── */
+    .steps {
+      list-style: none;
+      counter-reset: step;
+      max-width: 560px;
+      margin: 22px auto;
+      padding: 16px;
+      text-align: left;
+      border: 2px dashed var(--neon-pink);
+      background: rgba(0, 0, 0, 0.55);
+    }
+    .steps li {
+      counter-increment: step;
+      margin: 10px 0 10px 34px;
+      position: relative;
+      line-height: 1.45;
+    }
+    .steps li::before {
+      content: counter(step) ".";
+      position: absolute;
+      left: -30px;
+      color: var(--neon-pink);
+      font-weight: bold;
+      text-shadow: 0 0 8px var(--neon-pink);
+    }
+
+    /* Weiterleitungs-Kasten: nur sichtbar, wenn Tor erkannt wurde. */
+    .gate-go { margin: 24px auto; }
+    #copyOk { color: var(--neon-green); font-size: 0.85em; }
+  </style>
+</head>
+<body>
+
+  <div class="marquee marquee--top">
+    <span>&#129477; ONION SITE &#129477; NUR MIT TOR BROWSER &#129477; KEINE ABK&Uuml;RZUNG &#129477; </span>
+  </div>
+
+  <header class="header">
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+    <div class="page-banner green">
+      <h2>&#129477; ONION &#129477;</h2>
+    </div>
+    <img class="alien" src="../img/gif/alien-dance.gif" alt="tanzender Alien" width="70" height="98">
+  </header>
+
+  <nav class="nav" data-glappa-nav>
+    <a href="../index.html">&larr; Glappa</a><span class="sep">|</span>
+    <a href="../terminal.html">Terminal</a><span class="sep">|</span>
+    <a href="../page1.html">Video</a><span class="sep">|</span>
+    <a href="../bounce.html">Bounce</a><span class="sep">|</span>
+    <a href="../home/index.html">Home</a><span class="sep">|</span>
+    <a href="https://search.glappa.de/" target="_blank" rel="noopener">Search</a><span class="sep">|</span>
+    <a href="../secret/pilzskip.html">SUPER Secret Page</a>
+  </nav>
+
+  <main class="gate">
+
+    <p class="gate-status" id="status">Verbindung wird gepr&uuml;ft &hellip;</p>
+
+<pre class="onion-art onion-art--big" aria-hidden="true">
+                              \     |     /
+                               \    |    /
+                                \   |   /
+                                 \  |  /
+                                  \ | /
+                                   \|/
+                                ---------
+                         --------       --------
+                    ------                     ------
+               ------                               ------
+            ----                                         ----
+         //--                                               --\\
+      ////        ---                               ---        \\\\
+     //        ///-                                   -\\\        \\
+   ///       ///       /--                     --\       \\\       \\\
+   /        //       ///                         \\\       \\        \
+  ||       |/      |//      /--           --\      \\|      \|       ||
+  |        |       |       //               \\       |       |        |
+  |        |       |       |                 |       |       |        |
+  |        |       |       |/               \|       |       |        |
+  |        |       ||       //-           -\\       ||       |        |
+  ||       ||       ///       -------------       \\\       ||       ||
+   |/       ///       //--                     --\\       \\\       \|
+    //        ///        -----------------------        \\\        \\
+     //         //--                                 --\\         \\
+       ///         ------                       ------         \\\
+         ///-           -------------------------           -\\\
+            -----                                       -----
+                ---------                       ---------
+                        -------------------------
+                                / | | | \
+</pre>
+
+<pre class="onion-art onion-art--small" aria-hidden="true">
+               \   |   /
+                \  |  /
+                 \ | /
+                  \|/
+                -------
+           ------     ------
+       /----               ----\
+     ///                       \\\
+   ///     /--           --\     \\\
+  |/      //               \\      \|
+  |      //   //-     -\\   \\      |
+  |      |    |         |    |      |
+  |      |    |//     \\|    |      |
+  ||     ///    -------    \\\     ||
+   //      //----     ----\\      \\
+    ///         -------         \\\
+      //----               ----\\
+           -----------------
+                 / | \
+</pre>
+
+    <h1 id="headline">Hier kommst du nur mit dem Tor Browser rein</h1>
+
+    <p id="lead">
+      Die Glappa-Onion-Site liegt als <em>Hidden Service</em> im Tor-Netz.
+      Ein normaler Browser &mdash; Firefox, Chrome, Edge, Safari &mdash; kennt
+      keine <code>.onion</code>-Adressen: kein DNS der Welt kann sie
+      aufl&ouml;sen, darum bekommst du dort nur ein trockenes
+      <em>&bdquo;Server nicht gefunden&ldquo;</em>. Kaputt ist nichts, dir
+      fehlt blo&szlig; die Zwiebel.
+    </p>
+
+    <div class="addr-box">
+      <code id="addr">elzd2zcdroyvph632amoxnm2krnqpw23gey4voqoejgn5gqnjq4rrfyd.onion</code>
+      <button id="copyBtn" type="button">Adresse kopieren</button>
+      <span id="copyOk" hidden>kopiert!</span>
+    </div>
+
+    <div class="gate-go" id="goBox" hidden>
+      <a class="btn btn--go" id="goLink" href="#">&#129477; Weiter zur Onion-Site &#8594;</a>
+    </div>
+
+    <ol class="steps" id="steps">
+      <li>
+        <a href="https://www.torproject.org/download/" target="_blank" rel="noopener noreferrer">Tor
+        Browser herunterladen</a> (gibt es f&uuml;r Windows, macOS, Linux und
+        Android &mdash; kostenlos, vom Tor Project selbst).
+      </li>
+      <li>Installieren und starten, dann kurz warten bis er sich mit dem Netz verbunden hat.</li>
+      <li>Die Adresse oben kopieren, oben in die Adresszeile einf&uuml;gen, Enter.</li>
+    </ol>
+
+    <p class="dim">
+      Kein Tor zur Hand? Der Rest der Seite l&auml;uft ganz normal im Klarnetz:
+      <a href="index.html">zur&uuml;ck zur Home-Seite</a>.
+      Wenn du es trotzdem versuchen willst:
+      <a id="rawLink" href="http://elzd2zcdroyvph632amoxnm2krnqpw23gey4voqoejgn5gqnjq4rrfyd.onion">Adresse
+      direkt &ouml;ffnen</a> &mdash; ohne Tor endet das in der Fehlerseite deines Browsers.
+    </p>
+
+  </main>
+
+  <footer class="footer">
+    <div class="construction">
+      <img class="rocket" src="../img/gif/rocket3.gif" alt="" aria-hidden="true">
+      <img src="../img/gif/Under_Construction.gif" alt="Under Construction">
+      <img class="rocket rocket--flip" src="../img/gif/Rocket.gif" alt="" aria-hidden="true">
+    </div>
+
+    <div class="footer-actions">
+      <a href="mailto:lex@glappa.de?subject=Your Website so COOL! ;)">
+        <img id="mailImg" src="../img/gif/animail1.gif" alt="You Got Mail!" title="You got Mail!" width="88" height="31">
+      </a>
+      <a href="../index.html">
+        <img src="../img/gif/anihome1.gif" alt="Home" width="88" height="31">
+      </a>
+    </div>
+
+    <p class="copyright">Copyright <span id="year"></span>, Glappa</p>
+
+    <div class="badges">
+      <img src="../img/gif/hacker.gif" alt="">
+      <img src="../img/gif/allbrowsers.gif" alt="">
+      <img src="../img/gif/browser1.gif" alt="">
+    </div>
+
+    <div class="marquee marquee--bottom">
+      <span>&#129477; DREI SPR&Uuml;NGE DURCHS NETZ &#129477; NIEMAND SIEHT BEIDE ENDEN &#129477; </span>
+    </div>
+  </footer>
+
+  <script src="../script.js?v=17"></script>
+  <script>
+    // ── Zwiebel-Tor ────────────────────────────────────────────────
+    // Diese Seite ist die Antwort fuer JEDEN Browser, der keine .onion-
+    // Adresse aufloesen kann — also fuer alle ausser Tor Browser (und
+    // Brave im Tor-Fenster). Standard ist deshalb bewusst "kein Tor":
+    // faellt die Pruefung aus, bleibt die Erklaerseite stehen.
+    //
+    // Erkannt wird NICHT am User-Agent (den faelscht jeder Bot) sondern
+    // serverseitig: app.py /onion/check schaut nach, ob die Anfrage von
+    // einer bekannten Tor-Exit-Node kommt bzw. ueber den Hidden Service
+    // selbst hereinkam. Nur dann leiten wir weiter.
+    (function () {
+      const ONION = document.getElementById('addr').textContent.trim();
+      const URL_  = 'http://' + ONION + '/';
+
+      const statusEl = document.getElementById('status');
+      const headline = document.getElementById('headline');
+      const lead     = document.getElementById('lead');
+      const steps    = document.getElementById('steps');
+      const goBox    = document.getElementById('goBox');
+      const goLink   = document.getElementById('goLink');
+
+      goLink.href = URL_;
+      document.getElementById('rawLink').href = URL_;
+
+      // ── Adresse kopieren ──
+      const copyBtn = document.getElementById('copyBtn');
+      const copyOk  = document.getElementById('copyOk');
+      copyBtn.addEventListener('click', function () {
+        const done = function () {
+          copyOk.hidden = false;
+          setTimeout(function () { copyOk.hidden = true; }, 2500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(ONION).then(done, fallback);
+        } else {
+          fallback();
+        }
+        function fallback() {
+          // Aeltere Browser (und http:// ohne TLS): Text markieren, damit
+          // der Nutzer wenigstens Strg+C druecken kann.
+          const r = document.createRange();
+          r.selectNodeContents(document.getElementById('addr'));
+          const s = window.getSelection();
+          s.removeAllRanges(); s.addRange(r);
+          try { document.execCommand('copy'); done(); } catch (e) { /* dann eben von Hand */ }
+        }
+      });
+
+      // ── Fall 1: wir sind schon IM Tor-Netz (Seite laeuft unter .onion) ──
+      if (/\.onion$/i.test(location.hostname)) {
+        torMode('Du bist schon im Tor-Netz. &#127881;');
+        return;
+      }
+
+      // ── Fall 2: Server fragen, ob die Anfrage ueber Tor kam ──
+      // Erst same-origin (/api/onion, Apache proxied das auf app.py),
+      // dann direkt auf den Downloader-Port als Reserve.
+      const h = location.hostname;
+      const local = (h === 'localhost' || h === '127.0.0.1' ||
+                     /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h));
+      const endpoints = local
+        ? ['/api/onion', 'http://' + h + ':8080/onion/check']
+        : ['/api/onion', 'https://home.glappa.de:8080/onion/check'];
+
+      ask(0);
+
+      function ask(i) {
+        if (i >= endpoints.length) { noTor(); return; }
+        const ctl = window.AbortController ? new AbortController() : null;
+        const to  = setTimeout(function () { if (ctl) ctl.abort(); }, 7000);
+        fetch(endpoints[i], {
+          cache: 'no-store',
+          signal: ctl ? ctl.signal : undefined
+        })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+          .then(function (d) {
+            clearTimeout(to);
+            if (d && d.tor) { torMode('Tor erkannt.', d.url); } else { noTor(); }
+          })
+          .catch(function () { clearTimeout(to); ask(i + 1); });
+      }
+
+      // Kein Tor (oder Server nicht erreichbar): Erklaerseite bleibt stehen.
+      function noTor() {
+        statusEl.className = 'gate-status bad';
+        statusEl.innerHTML = '&#9888; Kein Tor-Netz erkannt &mdash; diese Adresse bleibt dir so verschlossen.';
+      }
+
+      // Tor erkannt: Seite dreht sich um und leitet nach kurzem Countdown
+      // weiter. Abbrechen geht — vielleicht wollte jemand nur die Adresse.
+      function torMode(why, url) {
+        const target = url || URL_;
+        goLink.href = target;
+        statusEl.className = 'gate-status good';
+        statusEl.innerHTML = '&#10003; ' + why;
+        headline.textContent = 'Tor ist da — der Weg ist frei';
+        lead.innerHTML = 'Dein Browser spricht Tor, du kannst direkt auf die ' +
+                         'Onion-Site. Weiterleitung in <b id="cd">3</b> Sekunden ' +
+                         '&mdash; <a href="#" id="cancel">abbrechen</a>.';
+        steps.hidden = true;
+        goBox.hidden = false;
+
+        let n = 3, timer = null;
+        const cd = document.getElementById('cd');
+        document.getElementById('cancel').addEventListener('click', function (e) {
+          e.preventDefault();
+          clearInterval(timer);
+          lead.innerHTML = 'Weiterleitung abgebrochen &mdash; nimm den Knopf, wenn du soweit bist.';
+        });
+        timer = setInterval(function () {
+          n -= 1;
+          if (n <= 0) { clearInterval(timer); location.replace(target); return; }
+          if (cd) cd.textContent = String(n);
+        }, 1000);
+      }
+    })();
+  </script>
+</body>
+</html>

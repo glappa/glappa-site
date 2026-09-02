@@ -1137,6 +1137,147 @@ def serve_file(file_id: str):
     return 'File not found', 404
 
 
+# ── Zwiebel-Tor: kommt der Besucher ueber Tor? ────────────────────
+# Hintergrund: eine .onion-Adresse kann NUR der Tor Browser aufloesen. Wer
+# sie in Firefox/Chrome eintippt, sieht die Fehlerseite des Browsers — bei
+# UNS kommt so eine Anfrage nie an, wir koennen sie also auch nicht
+# beantworten. Abgefangen wird das eine Ebene frueher: der Link "Onion Site"
+# auf home/index.html zeigt auf home/onion.html (Klarnetz, immer erreichbar),
+# und diese Seite fragt hier nach, ob sie den Besucher durchwinken darf.
+#
+# Erkennung bewusst NICHT am User-Agent (frei erfindbar), sondern:
+#   1. Host endet auf .onion  -> die Anfrage kam durch den Hidden Service
+#   2. Client-IP steht auf der offiziellen Tor-Exit-Node-Liste
+# Beides falsch -> "kein Tor", und onion.html bleibt bei der Erklaerseite.
+# Diese Richtung ist die sichere: faellt die Pruefung aus (kein Netz, Liste
+# alt), sieht der Besucher die Anleitung statt einer toten Adresse.
+ONION_ADDRESS = os.environ.get(
+    'ONION_ADDRESS',
+    'elzd2zcdroyvph632amoxnm2krnqpw23gey4voqoejgn5gqnjq4rrfyd.onion')
+ONION_GATE_URL = os.environ.get(
+    'ONION_GATE_URL', 'https://home.glappa.de/home/onion.html')
+
+TOR_EXIT_URL     = 'https://check.torproject.org/torbulkexitlist'
+TOR_EXIT_FILE    = os.path.join(DOWNLOAD_DIR, 'tor-exits.txt')
+TOR_EXIT_MAX_AGE = 6 * 3600   # Liste danach neu holen (Exits wechseln staendig)
+TOR_EXIT_RETRY   = 600        # nach einem Fehlversuch nicht sofort wieder quaelen
+TOR_EXIT_TIMEOUT = 8
+
+_TOR_EXITS: set = set()
+_TOR_NEXT_FETCH  = 0.0        # Epoch-Zeit, ab der wieder geholt werden darf
+_TOR_LOCK        = threading.Lock()
+
+
+def _tor_exits_load_disk():
+    """Platten-Kopie der Exit-Liste (ueberlebt Container-Neustarts)."""
+    with open(TOR_EXIT_FILE, 'r') as f:
+        return {ln.strip() for ln in f if ln.strip() and not ln.startswith('#')}
+
+
+def _tor_exits():
+    """Aktuelle Exit-Node-IPs. Wirft nie — im Zweifel eine leere Menge."""
+    global _TOR_EXITS, _TOR_NEXT_FETCH
+    if time.time() < _TOR_NEXT_FETCH:
+        return _TOR_EXITS
+
+    with _TOR_LOCK:
+        if time.time() < _TOR_NEXT_FETCH:      # zweiter Blick unterm Lock
+            return _TOR_EXITS
+
+        # Frische Platten-Kopie zuerst: spart den Abruf nach einem Neustart.
+        try:
+            if time.time() - os.path.getmtime(TOR_EXIT_FILE) < TOR_EXIT_MAX_AGE:
+                ips = _tor_exits_load_disk()
+                if ips:
+                    _TOR_EXITS = ips
+                    _TOR_NEXT_FETCH = time.time() + TOR_EXIT_MAX_AGE
+                    return _TOR_EXITS
+        except OSError:
+            pass
+
+        try:
+            req = urllib.request.Request(
+                TOR_EXIT_URL, headers={'User-Agent': 'glappa-bot/1.0'})
+            with urllib.request.urlopen(req, timeout=TOR_EXIT_TIMEOUT) as r:
+                raw = r.read().decode('utf-8', 'replace')
+            ips = {ln.strip() for ln in raw.splitlines()
+                   if ln.strip() and not ln.startswith('#')}
+            if not ips:
+                raise ValueError('leere Liste')
+            _TOR_EXITS = ips
+            _TOR_NEXT_FETCH = time.time() + TOR_EXIT_MAX_AGE
+            print(f'[onion] Tor-Exit-Liste aktualisiert: {len(ips)} Nodes.', flush=True)
+            # Platten-Kopie ist Beiwerk: klappt sie nicht, laeuft die Liste
+            # trotzdem — nur der naechste Neustart holt sie halt wieder neu.
+            try:
+                tmp = TOR_EXIT_FILE + '.tmp'
+                with open(tmp, 'w') as f:
+                    f.write('\n'.join(sorted(ips)) + '\n')
+                os.replace(tmp, TOR_EXIT_FILE)
+            except OSError as e:
+                print(f'[onion] Exit-Liste nicht zwischengespeichert: {e}', flush=True)
+            return _TOR_EXITS
+        except Exception as e:
+            print(f'[onion] Exit-Liste nicht erreichbar ({type(e).__name__}: {e}) — '
+                  f'weiter mit {len(_TOR_EXITS)} bekannten Nodes.', flush=True)
+            # Ohne frische Liste: notfalls die alte Platten-Kopie, egal wie alt.
+            if not _TOR_EXITS:
+                try:
+                    _TOR_EXITS = _tor_exits_load_disk()
+                except OSError:
+                    _TOR_EXITS = set()
+            _TOR_NEXT_FETCH = time.time() + TOR_EXIT_RETRY
+            return _TOR_EXITS
+
+
+def _tor_peer_ip() -> str:
+    """Die IP, die WIRKLICH bei uns angeklopft hat.
+
+    Apache haengt die echte Gegenstelle HINTEN an X-Forwarded-For an; alles
+    davor hat der Client selbst geschickt und darf gefaelscht sein. Fuer die
+    Tor-Frage zaehlt darum der letzte Eintrag, nicht der erste."""
+    xff = request.headers.get('X-Forwarded-For', '')
+    if xff:
+        return xff.split(',')[-1].strip()
+    return (request.remote_addr or '').strip()
+
+
+def _tor_verdict():
+    """(ist_tor, woran_erkannt)"""
+    host = (request.host or '').split(':')[0].lower()
+    if host.endswith('.onion'):
+        return True, 'onion-host'
+    ip = _tor_peer_ip()
+    if ip and ip in _tor_exits():
+        return True, 'exit-node'
+    return False, None
+
+
+@Downloader.route('/onion/check')
+def onion_check():
+    """JSON-Auskunft fuer home/onion.html: darf ich weiterleiten?"""
+    is_tor, via = _tor_verdict()
+    return _cors_resp(jsonify({
+        'ok':    True,
+        'tor':   is_tor,
+        'via':   via,
+        'onion': ONION_ADDRESS,
+        'url':   f'http://{ONION_ADDRESS}/',
+    }))
+
+
+@Downloader.route('/onion')
+def onion_gate():
+    """Kurzer Weg fuer alle, die /onion direkt aufrufen: mit Tor geht es
+    durch, ohne Tor auf die Zwiebel-Seite mit der Anleitung."""
+    is_tor, _ = _tor_verdict()
+    target = f'http://{ONION_ADDRESS}/' if is_tor else ONION_GATE_URL
+    return Response(status=302, headers={
+        'Location': target,
+        'Cache-Control': 'no-store',
+    })
+
+
 # ── Visitor Counter ───────────────────────────────────────────────
 # Speichert echte unique visits in einer JSON-Datei im Volume.
 # Identifikation: long-lived Cookie + IP+UA-Hash als Fallback.
