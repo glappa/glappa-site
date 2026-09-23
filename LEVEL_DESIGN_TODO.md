@@ -54,8 +54,9 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
   - `shadowAt` (schrumpft mit der Höhe), Aufruf in `render` für Spieler, Gegner, Sterne
 - [x] Partikel: Staub beim Landen, Funken beim Schlagen, Wasser, Lava
   - `burst`/`dust`/`sparkle`/`jumpRing`; Landestaub in `onLand`, Treffer-Funken in `hitInFront`, Spritzer/Blasen beim Schwimmen in `updatePlayer`, Glut in `burnPlayer`
-- [ ] Sound + Stimme für jede Aktion
-  - Klänge für fast alle Aktionen ✅ (`Snd.*`), es fehlen Schritte/Landen/Rutschen und eine Stimme
+- [x] Sound + Stimme für jede Aktion
+  - Klänge (`Snd.*`, alles live per WebAudio): Sprünge, Salti, Schläge, Hechtsprung, Stampfer, Greifen/Klettern, Schwimmen, Treffer, Bonk – neu: Schritte je Gangart und Boden (`Snd.step`, Schleichen lautlos), Landen (`Snd.land`), Kehrtwende (`Snd.skid`), Rutschen (`Snd.scrape`), Hangeln, Blubbern/Luftholen unter Wasser
+  - Stimme `Snd.voice(name)`: eigene Katzen-Silben per Formant-Synthese (`VOICE`, `FORMANT`), je Figur etwas andere Tonhöhe (`VOICE_PITCH`); Lautstärke offline gegen die Sprung-Klänge abgeglichen. **Nicht mit dem Ohr abgenommen** – bitte einmal anhören
 
 ## Phase 2 – Kamera
 

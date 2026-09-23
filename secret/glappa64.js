@@ -260,6 +260,42 @@
         clearInterval(musicTimer); musicTimer = null;
       }
     };
+
+    /* Glappos Stimme: eigene Katzen-Silben per Formant-Synthese — ein Saegezahn laeuft durch drei
+       Bandpaesse, die von Vokal zu Vokal gleiten. [Vokale, Tonhoehen-Verlauf (Hz), Dauer (s), Hauch] */
+    const FORMANT = { a: [800, 1250, 2700], e: [480, 1900, 2700], i: [310, 2300, 3100], o: [520, 880, 2500], u: [340, 780, 2300] };
+    const VOICE = {
+      hop: ['ua', [520, 600], 0.11, 1], hoi: ['oi', [560, 720, 760], 0.15], yay: ['iaau', [620, 950, 1150, 1000], 0.4],
+      flip: ['ui', [500, 820], 0.18], long: ['aa', [720, 600], 0.22, 1], dive: ['uo', [560, 480], 0.2, 1],
+      punch: ['a', [640, 560], 0.07, 1], punch2: ['i', [700, 610], 0.07, 1], kick: ['ia', [640, 780, 700], 0.14, 1],
+      pound: ['u', [430, 380], 0.1], climb: ['e', [520, 600], 0.09, 1], throw: ['ia', [620, 720], 0.12, 1],
+      hurt: ['iau', [900, 700, 450], 0.32], oof: ['ou', [520, 380], 0.18], gasp: ['a', [480, 540], 0.2, 1],
+      die: ['iaau', [820, 900, 600, 340], 0.9], star: ['iau', [700, 1050, 1250], 0.45],
+    };
+    const VOICE_PITCH = { knuddel: 1.12, sphinx: 0.9, neon: 1.06 };   // je Figur etwas hoeher oder tiefer
+    api.voice = fx((name) => {
+      const v = VOICE[name], c = ac();
+      if (!v || !c) return;
+      const [vow, f0, dur, breath] = v, t0 = c.currentTime, k = VOICE_PITCH[CAT.id] || 1, vol = 0.1;   // offline gemessen: so laut wie die Sprung-Klaenge
+      const src = c.createOscillator(), lfo = c.createOscillator(), lg = c.createGain(), env = c.createGain();
+      src.type = 'sawtooth';
+      f0.forEach((f, i) => (i ? src.frequency.linearRampToValueAtTime(f * k, t0 + dur * i / (f0.length - 1)) : src.frequency.setValueAtTime(f * k, t0)));
+      lfo.frequency.value = 6.5; lg.gain.value = f0[0] * k * 0.03; lfo.connect(lg); lg.connect(src.frequency);   // leichtes Vibrato
+      env.gain.setValueAtTime(0.0001, t0); env.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+      env.gain.setValueAtTime(vol, t0 + dur * 0.6); env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      env.connect(sfxBus);
+      [[3, 1.6], [4, 1], [5, 0.45]].forEach(([q, gain], j) => {
+        const bp = c.createBiquadFilter(), g = c.createGain();
+        bp.type = 'bandpass'; bp.Q.value = q; g.gain.value = gain;
+        [...vow].forEach((ch, i) => {
+          const f = FORMANT[ch][j] * 1.3 * Math.sqrt(k);   // kleines Wesen: Formanten hoeher als beim Menschen
+          if (i) bp.frequency.linearRampToValueAtTime(f, t0 + dur * 0.8 * i / (vow.length - 1)); else bp.frequency.setValueAtTime(f, t0);
+        });
+        src.connect(bp); bp.connect(g); g.connect(env);
+      });
+      if (breath) noise(0, 0.05, { filter: 'highpass', f: 2500, vol: 0.08 });
+      src.start(t0); lfo.start(t0); src.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
+    });
     return api;
   })();
 
@@ -9452,7 +9488,7 @@ void main() {
     pl.climbFrom = p.slice(); pl.climbTo = best.to; pl.hangBox = best.b; pl.hangN = best.n;
     pl.face = Math.atan2(-best.n[0], -best.n[2]);
     pl.vel = [0, 0, 0]; pl.speed = 0; pl.side = 0; pl.push = [0, 0, 0]; pl.flip = 0; pl.grounded = false;
-    Snd.climb();
+    Snd.climb(); Snd.voice('climb');
     return true;
   }
   // Beim Hangeln: welcher Block traegt die Kante an Stelle q (gleiche Hoehe, gleiche Wandseite)?
@@ -9489,7 +9525,7 @@ void main() {
         }
         pl.action = 'climb'; pl.climbK = 0; pl.climbDur = inp.jumpP ? 0.3 : 0.5;
         pl.climbFrom = p.slice(); pl.climbTo = [tx, top, tz];
-        Snd.climb();
+        Snd.climb(); Snd.voice('climb');
       } else if (inp.zP || (pl.hangT > 0.3 && toward < -0.6)) {
         dropLedge();
       } else if (pl.hangT > 0.12) {
@@ -9592,7 +9628,7 @@ void main() {
       pl.scrapeT = (pl.scrapeT || 0) - dt;
       if (pl.speed > 2 && pl.scrapeT <= 0) { pl.scrapeT = 0.09; Snd.scrape(Math.min(1, pl.speed / CHUTE_MAX)); }
       if (!lock && (inp.jumpP || pl.jumpBuf > 0)) {
-        airborne('rollout', 11, Math.max(pl.speed * 0.85, 5)); Snd.jump(2); dust(p, 5);
+        airborne('rollout', 11, Math.max(pl.speed * 0.85, 5)); Snd.jump(2); Snd.voice('flip'); dust(p, 5);
       } else if (pl.speed < 0.8 && !chute) {
         pl.action = 'ground'; pl.frozen = Math.max(pl.frozen, 0.18); pl.squash = 0.8;
       }
@@ -9641,17 +9677,17 @@ void main() {
         if (water) {
           airborne('jump', 13, pl.speed); pl.waterJump = true; Snd.splash();
         } else if (pl.skid) {
-          pl.face = intended; airborne('sideflip', 62 * UF, 8 * UF); Snd.jump(3);
+          pl.face = intended; airborne('sideflip', 62 * UF, 8 * UF); Snd.jump(3); Snd.voice('flip');
         } else if (wantLong) {
-          airborne('long', 30 * UF, Math.min(pl.speed * 1.5, 48 * UF)); Snd.jump(2);
+          airborne('long', 30 * UF, Math.min(pl.speed * 1.5, 48 * UF)); Snd.jump(2); Snd.voice('long');
         } else if (pl.crouch && Math.abs(pl.speed) < 1.5) {
-          airborne('backflip', 62 * UF, -16 * UF); Snd.jump(3);
+          airborne('backflip', 62 * UF, -16 * UF); Snd.jump(3); Snd.voice('flip');
         } else if (chain === 'double' && pl.speed > 20 * UF) {
-          airborne('triple', 69 * UF, pl.speed * 0.8); Snd.jump(3);
+          airborne('triple', 69 * UF, pl.speed * 0.8); Snd.jump(3); Snd.voice('yay');
         } else if (chain === 'jump' || chain === 'fall' || chain === 'sideflip') {
-          airborne('double', (52 + 0.25 * f) * UF, pl.speed * 0.8); Snd.jump(2); jumpRing(p);
+          airborne('double', (52 + 0.25 * f) * UF, pl.speed * 0.8); Snd.jump(2); Snd.voice('hoi'); jumpRing(p);
         } else {
-          airborne('jump', (42 + 0.25 * f) * UF, pl.speed * 0.8); Snd.jump(1);
+          airborne('jump', (42 + 0.25 * f) * UF, pl.speed * 0.8); Snd.jump(1); Snd.voice('hop');
         }
         if (!water) dust(p, 5);
       }
@@ -9675,7 +9711,7 @@ void main() {
         if (atSurface) {
           // kraeftiger Sprung aus dem Wasser
           airborne('jump', 14.5, Math.max(pl.speed, 3) * 0.9); pl.waterJump = true;
-          Snd.splash(); Snd.jump(2);
+          Snd.splash(); Snd.jump(2); Snd.voice('hop');
           burst([p[0], pl.waterObj.y, p[2]], 16, { spread: 4, up: 6, upRand: 3, life: .7, size: .2, cols: [[.75, .9, 1], [1, 1, 1]], grav: 16 });
         } else {
           pl.vel[1] = Math.max(pl.vel[1], 3.5); pl.speed = Math.min(pl.speed + 2.6, 7.5);
@@ -9718,9 +9754,9 @@ void main() {
           pl.face = Math.atan2(n[0], n[2]);
           airborne('wallkick', 62 * UF, 24 * UF);
           pl.wallT = -9;
-          Snd.jump(2); dust([p[0] - n[0] * R, p[1] + 1, p[2] - n[2] * R], 6); rumble(0.25, 60);
+          Snd.jump(2); Snd.voice('hop'); dust([p[0] - n[0] * R, p[1] + 1, p[2] - n[2] * R], 6); rumble(0.25, 60);
         } else if (pl.coyote > 0) {
-          airborne('jump', (42 + 0.25 * Math.max(0, pl.speed) / UF) * UF, pl.speed * 0.8); Snd.jump(1);
+          airborne('jump', (42 + 0.25 * Math.max(0, pl.speed) / UF) * UF, pl.speed * 0.8); Snd.jump(1); Snd.voice('hop');
         } else {
           pl.jumpBuf = 0.1;
         }
@@ -9729,10 +9765,10 @@ void main() {
         const since = time - (pl.jumpT ?? -9), fresh = since < LONG_WINDOW && ['jump', 'double', 'triple'].includes(pl.action);
         if (fresh && inp.zP && pl.action !== 'triple' && pl.jumpSpeed >= 10 * UF) {
           // Z kam einen Tick nach A: gemeint war ein Weitsprung, kein Stampfer
-          airborne('long', 30 * UF, Math.min(pl.jumpSpeed * 1.5, 48 * UF)); Snd.jump(2);
+          airborne('long', 30 * UF, Math.min(pl.jumpSpeed * 1.5, 48 * UF)); Snd.jump(2); Snd.voice('long');
         } else if (!fresh) {
           pl.action = 'pound'; pl.pound = 0; pl.speed = 0; pl.side = 0; pl.vel[1] = 0;
-          Snd.press();
+          Snd.press(); Snd.voice('pound');
         }
       }
     }
@@ -9764,7 +9800,7 @@ void main() {
           pl.face = Math.atan2(-hit.n[0], -hit.n[2]);
           pl.action = 'bonk'; pl.speed = -Math.max(5, into * 0.45); pl.side = 0; pl.flip = 0;
           pl.vel[1] = Math.min(pl.vel[1], 4);
-          Snd.bonk(); rumble(0.6, 160); cam.shake = Math.max(cam.shake, 0.25);
+          Snd.bonk(); Snd.voice('oof'); rumble(0.6, 160); cam.shake = Math.max(cam.shake, 0.25);
           burst([p[0] - hit.n[0] * R, p[1] + 1.7, p[2] - hit.n[2] * R], 10, { spread: 3, up: 3, upRand: 2, life: .6, size: .16, cols: [[1, .95, .3], [1, 1, 1]], grav: 4 });
         } else {
           pl.speed = Math.min(pl.speed, 0); pl.side = 0;   // langsam: nur abrutschen
@@ -9773,7 +9809,7 @@ void main() {
         // Bauchrutscher gegen die Wand: kurzer Aufprall, Sternchen, kurz benommen
         pl.face = Math.atan2(-hit.n[0], -hit.n[2]);
         pl.action = 'ground'; pl.speed = -3; pl.side = 0; pl.frozen = Math.max(pl.frozen, 0.45); pl.squash = 0.7;
-        Snd.bonk(); rumble(0.4, 120); cam.shake = Math.max(cam.shake, 0.18);
+        Snd.bonk(); Snd.voice('oof'); rumble(0.4, 120); cam.shake = Math.max(cam.shake, 0.18);
         burst([p[0] - hit.n[0] * R, p[1] + 0.9, p[2] - hit.n[2] * R], 8, { spread: 3, up: 3, upRand: 2, life: .5, size: .14, cols: [[1, .95, .3], [1, 1, 1]], grav: 4 });
       }
     }
@@ -9928,7 +9964,7 @@ void main() {
       if (run.health <= 0) loseLife();
       return;
     }
-    if (pl.underT > 2) Snd.gasp();   // aufgetaucht nach langem Tauchen: Luft holen
+    if (pl.underT > 2) { Snd.gasp(); Snd.voice('gasp'); }   // aufgetaucht nach langem Tauchen: Luft holen
     pl.underT = 0; pl.airT = 0;
     if (w && pl.action === 'swim' && run.health < 8) {
       pl.refillT = (pl.refillT || 0) + dt;
@@ -9943,7 +9979,7 @@ void main() {
     if (pl.invuln > 0 || pl.dead) return;
     if (pl.hold) dropHold(false);
     run.health = Math.max(0, run.health - (drop >= FALL_HURT_BIG ? 4 : 2));
-    pl.invuln = 1.2; Snd.hurt(); Power.render(true);
+    pl.invuln = 1.2; Snd.hurt(); Snd.voice('oof'); Power.render(true);
     if (run.health <= 0) loseLife();
   }
 
@@ -9981,7 +10017,7 @@ void main() {
     const dx = pl.pos[0] - from[0], dz = pl.pos[2] - from[2], d = Math.hypot(dx, dz) || 1;
     const f = strong ? 14 : 8;
     pl.push = [dx / d * f, 0, dz / d * f]; pl.vel[1] = strong ? 13 : 8; pl.grounded = false; pl.speed = 0;
-    Snd.hurt(); rumble(strong ? 1 : 0.7, strong ? 400 : 220); Power.render(true);
+    Snd.hurt(); Snd.voice('hurt'); rumble(strong ? 1 : 0.7, strong ? 400 : 220); Power.render(true);
     if (run.health <= 0) loseLife();
   }
   // Heisser Boden (Lava, Laser): Aua, und hoch in die Luft — in der Luft darf man zurueck lenken
@@ -9994,7 +10030,7 @@ void main() {
     burst([p[0], p[1] + 0.3, p[2]], 16, { spread: 3, up: 5, upRand: 3, life: .6, size: .25, cols: [[1, .5, .1], [1, .85, .2], [.3, .3, .3]], grav: 4 });
   }
   function loseLife() {
-    pl.dead = true;
+    pl.dead = true; Snd.voice('die');
     run.lives = Math.max(0, run.lives - 1);
     renderHud('lives');
     setTimeout(() => {
@@ -10073,7 +10109,7 @@ void main() {
     }));
     $('#starGetName').textContent = STARS[s.id].name;
     StarFx.start(s.pos, isNew);
-    Snd.starGet(); rumble(0.5, 300);
+    Snd.starGet(); Snd.voice('star'); rumble(0.5, 300);
     pl.speed = 0;
     setTimeout(() => {
       $('#starGet').hidden = true;
@@ -10159,7 +10195,7 @@ void main() {
     e.thrown = 1.6;
     e.t = Math.min(e.t, 1.6);
     pl.punchT = 0; pl.punchN = 0;
-    Snd.whoosh();
+    Snd.whoosh(); Snd.voice('throw');
   }
   function dropHold(soft) {
     const e = pl.hold;
@@ -10903,7 +10939,7 @@ void main() {
     const air = !pl.grounded;
     airborne('dive', air ? Math.max(Math.min(pl.vel[1], 6), 3) : 7, Math.max(pl.speed, 13) + (air ? 1.5 : 3));
     pl.punchT = 0;
-    Snd.dive(); if (!air) dust(pl.pos, 5);
+    Snd.dive(); Snd.voice('dive'); if (!air) dust(pl.pos, 5);
   }
   function attack() {
     const a = pl.action;
@@ -10911,7 +10947,7 @@ void main() {
     if (!pl.grounded) {
       if (pl.inWater) return;
       if (Math.abs(pl.speed) > 4) startDive();
-      else if (pl.punchT <= 0) { pl.punchN = 3; pl.punchDur = pl.punchT = 0.34; pl.comboT = time; Snd.punch(3); hitInFront(2.4, true); }
+      else if (pl.punchT <= 0) { pl.punchN = 3; pl.punchDur = pl.punchT = 0.34; pl.comboT = time; Snd.punch(3); Snd.voice('kick'); hitInFront(2.4, true); }
       return;
     }
     if (pl.speed > 8.5 && !pl.crouch && !pl.crawl) { startDive(); return; }
@@ -10922,7 +10958,7 @@ void main() {
     pl.comboT = time;
     pl.punchDur = pl.punchT = pl.punchN === 3 ? 0.36 : 0.24;
     pl.speed = Math.max(pl.speed, pl.punchN === 3 ? 4.5 : 3);
-    Snd.punch(pl.punchN);
+    Snd.punch(pl.punchN); Snd.voice(['punch', 'punch2', 'kick'][pl.punchN - 1]);
     hitInFront(pl.punchN === 3 ? 2.6 : 2.2, pl.punchN === 3);
   }
 
