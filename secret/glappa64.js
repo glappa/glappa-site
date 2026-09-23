@@ -9252,6 +9252,23 @@ void main() {
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
+  /* Messtabelle: was jede Bewegung auf ebenem Boden schafft, in Metern (1 Welt-Einheit = 1 m).
+     h = Gipfelhoehe, d = Weite bis zur Landung auf gleicher Hoehe, t = Flugzeit in s.
+     Anlauf mit vollem Tempo, Stick die ganze Zeit in Sprungrichtung.
+     Gemessen mit g64.measure() im Gym (?debug&gym) — nach Physik-Aenderungen neu messen. */
+  const MOVES = {
+    hop:      { h: 0.41, d: 3.13,  t: 0.24 },   // A im Lauf nur angetippt
+    jump:     { h: 2.96, d: 0,     t: 0.69 },   // aus dem Stand, A gehalten
+    runJump:  { h: 4.21, d: 13.7,  t: 0.83 },
+    double:   { h: 7.11, d: 24.91, t: 1.08 },
+    triple:   { h: 8.06, d: 34.15, t: 1.14 },
+    backflip: { h: 6.5,  d: 2.21,  t: 1.02 },   // d nach hinten
+    sideflip: { h: 6.5,  d: 13.63, t: 1.02 },
+    long:     { h: 1.5,  d: 11.03, t: 0.49 },
+    wallkick: { h: 6.5,  d: 17.96, t: 1.02 },   // pro Wandsprung, weg von der Wand
+    dive:     { h: 0.47, d: 4.4,   t: 0.28 },   // nur die Flugphase, danach Bauchrutscher
+    rollout:  { h: 1.18, d: 6.81,  t: 0.44 },   // A im Bauchrutscher
+  };
   const pl = {
     pos: [0, 0, 0], vel: [0, 0, 0], push: [0, 0, 0], face: 0, speed: 0, side: 0, grounded: true, coyote: 0,
     action: 'ground', landFrom: '', landT: -9, jumpBuf: 0, holdGrace: 0, skid: false, crouch: false, hold: null,
@@ -11775,6 +11792,60 @@ void main() {
   $('#pressStart').focus({ preventScroll: true });
   requestAnimationFrame(frame);
 
+  /* ═══════════ Messbank (?debug → g64.measure()) ═══════════
+     Faehrt jede Bewegung mit der echten Physik im Gym ab: Anlauf nach -z, Stick voll in
+     Sprungrichtung. Misst Gipfelhoehe, Weite bis zur Landung auf gleicher Hoehe und Flugzeit. */
+  function measureMoves() {
+    const back = { key: cur.key, sfx: state.sfx };
+    state.sfx = false;
+    const L = getLevel('gym');
+    const IN = (o) => Object.assign({}, NO_INPUT, o);
+    // seg: welche Flugphase zaehlt (2 = Doppelsprung usw.)
+    function run(setup, drive, seg = 1) {
+      cur = L; cam.yaw = 0;
+      Object.assign(pl, { pos: [0, 0, 20], vel: [0, 0, 0], push: [0, 0, 0], carry: [0, 0], speed: 0, side: 0, face: Math.PI,
+        grounded: true, groundBox: null, action: 'ground', flip: 0, skid: false, crouch: false, hold: null, invuln: 0, hurtT: 0,
+        knock: 0, frozen: 0, inWater: false, landT: -9, landFrom: '', jumpBuf: 0, zDownT: -9, jumpT: -9, punchT: 0, coyote: 0 });
+      if (setup) setup();
+      let air = 0, from = null, t0 = 0, top = 0, act = '', prevG = true;
+      for (let k = 0; k < 1200; k++) {
+        const before = pl.pos.slice();
+        step(STEP_DT, drive(k));
+        if (prevG && !pl.grounded && ++air === seg) { from = before; top = before[1]; t0 = k; act = pl.action; }
+        if (air === seg && from) {
+          top = Math.max(top, pl.pos[1]);
+          if (pl.grounded) {
+            const r2 = (v) => Math.round(v * 100) / 100;
+            return { act, h: r2(top - from[1]), d: r2(Math.hypot(pl.pos[0] - from[0], pl.pos[2] - from[2])), t: r2((k + 1 - t0) * STEP_DT) };
+          }
+        }
+        prevG = pl.grounded;
+      }
+      return null;
+    }
+    const full = () => { pl.speed = RUN; };
+    // A beim Aufsetzen sofort wieder druecken (Sprungkette)
+    const chain = () => { let wasG = true; return (k) => { const press = pl.grounded && (k === 0 || !wasG); wasG = pl.grounded; return IN({ my: -1, jump: true, jumpP: press }); }; };
+    const out = {
+      hop: run(full, (k) => IN({ my: -1, jump: k === 0, jumpP: k === 0 })),
+      jump: run(null, (k) => IN({ jump: true, jumpP: k === 0 })),
+      runJump: run(full, (k) => IN({ my: -1, jump: true, jumpP: k === 0 })),
+      double: run(full, chain(), 2),
+      triple: run(full, chain(), 3),
+      backflip: run(null, (k) => IN({ z: true, zP: k === 0, jump: k >= 6, jumpP: k === 6 })),
+      sideflip: run(full, (k) => IN({ my: k < 2 ? -1 : 1, jump: pl.skid || k > 60, jumpP: pl.skid })),
+      long: run(full, (k) => IN({ my: -1, z: k < 3, zP: k === 0, jump: k >= 1, jumpP: k === 1 })),
+      wallkick: run(() => airborne('wallkick', 62 * UF, 24 * UF), () => IN({ my: -1 })),
+      dive: run(full, (k) => IN({ my: -1, action: k === 0, actionP: k === 0 })),
+      rollout: run(full, (k) => IN({ my: -1, action: k === 0, actionP: k === 0, jump: pl.action === 'slide', jumpP: pl.action === 'slide' }), 2),
+    };
+    parts.length = 0; state.sfx = back.sfx;
+    enterLevel(back.key);
+    // Abweichung zur Messtabelle im Code (MOVES), damit die Konstanten ehrlich bleiben
+    for (const [k, v] of Object.entries(out)) if (v && MOVES[k]) v.diff = Math.round(Math.max(Math.abs(v.h - MOVES[k].h), Math.abs(v.d - MOVES[k].d)) * 100) / 100;
+    return out;
+  }
+
   // Test-Haken (?debug): Zustand ansehen, Frames von Hand weiterschalten
   if (/[?&]debug\b/.test(location.search)) {
     window.g64 = {
@@ -11786,6 +11857,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
+      measure: measureMoves, MOVES,
     };
   }
 })();
