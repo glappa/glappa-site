@@ -8188,7 +8188,9 @@ vec3 art(vec2 p) {
       L.block(-48 + i * 7, GRID[k] / 2, 5, 5, GRID[k], 6, col(c), 'plat');
     });
     K.talker(-54, 0, 11, 'Schild', [`★ HÖHEN ★\nStufe ${f1(GRID.step)} · Sprung ${f1(GRID.hop)} · Kante greifen ${f1(GRID.hang)} · Salto/Doppelsprung ${f1(GRID.high)} · Dreifachsprung ${f1(GRID.top)}`,
-      'Am gelben Block kann man an der Kante hängen und hangeln.']);
+      'Dahinter die Hangel-Wand: an die Kante springen, dann mit dem Stick seitlich entlang – auch über die Fuge zwischen den Blöcken.']);
+    // Hangel-Wand aus zwei Bloecken mit gleicher Oberkante
+    for (const x of [-46, -38]) L.block(x, GRID.hang / 2, -9, 8, GRID.hang, 2, col('#ffd24a'), 'plat');
     // Luecken-Bahn (Mitte): Rampe hoch, dann Laufsprung- und Weitsprung-Luecke
     const PY = 2;
     K.ramp(-3, 0, 3, 8, 0, PY, 'z-', col('#6aa8ff'));
@@ -9431,6 +9433,16 @@ void main() {
     Snd.climb();
     return true;
   }
+  // Beim Hangeln: welcher Block traegt die Kante an Stelle q (gleiche Hoehe, gleiche Wandseite)?
+  const SHIMMY = 1.8;   // m/s
+  function ledgeAt(L, q, top, n) {
+    for (const b of near(L, q[0], q[2])) {
+      if (b.slope || Math.abs(b.max[1] - top) > 0.05 || NO_GRAB.has(b.tag)) continue;
+      const dx = q[0] - clamp(q[0], b.min[0], b.max[0]), dz = q[2] - clamp(q[2], b.min[2], b.max[2]), d = Math.hypot(dx, dz);
+      if (d > R - 0.1 && d < R + 0.15 && (dx * n[0] + dz * n[2]) / d > 0.95) return b;
+    }
+    return null;
+  }
   function dropLedge() {
     const n = pl.hangN || [0, 0, 0];
     pl.pos[0] += n[0] * 0.18; pl.pos[2] += n[2] * 0.18;
@@ -9458,6 +9470,15 @@ void main() {
         Snd.climb();
       } else if (inp.zP || (pl.hangT > 0.3 && toward < -0.6)) {
         dropLedge();
+      } else if (pl.hangT > 0.12) {
+        // Hangeln: Stick quer zur Wand -> an der Kante entlang, auch auf den naechsten Block gleicher Hoehe
+        const side = wx * -n[2] + wz * n[0];
+        if (Math.abs(side) < 0.35) return;
+        const d = Math.sign(side) * SHIMMY * Math.min(1, Math.abs(side)) * dt;
+        const q = [p[0] - n[2] * d, p[1], p[2] + n[0] * d];
+        const nb = ledgeAt(L, q, b.max[1], n);
+        if (!nb || !columnClear(L, q[0], q[2], p[1] + 0.1, p[1] + 1.9, R * 0.6)) return;
+        pl.pos = q; pl.hangBox = nb; pl.shimmyPh = (pl.shimmyPh || 0) + d * 5;
       }
       return;
     }
@@ -11313,8 +11334,8 @@ void main() {
     if (lying) {
       legL = -1.1; legR = -0.7; armL = armR = -2.8; armOut = 1.2; headTilt = 0.4;
     } else if (a === 'hang') {
-      const s2 = Math.sin(clock * 2.2);
-      armL = armR = -3.05; armOut = 0.22; legL = -0.12 + s2 * 0.1; legR = 0.08 - s2 * 0.1; headTilt = -0.35;
+      const s2 = Math.sin(clock * 2.2), sh = Math.sin(pl.shimmyPh || 0) * 0.22;   // sh: Hand ueber Hand beim Hangeln
+      armL = -3.05 + sh; armR = -3.05 - sh; armOut = 0.22 + Math.abs(sh) * 0.6; legL = -0.12 + s2 * 0.1 + sh; legR = 0.08 - s2 * 0.1 - sh; headTilt = -0.35;
       tailRx = -2.6; tailRz = s2 * 0.4;
     } else if (a === 'climb') {
       const k = pl.climbK;
