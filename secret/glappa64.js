@@ -7241,6 +7241,7 @@ vec3 art(vec2 p) {
     spiel: 'hall', sternwarte: 'hall', keller: 'hall', hof: 'hall', og: 'hall',
     verlies: 'keller', aquarium: 'keller', bild_desert: 'keller', bild_neon: 'keller',
     bild_spuk: 'hof', bild_uhrwerk: 'og', bild_fraktal: 'og',
+    gym: 'garden',
   };
   let buildingKey = null;   // welches Level gerade gebaut wird (fuer die Rueckweg-Tuer)
 
@@ -8148,6 +8149,33 @@ vec3 art(vec2 p) {
       'Schau sie an, dann halten sie sich die Augen zu und werden ganz durchsichtig. Treffen kann man sie dann nicht.',
       'Dreh ihnen den Rücken zu und lass sie herankommen – dann blitzschnell umdrehen und zuhauen! Oder draufspringen.',
       'Sind alle sechs fort, erscheint an der Statue ein Stern. Viel Glück!'], { cat: 0, r: 4, tint: '#ffd0a8', mix: 0.3 });
+    L.finish();
+    return L;
+  }
+
+  /* ─────────── Bewegungs-Gym (Testlevel, nur ueber ?gym) ───────────
+     Leere Graubox mit 1-m-Raster und Messlatten: hier wird das Moveset getunt,
+     bevor Level darauf gebaut werden. */
+  function buildGym() {
+    const L = new Level({ name: 'Bewegungs-Gym', spawn: [0, 0, 30], spawnFace: Math.PI, spawnYaw: 0,
+      fog: hex('#dfe6ee'), fogNear: 90, fogFar: 260, light: v3.norm([0.35, -0.85, -0.4]), sky: 'day' });
+    const K = kit(L), g = K.g, gw = K.glow;
+    const X0 = -60, X1 = 60, Z0 = -80, Z1 = 40, LINE = hex('#8a93a3');
+    K.ground(X0, Z0, X1, Z1, hex('#c8ccd2'), hex('#bcc1c8'), 0, 1);
+    K.bounds(X0, Z0, X1, Z1);
+    // alle 5 m eine dunklere Linie, damit man Weiten abzaehlen kann
+    for (let x = X0; x <= X1; x += 5) g.quad([x - 0.04, 0.01, Z1], [x + 0.04, 0.01, Z1], [x + 0.04, 0.01, Z0], [x - 0.04, 0.01, Z0], LINE);
+    for (let z = Z0; z <= Z1; z += 5) g.quad([X0, 0.01, z + 0.04], [X1, 0.01, z + 0.04], [X1, 0.01, z - 0.04], [X0, 0.01, z - 0.04], LINE);
+    // Messlatte: Streifen alle 1 m, rot alle 5 m (bis 12 m)
+    const pole = (x, z) => {
+      for (let y = 0; y < 12; y++) box(g, M4.from(x, y + 0.5, z), 0.3, 1, 0.3, y % 5 === 4 ? hex('#e8413a') : y % 2 ? hex('#ffffff') : hex('#2a2e36'));
+      L.solid(x - 0.15, 0, z - 0.15, x + 0.15, 12, z + 0.15, 'post');
+    };
+    pole(-5, 20); pole(5, 20);
+    K.talker(-3, 0, 26, 'Schild', [
+      '★ BEWEGUNGS-GYM ★\nTestgelände für das Moveset. Boden: 1-m-Raster, dunkle Linien alle 5 m.',
+      'Die Messlatten sind 12 m hoch: weiß/schwarz je 1 m, rot bei 5 und 10 m.',
+    ]);
     L.finish();
     return L;
   }
@@ -10795,7 +10823,7 @@ void main() {
     garden: buildGarden, hall: buildHall, desert: buildDesert, terminal: buildTerminal, video: buildVideo,
     bounce: buildBounce, spuk: buildSpuk, uhrwerk: buildUhrwerk, fraktal: buildFraktal, pilz: buildPilz, neon: buildNeon,
     verlies: buildVerlies, bibliothek: buildBibliothek, aquarium: buildAquarium, musik: buildMusik, spiel: buildSpiel, sternwarte: buildSternwarte,
-    keller: buildKeller, og: buildOG, hof: buildHof,
+    keller: buildKeller, og: buildOG, hof: buildHof, gym: buildGym,
   };
   for (const w of Object.keys(PAINT_ROOMS)) BUILDERS['bild_' + w] = () => buildPaintRoom(w);
   function getLevel(key) {
@@ -10851,7 +10879,7 @@ void main() {
       let ret = null;
       try { ret = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); sessionStorage.removeItem('glappa64-return'); } catch (e) { ret = null; }
       if (ret && BUILDERS[ret.level] && Array.isArray(ret.pos)) { enterLevel(ret.level, ret.pos, ret.face || 0, ret.face || 0); pl.appearT = clock + 0.5; }
-      else enterLevel('garden');
+      else enterLevel(/[?&]gym\b/.test(location.search) ? 'gym' : 'garden');   // ?gym = Testlevel fuers Moveset
       if (state.music) Snd.music(true);
       return Iris.open(null, null, 700);
     }).then(() => { mode = 'play'; setTimeout(intro, 1300); });
