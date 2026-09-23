@@ -181,6 +181,16 @@
         [2093, 2637, 3136, 4186, 5274].forEach((f, i) => tone(f, 2.08 + i * 0.08, 0.5, { type: 'sine', vol: 0.035, bus }));
         tone(130.8, 2.02, 1.4, { type: 'sine', vol: 0.12, attack: 0.02 });
       }),
+      // Schritt je nach Boden; loud = Rennen
+      step: fx((kind, loud) => {
+        if (kind === 'water') noise(0, 0.12, { filter: 'bandpass', f: 1300, fTo: 500, q: 1, vol: loud ? 0.1 : 0.06 });
+        else if (kind === 'ice') { noise(0, 0.04, { filter: 'highpass', f: 3200, vol: loud ? 0.06 : 0.04 }); tone(1500, 0, 0.03, { type: 'sine', vol: 0.02 }); }
+        else if (kind === 'soft') noise(0, 0.08, { filter: 'bandpass', f: 900, q: 0.7, vol: 0.035 });
+        else { noise(0, 0.05, { f: 650, vol: loud ? 0.11 : 0.07 }); tone(95, 0, 0.05, { type: 'sine', vol: loud ? 0.07 : 0.045 }); }
+      }),
+      land: fx((k) => { noise(0, 0.09, { f: 500, vol: 0.08 + k * 0.14 }); tone(110, 0, 0.1, { type: 'sine', vol: 0.06 + k * 0.12, slide: 0.6 }); }),
+      skid: fx(() => { noise(0, 0.32, { filter: 'bandpass', f: 2600, fTo: 1100, q: 1.2, vol: 0.14 }); tone(950, 0, 0.22, { type: 'sawtooth', vol: 0.025, slide: 0.75 }); }),
+      scrape: fx((k) => noise(0, 0.1, { filter: 'bandpass', f: 700 + k * 900, q: 0.9, vol: 0.03 + k * 0.05 })),
       gurgle: fx(() => [300, 430, 360, 540].forEach((f, i) => tone(f, i * 0.05, 0.07, { type: 'sine', vol: 0.12, slide: 1.6 }))),
       gasp: fx(() => noise(0, 0.35, { filter: 'bandpass', f: 1800, fTo: 3000, q: 0.8, vol: 0.18, attack: 0.12 })),
       arrive: fx(() => {
@@ -9490,7 +9500,9 @@ void main() {
         const q = [p[0] - n[2] * d, p[1], p[2] + n[0] * d];
         const nb = ledgeAt(L, q, b.max[1], n);
         if (!nb || !columnClear(L, q[0], q[2], p[1] + 0.1, p[1] + 1.9, R * 0.6)) return;
+        const hand = Math.floor((pl.shimmyPh || 0) / Math.PI);
         pl.pos = q; pl.hangBox = nb; pl.shimmyPh = (pl.shimmyPh || 0) + d * 5;
+        if (Math.floor(pl.shimmyPh / Math.PI) !== hand) Snd.step('soft');
       }
       return;
     }
@@ -9577,6 +9589,8 @@ void main() {
         pl.speed = Math.max(0, pl.speed - (pl.groundBox && pl.groundBox.tag === 'ice' ? 3 : 12) * dt);
       }
       if (pl.speed > 2 && Math.random() < dt * 22) dust(p, 1);
+      pl.scrapeT = (pl.scrapeT || 0) - dt;
+      if (pl.speed > 2 && pl.scrapeT <= 0) { pl.scrapeT = 0.09; Snd.scrape(Math.min(1, pl.speed / CHUTE_MAX)); }
       if (!lock && (inp.jumpP || pl.jumpBuf > 0)) {
         airborne('rollout', 11, Math.max(pl.speed * 0.85, 5)); Snd.jump(2); dust(p, 5);
       } else if (pl.speed < 0.8 && !chute) {
@@ -9589,7 +9603,7 @@ void main() {
       const icy = gtag === 'ice', fr = icy ? 0.16 : 1;
       const top = RUN * mag * (water ? 0.5 : 1);
       // Kehrtwende: Stick deutlich zurueck (> ~100°) bei Tempo -> rutschen
-      if (!pl.crouch && !pl.skid && moving && Math.abs(dYaw) > 1.75 && pl.speed >= 16 * UF) pl.skid = true;
+      if (!pl.crouch && !pl.skid && moving && Math.abs(dYaw) > 1.75 && pl.speed >= 16 * UF) { pl.skid = true; Snd.skid(); dust(p, 4); }
       pl.crawl = false;
       if (pl.skid) {
         pl.speed = Math.max(0, pl.speed - (icy ? 2.5 * UFF * fr : SKID_BRAKE) * dt);
@@ -9833,6 +9847,13 @@ void main() {
     // Gangart (fuer Schritte, Pose und spaeter fuer Gegner, die auf laute Schritte hoeren)
     const sp = pl.grounded && pl.action === 'ground' && !pl.crawl ? Math.abs(pl.speed) / RUN : 0;
     pl.gait = sp < 0.03 ? 'stand' : sp < GAIT_SNEAK ? 'sneak' : sp < GAIT_WALK ? 'walk' : 'run';
+    const stepN = Math.floor(pl.walk / Math.PI + 0.5);
+    if (stepN !== pl.stepN) {
+      pl.stepN = stepN;
+      const gt = pl.groundBox && pl.groundBox.tag;
+      if ((pl.gait === 'walk' || pl.gait === 'run') && !pl.skid) Snd.step(pl.inWater ? 'water' : gt === 'ice' ? 'ice' : '', pl.gait === 'run');
+      else if (pl.crawl) Snd.step('soft');
+    }
     pl.squash += ((pl.crouch ? 0.7 : 1) - pl.squash) * Math.min(1, dt * 12);
     const flipRate = { triple: 9, backflip: 8, sideflip: 9, rollout: 11 }[pl.action];
     // Rutschen gegen eine Wand: abrupt stoppen (ausser in der Rutschbahn)
@@ -9869,7 +9890,9 @@ void main() {
       pl.knock = 0.55; pl.speed = 0; pl.squash = 0.6;
       dust(pl.pos, 8); Snd.stomp();
     } else if (impact < -14) {
-      dust(pl.pos, 6);
+      dust(pl.pos, 6); Snd.land(Math.min(1, -impact / 40));
+    } else if (impact < -5) {
+      Snd.land(0);
     }
     if (gb && gb.tag === 'switch') pressSwitch();
     // Tiefer Fall: harte Landung — ausser mit Stampfer, ins Wasser, auf Federn oder Rutschbahnen
@@ -12044,7 +12067,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
-      measure: measureMoves, MOVES,
+      measure: measureMoves, MOVES, Snd,
     };
   }
 })();
