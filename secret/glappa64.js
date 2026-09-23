@@ -9326,6 +9326,9 @@ void main() {
     shaft: FAIR * MOVES.wallkick.d / 2,                      // Wandsprung-Schacht: Weg bis etwa zum Gipfel
     crawl: CROUCH_H,                                         // Durchgang nur geduckt
   };
+  // Fallschaden erst ab dieser Fallhoehe (m, vom Gipfel bis zur Landung): 2 bzw. 4 Segmente.
+  // Ein Dreifachsprung (MOVES.triple.h) auf gleiche Hoehe tut also nie weh.
+  const FALL_HURT = 15, FALL_HURT_BIG = 30;
   const pl = {
     pos: [0, 0, 0], vel: [0, 0, 0], push: [0, 0, 0], face: 0, speed: 0, side: 0, grounded: true, coyote: 0,
     action: 'ground', landFrom: '', landT: -9, jumpBuf: 0, holdGrace: 0, skid: false, crouch: false, hold: null,
@@ -9350,6 +9353,7 @@ void main() {
   const towardZero = (v, d) => (v > 0 ? Math.max(0, v - d) : Math.min(0, v + d));
 
   function airborne(action, vy, speed) {
+    if (action !== 'dive') pl.fallTop = pl.pos[1];   // jeder neue Absprung beginnt eine neue Fallhoehe
     pl.action = action; pl.vel[1] = vy; pl.speed = speed; pl.side = 0; pl.flip = 0;
     pl.grounded = false; pl.coyote = 0; pl.skid = false; pl.crouch = false; pl.jumpBuf = 0; pl.waterJump = false;
   }
@@ -9389,7 +9393,7 @@ void main() {
     pl.pos = [best.nx + best.n[0] * (R + 0.02), best.top - 1.95, best.nz + best.n[2] * (R + 0.02)];
     pl.face = Math.atan2(-best.n[0], -best.n[2]);
     pl.vel = [0, 0, 0]; pl.speed = 0; pl.side = 0; pl.push = [0, 0, 0]; pl.flip = 0;
-    pl.grounded = false; pl.waterJump = false; pl.squash = 0.9;
+    pl.grounded = false; pl.waterJump = false; pl.squash = 0.9; pl.fallTop = pl.pos[1];
     Snd.grab(); rumble(0.25, 60);
     return true;
   }
@@ -9457,6 +9461,7 @@ void main() {
     if (pl.action === 'hang' || pl.action === 'climb') { pl.carry = [0, 0]; updateLedge(dt, inp, lock); return; }
     const gbBefore = pl.grounded ? pl.groundBox : null;
     const water = pl.inWater;
+    if (pl.grounded || water) pl.fallTop = p[1];
     pl.looking = !lock && inp.look && pl.grounded && !inp.z;
     // Aufstehen geht nur, wenn ueber dem Kopf Platz ist
     pl.forceCrouch = pl.grounded && pl.h < PH && headBlocked(L, p);
@@ -9757,6 +9762,7 @@ void main() {
       pl.speed = 0; pl.action = 'ground'; pl.frozen = Math.max(pl.frozen, 0.25); Snd.stomp(); cam.shake = Math.max(cam.shake, 0.15);
     }
     if (flipRate) pl.flip = Math.min(TAU, pl.flip + dt * flipRate);
+    if (!pl.grounded) pl.fallTop = Math.max(pl.fallTop ?? p[1], p[1]);
   }
 
   function onLand(gb, impact) {
@@ -9788,14 +9794,31 @@ void main() {
       dust(pl.pos, 6);
     }
     if (gb && gb.tag === 'switch') pressSwitch();
+    // Tiefer Fall: harte Landung — ausser mit Stampfer, ins Wasser, auf Federn oder Rutschbahnen
+    const bouncy = gb && (gb.tag === 'awning' || gb.tag === 'bouncy');
+    const soft = from === 'pound' || bouncy || (gb && gb.chute) || cur.waters.some((w) => inWaterBox(w, pl.pos));
+    const drop = (pl.fallTop ?? pl.pos[1]) - pl.pos[1];
+    if (!soft && drop >= FALL_HURT) hardLanding(drop);
     // Markisen, Seerosen, Pilze ... federn wie ein Trampolin
-    if (gb && (gb.tag === 'awning' || gb.tag === 'bouncy')) {
+    if (bouncy) {
       const power = gb.bounce || 75;
       airborne('bounce', (from === 'pound' ? power + 10 : power) * UF, pl.speed);
       pl.squash = 0.6; pl.knock = 0;
       Snd.boing(); rumble(0.2, 80);
     }
     if (gb && cur.onLand) cur.onLand(gb, from);
+  }
+
+  const inWaterBox = (w, p) => p[0] > w.x0 && p[0] < w.x1 && p[2] > w.z0 && p[2] < w.z1 && p[1] < w.y + 0.1;
+  // Harte Landung: Segmente weg, kurz auf dem Hosenboden sitzen (kein Rueckstoss wie bei Treffern)
+  function hardLanding(drop) {
+    pl.action = 'ground'; pl.speed = 0; pl.side = 0; pl.knock = 0.9; pl.squash = 0.55;
+    cam.shake = Math.max(cam.shake, 0.4); rumble(0.9, 250); Snd.bonk(); dust(pl.pos, 12);
+    if (pl.invuln > 0 || pl.dead) return;
+    if (pl.hold) dropHold(false);
+    run.health = Math.max(0, run.health - (drop >= FALL_HURT_BIG ? 4 : 2));
+    pl.invuln = 1.2; Snd.hurt(); Power.render(true);
+    if (run.health <= 0) loseLife();
   }
 
   function onWallHit(hit, into) {

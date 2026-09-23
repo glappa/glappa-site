@@ -42,7 +42,8 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
   - `GROUND_ACC`/`GROUND_BRAKE`/`OVER_BRAKE`/`SKID_BRAKE` + Kehrtwenden-Rutscher (`pl.skid`), Eis extra glatt. Werte hat der User am 2026-09-21 bewusst straff gewünscht („zu rutschig“) – nicht zurückdrehen.
 - [ ] Coyote Time + automatisches Hochziehen an Kanten
   - Coyote Time ✅ (`pl.coyote = 0.06`), Hochziehen nur per Eingabe aus dem Hängen
-- [ ] Fallschaden nur ab großer Höhe; Stampfattacke vor Landung verhindert ihn
+- [x] Fallschaden nur ab großer Höhe; Stampfattacke vor Landung verhindert ihn
+  - `FALL_HURT` = 15 m → 2 Segmente, `FALL_HURT_BIG` = 30 m → 4 Segmente; gemessen vom Gipfel (`pl.fallTop`, jeder neue Absprung/Kantengriff/Wasser setzt ihn neu). `onLand` → `hardLanding` (kurz auf dem Hosenboden, kein Rückstoß). Kein Schaden mit Stampfer, ins Wasser, auf Federn und Rutschbahnen. Im Gym geprüft: 12 m nichts, 16 m −2, 31 m −4, Stampfer aus 20 m nichts
 - [ ] Lebensenergie: 8 Segmente, Münzen heilen, Luftvorrat unter Wasser
   - 8 Segmente ✅ (`Power`, `run.health`), Münzen heilen ✅ (`addCoins`), Luftvorrat fehlt
 - [x] Messtabelle: Höhe/Weite jeder Bewegung in Welt-Einheiten (als Konstanten im Code)
