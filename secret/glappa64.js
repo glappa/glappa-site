@@ -8164,7 +8164,7 @@ vec3 art(vec2 p) {
     const L = new Level({ name: 'Bewegungs-Gym', spawn: [0, 0, 30], spawnFace: Math.PI, spawnYaw: 0,
       fog: hex('#dfe6ee'), fogNear: 90, fogFar: 260, light: v3.norm([0.35, -0.85, -0.4]), sky: 'day' });
     const K = kit(L), g = K.g, gw = K.glow;
-    const X0 = -60, X1 = 60, Z0 = -80, Z1 = 40, LINE = hex('#8a93a3');
+    const X0 = -60, X1 = 80, Z0 = -80, Z1 = 40, LINE = hex('#8a93a3');
     K.ground(X0, Z0, X1, Z1, hex('#c8ccd2'), hex('#bcc1c8'), 0, 1);
     K.bounds(X0, Z0, X1, Z1);
     // alle 5 m eine dunklere Linie, damit man Weiten abzaehlen kann
@@ -8208,7 +8208,7 @@ vec3 art(vec2 p) {
     K.ramp(41, -46, 47, -16, 0, 12, 'z+', col('#bfe6ff'), { tag: 'chute', chute: true });
     for (const x of [40.4, 47]) K.ramp(x, -46, x + 0.6, -16, 0.8, 12.8, 'z+', col('#8a93a3'), { tag: 'rail' });
     K.ramp(48, -16, 58, -8, 0, 12, 'x-', col('#a0e0a0'));
-    K.talker(40, 0, 19, 'Schild', ['★ TURM ★\nNorden: Rutschbahn. Osten: steiler Hang (zu steil zum Hochlaufen).']);
+    K.talker(40, 0, 19, 'Schild', ['★ TURM ★\nNorden: Rutschbahn. Osten: steiler Hang (50°) – ab 44° kann man nicht mehr stehen und rutscht.']);
     // Wasserbecken auf 5 m Hoehe (tief genug zum Tauchen), Treppe an der Suedseite
     const BX0 = 14, BX1 = 34, BZ0 = -54, BZ1 = -34, BH = 5, WY = 4.6;
     L.block((BX0 + BX1) / 2, BH / 2, BZ1 + 0.5, BX1 - BX0, BH, 1, col('#7ab0e0'), 'wall');
@@ -9300,6 +9300,8 @@ void main() {
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
+  // Ab dieser Steigung (tan 44°) kann man nicht mehr stehen und rutscht; die steilste begehbare Rampe hat 41°
+  const STEEP = Math.tan(44 * Math.PI / 180);
   // Gangarten nach Stick-Ausschlag bzw. Tempo (Anteil von RUN): darunter schleichen (lautlos), dann gehen, dann rennen
   const GAIT_SNEAK = 0.35, GAIT_WALK = 0.75;
   /* Messtabelle: was jede Bewegung auf ebenem Boden schafft, in Metern (1 Welt-Einheit = 1 m).
@@ -9361,6 +9363,13 @@ void main() {
   const levels = {};
   const towardZero = (v, d) => (v > 0 ? Math.max(0, v - d) : Math.min(0, v + d));
 
+  // Bergab-Richtung [x, z] einer Rampe, die zu steil zum Stehen ist, sonst null
+  function steepDown(b) {
+    const s = b.slope;
+    if (!s || Math.abs(s.y1 - s.y0) < STEEP * Math.abs(s.c1 - s.c0)) return null;
+    const down = -Math.sign((s.y1 - s.y0) / (s.c1 - s.c0));
+    return s.axis === 0 ? [down, 0] : [0, down];
+  }
   function airborne(action, vy, speed) {
     if (action !== 'dive') pl.fallTop = pl.pos[1];   // jeder neue Absprung beginnt eine neue Fallhoehe
     pl.action = action; pl.vel[1] = vy; pl.speed = speed; pl.side = 0; pl.flip = 0;
@@ -9544,8 +9553,8 @@ void main() {
     if (pl.grounded && water && pl.waterObj && p[1] < pl.waterObj.y - 1.75 && !inp.z) {
       pl.grounded = false; pl.groundBox = null; pl.vel[1] = 2.5; pl.action = 'swim';
     }
-    // Rutschbahn: wer sie betritt, rutscht auf dem Bauch bergab
-    const chute = pl.grounded && pl.groundBox ? pl.groundBox.chute : null;
+    // Rutschbahn oder zu steiler Hang: wer sie betritt, rutscht auf dem Bauch bergab
+    const chute = pl.grounded && pl.groundBox ? pl.groundBox.chute || steepDown(pl.groundBox) : null;
     if (chute && pl.action !== 'slide' && !pl.dead) { pl.action = 'slide'; pl.skid = false; pl.crouch = false; }
     if (pl.grounded && pl.action === 'slide') {
       // Bauchrutscher: bremst langsam ab, leicht lenkbar; A = Abrollen nach vorn
@@ -9554,8 +9563,15 @@ void main() {
         // bergab beschleunigen; der Stick lenkt quer zur Bahn
         const down = Math.atan2(chute[0], chute[1]);
         const lat = !lock && moving ? Math.sin(angDiff(down, intended)) * mag : 0;
-        pl.face += clamp(angDiff(pl.face, down + lat * 0.75), -4.2 * dt, 4.2 * dt);
-        pl.speed = Math.min(CHUTE_MAX, Math.max(pl.speed, 4) + CHUTE_ACC * dt);
+        if (Math.cos(angDiff(pl.face, down)) < 0) {
+          // bergauf hineingerutscht: die Schwerkraft bremst, dann kippt Glappo und rutscht bergab
+          const s = pl.groundBox.slope, rise = Math.abs(s.y1 - s.y0);
+          pl.speed -= GRAV * rise / Math.hypot(rise, s.c1 - s.c0) * dt;
+          if (pl.speed <= 0.5) { pl.face = down; pl.speed = 0; }
+        } else {
+          pl.face += clamp(angDiff(pl.face, down + lat * 0.75), -4.2 * dt, 4.2 * dt);
+          pl.speed = Math.min(CHUTE_MAX, Math.max(pl.speed, 4) + CHUTE_ACC * dt);
+        }
       } else {
         if (!lock && moving) pl.face += clamp(dYaw, -1.8 * dt, 1.8 * dt);
         pl.speed = Math.max(0, pl.speed - (pl.groundBox && pl.groundBox.tag === 'ice' ? 3 : 12) * dt);
@@ -9858,7 +9874,7 @@ void main() {
     if (gb && gb.tag === 'switch') pressSwitch();
     // Tiefer Fall: harte Landung — ausser mit Stampfer, ins Wasser, auf Federn oder Rutschbahnen
     const bouncy = gb && (gb.tag === 'awning' || gb.tag === 'bouncy');
-    const soft = from === 'pound' || bouncy || (gb && gb.chute) || cur.waters.some((w) => inWaterBox(w, pl.pos));
+    const soft = from === 'pound' || bouncy || (gb && (gb.chute || steepDown(gb))) || cur.waters.some((w) => inWaterBox(w, pl.pos));
     const drop = (pl.fallTop ?? pl.pos[1]) - pl.pos[1];
     if (!soft && drop >= FALL_HURT) hardLanding(drop);
     // Markisen, Seerosen, Pilze ... federn wie ein Trampolin

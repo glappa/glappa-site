@@ -35,7 +35,7 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 | Kante festhalten & hangeln | automatisch | Kanten hochziehen, Deckengitter | ✅ Greifen `tryLedgeGrab`, Hochziehen `updateLedge`, Kanten-Hilfe `tryMantle`, Hangeln (Stick seitlich, `SHIMMY` 1,8 m/s, über Blockfugen via `ledgeAt`); Deckengitter → Phase 4 |
 | Greifen & Werfen | B nahe Objekt | Bomben werfen, Boss schleudern | ✅ Knallkisten: `pickUp`/`throwHold`/`dropHold`; Boss → Phase 5 |
 | Schwimmen | A im Wasser | Wasserlevel, Luftvorrat | ✅ `updatePlayer` (`'swim'`), Luft über `updateAir` |
-| Rutschen | steile Flächen | Rutschbahnen, Eis | Rutschbahn (`ramp(..., {chute})`) + Eis (`tag 'ice'`) ✅; steile Flächen offen |
+| Rutschen | steile Flächen | Rutschbahnen, Eis | ✅ Rutschbahn (`ramp(..., {chute})`), Eis (`tag 'ice'`), steile Rampen ab 44° (`STEEP`, `steepDown`) – bergauf hinein bremst die Schwerkraft, dann geht es bergab |
 
 - [ ] Alle Bewegungen implementieren und in einem leeren Test-Level („Gym“) tunen
 - [x] Trägheit (spürbares Beschleunigen/Bremsen)
