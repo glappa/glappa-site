@@ -8175,7 +8175,48 @@ vec3 art(vec2 p) {
     K.talker(-3, 0, 26, 'Schild', [
       '★ BEWEGUNGS-GYM ★\nTestgelände für das Moveset. Boden: 1-m-Raster, dunkle Linien alle 5 m.',
       'Die Messlatten sind 12 m hoch: weiß/schwarz je 1 m, rot bei 5 und 10 m.',
+      'Alle Stationen sind mit dem Level-Raster gebaut – so groß, wie ein Level sie später bauen darf.',
     ]);
+    // ── Stationen: jedes Mass kommt aus dem Level-Raster (GRID). Die Messbahn x = -10 (g64.measure) bleibt frei ──
+    const col = (c) => ({ top: hex(c), side: hex('#9aa2ae') }), f1 = (v) => v.toFixed(1).replace('.', ',') + ' m';
+    // Hoehen-Reihe (West): Stufe, Sprung, Kante greifen, Salto/Doppelsprung, Dreifachsprung
+    [['step', '#9ad0ff'], ['hop', '#7fd67f'], ['hang', '#ffd24a'], ['high', '#ff9a4a'], ['top', '#ff5a5a']].forEach(([k, c], i) => {
+      L.block(-48 + i * 7, GRID[k] / 2, 5, 5, GRID[k], 6, col(c), 'plat');
+    });
+    K.talker(-54, 0, 11, 'Schild', [`★ HÖHEN ★\nStufe ${f1(GRID.step)} · Sprung ${f1(GRID.hop)} · Kante greifen ${f1(GRID.hang)} · Salto/Doppelsprung ${f1(GRID.high)} · Dreifachsprung ${f1(GRID.top)}`,
+      'Am gelben Block kann man an der Kante hängen und hangeln.']);
+    // Luecken-Bahn (Mitte): Rampe hoch, dann Laufsprung- und Weitsprung-Luecke
+    const PY = 2;
+    K.ramp(-3, 0, 3, 8, 0, PY, 'z-', col('#6aa8ff'));
+    let z = 0;
+    for (const gap of [0, GRID.gap, GRID.gapLong]) { z -= gap; L.block(0, PY / 2, z - 6, 6, PY, 12, col('#6aa8ff'), 'plat'); z -= 12; }
+    K.talker(5, 0, 9, 'Schild', [`★ LÜCKEN ★\nErst ${f1(GRID.gap)} für den Laufsprung, dann ${f1(GRID.gapLong)} für den Weitsprung.`]);
+    // Wandsprung-Schacht (Ost): zwei 20 m hohe Waende im Abstand GRID.shaft
+    const WX = 14;
+    L.block(WX + 1.5, 10, -14, 3, 20, 20, col('#ff6a6a'), 'wall');
+    L.block(WX + 4.5 + GRID.shaft, 10, -14, 3, 20, 20, col('#ff6a6a'), 'wall');
+    K.talker(WX + 3 + GRID.shaft / 2, 0, -1, 'Schild', [`★ WANDSPRUNG ★\nSchacht ${f1(GRID.shaft)} breit, Wände 20 m hoch. Oben runterspringen = Fallschaden-Test.`]);
+    // Turm mit Treppe, Rutschbahn nach Norden, steiler Hang nach Osten
+    K.stairs(44, 16, 0, 24, 0.5, 1, 3, 'z-', col('#d8dce4'));
+    L.block(44, 6, -12, 8, 12, 8, col('#c8a0ff'), 'tower');
+    K.ramp(41, -46, 47, -16, 0, 12, 'z+', col('#bfe6ff'), { tag: 'chute', chute: true });
+    for (const x of [40.4, 47]) K.ramp(x, -46, x + 0.6, -16, 0.8, 12.8, 'z+', col('#8a93a3'), { tag: 'rail' });
+    K.ramp(48, -16, 58, -8, 0, 12, 'x-', col('#a0e0a0'));
+    K.talker(40, 0, 19, 'Schild', ['★ TURM ★\nNorden: Rutschbahn. Osten: steiler Hang (zu steil zum Hochlaufen).']);
+    // Wasserbecken auf 5 m Hoehe (tief genug zum Tauchen), Treppe an der Suedseite
+    const BX0 = 14, BX1 = 34, BZ0 = -54, BZ1 = -34, BH = 5, WY = 4.6;
+    L.block((BX0 + BX1) / 2, BH / 2, BZ1 + 0.5, BX1 - BX0, BH, 1, col('#7ab0e0'), 'wall');
+    L.block((BX0 + BX1) / 2, BH / 2, BZ0 - 0.5, BX1 - BX0, BH, 1, col('#7ab0e0'), 'wall');
+    L.block(BX0 - 0.5, BH / 2, (BZ0 + BZ1) / 2, 1, BH, BZ1 - BZ0 + 2, col('#7ab0e0'), 'wall');
+    L.block(BX1 + 0.5, BH / 2, (BZ0 + BZ1) / 2, 1, BH, BZ1 - BZ0 + 2, col('#7ab0e0'), 'wall');
+    K.stairs(24, -24, 0, 10, 0.5, 1, 3, 'z-', col('#d8dce4'));
+    L.waters.push({ x0: BX0, x1: BX1, z0: BZ0, z1: BZ1 + 0.01, y: WY, tint: [0.2, 0.55, 0.95, 0.6] });
+    // Kriechgang (Nordwest) und Eisflaeche (West)
+    for (const x of [-27.25, -22.75]) L.block(x, GRID.crawl / 2, 23, 0.5, GRID.crawl, 10, col('#b0b6c0'), 'wall');
+    L.block(-25, GRID.crawl + 0.25, 23, 5, 0.5, 10, col('#b0b6c0'), 'plat');
+    L.block(-42, -0.12, -30, 16, 0.3, 16, { top: hex('#bfe6ff'), side: hex('#9ccbe8') }, 'ice');
+    // Knallkisten zum Tragen und Werfen
+    L.enemies.push(makeBomb(-44, 34), makeBomb(-38, 36));
     L.finish();
     return L;
   }
@@ -9269,6 +9310,22 @@ void main() {
     dive:     { h: 0.47, d: 4.4,   t: 0.28 },   // nur die Flugphase, danach Bauchrutscher
     rollout:  { h: 1.18, d: 6.81,  t: 0.44 },   // A im Bauchrutscher
   };
+  const CROUCH_H = 1.1, CRAWL = 8 * 0.4125;   // geduckt passt Glappo unter 1,1 m hohe Durchgaenge
+  const GRAB_LO = 1.35, GRAB_HI = 2.3;   // Kanten in dieser Hoehe ueber den Fuessen werden im Fallen gegriffen
+  /* Level-Raster: Masse fuer den Level-Bau, abgeleitet aus MOVES mit 20 % Luft (FAIR).
+     Luecken, Kanten und Schaechte bitte hieraus nehmen statt Zahlen zu schaetzen. */
+  const FAIR = 0.8;
+  const GRID = {
+    step: STEP_UP,                                           // hochlaufen ohne Sprung
+    hop: FAIR * MOVES.jump.h,                                // Kante per einfachem Sprung
+    hang: FAIR * (MOVES.jump.h + GRAB_HI),                   // Kante, die man aus dem Sprung noch greift
+    high: FAIR * Math.min(MOVES.backflip.h, MOVES.double.h), // Rueckwaertssalto / Doppelsprung
+    top: FAIR * MOVES.triple.h,                              // nur mit Dreifachsprung
+    gap: FAIR * MOVES.runJump.d,                             // Luecke fuer den Laufsprung
+    gapLong: FAIR * MOVES.long.d,                            // Luecke fuer den Weitsprung
+    shaft: FAIR * MOVES.wallkick.d / 2,                      // Wandsprung-Schacht: Weg bis etwa zum Gipfel
+    crawl: CROUCH_H,                                         // Durchgang nur geduckt
+  };
   const pl = {
     pos: [0, 0, 0], vel: [0, 0, 0], push: [0, 0, 0], face: 0, speed: 0, side: 0, grounded: true, coyote: 0,
     action: 'ground', landFrom: '', landT: -9, jumpBuf: 0, holdGrace: 0, skid: false, crouch: false, hold: null,
@@ -9279,7 +9336,6 @@ void main() {
     climbK: 0, climbDur: 0.5, climbFrom: null, climbTo: null, appearT: -9,
     punchN: 0, punchDur: 0.26, comboT: -9,
   };
-  const CROUCH_H = 1.1, CRAWL = 8 * 0.4125;   // geduckt passt Glappo unter 1,1 m hohe Durchgaenge
   function headBlocked(L, p) {
     for (const b of near(L, p[0], p[2])) {
       if (b.min[1] >= p[1] + PH || topAt(b, p[0], p[2]) <= p[1] + CROUCH_H + 0.02) continue;
@@ -9315,7 +9371,7 @@ void main() {
     for (const b of near(L, p[0], p[2])) {
       if (b.slope || NO_GRAB.has(b.tag) || (b.tag || '').startsWith('key:')) continue;
       const top = b.max[1], rel = top - p[1];
-      if (rel < 1.35 || rel > 2.3) continue;
+      if (rel < GRAB_LO || rel > GRAB_HI) continue;
       if (b.max[0] - b.min[0] < 0.6 && b.max[2] - b.min[2] < 0.6) continue;
       const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
       let dx = p[0] - nx, dz = p[2] - nz;
@@ -11793,7 +11849,7 @@ void main() {
   requestAnimationFrame(frame);
 
   /* ═══════════ Messbank (?debug → g64.measure()) ═══════════
-     Faehrt jede Bewegung mit der echten Physik im Gym ab: Anlauf nach -z, Stick voll in
+     Faehrt jede Bewegung mit der echten Physik auf der Messbahn im Gym ab (x = -10, nach -z), Stick voll in
      Sprungrichtung. Misst Gipfelhoehe, Weite bis zur Landung auf gleicher Hoehe und Flugzeit. */
   function measureMoves() {
     const back = { key: cur.key, sfx: state.sfx };
@@ -11803,7 +11859,7 @@ void main() {
     // seg: welche Flugphase zaehlt (2 = Doppelsprung usw.)
     function run(setup, drive, seg = 1) {
       cur = L; cam.yaw = 0;
-      Object.assign(pl, { pos: [0, 0, 20], vel: [0, 0, 0], push: [0, 0, 0], carry: [0, 0], speed: 0, side: 0, face: Math.PI,
+      Object.assign(pl, { pos: [-10, 0, 20], vel: [0, 0, 0], push: [0, 0, 0], carry: [0, 0], speed: 0, side: 0, face: Math.PI,
         grounded: true, groundBox: null, action: 'ground', flip: 0, skid: false, crouch: false, hold: null, invuln: 0, hurtT: 0,
         knock: 0, frozen: 0, inWater: false, landT: -9, landFrom: '', jumpBuf: 0, zDownT: -9, jumpT: -9, punchT: 0, coyote: 0 });
       if (setup) setup();

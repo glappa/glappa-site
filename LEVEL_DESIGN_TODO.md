@@ -47,7 +47,8 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
   - 8 Segmente ✅ (`Power`, `run.health`), Münzen heilen ✅ (`addCoins`), Luftvorrat fehlt
 - [x] Messtabelle: Höhe/Weite jeder Bewegung in Welt-Einheiten (als Konstanten im Code)
   - `MOVES` (Meter, gemessen, nicht geschätzt); `measureMoves` = `g64.measure()` fährt jede Bewegung mit der echten Physik im Gym ab und meldet die Abweichung zur Tabelle (`diff`)
-- [ ] Level-Raster aus diesen Werten ableiten (z. B. Lücke = 80 % Weitsprung)
+- [x] Level-Raster aus diesen Werten ableiten (z. B. Lücke = 80 % Weitsprung)
+  - `GRID` (direkt unter `MOVES`): Stufe, Sprung-Kante, Greif-Kante, Salto-Höhe, Dreifachsprung-Höhe, Laufsprung-/Weitsprung-Lücke, Wandsprung-Schacht, Kriechhöhe – alles `FAIR` = 80 % des Messwerts. Das Gym baut seine Stationen genau daraus (`buildGym`)
 - [x] Blob-Schatten direkt unter dem Spieler
   - `shadowAt` (schrumpft mit der Höhe), Aufruf in `render` für Spieler, Gegner, Sterne
 - [x] Partikel: Staub beim Landen, Funken beim Schlagen, Wasser, Lava
