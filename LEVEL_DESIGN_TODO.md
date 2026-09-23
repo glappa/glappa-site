@@ -38,6 +38,7 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 | Rutschen | steile Flächen | Rutschbahnen, Eis | ✅ Rutschbahn (`ramp(..., {chute})`), Eis (`tag 'ice'`), steile Rampen ab 44° (`STEEP`, `steepDown`) – bergauf hinein bremst die Schwerkraft, dann geht es bergab |
 
 - [ ] Alle Bewegungen implementieren und in einem leeren Test-Level („Gym“) tunen
+  - Alle Bewegungen der Tabelle sind drin; Gym `buildGym` (nur über `?gym`, mit `?debug&gym` + `g64.measure()` zum Nachmessen). **Offen: Tuning der Luftphysik** – siehe „Offene Frage“ unter Entscheidungen
 - [x] Trägheit (spürbares Beschleunigen/Bremsen)
   - `GROUND_ACC`/`GROUND_BRAKE`/`OVER_BRAKE`/`SKID_BRAKE` + Kehrtwenden-Rutscher (`pl.skid`), Eis extra glatt. Werte hat der User am 2026-09-21 bewusst straff gewünscht („zu rutschig“) – nicht zurückdrehen.
 - [x] Coyote Time + automatisches Hochziehen an Kanten
@@ -253,9 +254,28 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 - **Commits:** nur lokal auf `main`, kein Push – der Spielstand war bis 2026-09-23 bewusst noch nicht auf GitHub.
 - **Einheiten:** 1 Welt-Einheit = 1 Meter. Glappo ist 2,2 m groß; die Physik rechnet in „64er-Einheiten pro Frame“ (`UF` = 0,4125 m/s) und läuft mit 120 Schritten/s.
 - **Trägheit:** bleibt so straff, wie der User sie am 2026-09-21 eingestellt hat.
+- **Gym:** nur über `?gym` erreichbar (kein Eingang im Spiel), „Zurück“ führt in den Schlossgarten. 1-m-Raster, Linien alle 5 m, Messlatten 12 m. Die Messbahn `x = -10` bleibt frei, dort misst `g64.measure()`.
+- **Messbedingungen `MOVES`:** voller Anlauf, Stick die ganze Zeit in Sprungrichtung, Landung auf gleicher Höhe. Das ist die *maximale* Reichweite – das Raster zieht davon 20 % ab (`FAIR` = 0,8).
+- **Fallschaden:** ab 15 m (2 Segmente), ab 30 m (4). Ein Dreifachsprung (8 m) tut nie weh; die Burgtürme und Terrassen (20–30 m) schon. Kein Schaden mit Stampfer, ins Wasser, auf Federn, Rutschbahnen und zu steilen Hängen.
+- **Luft:** dieselbe Anzeige wie die Energie (wie im Genre-Vorbild): 3 s pro Segment unter Wasser, auffüllen nur schwimmend an der Oberfläche (0,4 s pro Segment) – das heilt dort auch Treffer-Schaden. Watend im flachen Wasser passiert nichts.
+- **Kanten-Hilfe:** nur mit Stick zur Kante, nicht an Zaunlatten und schmalen Kanten (< 0,54 m).
+- **Gangarten:** Schwellen 35 % / 75 % von `RUN`; Tastatur: G halten = schleichen (Strg/Alt kollidieren mit Browser-Kürzeln).
+- **Steile Hänge:** rutschen ab 44°. Die steilste begehbare Rampe in den bestehenden Welten hat 41° (nachgemessen), dort ändert sich nichts. Neue Level: Hang ≥ 45° bauen, wenn man dort nicht hochlaufen soll.
+- **Stimme:** keine Worte, nur Katzen-Silben (eigene Synthese, keine Samples) – so gibt es keine Nähe zu Original-Stimmen. Hängt am Sound-Schalter.
+- **Offene Frage – Luftphysik (vom User zu entscheiden):** Das Gym hat gezeigt, dass die Luftsteuerung (Stick vorwärts +2,3 E/F²) stärker ist als die Luftbremse (−1 E/F² über 32 E/F): wer den Stick hält, wird in der Luft immer schneller, und über die Sprungkette schaukelt sich das auf. Folge: Doppelsprung 25 m, Dreifachsprung 34 m weit (~30 m/s), der Weitsprung schafft aber nur 11 m – er ist damit die *kürzeste* Möglichkeit für „große Lücken“. Nicht eigenmächtig geändert, weil das Sprungweiten in allen bestehenden Welten verschiebt. Probehalber gemessen (nicht committet):
+
+  | Variante | Laufsprung | Doppel | Dreifach | Weitsprung | Seitsalto | Wandsprung |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | jetzt | 13,7 m | 24,9 m | 34,2 m | 11,0 m (1,5 m hoch) | 13,6 m | 18,0 m |
+  | A: Luftschub 1,5 statt 2,3 + Weitsprung mit halber Schwerkraft (wie im Vorbild) | 11,0 m | 13,7 m | 15,9 m | 20,4 m (3,0 m hoch) | 10,1 m | 13,7 m |
+  | B: Luftschub 2,3 nur bis zur Luftbremse + Weitsprung mit halber Schwerkraft | 10,7 m | 13,0 m | 14,9 m | 19,6 m (3,0 m hoch) | 11,5 m | 13,3 m |
+
+  Nach der Entscheidung: `g64.measure()` laufen lassen, `MOVES` übernehmen (`GRID` und Gym passen sich selbst an) und Lücken in den bestehenden Welten nachprüfen, die bisher nur per Doppel-/Dreifachsprung über ~15 m zu schaffen waren.
 
 ## Fortschritt
 
 (Claude Code trägt hier nach jeder Phase ein, was erledigt ist.)
 
 - 2026-09-23: Abgleich mit dem Stand von SUPER GLAPPA 64 (Commit `b29538c`).
+- 2026-09-23 – **Phase 1** bis auf das Tuning der Luftphysik erledigt (je ein Commit): Bewegungs-Gym, Messtabelle `MOVES` + Messbank, Level-Raster `GRID` + Gym-Stationen, Fallschaden, Luftvorrat, Kanten-Hilfe, Hangeln, Gangarten, Rutschen auf steilen Hängen (dabei Fehler behoben: bergauf in eine Rutsche rutschte man im Bogen bergauf weiter), Klänge für Schritte/Landen/Kehrtwende/Rutschen/Hangeln, Stimme.
+  - Tests (kein Build-System im Projekt): `node --check`; `g64.measure()` = alle 11 Bewegungen stimmen mit `MOVES` überein; jede neue Mechanik im Gym per `g64.advance` durchgespielt; Rauchtest über alle 30 Orte (bauen, betreten, 4 s laufen/springen/schlagen) ohne Fehler und ohne kaputte Positionen.
