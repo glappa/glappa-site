@@ -24,7 +24,7 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 
 | Bewegung | Eingabe | Wofür Level sie brauchen | Stand im Code |
 | --- | --- | --- | --- |
-| Laufen analog (Schleichen/Gehen/Rennen) | Stick | Schmale Stege, schlafende Gegner | Tempo folgt dem Stick (`updatePlayer`: `top = RUN * mag`); Gangstufen + Tastatur offen |
+| Laufen analog (Schleichen/Gehen/Rennen) | Stick | Schmale Stege, schlafende Gegner | ✅ Tempo folgt dem Stick (`top = RUN * mag`), Gangart `pl.gait` ('sneak' < `GAIT_SNEAK` < 'walk' < `GAIT_WALK` < 'run') mit eigener Schleich-Pose; Tastatur: **G** halten = schleichen |
 | Sprung, Doppel-, Dreifachsprung | A im Rhythmus beim Rennen | Höhe gewinnen | ✅ `updatePlayer` (Sprungkette über `CHAIN_WINDOW`) |
 | Salto rückwärts | Ducken + A | Hohe Kante direkt über Spieler | ✅ `updatePlayer` (`'backflip'`) |
 | Seitensalto | Richtungswechsel + A | Hoher Sprung nach Wende | ✅ `updatePlayer` (`pl.skid` + A → `'sideflip'`) |

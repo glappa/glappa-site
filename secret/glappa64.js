@@ -9269,6 +9269,7 @@ void main() {
 
       const l = Math.hypot(mx, my);
       if (l > 1) { mx /= l; my /= l; }
+      if (k('KeyG')) { mx *= GAIT_SNEAK * 0.9; my *= GAIT_SNEAK * 0.9; }   // G halten = schleichen (Tastatur kennt keinen halben Ausschlag)
       const out = {
         mx, my, cx: clamp(cx, -1, 1), cy: clamp(cy, -1, 1), mdx, mdy, wheel,
         jump, action, z, look, pause,
@@ -9299,6 +9300,8 @@ void main() {
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
+  // Gangarten nach Stick-Ausschlag bzw. Tempo (Anteil von RUN): darunter schleichen (lautlos), dann gehen, dann rennen
+  const GAIT_SNEAK = 0.35, GAIT_WALK = 0.75;
   /* Messtabelle: was jede Bewegung auf ebenem Boden schafft, in Metern (1 Welt-Einheit = 1 m).
      h = Gipfelhoehe, d = Weite bis zur Landung auf gleicher Hoehe, t = Flugzeit in s.
      Anlauf mit vollem Tempo, Stick die ganze Zeit in Sprungrichtung.
@@ -9811,6 +9814,9 @@ void main() {
 
     // Animation
     pl.walk += dt * (pl.grounded ? Math.abs(pl.speed) * 1.1 : 0);
+    // Gangart (fuer Schritte, Pose und spaeter fuer Gegner, die auf laute Schritte hoeren)
+    const sp = pl.grounded && pl.action === 'ground' && !pl.crawl ? Math.abs(pl.speed) / RUN : 0;
+    pl.gait = sp < 0.03 ? 'stand' : sp < GAIT_SNEAK ? 'sneak' : sp < GAIT_WALK ? 'walk' : 'run';
     pl.squash += ((pl.crouch ? 0.7 : 1) - pl.squash) * Math.min(1, dt * 12);
     const flipRate = { triple: 9, backflip: 8, sideflip: 9, rollout: 11 }[pl.action];
     // Rutschen gegen eine Wand: abrupt stoppen (ausser in der Rutschbahn)
@@ -11321,6 +11327,7 @@ void main() {
     const turn = clamp(turnRate, -1.2, 1.2);
     const free = pl.grounded && !lying && !pl.crawl && !pl.crouch && !swim && a !== 'slide' && a !== 'dive';
     if (free) { rx += 0.2 * run01 * run01; rz += -turn * 0.22 * run01; }
+    if (free && pl.gait === 'sneak') { rx += 0.2; dy -= 0.12; }
     // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten
     const idle = free && run01 < 0.05 && !pl.hold && pk < 0 && !cine ? idleState(pl.idleT || 0) : null;
     const env = idle ? idle.env : 0;
@@ -11361,6 +11368,10 @@ void main() {
       legL = -0.9; legR = -0.5; armL = armR = -2.7; armOut = 1;
     } else if (pl.grounded && pl.skid) {
       legL = -0.6; legR = -0.2; armL = armR = -1.2; armOut = 0.9;
+    } else if (pl.grounded && pl.gait === 'sneak') {
+      // Schleichen: geduckt auf Zehenspitzen, Pfoten vorn, kurze vorsichtige Schritte
+      legL = sw * 0.6; legR = -legL; armL = -1.25 + sw * 0.12; armR = -1.25 - sw * 0.12; armOut = 0.35;
+      tailRx = -2.4; tailRz += sw * 0.15;
     } else if (pl.grounded) {
       legL = sw * 0.95 * run01; legR = -legL; armL = -legL * 0.8; armR = legL * 0.8;
       if (run01 < 0.05) { armOut = 0.12 + Math.sin(clock * 2) * 0.03; }
