@@ -34,7 +34,7 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 | Schlag / Tritt / Hechtsprung | B | Gegner, Kisten | ✅ `attack`, `hitInFront`, `startDive` |
 | Kante festhalten & hangeln | automatisch | Kanten hochziehen, Deckengitter | Festhalten + Hochziehen ✅ `tryLedgeGrab`/`updateLedge`; Hangeln offen; Deckengitter → Phase 4 |
 | Greifen & Werfen | B nahe Objekt | Bomben werfen, Boss schleudern | ✅ Knallkisten: `pickUp`/`throwHold`/`dropHold`; Boss → Phase 5 |
-| Schwimmen | A im Wasser | Wasserlevel, Luftvorrat | ✅ `updatePlayer` (`'swim'`); Luftvorrat offen |
+| Schwimmen | A im Wasser | Wasserlevel, Luftvorrat | ✅ `updatePlayer` (`'swim'`), Luft über `updateAir` |
 | Rutschen | steile Flächen | Rutschbahnen, Eis | Rutschbahn (`ramp(..., {chute})`) + Eis (`tag 'ice'`) ✅; steile Flächen offen |
 
 - [ ] Alle Bewegungen implementieren und in einem leeren Test-Level („Gym“) tunen
@@ -44,8 +44,8 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
   - Coyote Time ✅ (`pl.coyote = 0.06`), Hochziehen nur per Eingabe aus dem Hängen
 - [x] Fallschaden nur ab großer Höhe; Stampfattacke vor Landung verhindert ihn
   - `FALL_HURT` = 15 m → 2 Segmente, `FALL_HURT_BIG` = 30 m → 4 Segmente; gemessen vom Gipfel (`pl.fallTop`, jeder neue Absprung/Kantengriff/Wasser setzt ihn neu). `onLand` → `hardLanding` (kurz auf dem Hosenboden, kein Rückstoß). Kein Schaden mit Stampfer, ins Wasser, auf Federn und Rutschbahnen. Im Gym geprüft: 12 m nichts, 16 m −2, 31 m −4, Stampfer aus 20 m nichts
-- [ ] Lebensenergie: 8 Segmente, Münzen heilen, Luftvorrat unter Wasser
-  - 8 Segmente ✅ (`Power`, `run.health`), Münzen heilen ✅ (`addCoins`), Luftvorrat fehlt
+- [x] Lebensenergie: 8 Segmente, Münzen heilen, Luftvorrat unter Wasser
+  - 8 Segmente (`Power`, `run.health`), Münzen heilen (`addCoins`). Luft wie im Genre-Vorbild über dieselbe Anzeige: `updateAir` – Kopf unter Wasser = alle `AIR_STEP` (3 s) ein Segment weg (Blubbern + Blasen), an der Oberfläche schwimmend alle `AIR_REFILL` (0,4 s) eins zurück, bei 0 ertrinkt man; die Anzeige bleibt unter Wasser sichtbar (`Power.hold`)
 - [x] Messtabelle: Höhe/Weite jeder Bewegung in Welt-Einheiten (als Konstanten im Code)
   - `MOVES` (Meter, gemessen, nicht geschätzt); `measureMoves` = `g64.measure()` fährt jede Bewegung mit der echten Physik im Gym ab und meldet die Abweichung zur Tabelle (`diff`)
 - [x] Level-Raster aus diesen Werten ableiten (z. B. Lücke = 80 % Weitsprung)

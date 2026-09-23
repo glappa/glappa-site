@@ -181,6 +181,8 @@
         [2093, 2637, 3136, 4186, 5274].forEach((f, i) => tone(f, 2.08 + i * 0.08, 0.5, { type: 'sine', vol: 0.035, bus }));
         tone(130.8, 2.02, 1.4, { type: 'sine', vol: 0.12, attack: 0.02 });
       }),
+      gurgle: fx(() => [300, 430, 360, 540].forEach((f, i) => tone(f, i * 0.05, 0.07, { type: 'sine', vol: 0.12, slide: 1.6 }))),
+      gasp: fx(() => noise(0, 0.35, { filter: 'bandpass', f: 1800, fTo: 3000, q: 0.8, vol: 0.18, attack: 0.12 })),
       arrive: fx(() => {
         const bus = echoBus();
         [2637, 2093, 1568, 1319, 1047].forEach((f, i) => tone(f, i * 0.045, 0.4, { type: 'triangle', vol: 0.06, bus }));
@@ -569,18 +571,20 @@
       p.setAttribute('d', `M${cx} ${cy} L${cx + r * Math.cos(a0)} ${cy + r * Math.sin(a0)} A${r} ${r} 0 0 1 ${cx + r * Math.cos(a1)} ${cy + r * Math.sin(a1)} Z`);
       g.appendChild(p); paths.push(p);
     }
-    let hideT = null;
+    let hideT = null, keep = false;
     function render(hurt) {
       const h = run.health;
       const col = h >= 7 ? '#2f6dff' : h >= 5 ? '#2fbf3a' : h >= 3 ? '#ffcc00' : '#ff3030';
       paths.forEach((p, i) => p.setAttribute('fill', i < h ? col : '#3a3a3a'));
       clearTimeout(hideT);
-      if (h < 8) svg.style.opacity = 1;
+      if (h < 8 || keep) svg.style.opacity = 1;
       else hideT = setTimeout(() => { svg.style.opacity = 0; }, 1800);
       if (hurt) { svg.classList.remove('hurt'); void svg.getBoundingClientRect(); svg.classList.add('hurt'); }
     }
+    // unter Wasser bleibt die Anzeige stehen (sie ist dann auch der Luftvorrat)
+    function hold(on) { if (on !== keep) { keep = on; render(); } }
     render();
-    return { render };
+    return { render, hold };
   })();
 
   /* ═══════════ Vektor-/Matrix-Mathe (Spalten-Major wie WebGL) ═══════════ */
@@ -9746,6 +9750,7 @@ void main() {
     pl.inWater = !!inside;
     if (inside) pl.waterObj = inside;
     else if (pl.action === 'swim') pl.action = 'fall';
+    updateAir(dt);
     if (!pl.grounded && pl.ledgeCool <= 0 && !lock && !pl.entering
         && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'long', 'dive'].includes(pl.action)
         && (pl.action !== 'swim' || moving)) {
@@ -9809,6 +9814,31 @@ void main() {
     if (gb && cur.onLand) cur.onLand(gb, from);
   }
 
+  /* Luftvorrat: die Energie ist unter Wasser zugleich die Luft. Mit dem Kopf unter Wasser geht alle
+     AIR_STEP s ein Segment verloren, schwimmend an der Oberflaeche kommt alle AIR_REFILL s eins zurueck. */
+  const AIR_STEP = 3, AIR_REFILL = 0.4, HEAD_Y = 1.9;
+  function updateAir(dt) {
+    const w = pl.inWater ? pl.waterObj : null, p = pl.pos;
+    const under = !!w && p[1] + HEAD_Y < w.y;
+    Power.hold(under);
+    if (pl.dead) return;
+    if (under) {
+      pl.underT = (pl.underT || 0) + dt;
+      pl.airT = (pl.airT || 0) + dt;
+      if (pl.airT < AIR_STEP) return;
+      pl.airT = 0; run.health = Math.max(0, run.health - 1);
+      Power.render(true); Snd.gurgle();
+      burst([p[0], p[1] + HEAD_Y, p[2]], 8, { spread: 0.8, up: 2, upRand: 1.5, life: 1.2, size: 0.14, cols: [[0.85, 0.95, 1]], grav: -3 });
+      if (run.health <= 0) loseLife();
+      return;
+    }
+    if (pl.underT > 2) Snd.gasp();   // aufgetaucht nach langem Tauchen: Luft holen
+    pl.underT = 0; pl.airT = 0;
+    if (w && pl.action === 'swim' && run.health < 8) {
+      pl.refillT = (pl.refillT || 0) + dt;
+      if (pl.refillT >= AIR_REFILL) { pl.refillT = 0; run.health++; Power.render(); }
+    } else pl.refillT = 0;
+  }
   const inWaterBox = (w, p) => p[0] > w.x0 && p[0] < w.x1 && p[2] > w.z0 && p[2] < w.z1 && p[1] < w.y + 0.1;
   // Harte Landung: Segmente weg, kurz auf dem Hosenboden sitzen (kein Rueckstoss wie bei Treffern)
   function hardLanding(drop) {
