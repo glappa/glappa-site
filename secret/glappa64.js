@@ -9401,6 +9401,36 @@ void main() {
     Snd.grab(); rumble(0.25, 60);
     return true;
   }
+  /* Kanten-Hilfe: liegt die Oberkante zwischen Fuss und Brust (unter GRAB_LO) und draengt der Stick
+     dagegen, zieht Glappo sich von selbst hoch statt an der Wand abzurutschen. */
+  function tryMantle(L, dir) {
+    const p = pl.pos, ix = Math.sin(dir), iz = Math.cos(dir);
+    let best = null;
+    for (const b of near(L, p[0], p[2])) {
+      if (b.slope || NO_GRAB.has(b.tag) || (b.tag || '').startsWith('key:')) continue;
+      const top = b.max[1], rel = top - p[1];
+      if (rel <= 0.05 || rel >= GRAB_LO) continue;
+      if (b.max[0] - b.min[0] < 0.6 && b.max[2] - b.min[2] < 0.6) continue;
+      const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
+      let dx = p[0] - nx, dz = p[2] - nz;
+      const d = Math.hypot(dx, dz);
+      if (d > R + 0.15 || d < 1e-4) continue;
+      dx /= d; dz /= d;
+      if (-(ix * dx + iz * dz) < 0.5) continue;
+      if ((Math.abs(dx) > Math.abs(dz) ? b.max[0] - b.min[0] : b.max[2] - b.min[2]) < R * 1.2) continue;   // Zaunlatte o. ae.
+      const tx = clamp(nx - dx * (R + 0.1), b.min[0] + R * 0.5, b.max[0] - R * 0.5);
+      const tz = clamp(nz - dz * (R + 0.1), b.min[2] + R * 0.5, b.max[2] - R * 0.5);
+      if (!columnClear(L, tx, tz, top + 0.05, top + CROUCH_H, R * 0.8)) continue;
+      if (!best || top < best.top) best = { b, top, rel, n: [dx, 0, dz], to: [tx, top, tz] };
+    }
+    if (!best) return false;
+    pl.action = 'climb'; pl.climbK = 0; pl.climbDur = 0.12 + best.rel * 0.12;
+    pl.climbFrom = p.slice(); pl.climbTo = best.to; pl.hangBox = best.b; pl.hangN = best.n;
+    pl.face = Math.atan2(-best.n[0], -best.n[2]);
+    pl.vel = [0, 0, 0]; pl.speed = 0; pl.side = 0; pl.push = [0, 0, 0]; pl.flip = 0; pl.grounded = false;
+    Snd.climb();
+    return true;
+  }
   function dropLedge() {
     const n = pl.hangN || [0, 0, 0];
     pl.pos[0] += n[0] * 0.18; pl.pos[2] += n[2] * 0.18;
@@ -9752,9 +9782,9 @@ void main() {
     else if (pl.action === 'swim') pl.action = 'fall';
     updateAir(dt);
     if (!pl.grounded && pl.ledgeCool <= 0 && !lock && !pl.entering
-        && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'long', 'dive'].includes(pl.action)
-        && (pl.action !== 'swim' || moving)) {
-      if (tryLedgeGrab(L)) return;
+        && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'dive'].includes(pl.action)) {
+      if (pl.action !== 'long' && (pl.action !== 'swim' || moving) && tryLedgeGrab(L)) return;
+      if (moving && tryMantle(L, intended)) return;
     }
     if (p[1] < (L.voidY ?? -25)) { hurtPlayer(2, p); respawn(); }
 

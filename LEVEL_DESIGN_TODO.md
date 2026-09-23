@@ -40,8 +40,8 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 - [ ] Alle Bewegungen implementieren und in einem leeren Test-Level („Gym“) tunen
 - [x] Trägheit (spürbares Beschleunigen/Bremsen)
   - `GROUND_ACC`/`GROUND_BRAKE`/`OVER_BRAKE`/`SKID_BRAKE` + Kehrtwenden-Rutscher (`pl.skid`), Eis extra glatt. Werte hat der User am 2026-09-21 bewusst straff gewünscht („zu rutschig“) – nicht zurückdrehen.
-- [ ] Coyote Time + automatisches Hochziehen an Kanten
-  - Coyote Time ✅ (`pl.coyote = 0.06`), Hochziehen nur per Eingabe aus dem Hängen
+- [x] Coyote Time + automatisches Hochziehen an Kanten
+  - Coyote Time: `pl.coyote` (0,06 s nach dem Verlassen einer Kante darf man noch springen). Kanten-Hilfe `tryMantle`: liegt die Oberkante zwischen Fuß und `GRAB_LO` und drückt der Stick dagegen, zieht Glappo sich selbst hoch (kurze Kletteranimation). Höhere Kanten (`GRAB_LO`…`GRAB_HI`) werden wie bisher gegriffen (`tryLedgeGrab`), Stick zur Wand zieht hoch
 - [x] Fallschaden nur ab großer Höhe; Stampfattacke vor Landung verhindert ihn
   - `FALL_HURT` = 15 m → 2 Segmente, `FALL_HURT_BIG` = 30 m → 4 Segmente; gemessen vom Gipfel (`pl.fallTop`, jeder neue Absprung/Kantengriff/Wasser setzt ihn neu). `onLand` → `hardLanding` (kurz auf dem Hosenboden, kein Rückstoß). Kein Schaden mit Stampfer, ins Wasser, auf Federn und Rutschbahnen. Im Gym geprüft: 12 m nichts, 16 m −2, 31 m −4, Stampfer aus 20 m nichts
 - [x] Lebensenergie: 8 Segmente, Münzen heilen, Luftvorrat unter Wasser
