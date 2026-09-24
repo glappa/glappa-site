@@ -10126,6 +10126,7 @@ void main() {
           pl.speed += clamp(CRAWL * mag - pl.speed, -14 * dt, 14 * dt);
         } else {
           pl.speed = towardZero(pl.speed, UFF * fr * dt);     // Hock-Rutscher rollt aus
+          if (Math.abs(pl.speed) > 3 && Math.random() < dt * 18) dust(p, 1);
         }
       } else if (moving) {
         // langsam dreht Glappo fast sofort, im vollen Lauf in engem Bogen
@@ -11863,7 +11864,7 @@ void main() {
     else if (swim) { rx = lerp(0.25, 1.35, swim01); dy = swim01 * 0.35 + Math.sin(pl.swimPh * 0.5) * 0.05; }
     else if (a === 'climb') rx = Math.sin(pl.climbK * Math.PI) * 0.55;
     else if (lying) { rx = -1.3; dy = -0.72; }
-    else if (pl.crawl) { rx = 1.2; dy = -0.62; }
+    else if (pl.crawl || (pl.grounded && pl.forceCrouch)) { rx = 1.2; dy = -0.62; }   // unter niedriger Decke auch im Stand
     else if (pl.skid) rx = -0.35;
     let stretch = 1 + dissolve * 0.6, thin = 1 - dissolve * 0.6;
     if (a === 'double') { const k = clamp(pl.vel[1] * 0.012, -0.12, 0.16); stretch += k; thin -= k * 0.55; }
@@ -11882,12 +11883,33 @@ void main() {
     faceLast = pl.face;
     turnRate = turnRate * 0.82 + dF * 18;
     const turn = clamp(turnRate, -1.2, 1.2);
-    const free = pl.grounded && !lying && !pl.crawl && !pl.crouch && !swim && a !== 'slide' && a !== 'dive';
+    const free = pl.grounded && !lying && !pl.crawl && !pl.forceCrouch && !pl.crouch && !swim && a !== 'slide' && a !== 'dive';
     if (free) { rx += 0.2 * run01 * run01; rz += -turn * 0.22 * run01; }
     if (free && pl.gait === 'sneak') { rx += 0.2; dy -= 0.12; }
     // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten
     const idle = free && run01 < 0.05 && !pl.hold && pk < 0 && !cine ? idleState(pl.idleT || 0) : null;
     const env = idle ? idle.env : 0;
+    /* Hocke im Stil des Vorbilds: blitzschnell runter in eine tiefe, breite Hocke (Knie nach vorn und aussen,
+       Po nach hinten, Oberkoerper leicht vor, Blick geradeaus, Arme vor den Knien) mit leichtem Nachfedern;
+       beim Aufstehen streckt sich Glappo kurz. Eine Feder (crouchK) statt hartem Umschalten.
+       Die Beine sind aus einem Stueck: gewinkelt + verkuerzt wirken sie wie gebeugte Knie. */
+    const cdt = clamp(clock - crouchLast, 0, 0.05);
+    crouchLast = clock;
+    const crouchTo = pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' ? 1 : 0;
+    for (let i = 0; i < 3; i++) { crouchV += ((crouchTo - crouchK) * 900 - crouchV * 36) * cdt / 3; crouchK += crouchV * cdt / 3; }
+    if (!pl.grounded || swim || lying || cine) { crouchK = 0; crouchV = 0; }   // Absprung aus der Hocke: Luftpose uebernimmt sofort
+    const ck = clamp(crouchK, 0, 1.12), cUp = clamp(-crouchK, 0, 0.3);
+    // Hock-Rutscher: aus vollem Lauf geduckt -> Ruecklage und Arme zum Balancieren
+    const cSlide = pl.crouch ? clamp((Math.abs(pl.speed) - 1.5) / 5, 0, 1) : 0;
+    const cLean = ck * lerp(0.3, -0.14, cSlide), cLegW = -0.72, cSplay = 0.42 * ck, cLegSY = 1 - 0.3 * ck;
+    if (ck > 0.001) {
+      const L2 = CAT.rig.legY;
+      rx += cLean;
+      // so weit absenken, dass die Fuesse am Boden bleiben (+ die Hueft-Anhebung durch das Vorbeugen)
+      dy -= ck * (L2 - L2 * (1 - 0.3) * Math.cos(cLegW) * Math.cos(0.42)) + (1.1 - L2) * (1 - Math.cos(cLean));
+      dy += Math.sin(clock * 3.1) * 0.01 * ck;   // atmen in der Hocke
+    }
+    if (cUp > 0) { stretch += cUp * 0.55; thin -= cUp * 0.25; }
     if (idle && idle.kind === 'chase') { spin += smooth(idle.k) * TAU * 2; dy += Math.abs(Math.sin(idle.k * Math.PI * 8)) * 0.1 * env; }
     if (idle && idle.kind === 'stretch') { stretch += 0.07 * env; thin -= 0.035 * env; dy += 0.06 * env; }
     if (idle && idle.kind === 'sleep') { dy -= 0.46 * env; rx -= 0.14 * env; }
@@ -11915,12 +11937,10 @@ void main() {
       legL = Math.sin(ph * (1.2 + swim01)) * (0.35 + swim01 * 0.15); legR = -legL;
       headTilt = -swim01 * 1.0;
       tailRx = lerp(-1.3, -2.7, swim01); tailRz = Math.sin(ph * 1.3) * 0.55;
-    } else if (pl.grounded && pl.crawl) {
+    } else if (pl.grounded && (pl.crawl || pl.forceCrouch)) {
       const c = Math.sin(pl.walk * 2.4);
       armL = -1.3 + c * 0.5; armR = -1.3 - c * 0.5; legL = 0.7 - c * 0.45; legR = 0.7 + c * 0.45; armOut = 0.15; headTilt = -0.9;
       tailRx = -2.4;
-    } else if (pl.grounded && pl.crouch) {
-      legL = legR = -0.5; armL = armR = -0.6; armOut = 0.4;
     } else if (a === 'bonk') {
       legL = -0.9; legR = -0.5; armL = armR = -2.7; armOut = 1;
     } else if (pl.grounded && pl.skid) {
@@ -11951,6 +11971,14 @@ void main() {
       tailRx = -2.5 + (1 - tuck) * 0.9; tailRz += Math.sin(clock * 7) * 0.14;
     } else {
       legL = -0.7; legR = 0.35; armL = armR = -2.4; armOut = 0.5; tailRx = -1.3 + clamp(pl.vel[1] * 0.04, -0.6, 0.4);
+    }
+    if (ck > 0.001) {                                // Hocke (siehe crouchK) ueber die Bodenpose mischen
+      const w = Math.min(1, ck);
+      legL = lerp(legL, cLegW - cLean, w); legR = lerp(legR, cLegW - cLean, w);
+      armL = lerp(armL, lerp(-0.72, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-0.72, -1.05, cSlide) - cLean, w);
+      armOut = lerp(armOut, lerp(0.14, 1.05, cSlide), w);
+      headTilt -= cLean * 1.1 + 0.08 * w;          // Kopf bleibt beim Vorbeugen gerade nach vorn gerichtet
+      tailRx = lerp(tailRx, -1.3, w); tailRz = lerp(tailRz, 0.55 + Math.sin(clock * 1.6) * 0.12, w);
     }
     if (pl.hold && !lying && !swim) {               // Kiste ueber dem Kopf: beide Arme hoch
       armL = armR = -3.02; armOut = 0.24; headTilt = Math.min(headTilt, -0.1);
@@ -11992,29 +12020,31 @@ void main() {
     const glowK = dissolve > 0 ? dissolve : appear < 1 ? (1 - appear) * 0.9 : 0;
     const FIG = { shine: 0.06, rim: 0.16 + glowK * 1.6, lit: 0.78, tint: glowK > 0 ? [1, 1, 0.92, glowK] : undefined };
     const G = CAT, RG = G.rig, GLOW = { lit: 0, tint: FIG.tint };
-    const part = (key, tx, ty, tz, rx2, rz2, o = FIG, ry2 = 0, sc = 1) => {
-      const m = M4.mul(base, M4.from(tx, ty + bob, tz, ry2, rx2, rz2, sc, sc, sc));
+    const part = (key, tx, ty, tz, rx2, rz2, o = FIG, ry2 = 0, sc = 1, scy = sc) => {
+      const m = M4.mul(base, M4.from(tx, ty + bob, tz, ry2, rx2, rz2, sc, scy, sc));
       draw(G[key], m, o);
       if (G.glow[key]) draw(G.glow[key], m, GLOW);
       return m;
     };
-    part('leg', -RG.legX, RG.legY - bob, 0, legL, 0);
-    part('leg', RG.legX, RG.legY - bob, 0, legR, 0);
+    // in der Hocke: Beine nach aussen gewinkelt und verkuerzt (gebeugte Knie), Koerper gestaucht, Kopf sinkt ein
+    part('leg', -RG.legX, RG.legY - bob, 0, legL, -cSplay, FIG, 0, 1, cLegSY);
+    part('leg', RG.legX, RG.legY - bob, 0, legR, cSplay, FIG, 0, 1, cLegSY);
+    const cSink = -0.11 * ck;
     // Atmen im Stand: der Koerper hebt und senkt sich ganz leicht
     const sleeping = idle && idle.kind === 'sleep';
     const breathe = pl.grounded && run01 < 0.05 && !lying ? 1 + Math.sin(clock * (sleeping ? 1.1 : 1.7)) * (sleeping ? 0.035 : 0.016) : 1;
-    part('body', 0, RG.bodyY, 0, 0, 0, FIG, 0, breathe);
+    part('body', 0, RG.bodyY + cSink * 0.3, 0, 0, 0, FIG, 0, breathe * (1 + 0.07 * ck), breathe * (1 - 0.1 * ck));
     // Schweif schwingt in Kurven nach aussen
     part('tail', 0, RG.tailY, RG.tailZ, tailRx, tailRz + turn * 0.35);
-    part('arm', -RG.armX, RG.armY, 0, armL, -armOut);
-    part('arm', RG.armX, RG.armY, 0, armR, armOutR ?? armOut);
+    part('arm', -RG.armX, RG.armY + cSink * 0.7, 0, armL, -armOut);
+    part('arm', RG.armX, RG.armY + cSink * 0.7, 0, armR, armOutR ?? armOut);
     // Kopf schaut leicht in die Kurve; alle paar Sekunden ein Ohrenzucken
     const twitch = Math.max(0, Math.sin(clock * 0.41)) > 0.995 ? Math.sin(clock * 40) * 0.08 : 0;
     const headOpt = { shine: 0.14, rim: FIG.rim, lit: 0.78, tint: FIG.tint };
     // im Stand schaut der Kopf ein Stueck zur Kamera, im Lauf in die Kurve
     const toCam = angDiff(pl.face, Math.atan2(cam.pos[0] - p[0], cam.pos[2] - p[2]));
     const headYaw = (run01 < 0.06 && pl.grounded && !lying ? clamp(toCam, -0.55, 0.55) * 0.5 * (1 - env) : clamp(turn * 0.25, -0.35, 0.35)) + headYawAdd;
-    const headM = part('head', 0, RG.headY, RG.headZ, headTilt, Math.sin(clock * 1.3) * 0.05 + twitch, headOpt, headYaw);
+    const headM = part('head', 0, RG.headY + cSink, RG.headZ, headTilt, Math.sin(clock * 1.3) * 0.05 + twitch, headOpt, headYaw);
     // Blinzeln: das Lid wird in der Hoehe aufgezogen (beim Gaehnen/Schlafen bleibt es zu)
     const bl = swim || lying ? 0 : Math.max(blinkAt(clock, 0), lidK);
     if (G.lids && bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), headOpt);
@@ -12030,6 +12060,7 @@ void main() {
   }
   const zzz = [];
   let zzzT = -9;
+  let crouchK = 0, crouchV = 0, crouchLast = 0;   // Feder der Hocke (drawPlayer)
   /* Leerlauf-Abfolge: nach 3 s alle 4 s eine Animation (Umschauen, Strecken, Pfote putzen,
      Schwanz jagen), ab 19 s schlaeft Glappo ein. env blendet jede Animation weich ein und aus. */
   const IDLE_START = 3, IDLE_CYCLE = 4, IDLE_SLEEP = 19, IDLE_KINDS = ['look', 'stretch', 'paw', 'chase'];
