@@ -9612,13 +9612,21 @@ void main() {
     let mdx = 0, mdy = 0, wheel = 0, prev = {};
     const st = { device: 'keyboard', padName: '' };
     const GAME_KEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+    // tapped: jeder Druck zaehlt bis zur naechsten Abfrage, auch wenn die Taste schon vor dem Bild wieder los ist
+    // (bei niedriger Bildrate ging ein kurzes Antippen sonst verloren)
+    const tapped = new Set();
     addEventListener('keydown', (e) => {
       keys.add(e.code);
+      if (!e.repeat) tapped.add(e.code);
       st.device = 'keyboard';
       if (GAME_KEYS.has(e.code) && mode !== 'pause' && mode !== 'ending') e.preventDefault();
     });
-    addEventListener('keyup', (e) => keys.delete(e.code));
-    addEventListener('blur', () => { keys.clear(); mouseHeld = false; });
+    addEventListener('keyup', (e) => {
+      keys.delete(e.code);
+      // Weiterspielen per Esc: die Maus erst jetzt anfordern, nachdem die Taste los ist (siehe lockAfterEsc)
+      if (e.code === 'Escape' && lockAfterEsc) { lockAfterEsc = false; if (mode === 'play') lock(); }
+    });
+    addEventListener('blur', () => { keys.clear(); tapped.clear(); mouseHeld = false; });
 
     // Maus einfangen (Pointer Lock): ein Klick ins Spiel faengt die Maus, ESC gibt sie wieder frei.
     // Solange sie gefangen ist, dreht jede Mausbewegung die Kamera — ganz ohne Ziehen.
@@ -9627,6 +9635,12 @@ void main() {
     // Weiterspielen per ESC: Browser fangen die Maus danach erst beim naechsten Klick wieder ein
     // (ESC zaehlt nicht als Nutzer-Geste). Bis dahin dreht die Kamera mit der freien Maus weiter.
     let softLook = false, softHint = false;
+    /* Chrome/Edge geben die gefangene Maus bei JEDEM Esc-Ereignis frei, auch beim Loslassen der Taste
+       (ExclusiveAccessManager::HandleUserKeyEvent). Fing das Spiel die Maus schon beim Druecken wieder ein,
+       gab das Loslassen sie sofort frei und die Pause ging gleich wieder auf. Darum nach Esc erst beim
+       Loslassen anfordern. */
+    let lockAfterEsc = false;
+    function lockAfterEscUp() { if (!lockable()) return; lockAfterEsc = true; softLook = true; }
     const lockable = () => !lockBroken && !!canvas.requestPointerLock && !matchMedia('(pointer: coarse)').matches;
     const locked = () => document.pointerLockElement === canvas;
     function lock(byClick = false) {
@@ -9643,7 +9657,7 @@ void main() {
       if (lockByClick) { if (++lockErrs >= 2) lockBroken = true; return; }
       if (softLook && !softHint && mode === 'play') { softHint = true; toast('\u{1F5B1}\u{FE0F} Klick ins Bild fängt die Maus wieder ein'); }
     });
-    function unlock() { softLook = false; if (locked() && document.exitPointerLock) document.exitPointerLock(); }
+    function unlock() { softLook = false; lockAfterEsc = false; if (locked() && document.exitPointerLock) document.exitPointerLock(); }
     document.addEventListener('mousemove', (e) => {
       if (!locked() && !(softLook && mode === 'play' && !Dialog.open)) return;
       mdx += (e.movementX || 0) * 0.7; mdy += (e.movementY || 0) * 0.7;
@@ -9725,7 +9739,7 @@ void main() {
 
     const dz = (v) => (Math.abs(v) < 0.2 ? 0 : (v - Math.sign(v) * 0.2) / 0.8);
     function poll() {
-      const k = (c) => keys.has(c);
+      const k = (c) => keys.has(c) || tapped.has(c);
       let mx = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
       let my = (k('KeyS') || k('ArrowDown') ? 1 : 0) - (k('KeyW') || k('ArrowUp') ? 1 : 0);
       let cx = (k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0), cy = 0;
@@ -9772,10 +9786,11 @@ void main() {
         pauseP: pause && !prev.pause, startP: start && !prev.start,
       };
       prev = { jump, action, z, look, pause, start };
-      mdx = mdy = wheel = 0; clicks = 0;
+      mdx = mdy = wheel = 0; clicks = 0; tapped.clear();
       return out;
     }
-    return { poll, st, lock, unlock, locked, get lockLostT() { return lockLostT; } };
+    return { poll, st, lock, unlock, locked, lockAfterEscUp, get lockLostT() { return lockLostT; },
+      escHeld: () => keys.has('Escape') };
   })();
 
   /* ═══════════ Spieler ═══════════
@@ -11657,7 +11672,7 @@ void main() {
     if (mode !== 'pause') return;
     $('#pause').hidden = true;
     mode = 'play'; uiCool = 0.12;
-    Input.lock();
+    if (Input.escHeld()) Input.lockAfterEscUp(); else Input.lock();   // mit Esc: Maus erst nach dem Loslassen
     Snd.pause();
     if (state.music) Snd.music(true);
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
