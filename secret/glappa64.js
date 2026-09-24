@@ -63,6 +63,10 @@
     leuchtpilz: { name: 'Fünf Leuchtpilze',        where: 'Pilzwald' },
     hof:        { name: 'Die Geister vom Brunnen', where: 'Schloss: Schlosshof' },
     turm:       { name: 'Ganz oben im Turm',       where: 'Schloss: Obergeschoss' },
+    dustA:      { name: 'Knall auf Platz A',       where: 'Staub II' },
+    dustB:      { name: 'Knall auf Platz B',       where: 'Staub II' },
+    dustDach:   { name: 'Der Wasserturm von Staub II', where: 'Staub II' },
+    dustSpray:  { name: 'Fünf Spraydosen',         where: 'Staub II' },
   };
   const STAR_TOTAL = Object.keys(STARS).length;
   const starCount = () => Object.keys(STARS).filter((id) => state.stars[id]).length;
@@ -3590,6 +3594,7 @@ vec3 art(vec2 p) {
       'OSTTOR\nDahinter: die offene Wüste und die GROSSE PYRAMIDE.',
       'Oben auf der Pyramide liegt im Schrein ein Stern. Die Treppe an der Westseite führt hinauf – aber von oben rollen Steinkugeln!',
       'Durstig? Die Oase liegt im Südosten.',
+      'Und ganz im Süden steht ein Torhaus. Dahinter liegt STAUB II – eine Stadt, in der sich zwei Katzen-Teams um zwei Plätze streiten.',
     ]);
 
     // ── Gegner ──
@@ -3640,6 +3645,439 @@ vec3 art(vec2 p) {
     K2.quest('skarab', MESH.skarab, [[-32, 15.6, -60], [136, 16.5, -6], [118, 19.6, -24], [84, 2.8, 28], [150, 1.5, 22]],
       { icon: '\u{1FAB2}', label: 'Skarabäus', speaker: 'Basar-Katze Nuri', starPos: [0, 2.4, 30],
         done: ['Alle fünf Skarabäen! Die Wüste gibt sie nur ungern her.', 'Auf dem Platz beim Tor wartet ein Stern.'] });
+    // ── Torhaus am Suedrand der offenen Wueste: dahinter liegt STAUB II ──
+    L.block(118, 5, 62, 18, 10, 6, STONE, 'house');
+    box(g, M4.from(118, 10.25, 62), 18.6, 0.5, 6.6, TRIM);
+    for (const s of [-1, 1]) K2.column(118 + s * 7.5, 58.6, 0, 9, 0.7, hex('#dcbc8c'));
+    hubDoor(L, 118, 0, 59, 'n', 'dust', 'Staub II', '\u{1F4A3}', '#ffd080', { stone: STONE });
+    K2.talker(111, 0, 53, 'Schild', [
+      '★ STAUB II ★\nHinter diesem Tor liegt eine staubige Stadt mit zwei Plätzen: A und B.',
+      'Zwei Katzen-Teams streiten sich dort seit Jahren um diese Plätze. Drinnen warten vier Sterne.',
+    ]);
+    L.finish();
+    return L;
+  }
+
+  /* ═══════════ Staub II — Wuestenkarte nach de_dust2 ═══════════
+     Grundriss nach dem bekannten Vorbild (Lang A mit Grube, Kat/Kurz A, Mitte mit Mitteltueren,
+     obere + untere B-Tunnel, B-Tueren + B-Fenster, CT-Rampe); Geometrie, Farben und Figuren sind eigen.
+     Die Zeichenkarte ist der Grundriss, 1 Zeichen = 3 m, Norden oben:
+       X Aussenmauer (14 m)   # Haus (Dach auf 9 m)   H hohes Haus (12 m)
+       0-9 Boden auf Hoehe Ziffer x 0,5 m (0,5 m Unterschied = Stufe)   p Grube (-1,5 m)
+       n s e w  Rampe, steigt nach Norden/Sueden/Osten/Westen (Hoehen kommen von den Nachbarfeldern)
+       b halbhohe Mauer (1,2 m ueber dem hoeheren Nachbarn)   m Bruestung Mitte/Kat   W B-Fenster
+     Sterne: eine Knallkiste auf dem gemalten A bzw. B hochgehen lassen, der Wasserturm auf dem
+     hohen Haus zwischen Kat und Lang, fuenf Spraydosen fuer die Sprayerin in der Mitte. */
+  const DUST_MAP = [
+    'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+    'X55553333333##2222222222222####777777777777X',
+    'X55553333333##2222222222222eeee777777777777X',
+    'X44443333333##2222222222222eeee777777777777X',
+    'X33333333333WW2222222222222eeee777777777777X',
+    'X33333333333WW2222222222222eeee777777777777X',
+    'X33333333333##2222222222222eeee777777777777X',
+    'X33333333333##22222222#########777777777777X',
+    'X333333333333322222222#########777777777777X',
+    'X333333333333322222222#########777777777777X',
+    'X333333333333322222222#########777777777777X',
+    'X33333333333##22222222#########77777#nnnbppX',
+    'X##4444#######22222222#########77777#nnnbppX',
+    'X##4444#######22222222####66666666###nnnbppX',
+    'X##4444############11111##66666666###nnnbppX',
+    'X##4444#############000###666########nnnbppX',
+    'X##4444############00000mm666#HHHHHH#nnnbssX',
+    'X##4444############00000mm666#HHHHHH#nnnbssX',
+    'X##4444############00000mm666#HHHHHH#333333X',
+    'X##4444############00000mm666#HHHHHH#333333X',
+    'X##4444############00000mm666#HHHHHH#333333X',
+    'X##4444############00000mm666#HHHHHH#333333X',
+    'X##4444www00000000000000mm666#HHHHHH#333333X',
+    'X##4444www00000000000000mm666#HHHHHH#333333X',
+    'X##4444www00000000000000mm666#HHHHHH#333333X',
+    'X##4444############00000mm666#HHHHHH#333333X',
+    'X##4444############00000ee666#HHHHHH#333333X',
+    'X##4444#HHHHHHHHH##00000ee666#HHHHHH#333333X',
+    'X##4444#HHHHHHHHH##00000ee666#HHHHHH#333333X',
+    'X##4444#HHHHHHHHH##00000######HHHHHH#333333X',
+    'X##4444#HHHHHHHHH##00000######HHHHHH#333333X',
+    'X##4444#HHHHHHHHH##00000#############333333X',
+    'X##4444#HHHHHHHHH##00000#######444444333333X',
+    'X##4444#HHHHHHHHH##00000#######444444333333X',
+    'X##4444#HHHHHHHHH##00000#######444444333333X',
+    'X##5555#HHHHHHHHH##00000#######444444333333X',
+    'X##66666HHHHHHHHH##00000#########55########X',
+    'X##66666HHHHHHHHH##00000#########55########X',
+    'X##66666666666#####00000##66666666666######X',
+    'X##66666666666#####sssss##66666666666######X',
+    'X##66666666666#####sssss##66666666666######X',
+    'X##666666666666666666666666666#############X',
+    'X##666666666666666666666666666#############X',
+    'X##666666666666666666666666666#############X',
+    'X##666666666666666666666666666#############X',
+    'X#############6666666666666666#############X',
+    'X#############6666666666666666#############X',
+    'XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
+  ];
+  // Pixelschrift 5x7 fuer gesprayte Wandzeichen (nur die Zeichen, die gebraucht werden)
+  const PIXFONT = {
+    A: ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+    B: ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
+    C: ['.###.', '#...#', '#....', '#....', '#....', '#...#', '.###.'],
+    E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
+    I: ['.###.', '..#..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+    M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
+    T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
+    '>': ['.....', '..#..', '...#.', '#####', '...#.', '..#..', '.....'],
+    '<': ['.....', '..#..', '.#...', '#####', '.#...', '..#..', '.....'],
+  };
+  const pixWidth = (text) => [...text].reduce((w, ch) => w + (ch === ' ' ? 3 : 6), 0) - 1;
+  // o = linke obere Ecke, u = ein Pixel nach rechts, v = ein Pixel nach unten
+  function sprayText(g, text, o, u, v, col, rnd) {
+    const p = (a, b) => [o[0] + u[0] * a + v[0] * b, o[1] + u[1] * a + v[1] * b, o[2] + u[2] * a + v[2] * b];
+    let x = 0;
+    for (const ch of text) {
+      const gl2 = PIXFONT[ch];
+      if (gl2) for (let j = 0; j < 7; j++) for (let i = 0; i < 5; i++) {
+        if (gl2[j][i] === '#') g.quad(p(x + i, j), p(x + i + 1, j), p(x + i + 1, j + 1), p(x + i, j + 1), shade(col, 0.88 + rnd() * 0.2));
+      }
+      x += ch === ' ' ? 3 : 6;
+    }
+  }
+  MESH.spray = build((g) => {
+    cyl(g, I4, 0.24, 0.24, 0.72, 10, hex('#d8402a'));
+    cyl(g, M4.from(0, 0.2, 0), 0.245, 0.245, 0.24, 10, hex('#f4ecd8'));
+    cyl(g, M4.from(0, 0.72, 0), 0.24, 0.12, 0.14, 10, hex('#b8b8c0'));
+    cyl(g, M4.from(0, 0.86, 0), 0.07, 0.07, 0.12, 6, hex('#2a2a2a'));
+    box(g, M4.from(0.07, 0.94, 0), 0.1, 0.05, 0.05, hex('#2a2a2a'));
+  });
+  function buildDust() {
+    const CELL = 3, OX = -66, OZ = -72, ROWS = DUST_MAP.length, COLS = DUST_MAP[0].length;
+    const L = new Level({ name: 'Staub II', spawn: [0, 3, 63.5], spawnFace: Math.PI, spawnYaw: 0,
+      fog: hex('#f1dcb2'), fogNear: 110, fogFar: 330, light: v3.norm([0.35, -0.85, 0.4]), sky: 'desert' });
+    const K = kit(L), g = K.g, gw = K.glow, r = K.rnd;
+    const at = (c, w) => (w < 0 || w >= ROWS || c < 0 || c >= COLS ? 'X' : DUST_MAP[w][c]);
+    const X = (c) => OX + c * CELL, Z = (w) => OZ + w * CELL;          // West- bzw. Nordkante eines Feldes
+    const floorY = (k) => (k >= '0' && k <= '9' ? (k.charCodeAt(0) - 48) * 0.5 : k === 'p' ? -1.5 : null);
+    const TOPS = { X: 14, '#': 9, H: 12 }, RISE = { n: 'z-', s: 'z+', e: 'x+', w: 'x-' };
+    const WALL = { top: hex('#c8ad7c'), side: hex('#dcc294') }, WALL_H = { top: hex('#bf9f6c'), side: hex('#d3b484') };
+    const OUTER = { top: hex('#b89a6a'), side: hex('#cbb08a') };
+    const BASE = hex('#a88a5c'), TRIM = hex('#b89668'), WOOD = hex('#8a5a2e'), WOOD_D = hex('#5a3a1c'), BLUE = hex('#3a6ea8');
+    const SAND_A = hex('#e2c894'), SAND_B = hex('#d8bd88'), PAVE_A = hex('#cfc0a0'), PAVE_B = hex('#c4b492');
+    const RED = hex('#b8321c'), INK = hex('#3a2a1a');
+    // Ueberdachte Felder: die Tunnel (dunkler Boden, Dach darueber)
+    const ROOFS = [{ c0: 3, c1: 6, r0: 15, r1: 33, y: 6.5 }, { c0: 7, c1: 18, r0: 22, r1: 24, y: 5.5 }];
+    const roofed = (c, w) => ROOFS.some((q) => c >= q.c0 && c <= q.c1 && w >= q.r0 && w <= q.r1);
+
+    // Gleiche Zeichen zu moeglichst grossen Rechtecken zusammenfassen (weniger Quader)
+    const used = DUST_MAP.map((row) => new Array(row.length).fill(false)), rects = [];
+    for (let w = 0; w < ROWS; w++) for (let c = 0; c < COLS; c++) {
+      if (used[w][c]) continue;
+      const k = at(c, w);
+      let c1 = c, w1 = w;
+      if (k !== 'b') {
+        while (c1 + 1 < COLS && !used[w][c1 + 1] && at(c1 + 1, w) === k) c1++;
+        grow: while (w1 + 1 < ROWS) {
+          for (let cc = c; cc <= c1; cc++) if (used[w1 + 1][cc] || at(cc, w1 + 1) !== k) break grow;
+          w1++;
+        }
+      }
+      for (let ww = w; ww <= w1; ww++) for (let cc = c; cc <= c1; cc++) used[ww][cc] = true;
+      rects.push({ k, c0: c, c1, r0: w, r1: w1, x0: X(c), x1: X(c1 + 1), z0: Z(w), z1: Z(w1 + 1) });
+    }
+    const sides = (x0, z0, x1, z1, y0, y1, col) => {
+      for (const z of [z0, z1]) g.quad([x0, y0, z], [x1, y0, z], [x1, y1, z], [x0, y1, z], col);
+      for (const x of [x0, x1]) g.quad([x, y0, z0], [x, y0, z1], [x, y1, z1], [x, y1, z0], col);
+    };
+
+    // ── Boden: Sand bzw. Pflaster auf den Plaetzen, leichtes Schachbrett im 3-m-Raster ──
+    for (const q of rects) {
+      const y = floorY(q.k);
+      if (y === null) continue;
+      L.solid(q.x0, -6, q.z0, q.x1, y, q.z1, 'ground');
+      sides(q.x0, q.z0, q.x1, q.z1, -2.5, y, shade(SAND_B, 0.84));
+      for (let w = q.r0; w <= q.r1; w++) for (let c = q.c0; c <= q.c1; c++) {
+        const site = (c >= 31 && w <= 12) || (c <= 11 && w <= 11);
+        const hs = Math.sin(c * 12.9898 + w * 78.233) * 43758.5453;
+        const col = shade((c + w) & 1 ? (site ? PAVE_A : SAND_A) : (site ? PAVE_B : SAND_B), (roofed(c, w) ? 0.62 : 1) * (0.95 + (hs - Math.floor(hs)) * 0.08));
+        const x0 = X(c), z0 = Z(w);
+        g.quad([x0, y, z0 + CELL], [x0 + CELL, y, z0 + CELL], [x0 + CELL, y, z0], [x0, y, z0], col);
+      }
+    }
+    // ── Rampen; Kat-Treppe und Tunneltreppe bekommen Stufenkanten ──
+    const STAIRS = new Set(['24,26', '7,22']);
+    for (const q of rects) {
+      if (!RISE[q.k]) continue;
+      const cm = (q.c0 + q.c1) >> 1, wm = (q.r0 + q.r1) >> 1;
+      const [lo, hi] = { n: [at(cm, q.r1 + 1), at(cm, q.r0 - 1)], s: [at(cm, q.r0 - 1), at(cm, q.r1 + 1)],
+        e: [at(q.c0 - 1, wm), at(q.c1 + 1, wm)], w: [at(q.c1 + 1, wm), at(q.c0 - 1, wm)] }[q.k];
+      const dk = roofed(cm, wm) ? 0.62 : 1;
+      const b = L.ramp(q.x0, q.z0, q.x1, q.z1, floorY(lo), floorY(hi), RISE[q.k], { top: shade(SAND_A, 0.97 * dk), side: shade(SAND_B, 0.84) }, 'ramp', { bottom: -6 });
+      if (!STAIRS.has(q.c0 + ',' + q.r0)) continue;
+      const alongX = q.k === 'e' || q.k === 'w', len = alongX ? q.x1 - q.x0 : q.z1 - q.z0;
+      for (let t = 0.75; t < len - 0.1; t += 0.75) {
+        const x = alongX ? q.x0 + t : (q.x0 + q.x1) / 2, z = alongX ? (q.z0 + q.z1) / 2 : q.z0 + t;
+        box(g, M4.from(x, topAt(b, x, z) + 0.02, z), alongX ? 0.14 : q.x1 - q.x0, 0.05, alongX ? q.z1 - q.z0 : 0.14, shade(SAND_B, 0.7 * dk));
+      }
+    }
+    // ── Halbhohe Mauern (b), Bruestung (m), B-Fenster (W) ──
+    for (const q of rects) {
+      const cx = (q.x0 + q.x1) / 2, cz = (q.z0 + q.z1) / 2, sx = q.x1 - q.x0, sz = q.z1 - q.z0;
+      let top = null;
+      if (q.k === 'b') {
+        // 1,2 m ueber dem hoeheren Nachbarboden; nur echte Boden-/Rampenfelder zaehlen
+        top = -Infinity;
+        for (const [dc, dw] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          const n = at(q.c0 + dc, q.r0 + dw);
+          if (floorY(n) === null && !RISE[n]) continue;
+          top = Math.max(top, groundAt(L, cx + dc * 1.8, cz + dw * 1.8, 30, 0.05));
+        }
+        top += 1.2;
+      } else if (q.k === 'm') top = 4.2;
+      else if (q.k === 'W') {
+        // unten Bruestung, oben Sturz, dazwischen zwei Fensteroeffnungen mit Mittelpfosten
+        L.block(cx, (2.7 - 2.5) / 2, cz, sx, 2.7 + 2.5, sz, WALL, 'house');
+        L.block(cx, 7.05, cz, sx, 3.9, sz, WALL, 'house');
+        L.block(cx, 3.9, cz, sx, 2.4, 0.5, { top: WOOD_D, side: WOOD }, 'house');
+        for (const x of [q.x0, q.x1]) {
+          box(g, M4.from(x, 2.75, cz), 0.3, 0.12, sz, WOOD);
+          box(g, M4.from(x, 5.05, cz), 0.3, 0.12, sz, WOOD);
+        }
+        continue;
+      }
+      if (top === null) continue;
+      L.block(cx, (top - 2.5) / 2, cz, sx, top + 2.5, sz, WALL, 'house');
+      box(g, M4.from(cx, top - 0.1, cz), sx + 0.2, 0.2, sz + 0.2, TRIM);
+    }
+
+    // ── Haeuser: Sandstein, dunkler Sockel, Gesims ──
+    for (const q of rects) {
+      const top = TOPS[q.k];
+      if (top === undefined) continue;
+      const cx = (q.x0 + q.x1) / 2, cz = (q.z0 + q.z1) / 2, sx = q.x1 - q.x0, sz = q.z1 - q.z0;
+      L.block(cx, (top - 2.5) / 2, cz, sx, top + 2.5, sz, q.k === 'X' ? OUTER : q.k === 'H' ? WALL_H : WALL, q.k === 'X' ? 'citywall' : 'house');
+      box(g, M4.from(cx, top - 0.25, cz), sx + 0.3, 0.5, sz + 0.3, TRIM);
+      let lo = Infinity;
+      for (let w = q.r0 - 1; w <= q.r1 + 1; w++) for (let c = q.c0 - 1; c <= q.c1 + 1; c++) {
+        const f = floorY(at(c, w));
+        if (f !== null) lo = Math.min(lo, f);
+      }
+      if (lo < Infinity) box(g, M4.from(cx, (lo + 0.7 - 2.5) / 2, cz), sx + 0.12, lo + 0.7 + 2.5, sz + 0.12, BASE);
+    }
+    const TEXTS = [
+      ['A', 37.5, 9.5, -69, 0, 1, 0.6, RED], ['B', -45, 7.5, -69, 0, 1, 0.6, RED],
+      ['CT', -5, 6.5, -69, 0, 1, 0.45, INK], ['T', -14, 7.5, 69, 0, -1, 0.5, INK],
+      ['A >', 24, 6.5, 42, 0, 1, 0.4, RED],            // Aussen-Lang: rechts zu den Lang-Tueren
+      ['< A', 63, 5.5, 22, -1, 0, 0.4, RED],           // Lange Ecke: A liegt links (Norden)
+      ['< A', 21, 7, 5, -1, 0, 0.4, RED],              // Kat
+      ['MITTE >', -16.5, 6.5, 51, 0, 1, 0.28, INK],    // T-Spawn: rechts geht es die Mitte hinab
+      ['< B', -30, 7, 36, 0, 1, 0.45, RED],            // Aussen-Tunnel: links in die B-Tunnel
+    ];
+    // Fassaden: Fenster mit blauen Laeden, alte Holztueren, Balkenkoepfe unter dem Dach (nicht unter Graffiti)
+    for (let w = 0; w < ROWS; w++) for (let c = 0; c < COLS; c++) {
+      const k = at(c, w), top = TOPS[k];
+      if (k !== '#' && k !== 'H') continue;
+      for (const [dc, dw] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        const f = floorY(at(c + dc, w + dw));
+        if (f === null || roofed(c + dc, w + dw)) continue;
+        const fx = X(c) + 1.5 + dc * 1.5, fz = Z(w) + 1.5 + dw * 1.5, roll = r();
+        if (TEXTS.some(([t, x, , z, nx, nz, sz]) => nx === dc && nz === dw && Math.hypot(fx - x, fz - z) < pixWidth(t) * sz / 2 + 1.6)) continue;
+        const m = M4.from(fx, 0, fz, Math.atan2(dc, dw));
+        const at2 = (x, y, z) => M4.mul(m, M4.from(x, y, z));
+        if (top - f > 5.5 && roll < 0.3) {
+          const wy = f + 3.6;
+          box(g, at2(0, wy, 0.04), 1.0, 1.4, 0.1, hex('#2a2018'));
+          for (const s of [-1, 1]) box(g, at2(s * 0.78, wy, 0.08), 0.5, 1.45, 0.08, BLUE);
+          box(g, at2(0, wy - 0.8, 0.12), 1.3, 0.14, 0.24, TRIM);
+        } else if (roll < 0.4 && top - f > 3.2) {
+          box(g, at2(0, f + 1.3, 0.05), 1.5, 2.6, 0.1, WOOD_D);
+          box(g, at2(0, f + 2.7, 0.12), 1.9, 0.25, 0.24, TRIM);
+        }
+        if (k === 'H' || roll > 0.8) for (const s of [-1, 0, 1]) box(g, at2(s, top - 1.1, 0.3), 0.24, 0.24, 0.6, WOOD);
+      }
+    }
+    // ── Tunneldaecher mit Balken und Lampen ──
+    for (const q of ROOFS) {
+      const x0 = X(q.c0), x1 = X(q.c1 + 1), z0 = Z(q.r0), z1 = Z(q.r1 + 1), alongZ = z1 - z0 > x1 - x0;
+      L.block((x0 + x1) / 2, q.y + 0.5, (z0 + z1) / 2, x1 - x0, 1, z1 - z0, { top: hex('#b89a6a'), side: hex('#a88a5c') }, 'roof');
+      const len = alongZ ? z1 - z0 : x1 - x0;
+      for (let t = 1.5; t < len; t += 3) {
+        box(g, M4.from(alongZ ? (x0 + x1) / 2 : x0 + t, q.y - 0.15, alongZ ? z0 + t : (z0 + z1) / 2), alongZ ? x1 - x0 : 0.35, 0.3, alongZ ? 0.35 : z1 - z0, WOOD_D);
+      }
+      for (let t = 4.5; t < len; t += 9) {
+        const lx = alongZ ? (x0 + x1) / 2 : x0 + t, lz = alongZ ? z0 + t : (z0 + z1) / 2;
+        cyl(g, M4.from(lx, q.y - 1.1, lz), 0.02, 0.02, 1.1, 4, hex('#2a2a2a'));
+        box(gw, M4.from(lx, q.y - 1.2, lz), 0.3, 0.3, 0.3, hex('#ffd98a'));
+      }
+    }
+
+    // ── Tueren: Mitteltueren, Lang-Tueren, B-Tueren (Stuerze darueber, Fluegel teils offen) ──
+    const leaf = (x0, z0, x1, z1, y0, h) => {
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, sx = x1 - x0, sz = z1 - z0;
+      L.block(cx, y0 + h / 2, cz, sx, h, sz, { top: WOOD_D, side: WOOD }, 'house');
+      for (const yy of [0.22, 0.78]) box(g, M4.from(cx, y0 + h * yy, cz), sx + 0.06, 0.18, sz + 0.06, hex('#2a2a30'));
+    };
+    L.block(-1.5, 7, -25.5, 9, 4, 3, WALL, 'house');                  // Mitteltueren
+    leaf(-6, -24.3, -2.3, -24, 0, 4.8); leaf(2.7, -24, 3, -20.3, 0, 4.8);
+    L.block(36, 8.2, 39, 6, 1.6, 6, WALL, 'house');                    // Lang-Tueren (zum Blau hin aufgeschwungen)
+    leaf(33, 32.4, 33.3, 36, 2, 5); leaf(38.7, 32.4, 39, 36, 2, 5);
+    L.block(-27, 7.6, -43.5, 6, 2.8, 9, WALL, 'house');                // B-Tueren
+    leaf(-24, -48, -19.8, -47.7, 1, 5); leaf(-24.3, -43.5, -24, -39, 1.5, 4.7);
+
+    // ── Ausgang: Holztor in der Suedmauer hinter dem T-Spawn ──
+    box(g, M4.from(0, 5.75, 68.95), 5.6, 5.5, 0.1, hex('#5a3414'));
+    box(g, M4.from(0, 5.9, 68.88), 0.12, 5.2, 0.05, hex('#3a2008'));
+    for (const s of [-1, 1]) box(g, M4.from(s * 3.1, 6, 68.8), 0.6, 6, 0.5, TRIM);
+    box(g, M4.from(0, 9.2, 68.8), 6.8, 0.6, 0.5, TRIM);
+    starGeo(gw, M4.from(0, 10.2, 68.5), 0.55, 0.12, hex('#ffd21f'));
+    L.solid(-3, 3, 68.9, 3, 8.5, 70, 'exitdoor');
+    L.door = { pos: [0, 3, 67.6], to: 'desert', label: 'Zurück in die Wüstenstadt', back: true };
+    K.bounds(OX, OZ, OX + COLS * CELL, OZ + ROWS * CELL);
+
+    // ── Kisten, Faesser, Container, Auto, Palmen ──
+    const crate = (x, y, z, s = 2.4) => {
+      L.block(x, y + s / 2, z, s, s, s, { top: hex('#b98a52'), side: hex('#a8763e') }, 'crate');
+      const m = M4.from(x, y + s / 2, z);
+      for (const [dx, dz, fr] of [[0, s / 2 + 0.03, 0], [0, -s / 2 - 0.03, 0], [s / 2 + 0.03, 0, Math.PI / 2], [-s / 2 - 0.03, 0, Math.PI / 2]]) {
+        const f = M4.mul(m, M4.from(dx, 0, dz, fr));
+        for (const yy of [s / 2 - 0.12, -s / 2 + 0.12]) box(g, M4.mul(f, M4.from(0, yy, 0)), s, 0.24, 0.05, WOOD_D);
+        for (const xx of [s / 2 - 0.12, -s / 2 + 0.12]) box(g, M4.mul(f, M4.from(xx, 0, 0)), 0.24, s, 0.05, WOOD_D);
+        box(g, M4.mul(f, M4.from(0, 0, 0, 0, 0, Math.PI / 4)), s * 1.2, 0.2, 0.04, WOOD_D);
+      }
+    };
+    const barrel = (x, y, z, col = hex('#3a6ea8')) => {
+      cyl(g, M4.from(x, y, z), 0.6, 0.6, 1.4, 10, col, shade(col, 0.8));
+      for (const yy of [0.25, 1.1]) cyl(g, M4.from(x, y + yy, z), 0.62, 0.62, 0.1, 10, hex('#3a3a3a'));
+      L.solid(x - 0.6, y, z - 0.6, x + 0.6, y + 1.4, z + 0.6, 'barrel');
+    };
+    const car = (x, y, z, col) => {   // laengs in z
+      box(g, M4.from(x, y + 0.75, z), 1.9, 0.8, 4.2, col);
+      box(g, M4.from(x, y + 1.5, z - 0.3), 1.7, 0.7, 2.2, shade(col, 0.92));
+      box(g, M4.from(x, y + 1.52, z - 0.3), 1.74, 0.42, 1.7, hex('#2a3440'));
+      box(g, M4.from(x, y + 1.52, z - 0.3), 1.4, 0.42, 2.24, hex('#2a3440'));
+      for (const [sx, sz] of [[-1, -1.3], [1, -1.3], [-1, 1.3], [1, 1.3]]) cyl(g, M4.from(sx > 0 ? x + 1.1 : x - 0.8, y + 0.38, z + sz, 0, 0, Math.PI / 2), 0.38, 0.38, 0.3, 10, hex('#1a1a1a'));
+      for (const s of [-1, 1]) box(gw, M4.from(x + s * 0.6, y + 0.85, z + 2.12), 0.36, 0.2, 0.04, hex('#fff2b0'));
+      L.solid(x - 0.95, y, z - 2.1, x + 0.95, y + 1.85, z + 2.1, 'car');
+    };
+    // A-Platz: Gans-Ecke, Mitte-Kisten, altes Auto an der CT-Rampe
+    crate(57.8, 3.5, -66.8); crate(57.8, 5.9, -66.8); crate(55.4, 3.5, -66.8);
+    crate(44, 3.5, -66.6); crate(46.4, 3.5, -66.6); crate(45.2, 5.9, -66.6);
+    crate(40, 3.5, -35.5); car(30.5, 3.5, -44, hex('#6a8a5a'));
+    // B-Platz: Kisten in der Mitte, unter dem Fenster und auf der hinteren Plattform
+    crate(-58, 1.5, -48); crate(-58, 3.9, -48); crate(-55.6, 1.5, -48);
+    crate(-32.2, 1.5, -57); crate(-56, 2.5, -67.2);
+    // Mitte: die Kiste am Fuss der Kat, zwei Kisten vor den Mitteltueren
+    crate(3.9, 0, 4.2, 2.2); crate(-7, 0, -21); crate(-7, 2.4, -21);
+    // Blau: Container mit Kiste obendrauf (Weg aufs Dach), Kisten an der Langen Ecke
+    L.block(31, 3.3, 25.4, 6, 2.6, 2.4, { top: shade(BLUE, 0.9), side: BLUE }, 'crate');
+    for (let i = 0; i < 10; i++) box(g, M4.from(28.3 + i * 0.6, 3.3, 25.4), 0.12, 2.4, 2.5, shade(BLUE, 0.8));
+    crate(29.2, 4.6, 25.4); crate(59, 1.5, 33); crate(59, 1.5, 30.6); crate(59, 3.9, 33);
+    crate(61.8, -1.5, -37.6);                                            // Grube: Kiste zum Herausklettern
+    // T-Spawn, CT-Spawn, Aussenbereiche
+    crate(-20, 3, 60); crate(-17.6, 3, 60); crate(-18.8, 5.4, 60); crate(18, 3, 66);
+    crate(-19, 1, -66); crate(-19, 3.4, -66); crate(10, 1, -54);
+    crate(-52, 3, 42); crate(-40, 3, 60);
+    barrel(40, 3, 48); barrel(41.3, 3, 48.6, hex('#8a3a2a')); barrel(22, 3, 66.5); barrel(-56, 3, 62, hex('#8a3a2a'));
+    barrel(-11, 1, -48); barrel(61.5, 1.5, 12);
+    for (const [x, z, y, h] of [[-6, -64, 1, 7], [8, -66, 1, 8], [-54, 56, 3, 7], [-30, 62, 3, 8], [-22, 66, 3, 6.5]]) K.palm(x, z, y, h);
+    // Schornstein auf einem Dach
+    L.block(-16, 10, 46, 1.4, 2, 1.4, WALL, 'chimney');
+    K.life.smoke(-16, 11.2, 46, 4, { speed: 0.6, col: '#c8c0b4', s: 0.7 });
+
+    // ── Gesprayte Zeichen (Text, Mitte x/y/z, Wandnormale nx/nz, Pixelgroesse, Farbe) ──
+    for (const [text, x, y, z, nx, nz, sz, col] of TEXTS) {
+      const w = pixWidth(text), rx = nz, rz = -nx;
+      sprayText(g, text, [x - rx * w * sz / 2 + nx * 0.05, y + 3.5 * sz, z - rz * w * sz / 2 + nz * 0.05], [rx * sz, 0, rz * sz], [0, -sz, 0], col, r);
+    }
+
+    // ── Bombenplaetze: gemaltes Feld; eine getragene Knallkiste, die darauf hochgeht, bringt den Stern ──
+    const ZONES = [
+      { id: 'dustA', name: 'A', x0: X(34), x1: X(40), z0: Z(3), z1: Z(9), y: 3.5 },
+      { id: 'dustB', name: 'B', x0: X(4), x1: X(10), z0: Z(5), z1: Z(10), y: 1.5 },
+    ];
+    for (const zn of ZONES) {
+      const y = zn.y + 0.03, t = 0.35;
+      for (let x = zn.x0; x < zn.x1 - 0.1; x += 1.6) { const e = Math.min(zn.x1, x + 1); for (const z of [zn.z0, zn.z1 - t]) g.quad([x, y, z], [e, y, z], [e, y, z + t], [x, y, z + t], RED); }
+      for (let z = zn.z0; z < zn.z1 - 0.1; z += 1.6) { const e = Math.min(zn.z1, z + 1); for (const x of [zn.x0, zn.x1 - t]) g.quad([x, y, z], [x + t, y, z], [x + t, y, e], [x, y, e], RED); }
+      sprayText(g, zn.name, [(zn.x0 + zn.x1) / 2 - 2.5 * 0.9, y + 0.01, (zn.z0 + zn.z1) / 2 - 3.5 * 0.9], [0.9, 0, 0], [0, 0, 0.9], RED, r);
+    }
+    L.onBoom = (e) => {
+      if (!e.byPlayer) return;
+      for (const zn of ZONES) {
+        if (e.pos[0] < zn.x0 || e.pos[0] > zn.x1 || e.pos[2] < zn.z0 || e.pos[2] > zn.z1 || Math.abs(e.pos[1] - zn.y) > 2.5) continue;
+        if (L.stars.some((s) => s.id === zn.id && !s.gone)) return;
+        toast(`\u{1F4A5} Knall auf Platz ${zn.name}!`);
+        spawnStar(zn.id, L, [(zn.x0 + zn.x1) / 2, zn.y + 2.4, (zn.z0 + zn.z1) / 2]);
+      }
+    };
+
+    // ── Wasserturm auf dem hohen Haus zwischen Kat und Lang (Weg: Blau -> Container -> Kiste -> Dach) ──
+    const TX = 33, TZ = -6;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) cyl(g, M4.from(TX + sx * 2.2, 12, TZ + sz * 2.2), 0.18, 0.18, 3.6, 6, WOOD_D);
+    for (const s of [-1, 1]) box(g, M4.from(TX, 13.8, TZ + s * 2.2), 4.6, 0.15, 0.15, WOOD_D);
+    cyl(g, M4.from(TX, 15.6, TZ), 3.1, 3.1, 3.4, 14, hex('#9a7a5a'), hex('#7a5e44'));
+    for (const yy of [16.2, 18.2]) cyl(g, M4.from(TX, yy, TZ), 3.15, 3.15, 0.16, 14, hex('#3a3a3a'));
+    L.solid(TX - 2.6, 15.6, TZ - 2.6, TX + 2.6, 19, TZ + 2.6, 'tank');
+    for (let y = 12.4; y < 15.6; y += 0.5) box(g, M4.from(TX - 2.2, y, TZ + 2.55), 0.7, 0.08, 0.08, WOOD);   // Leiter (Deko)
+    crate(27.8, 12, TZ); crate(27.8, 14.4, TZ);
+    K.star('dustDach', [TX, 20.6, TZ]);
+
+    // ── Muenzen ──
+    K.coinLine([-1.5, 1.1, 34], [-1.5, 1.1, -18], 8);
+    K.coinLine([51.5, 2.6, 30], [51.5, 2.6, -12], 7);
+    K.coinLine([16.5, 4.1, 12], [16.5, 4.1, -26], 6);
+    K.coinLine([-51, 3.1, 28], [-51, 3.1, -22], 7);
+    K.coinLine([-12, 1.1, -1.5], [-30, 1.1, -1.5], 4);
+    K.coinLine([14, 4.1, 45], [34, 4.1, 45], 5);
+    K.coinLine([-18, 2.1, -58], [10, 2.1, -58], 5);
+    K.coinLine([59, -0.4, -37], [59, -0.4, -27], 3);
+    K.coinRing(57, 4.6, -58, 2.2, 6); K.coinRing(-59, 2.6, -42, 2, 6); K.coinRing(8, 4.1, 57, 3, 8);
+    [[32.2, 5.7, 25.4], [29.2, 8.1, 25.4], [25, 10.1, 22.5]].forEach((p) => L.coin('yellow', ...p));
+    K.coinRing(TX, 13.1, TZ, 3.6, 8);
+
+    // ── Gegner: Knallkisten an der A-Rampe und am B-Tunnel-Ausgang, dazu Grummel & Co. ──
+    L.enemies.push(makeBomb(48, -33), makeBomb(52, -30), makeBomb(-52, -33, 4), makeBomb(-49, -29, 4), makeBomb(14, 56, 8));
+    L.enemies.push(makeGrummel(-1.5, 12), makeGrummel(52, 4), makeGrummel(-12, -40), makeGrummel(-40, 50, 8), makeGrummel(-20, -1.5, 3));
+    L.enemies.push(makeSpiky(32, 46, 8, '#c8a060'), makeSpiky(-36, 58, 8, '#c8a060'), makeHopper(40, 6, 20, '#e8c070'));
+    L.enemies.push(makeBat(-1.5, 10, -8, '#8a5a2a'), makeBat(52, 10, 10, '#8a5a2a'));
+
+    // ── Leben + Bewohner ──
+    K.life.birds(7, { cx: 0, cz: 0, y: 32, col: '#4a4038', speed: 0.8 });
+    K.life.critters('beetle', -22, 52, 22, 68, 4, { y: 3, speed: 0.7 });
+    K.life.critters('beetle', -8, -20, 5, 36, 3, { speed: 0.7 });
+    K.life.drifts(OX, OZ, -OX, -OZ, 20, { y0: 0, y1: 14, col: '#e8c888', s: 0.5, speed: 0.5 });
+    K.talker(-5, 3, 62, 'Schild', [
+      '★ STAUB II ★\nEine staubige Stadt nach dem Vorbild einer sehr berühmten Karte.',
+      'Von hier führen drei Wege weg: rechts über AUSSEN-LANG zu den LANG-TÜREN und nach Platz A, geradeaus die MITTE hinunter, links durch die TUNNEL nach Platz B.',
+      'Vier Sterne: auf Platz A und auf Platz B je ein Knall, einer ganz oben auf dem WASSERTURM – und die Sprayerin in der Mitte sucht ihre Dosen.',
+    ]);
+    K.life.npc(-10, 57, 'Kisten-Kater Kalle', ['Willkommen in Staub II! Drei Wege, zwei Plätze, ein Plan.',
+      'Mein Plan? Immer nach B. Schnell. Nicht anhalten.'], { y: 3, cat: 0, r: 4, tint: '#e8a060', mix: 0.35 });
+    K.life.npc(0, -60, 'Wächterin Carla', ['Ich bewache hier beide Plätze. Theoretisch.',
+      'Wenn jemand eine KNALLKISTE auf dem gemalten A oder B hochgehen lässt, taucht dort ein Stern auf.',
+      'Die Kisten wohnen an der A-RAMPE und am Ausgang der B-TUNNEL. Heb eine auf – der Zünder brennt sofort! – und wirf sie aufs Zeichen.'],
+      { y: 1, cat: 3, r: 5, tint: '#7aa8e8', mix: 0.4 });
+    K.life.npc(-3, 30, 'Sprayerin Tagga', ['Meine fünf SPRAYDOSEN sind weg! Ohne die kann ich das große A und B nicht nachmalen.',
+      'Eine liegt unten in der GRUBE, eine hinten auf der B-PLATTFORM, eine im UNTEREN TUNNEL, eine auf der KISTE am Fuß der Kat und eine im CT-SPAWN.',
+      'Bringst du sie mir? Dann gibt es hier einen Stern.'], { y: 0, cat: 2, r: 4, tint: '#ff8a6a', mix: 0.35 });
+    K.life.npc(61, -32, 'Gruben-Katze Pit', ['Ich sitze hier unten und schaue die Lang-Türen an. Seit Jahren.',
+      'Oben auf dem HOHEN HAUS zwischen Kat und Lang steht ein WASSERTURM. Vom BLAU aus kommt man über den Container und die Kiste aufs Dach.'],
+      { y: -1.5, cat: 1, r: 1.5, tint: '#c8a070', mix: 0.35 });
+    K.quest('dustSpray', MESH.spray, [[58.2, -1.0, -30], [-61.5, 2.8, -67.5], [-28.5, 0.3, -1.5], [3.9, 2.5, 4.2], [-22.5, 1.3, -67.5]],
+      { icon: '\u{1F3A8}', label: 'Spraydose', speaker: 'Sprayerin Tagga', starPos: [-3, 2.4, 25],
+        done: ['Alle fünf Dosen! Jetzt wird wieder gesprayt.', 'Hier in der Mitte wartet dein Stern.'] });
+
+    // ── Umland hinter der Aussenmauer: Sand, Duenen, ferne Haeuser ──
+    for (const [x0, z0, x1, z1] of [[-230, -230, 230, OZ], [-230, -OZ, 230, 230], [-230, OZ, OX, -OZ], [-OX, OZ, 230, -OZ]]) {
+      g.quad([x0, -0.1, z1], [x1, -0.1, z1], [x1, -0.1, z0], [x0, -0.1, z0], hex('#dcc08a'));
+    }
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * TAU, rr = 160 + (i % 3) * 22;
+      sphere(g, M4.from(Math.cos(a) * rr, -3, Math.sin(a) * rr), 38 + (i % 4) * 10, 9 + (i % 3) * 5, 30, 12, 5, hex('#e2c68c'), true, 0, Math.PI / 2);
+    }
+    for (let i = 0; i < 26; i++) {
+      const a = i / 26 * TAU + 0.1, rr = 88 + r() * 30, h = 8 + r() * 14, s = 6 + r() * 8;
+      box(g, M4.from(Math.cos(a) * rr, h / 2 - 0.1, Math.sin(a) * rr, a), s, h, s * (0.7 + r() * 0.6), { top: hex('#c8ad7c'), side: hex('#d6bc8e') });
+    }
     L.finish();
     return L;
   }
@@ -7291,7 +7729,7 @@ vec3 art(vec2 p) {
     spiel: 'hall', sternwarte: 'hall', keller: 'hall', hof: 'hall', og: 'hall',
     verlies: 'keller', aquarium: 'keller', bild_desert: 'keller', bild_neon: 'keller',
     bild_spuk: 'hof', bild_uhrwerk: 'og', bild_fraktal: 'og',
-    gym: 'garden',
+    gym: 'garden', dust: 'desert',
   };
   let buildingKey = null;   // welches Level gerade gebaut wird (fuer die Rueckweg-Tuer)
 
@@ -7350,7 +7788,7 @@ vec3 art(vec2 p) {
   const DESERT_PD = { name: 'Wüstenstadt', bg: 'desert', level: 'desert' };
   function worldStarLines(world) {
     const where = (world === 'desert' ? DESERT_PD : PAINTINGS.find((q) => q.level === world)).name;
-    const ids = Object.keys(STARS).filter((id) => STARS[id].where === where);
+    const ids = Object.keys(STARS).filter((id) => STARS[id].where === where || (world === 'desert' && STARS[id].where === 'Staub II'));
     const got = ids.filter((id) => state.stars[id]).length;
     return [`★ ${where.toUpperCase()} ★\nHinter diesem Bild: ${got} von ${ids.length} Sternen gefunden.`,
       ids.map((id) => (state.stars[id] ? '★ ' : '☆ ') + STARS[id].name).join('\n'),
@@ -8247,7 +8685,8 @@ vec3 art(vec2 p) {
     const WX = 14;
     L.block(WX + 1.5, 10, -14, 3, 20, 20, col('#ff6a6a'), 'wall');
     L.block(WX + 4.5 + GRID.shaft, 10, -14, 3, 20, 20, col('#ff6a6a'), 'wall');
-    K.talker(WX + 3 + GRID.shaft / 2, 0, -1, 'Schild', [`★ WANDSPRUNG ★\nSchacht ${f1(GRID.shaft)} breit, Wände 20 m hoch. Oben runterspringen = Fallschaden-Test.`]);
+    K.talker(WX + 3 + GRID.shaft / 2, 0, -1, 'Schild', [`★ WANDSPRUNG ★\nSchacht ${f1(GRID.shaft)} breit, Wände 20 m hoch.`,
+      `Höchstens ${MAX_KICKS} Wandsprünge pro Flug, jeder schwächer, und nie zweimal dieselbe Wand – bei gut 15 m ist Schluss, ganz nach oben kommt man so nicht mehr.`]);
     // Turm mit Treppe, Rutschbahn nach Norden, steiler Hang nach Osten
     K.stairs(44, 16, 0, 24, 0.5, 1, 3, 'z-', col('#d8dce4'));
     L.block(44, 6, -12, 8, 12, 8, col('#c8a0ff'), 'tower');
@@ -9184,30 +9623,40 @@ void main() {
     // Maus einfangen (Pointer Lock): ein Klick ins Spiel faengt die Maus, ESC gibt sie wieder frei.
     // Solange sie gefangen ist, dreht jede Mausbewegung die Kamera — ganz ohne Ziehen.
     // Wo der Browser das nie erlaubt (eingebettete Ansichten), bleibt es beim Ziehen mit der Maus
-    let lockBroken = false, lockErrs = 0;
+    let lockBroken = false, lockErrs = 0, lockByClick = false;
+    // Weiterspielen per ESC: Browser fangen die Maus danach erst beim naechsten Klick wieder ein
+    // (ESC zaehlt nicht als Nutzer-Geste). Bis dahin dreht die Kamera mit der freien Maus weiter.
+    let softLook = false, softHint = false;
     const lockable = () => !lockBroken && !!canvas.requestPointerLock && !matchMedia('(pointer: coarse)').matches;
     const locked = () => document.pointerLockElement === canvas;
-    function lock() {
+    function lock(byClick = false) {
       if (!lockable() || locked()) return;
+      lockByClick = byClick;
+      if (!byClick) softLook = true;
       try {
         const r = canvas.requestPointerLock();
         if (r && r.catch) r.catch((err) => { if (err && /WrongDocument|NotSupported/.test(err.name)) lockBroken = true; });
       } catch (err) { lockBroken = true; }
     }
-    document.addEventListener('pointerlockerror', () => { if (++lockErrs >= 2) lockBroken = true; });
-    function unlock() { if (locked() && document.exitPointerLock) document.exitPointerLock(); }
+    document.addEventListener('pointerlockerror', () => {
+      // nur Fehlschlaege nach einem Klick zaehlen; ohne Klick verweigert der Browser das Einfangen absichtlich
+      if (lockByClick) { if (++lockErrs >= 2) lockBroken = true; return; }
+      if (softLook && !softHint && mode === 'play') { softHint = true; toast('\u{1F5B1}\u{FE0F} Klick ins Bild fängt die Maus wieder ein'); }
+    });
+    function unlock() { softLook = false; if (locked() && document.exitPointerLock) document.exitPointerLock(); }
     document.addEventListener('mousemove', (e) => {
-      if (!locked()) return;
+      if (!locked() && !(softLook && mode === 'play' && !Dialog.open)) return;
       mdx += (e.movementX || 0) * 0.7; mdy += (e.movementY || 0) * 0.7;
     });
     let lockLostT = -1e9;
     document.addEventListener('pointerlockchange', () => {
       const on = locked();
-      if (on) lockErrs = 0;
+      if (on) { lockErrs = 0; softLook = false; }
       document.body.classList.toggle('mouse-locked', on);
       if (!on) {
         mouseHeld = false; lockLostT = performance.now();
         if (mode === 'play' && !Dialog.open) openPause();   // ESC: Maus frei und Pause
+        else if (mode === 'play') softLook = true;          // ESC im Dialog: danach dreht die freie Maus weiter
       }
     });
 
@@ -9217,7 +9666,7 @@ void main() {
     canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse' && e.button === 0) {
         // erster Klick ins Spiel faengt nur die Maus (kein Schlag ins Leere)
-        if (!locked() && lockable() && mode === 'play') { lock(); return; }
+        if (!locked() && lockable() && mode === 'play') { lock(true); return; }
         clicks++; mouseHeld = true; st.device = 'keyboard';
         return;
       }
@@ -9367,6 +9816,13 @@ void main() {
     dive:     { h: 0.47, d: 4.4,   t: 0.28 },   // nur die Flugphase, danach Bauchrutscher
     rollout:  { h: 1.18, d: 6.81,  t: 0.44 },   // A im Bauchrutscher
   };
+  /* Wandsprung-Grenzen (Wunsch: an der Wand nicht mehr endlos hochkommen):
+     dieselbe Wand zweimal hintereinander geht nicht, jeder weitere Wandsprung im selben Flug ist
+     schwaecher, und nach MAX_KICKS ist Schluss, bis Glappo wieder Boden, Kante oder Wasser hat.
+     Gemessen im Gym-Schacht (7,2 m breit): Gipfel 7,2 / 11,4 / 13,9 / 15,2 m, dann ist Schluss. */
+  const MAX_KICKS = 4, KICK_FALLOFF = 0.8;
+  const canWallKick = (n) => (pl.kicks || 0) < MAX_KICKS
+    && !(pl.kickN && n[0] * pl.kickN[0] + n[2] * pl.kickN[2] > 0.7);
   const CROUCH_H = 1.1, CRAWL = 8 * 0.4125;   // geduckt passt Glappo unter 1,1 m hohe Durchgaenge
   const GRAB_LO = 1.35, GRAB_HI = 2.3;   // Kanten in dieser Hoehe ueber den Fuessen werden im Fallen gegriffen
   /* Level-Raster: Masse fuer den Level-Bau, abgeleitet aus MOVES mit 20 % Luft (FAIR).
@@ -9389,7 +9845,7 @@ void main() {
   const pl = {
     pos: [0, 0, 0], vel: [0, 0, 0], push: [0, 0, 0], face: 0, speed: 0, side: 0, grounded: true, coyote: 0,
     action: 'ground', landFrom: '', landT: -9, jumpBuf: 0, holdGrace: 0, skid: false, crouch: false, hold: null,
-    flip: 0, pound: 0, invuln: 0, hurtT: 0, wall: null, wallT: -9, inWater: false, walk: 0, squash: 1,
+    flip: 0, pound: 0, invuln: 0, hurtT: 0, wall: null, wallT: -9, kicks: 0, kickN: null, inWater: false, walk: 0, squash: 1,
     punchT: 0, lookT: 0, looking: false, dead: false, frozen: 0, entering: 0,
     groundBox: null, knock: 0, h: 2.2, crawl: false, forceCrouch: false, boostCool: 0, carry: [0, 0],
     waterObj: null, waterJump: false, swimPh: 0, strokeT: -9, ledgeCool: 0, hangBox: null, hangN: null, hangT: 0,
@@ -9573,6 +10029,8 @@ void main() {
     pl.boostCool = Math.max(0, pl.boostCool - dt);
     pl.ledgeCool = Math.max(0, pl.ledgeCool - dt);
     const lock = pl.dead || pl.hurtT > 0 || pl.frozen > 0 || pl.entering > 0 || pl.knock > 0;
+    // Wandsprung-Kette endet erst mit festem Boden, Kante oder Wasser
+    if (pl.grounded || pl.inWater || pl.action === 'hang' || pl.action === 'climb') { pl.kicks = 0; pl.kickN = null; }
     if (pl.action === 'hang' || pl.action === 'climb') { pl.carry = [0, 0]; updateLedge(dt, inp, lock); return; }
     const gbBefore = pl.grounded ? pl.groundBox : null;
     const water = pl.inWater;
@@ -9749,10 +10207,16 @@ void main() {
         if ((pl.action === 'jump' || pl.action === 'double') && !inp.jump && pl.holdGrace <= 0 && pl.vel[1] > 20 * UF) pl.vel[1] /= 4;
       }
       if (!lock && inp.jumpP && !water) {
-        if (time - pl.wallT < 0.2 && pl.wall && pl.action !== 'pound') {
-          const n = pl.wall;
+        const wallOk = time - pl.wallT < 0.2 && pl.wall && pl.action !== 'pound';
+        if (wallOk && !canWallKick(pl.wall)) {
+          // Kette ausgereizt oder dieselbe Wand nochmal: Glappo rutscht nur ab
+          pl.wallT = -9;
+          Snd.scrape(0.5); dust([p[0] - pl.wall[0] * R, p[1] + 1, p[2] - pl.wall[2] * R], 4);
+        } else if (wallOk) {
+          const n = pl.wall, k = Math.pow(KICK_FALLOFF, pl.kicks || 0);
           pl.face = Math.atan2(n[0], n[2]);
-          airborne('wallkick', 62 * UF, 24 * UF);
+          airborne('wallkick', 62 * UF * k, 24 * UF);
+          pl.kicks = (pl.kicks || 0) + 1; pl.kickN = n;
           pl.wallT = -9;
           Snd.jump(2); Snd.voice('hop'); dust([p[0] - n[0] * R, p[1] + 1, p[2] - n[2] * R], 6); rumble(0.25, 60);
         } else if (pl.coyote > 0) {
@@ -10181,7 +10645,7 @@ void main() {
   }
   function pickUp(e) {
     if (!canPick(e) || pl.hold) return;
-    pl.hold = e; e.held = true; e.speed = 0; e.targetFace = null;
+    pl.hold = e; e.held = true; e.byPlayer = true; e.speed = 0; e.targetFace = null;
     if (e.state === 'walk') { e.state = 'lit'; e.t = 3.6; } else e.t = Math.max(e.t, 2.2);
     Snd.grab(); Snd.fuse(); rumble(0.2, 60);
   }
@@ -10235,7 +10699,7 @@ void main() {
     }
   }
   function updBomb(e, dt) {
-    if (e.state === 'gone') { e.t -= dt; if (e.t <= 0) { e.state = 'walk'; e.pos = [e.home[0], groundAt(cur, e.home[0], e.home[1], e.fromY ?? 50), e.home[1]]; } return; }
+    if (e.state === 'gone') { e.t -= dt; if (e.t <= 0) { e.state = 'walk'; e.byPlayer = false; e.pos = [e.home[0], groundAt(cur, e.home[0], e.home[1], e.fromY ?? 50), e.home[1]]; } return; }
     if (e.held) {                                   // ueber dem Kopf getragen
       e.pos[0] = pl.pos[0] + Math.sin(pl.face) * 0.08;
       e.pos[1] = pl.pos[1] + (pl.crawl ? 1.1 : 1.95);
@@ -10289,6 +10753,7 @@ void main() {
     const c = [e.pos[0], e.pos[1] + 0.8, e.pos[2]];
     burst(c, 26, { spread: 9, up: 6, upRand: 5, life: .8, size: .55, cols: [[1, .85, .2], [1, .45, .05], [.9, .15, .05], [.3, .3, .3]], grav: 8 });
     Snd.boom(); cam.shake = Math.max(cam.shake, 0.7); rumble(1, 420);
+    if (cur.onBoom) cur.onBoom(e);   // z. B. Bombenplaetze in Staub II
     const pc = [pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]];
     if (v3.len(v3.sub(pc, c)) < 3.6) hurtPlayer(3, e.pos, true);
     // Umstehende Gegner bekommen den Knall ab; andere Kisten zuenden mit kurzer Verzoegerung
@@ -11081,7 +11546,7 @@ void main() {
     garden: buildGarden, hall: buildHall, desert: buildDesert, terminal: buildTerminal, video: buildVideo,
     bounce: buildBounce, spuk: buildSpuk, uhrwerk: buildUhrwerk, fraktal: buildFraktal, pilz: buildPilz, neon: buildNeon,
     verlies: buildVerlies, bibliothek: buildBibliothek, aquarium: buildAquarium, musik: buildMusik, spiel: buildSpiel, sternwarte: buildSternwarte,
-    keller: buildKeller, og: buildOG, hof: buildHof, gym: buildGym,
+    keller: buildKeller, og: buildOG, hof: buildHof, gym: buildGym, dust: buildDust,
   };
   for (const w of Object.keys(PAINT_ROOMS)) BUILDERS['bild_' + w] = () => buildPaintRoom(w);
   function getLevel(key) {
@@ -11180,7 +11645,9 @@ void main() {
       li.appendChild(sp); ul.appendChild(li);
     }
     $('#btnLeave').hidden = cur.key === 'garden' || cur.key === 'hall';
-    $('#btnLeave').textContent = HOME[cur.key] && HUBS[HOME[cur.key]] ? 'Zurück: ' + HUBS[HOME[cur.key]].name : 'Zurück ins Schloss';
+    const hk = HOME[cur.key];
+    $('#btnLeave').textContent = hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
+      : hk && !hk.startsWith('bild_') && levels[hk] ? 'Zurück: ' + levels[hk].name : 'Zurück ins Schloss';
     $('#pause').hidden = false;
     CatPick.open();
     FilterPick.sync();
@@ -11228,7 +11695,7 @@ void main() {
       pauseNav = dir;
       if (inp.lookP) FilterPick.step(1);
     }
-    if (mode === 'pause' && (inp.pauseP || (Input.st.device === 'pad' && inp.actionP)) && performance.now() - Input.lockLostT > 350) { closePause(); return; }
+    if (mode === 'pause' && (inp.pauseP || (Input.st.device === 'pad' && inp.actionP)) && performance.now() - Input.lockLostT > 200) { closePause(); return; }
     if (mode === 'ending' && Input.st.device === 'pad' && inp.jumpP) closeEnding();
   }
 

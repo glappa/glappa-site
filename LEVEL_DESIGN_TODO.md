@@ -29,7 +29,7 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 | Salto rückwärts | Ducken + A | Hohe Kante direkt über Spieler | ✅ `updatePlayer` (`'backflip'`) |
 | Seitensalto | Richtungswechsel + A | Hoher Sprung nach Wende | ✅ `updatePlayer` (`pl.skid` + A → `'sideflip'`) |
 | Weitsprung | Rennen + Ducken + A | Große Lücken | ✅ `updatePlayer` (`'long'`, `LONG_WINDOW`) |
-| Wandsprung | A bei Wandkontakt | Schluchten, Abkürzungen | ✅ `updatePlayer` (`pl.wallT` → `'wallkick'`) |
+| Wandsprung | A bei Wandkontakt | Schluchten, Abkürzungen | ✅ `updatePlayer` (`pl.wallT` → `'wallkick'`); begrenzt über `MAX_KICKS`/`KICK_FALLOFF`/`canWallKick`: max. 4 pro Flug, jeder ×0,8 schwächer, dieselbe Wand nie zweimal hintereinander (Schacht endet bei ~15 m) |
 | Stampfattacke | In der Luft Ducken | Pfähle, Schalter, Boss-Schwachpunkte | ✅ `updatePlayer` (`'pound'`), Landung in `onLand` |
 | Schlag / Tritt / Hechtsprung | B | Gegner, Kisten | ✅ `attack`, `hitInFront`, `startDive` |
 | Kante festhalten & hangeln | automatisch | Kanten hochziehen, Deckengitter | ✅ Greifen `tryLedgeGrab`, Hochziehen `updateLedge`, Kanten-Hilfe `tryMantle`, Hangeln (Stick seitlich, `SHIMMY` 1,8 m/s, über Blockfugen via `ledgeAt`); Deckengitter → Phase 4 |
@@ -239,7 +239,7 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 | Finale | Boss 3 | 70 | Alles kombiniert |
 
 - [ ] Insgesamt 120 Sterne, 70 für das Ende nötig
-  - aktuell 37 Sterne (`STARS`), 4 für die Sterntür
+  - aktuell 41 Sterne (`STARS`, davon 4 in Staub II), 4 für die Sterntür
 - [ ] Jeden Stern mit Schwierigkeit 1–5 bewerten (Datei/Tabelle im Projekt)
 - [ ] Debug-Werkzeuge: Level-Auswahl, Stern-Cheat, Todes-Heatmap-Logging
   - `?debug` gibt `window.g64` (Level betreten, Sterne setzen, Frames von Hand schalten), aber ohne Oberfläche und ohne Heatmap
