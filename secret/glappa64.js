@@ -16,14 +16,40 @@
   const hex = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
 
   /* ═══════════ Spielstand ═══════════
-     Sterne + Einstellungen bleiben (localStorage), Muenzen/Leben gelten
-     nur fuer diesen Besuch. */
-  const KEY = 'glappa64';
-  const state = { stars: {}, doorOpen: false, sfx: true, music: false, intro: false, filter: 'crt' };
-  try { Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
-  if (!state.stars || typeof state.stars !== 'object') state.stars = {};
-  if (!['crt', 'n64', 'aus'].includes(state.filter)) state.filter = 'crt';
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+     Vier Dateien A-D wie im Vorbild (localStorage). Datei A liegt unter dem alten Schluessel
+     'glappa64', dadurch bleibt ein Spielstand von vor der Dateiauswahl erhalten. Ton und Bildfilter
+     gelten fuer alle Dateien ('glappa64-opts'). Muenzen/Leben gelten nur fuer diesen Besuch. */
+  const SLOTS = ['a', 'b', 'c', 'd'];
+  const slotKey = (s) => (s === 'a' ? 'glappa64' : 'glappa64-' + s);
+  const OPTS_KEY = 'glappa64-opts';
+  const readJSON = (k) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } };
+  const freshProgress = () => ({ stars: {}, doorOpen: false, intro: false });
+  function readSlot(s) {
+    const d = readJSON(slotKey(s));
+    if (!d) return null;
+    const p = freshProgress();
+    if (d.stars && typeof d.stars === 'object') p.stars = d.stars;
+    p.doorOpen = !!d.doorOpen; p.intro = !!d.intro;
+    return p;
+  }
+  const legacy = readJSON(slotKey('a')) || {};
+  const opts = Object.assign({ sfx: true, music: false, filter: 'crt' },
+    { sfx: legacy.sfx, music: legacy.music, filter: legacy.filter }, readJSON(OPTS_KEY) || {});
+  for (const k of ['sfx', 'music']) if (typeof opts[k] !== 'boolean') opts[k] = k === 'sfx';
+  if (!['crt', 'n64', 'aus'].includes(opts.filter)) opts.filter = 'crt';
+  const state = Object.assign(freshProgress(), readSlot('a') || {}, { sfx: opts.sfx, music: opts.music, filter: opts.filter });
+  // erst nach der Dateiauswahl wird ein Spielstand geschrieben (vorher nur die Einstellungen)
+  let slot = null;
+  const save = () => {
+    try {
+      localStorage.setItem(OPTS_KEY, JSON.stringify({ sfx: state.sfx, music: state.music, filter: state.filter }));
+      if (slot) localStorage.setItem(slotKey(slot), JSON.stringify({ stars: state.stars, doorOpen: state.doorOpen, intro: state.intro }));
+    } catch (e) {}
+  };
+  function useSlot(s) {
+    slot = s;
+    Object.assign(state, freshProgress(), readSlot(s) || {});
+  }
   const run = { coins: 0, red: 0, lives: 4, health: 8, taken: new Set(), blueGot: 0 };
   const STARS = {
     red:    { name: 'Acht rote Münzen',        where: 'Schlossgarten' },
@@ -331,29 +357,48 @@
     }
     const L = norm([-0.45, -0.6, 0.66]);
     const Hv = norm([L[0], L[1], L[2] + 1]);
+    // vierzackiges Glitzern (Mitte x/y, halbe Laenge s)
+    function glint(ctx, x, y, s) {
+      ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.18, y - s * 0.18); ctx.lineTo(x + s, y); ctx.lineTo(x + s * 0.18, y + s * 0.18);
+      ctx.lineTo(x, y + s); ctx.lineTo(x - s * 0.18, y + s * 0.18); ctx.lineTo(x - s, y); ctx.lineTo(x - s * 0.18, y - s * 0.18); ctx.closePath(); ctx.fill();
+    }
+    /* Titelstern: alles (Schein, Strahlen, Glitzer) bleibt innerhalb des Kreises mit Radius R um die Mitte
+       und laeuft dort weich aus, damit die Zeichenflaeche nirgends als Quadrat sichtbar wird. */
     function draw(ctx, w, h, t, o = {}) {
-      const S = Math.min(w, h) * (o.size || 0.36), cx = w / 2, cy = h / 2 + S * 0.05;
-      const ry = t * (o.speed || 2.2), rx = 0.18 * Math.sin(t * 0.9);
-      const cY = Math.cos(ry), sY = Math.sin(ry), cX = Math.cos(rx), sX = Math.sin(rx);
-      const rot = (p) => {
-        const x = p[0] * cY + p[2] * sY, z = -p[0] * sY + p[2] * cY, y = p[1];
-        return [x, y * cX - z * sX, y * sX + z * cX];
-      };
-      const proj = (p) => { const k = 3.4 / (3.4 - p[2]); return [cx + p[0] * S * k, cy + p[1] * S * k]; };
+      const R = Math.min(w, h) / 2, cx = w / 2, bob = Math.sin(t * 1.6) * R * 0.035, cy = h / 2 + bob;
+      const S = R * (o.size || 0.5);
+      const ry = t * (o.speed || 1.6), rx = 0.2 * Math.sin(t * 0.9);
       ctx.clearRect(0, 0, w, h);
-      const g = ctx.createRadialGradient(cx, cy, S * 0.1, cx, cy, S * 1.5);
-      g.addColorStop(0, 'rgba(255,240,150,.55)'); g.addColorStop(1, 'rgba(255,240,150,0)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(t * 0.4);
-      ctx.fillStyle = 'rgba(255,255,210,.13)';
-      for (let i = 0; i < 12; i++) {
-        ctx.rotate(Math.PI / 6);
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(S * 1.7, -S * 0.09); ctx.lineTo(S * 1.7, S * 0.09); ctx.fill();
+      // warmer Schein, pulsiert leicht
+      const pulse = 1 + Math.sin(t * 2.2) * 0.05;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+      g.addColorStop(0, 'rgba(255,246,190,.75)'); g.addColorStop(0.28 * pulse, 'rgba(255,214,90,.38)');
+      g.addColorStop(0.62, 'rgba(255,170,40,.1)'); g.addColorStop(1, 'rgba(255,160,40,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
+      // zwei gegenlaeufige Strahlenkraenze, zum Rand hin ausgeblendet
+      const rays = (n, rot, len, wid, a) => {
+        const rg = ctx.createRadialGradient(0, 0, S * 0.3, 0, 0, len);
+        rg.addColorStop(0, `rgba(255,252,215,${a})`); rg.addColorStop(1, 'rgba(255,240,170,0)');
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.fillStyle = rg;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const b = i * TAU / n, c = Math.cos(b), s = Math.sin(b);
+          ctx.moveTo(0, 0); ctx.lineTo(c * len - s * len * wid, s * len + c * len * wid); ctx.lineTo(c * len + s * len * wid, s * len - c * len * wid); ctx.closePath();
+        }
+        ctx.fill(); ctx.restore();
+      };
+      rays(12, t * 0.35, R * 0.97, 0.075, 0.42);
+      rays(8, -t * 0.22 + 0.2, R * 0.8, 0.05, 0.3);
+      // Glitzer kreist um den Stern und blinkt
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 8; i++) {
+        const ph = (t * 0.55 + i / 8) % 1, a = i * 2.399 + t * 0.4, rr = S * (1.25 + 0.45 * Math.sin(i * 1.7 + t * 0.6));
+        const k = Math.sin(ph * Math.PI);
+        if (k > 0.05) glint(ctx, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.9, S * 0.13 * k * k);
       }
-      ctx.restore();
       star(ctx, cx, cy, S, ry, rx);
     }
-    // nur der facettierte Stern (Mitte cx/cy, Groesse S, Drehung ry/rx)
+    // nur der facettierte Stern mit Augen (Mitte cx/cy, Groesse S, Drehung ry/rx)
     function star(ctx, cx, cy, S, ry, rx = 0) {
       const cY = Math.cos(ry), sY = Math.sin(ry), cX = Math.cos(rx), sX = Math.sin(rx);
       const rot = (p) => {
@@ -367,18 +412,37 @@
         let n = norm(cross(sub(r[1], r[0]), sub(r[2], r[0])));
         const c = [(r[0][0] + r[1][0] + r[2][0]) / 3, (r[0][1] + r[1][1] + r[2][1]) / 3, (r[0][2] + r[1][2] + r[2][2]) / 3];
         if (dot(n, c) < 0) n = [-n[0], -n[1], -n[2]];
-        if (n[2] > -0.02) faces.push({ r, n, z: c[2] });
+        if (n[2] > -0.02) faces.push({ r, n, z: c[2], p: r.map(proj) });
       }
       faces.sort((a, b) => a.z - b.z);
+      const path = (f) => { ctx.beginPath(); ctx.moveTo(f.p[0][0], f.p[0][1]); ctx.lineTo(f.p[1][0], f.p[1][1]); ctx.lineTo(f.p[2][0], f.p[2][1]); ctx.closePath(); };
+      // 1) dunkle Kontur: alle Flaechen dick umranden, 2) Flaechen darueber -> nur der Aussenrand bleibt
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#7a4a00'; ctx.lineWidth = Math.max(1.5, S * 0.07);
+      for (const f of faces) { path(f); ctx.stroke(); }
+      ctx.lineWidth = 1;
       for (const f of faces) {
         const lam = Math.max(0, dot(f.n, L));
         const spec = Math.pow(Math.max(0, dot(f.n, Hv)), 18);
-        const k = 0.4 + 0.6 * lam;
-        const col = [255, 198, 24].map((ch) => Math.min(255, Math.round(ch * k + 255 * spec * 0.6)));
+        const k = 0.42 + 0.58 * lam;
+        const col = [255, 200, 28].map((ch) => Math.min(255, Math.round(ch * k + 255 * spec * 0.6)));
         ctx.fillStyle = ctx.strokeStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
-        const p0 = proj(f.r[0]), p1 = proj(f.r[1]), p2 = proj(f.r[2]);
-        ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.closePath();
-        ctx.lineWidth = 1; ctx.fill(); ctx.stroke();
+        path(f); ctx.fill(); ctx.stroke();
+      }
+      // Augen wie beim Stern im Spiel (nur auf der Vorderseite)
+      const front = cY * cX;
+      if (front > 0.12) {
+        const ga = ctx.globalAlpha;
+        ctx.globalAlpha = ga * Math.min(1, (front - 0.12) / 0.2);
+        for (const s of [-1, 1]) {
+          const e = proj(rot([s * 0.17, 0.08, 0.3]));
+          const rw = S * 0.07 * Math.max(0.15, Math.abs(cY)), rh = S * 0.17 * Math.abs(cX);
+          ctx.fillStyle = '#1a1000';
+          ctx.beginPath(); ctx.ellipse(e[0], e[1], rw, rh, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,.85)';
+          ctx.beginPath(); ctx.ellipse(e[0] - rw * 0.25, e[1] - rh * 0.45, rw * 0.35, rh * 0.2, 0, 0, TAU); ctx.fill();
+        }
+        ctx.globalAlpha = ga;
       }
     }
     return { draw, star };
@@ -692,6 +756,7 @@
   if (!gl) {
     $('#nogl').hidden = false;
     $('#titleScreen').hidden = true;
+    if (window.G64Load) window.G64Load.done();
     return;
   }
   const VS = `
@@ -8808,7 +8873,7 @@ precision highp float;
 #else
 precision mediump float;
 #endif
-uniform float uFace; uniform float uSize; uniform float uTheme; uniform vec3 uSun; uniform vec3 uFogC;
+uniform float uFace; uniform float uSize; uniform vec3 uSun; uniform vec3 uFogC;
 float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float n3(vec3 x) {
   vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
@@ -9028,19 +9093,10 @@ vec3 skySynth(vec3 d) {
   }
   return haze(col, d, 40.0, 0.25);
 }
+// SKY wird pro Welt per #define gesetzt (siehe genSrc): nur EIN Himmel pro Programm
 void main() {
   vec3 d = faceDir(gl_FragCoord.xy / uSize);
-  vec3 col;
-  if (uTheme < 0.5) col = skyDay(d);
-  else if (uTheme < 1.5) col = skyDesert(d);
-  else if (uTheme < 2.5) col = skySunset(d);
-  else if (uTheme < 3.5) col = skySnow(d);
-  else if (uTheme < 4.5) col = skyNight(d);
-  else if (uTheme < 5.5) col = skyBrass(d);
-  else if (uTheme < 6.5) col = skySpace(d);
-  else if (uTheme < 7.5) col = skyForest(d);
-  else col = skySynth(d);
-  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+  gl_FragColor = vec4(clamp(SKY(d), 0.0, 1.0), 1.0);
 }`;
     const DRAW_VS = 'attribute vec2 aP; varying vec2 vP; void main() { vP = aP; gl_Position = vec4(aP, 0.0, 1.0); }';
     const DRAW_FS = `precision mediump float; varying vec2 vP; uniform samplerCube uSky; uniform mat3 uRot; uniform vec2 uTan;
@@ -9143,14 +9199,15 @@ void main() {
 }`;
     const BLIT_FS = `precision mediump float; varying vec2 vP; uniform sampler2D uT;
 void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
-    let fracP = null, blitP = null, fracFbo = null, fracTex = null, fracW = 0, fracH = 0;
+    let fracP = null, blitP = null, fracFbo = null, fracTex = null, fracW = 0, fracH = 0, fracSt = null, blitSt = null;
     function drawFractal(view, proj) {
       if (fracP === null) {
-        try {
-          fracP = mkProg(DRAW_VS, FRAC_FS); blitP = mkProg(DRAW_VS, BLIT_FS);
-          fracFbo = gl.createFramebuffer(); fracTex = gl.createTexture();
-        } catch (e) { fracP = false; console.warn('[glappa64] Fraktal-Himmel aus:', e.message); }
-        gl.useProgram(MAIN);
+        // im Hintergrund uebersetzen; bis es fertig ist, steht die alte Himmelskuppel da
+        fracSt = fracSt || startProg(DRAW_VS, FRAC_FS); blitSt = blitSt || startProg(DRAW_VS, BLIT_FS);
+        const a = progReady(fracSt), b = progReady(blitSt);
+        if (a === null || b === null) return false;
+        if (a && b) { fracP = fracSt.p; blitP = blitSt.p; fracFbo = gl.createFramebuffer(); fracTex = gl.createTexture(); }
+        else { fracP = false; console.warn('[glappa64] Fraktal-Himmel aus'); }
       }
       if (!fracP) return false;
       const vp = gl.getParameter(gl.VIEWPORT);
@@ -9192,9 +9249,46 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
       restoreAttribs();
       return true;
     }
-    let genP = null, drawP = null, tri = null, fb = null, failed = false;
+    let drawP = null, tri = null, fb = null, failed = false;
     const MAIN = prog;
     const cache = new Map();
+    /* Die Himmel-Shader sind gross: alle neun Himmel in EINEM Programm brauchten beim allerersten Besuch
+       (Grafiktreiber ohne Zwischenspeicher, Windows/D3D) ueber 8 s und froren dabei die Seite ein.
+       Darum pro Himmel ein eigenes Programm (0,1-0,4 s), mit KHR_parallel_shader_compile im Hintergrund. */
+    const par = gl.getExtension('KHR_parallel_shader_compile');
+    const THEME_FN = ['skyDay', 'skyDesert', 'skySunset', 'skySnow', 'skyNight', 'skyBrass', 'skySpace', 'skyForest', 'skySynth'];
+    const genSrc = (name) => `#define SKY ${THEME_FN[THEME[name] ?? 0]}\n` + GEN;
+    const gens = {};
+    function startProg(vs, fs) {
+      const p = gl.createProgram(), shs = [];
+      for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+        const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh); gl.attachShader(p, sh); shs.push(sh);
+      }
+      gl.bindAttribLocation(p, 0, 'aP');
+      gl.linkProgram(p);
+      return { p, shs, ok: null, t0: performance.now(), ms: 0 };
+    }
+    // null = uebersetzt noch, true = fertig, false = kaputt (dann bleibt die alte Himmelskuppel)
+    function progReady(st) {
+      if (st.ok !== null) return st.ok;
+      if (par && !gl.getProgramParameter(st.p, par.COMPLETION_STATUS_KHR)) return null;
+      st.ok = !!gl.getProgramParameter(st.p, gl.LINK_STATUS);
+      st.ms = Math.round(performance.now() - st.t0);
+      if (!st.ok) console.warn('[glappa64] Himmel-Shader:', gl.getShaderInfoLog(st.shs[1]) || gl.getProgramInfoLog(st.p));
+      return st.ok;
+    }
+    const gen = (name) => gens[name] || (gens[name] = startProg(DRAW_VS, genSrc(THEME[name] === undefined ? 'day' : name)));
+    // Vorrat: nach dem Start die uebrigen Himmel nacheinander im Hintergrund uebersetzen
+    const warmList = [];
+    let warming = null;
+    function pumpWarm() {
+      if (!par || failed) return;
+      if (warming && progReady(warming) === null) return;
+      warming = null;
+      const next = warmList.shift();
+      if (next === 'fractal') { fracSt = fracSt || startProg(DRAW_VS, FRAC_FS); blitSt = blitSt || startProg(DRAW_VS, BLIT_FS); warming = fracSt; }
+      else if (next) warming = gen(next);
+    }
     function mkProg(vs, fs) {
       const p = gl.createProgram();
       const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); gl.attachShader(p, s); };
@@ -9205,9 +9299,9 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
       return p;
     }
     function setup() {
-      if (genP || failed) return !failed;
+      if (drawP || failed) return !failed;
       try {
-        genP = mkProg(DRAW_VS, GEN); drawP = mkProg(DRAW_VS, DRAW_FS);
+        drawP = mkProg(DRAW_VS, DRAW_FS);
         tri = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, tri); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
         fb = gl.createFramebuffer();
       } catch (e) { failed = true; console.warn('[glappa64] Skybox aus:', e.message); }
@@ -9220,7 +9314,7 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
       gl.bindBuffer(gl.ARRAY_BUFFER, tri); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     }
     function restoreAttribs() { for (const l of Object.values(A)) if (l >= 0) gl.enableVertexAttribArray(l); }
-    function make(name, fog) {
+    function make(name, fog, genP) {
       const t = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_CUBE_MAP, t);
       for (let f = 0; f < 6; f++) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, gl.RGBA, SIZE, SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -9231,7 +9325,6 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
       gl.useProgram(genP);
       const sun = v3.norm((SKIES[name] || SKIES.day).dir);
       gl.uniform1f(gl.getUniformLocation(genP, 'uSize'), SIZE);
-      gl.uniform1f(gl.getUniformLocation(genP, 'uTheme'), THEME[name] ?? 0);
       gl.uniform3fv(gl.getUniformLocation(genP, 'uSun'), sun);
       gl.uniform3fv(gl.getUniformLocation(genP, 'uFogC'), fog);
       const uFace = gl.getUniformLocation(genP, 'uFace');
@@ -9258,8 +9351,10 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
         const key = name + '|' + fog.join(',');
         let t = cache.get(key);
         if (!t) {
+          const g = gen(name);
+          if (!progReady(g)) return false;   // uebersetzt noch (oder kaputt): solange die alte Himmelskuppel
           if (cache.size >= 3) { const [k0, t0] = cache.entries().next().value; gl.deleteTexture(t0); cache.delete(k0); }
-          t = make(name, fog); cache.set(key, t);
+          t = make(name, fog, g.p); cache.set(key, t);
           Post.rebind();
         }
         gl.useProgram(drawP);
@@ -9279,10 +9374,18 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
         return true;
       },
       THEME,
+      // Ladebildschirm: Himmel schon mal uebersetzen lassen; ready() = true/false sobald fertig, null solange es laeuft
+      prepare(name) { if (name === 'fractal') { fracSt = fracSt || startProg(DRAW_VS, FRAC_FS); blitSt = blitSt || startProg(DRAW_VS, BLIT_FS); } else gen(name); },
+      ready(name) { return name === 'fractal' ? (fracSt ? progReady(fracSt) : null) : progReady(gen(name)); },
+      warm(names) { for (const n of names) if (!warmList.includes(n)) warmList.push(n); },
+      pump: pumpWarm,
+      get timings() { const o = {}; for (const [k, v] of Object.entries(gens)) o[k] = v.ms || (v.ok === null ? 'laeuft' : 0); return o; },
       // Test-Haken: eine Seite erzeugen und ein Pixel zuruecklesen
       probe(name, fog, face = 4) {
         if (!setup()) return 'setup failed';
-        const t = make(name, fog);
+        const g = gen(name);
+        while (progReady(g) === null) { /* Test: warten, bis der Treiber fertig ist */ }
+        const t = make(name, fog, g.p);
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, t, 0);
         const st = gl.checkFramebufferStatus(gl.FRAMEBUFFER), px = new Uint8Array(4);
@@ -9619,7 +9722,7 @@ void main() {
       keys.add(e.code);
       if (!e.repeat) tapped.add(e.code);
       st.device = 'keyboard';
-      if (GAME_KEYS.has(e.code) && mode !== 'pause' && mode !== 'ending') e.preventDefault();
+      if (GAME_KEYS.has(e.code) && mode !== 'pause' && mode !== 'ending' && mode !== 'files') e.preventDefault();
     });
     addEventListener('keyup', (e) => {
       keys.delete(e.code);
@@ -11284,7 +11387,7 @@ void main() {
     if (!pt.level) {
       // Merken, wo es nach dem Webseiten-Besuch weitergeht (vor dem Portal)
       const gy = groundAt(cur, pt.x, pt.z + 3.8, pt.y + 4, 0.3);
-      pendingReturn = { level: cur.key, pos: [pt.x, gy > -Infinity ? gy : pl.pos[1], pt.z + 3.8], face: 0 };
+      pendingReturn = { level: cur.key, pos: [pt.x, gy > -Infinity ? gy : pl.pos[1], pt.z + 3.8], face: 0, slot };
       try { sessionStorage.setItem('glappa64-return', JSON.stringify(pendingReturn)); } catch (e) {}
     }
   }
@@ -11451,7 +11554,7 @@ void main() {
   const cam = { yaw: 0, pitch: 0.34, dist: 12, pos: [0, 6, 20], tgt: [0, 1.6, 0], manual: 0, shake: 0, view: I4, proj: I4, snap: true, look: 0 };
   function updateCamera(dt, inp) {
     if (Cine.active) { cineCamera(); return; }
-    if (mode === 'title') {
+    if (mode === 'title' || mode === 'files') {
       const a = time * 0.09;
       cam.tgt = [0, 10, -36];
       cam.pos = [Math.sin(a) * 64, 20 + Math.sin(time * 0.2) * 4, -36 + Math.cos(a) * 64];
@@ -11606,14 +11709,29 @@ void main() {
       .then(() => { if (mode === 'iris') mode = 'play'; });
   }
   const titleEl = $('#titleScreen');
-  function start() {
-    if (mode !== 'title') return;
+  // PRESS START: erst die Dateiauswahl. Kommt man von einer Webseite zurueck, geht es gleich in derselben Datei weiter.
+  function pressStart() {
+    if (mode !== 'title' || !cur) return;   // !cur: Welt wird noch gebaut (Ladebildschirm)
+    Snd.unlock();
+    let ret = null;
+    try { ret = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); } catch (e) { ret = null; }
+    if (ret && SLOTS.includes(ret.slot)) { start(ret.slot, $('#pressStart')); return; }
+    FileMenu.open();
+  }
+  // Spiel mit Datei s starten; from = Element, aus dem sich die Blende schliesst
+  function start(s, from) {
+    if (mode !== 'title' && mode !== 'files') return;
+    useSlot(s);
+    const sd = levels.hall.starDoor;
+    sd.opening = false; sd.open = state.doorOpen && starCount() >= 4 ? 1 : 0;
+    renderHud();
     mode = 'iris';
     Input.lock();   // Maus einfangen (der Start-Klick zaehlt als Geste)
     Snd.unlock(); Snd.start();
-    const b = $('#pressStart').getBoundingClientRect();
+    const b = (from || $('#pressStart')).getBoundingClientRect();
     Iris.close(b.left + b.width / 2, b.top + b.height / 2, 600).then(() => {
       titleEl.hidden = true;
+      FileMenu.close();
       // Kommt man von einer Webseite zurueck, geht es vor dem Portal in derselben Welt weiter
       let ret = null;
       try { ret = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); sessionStorage.removeItem('glappa64-return'); } catch (e) { ret = null; }
@@ -11651,7 +11769,7 @@ void main() {
     if (mode !== 'play' || Dialog.open) return;
     mode = 'pause'; Input.unlock();
     Snd.pause(); Snd.music(false);
-    $('#pauseCourse').textContent = `${cur.name} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`;
+    $('#pauseCourse').textContent = `${cur.name} · Datei ${(slot || 'a').toUpperCase()} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`;
     const ul = $('#starList');
     ul.replaceChildren();
     for (const [id, s] of Object.entries(STARS)) {
@@ -11689,13 +11807,15 @@ void main() {
     }).then(() => { mode = 'play'; });
   }
   function resetGame() {
-    if (!confirm('Spielstand wirklich löschen? Alle Sterne sind dann weg.')) return;
-    try { localStorage.removeItem(KEY); sessionStorage.removeItem('glappa64-return'); } catch (e) {}
+    const name = slot ? 'Datei ' + slot.toUpperCase() : 'Spielstand';
+    if (!confirm(name + ' wirklich löschen? Alle Sterne sind dann weg.')) return;
+    try { if (slot) localStorage.removeItem(slotKey(slot)); sessionStorage.removeItem('glappa64-return'); } catch (e) {}
     location.reload();
   }
   let pauseNav = 0;
   function handleUI(inp) {
-    if (mode === 'title') { if (inp.startP) start(); return; }
+    if (mode === 'title') { if (inp.startP) pressStart(); return; }
+    if (mode === 'files') { FileMenu.pad(inp); return; }
     if (Dialog.open) {
       if (inp.jumpP || inp.actionP || inp.startP) Dialog.advance();
       inp.jumpP = inp.actionP = inp.zP = inp.lookP = false;
@@ -12208,6 +12328,241 @@ void main() {
     sync();
     return { sync, set, step(d) { set(ORDER[(ORDER.indexOf(state.filter) + d + ORDER.length) % ORDER.length]); } };
   })();
+
+  /* ═══════════ Dateiauswahl ═══════════
+     Aufbau wie im Vorbild: vier Dateien A-D, darunter PUNKTE, KOPIEREN, LOESCHEN und TON.
+     Bedienung per Maus/Touch, Pfeiltasten + Enter/Esc oder Controller (Stick/Steuerkreuz, A, B). */
+  const FileMenu = (() => {
+    const root = $('#files'), grid = $('#fileGrid'), panel = $('#filesPanel'), acts = $('#fileActions'), backRow = $('#fileBack');
+    const head = $('#filesTitle'), sub = $('#filesSub');
+    const COLS = { a: '#ff00ff', b: '#00ffff', c: '#ffff00', d: '#00ff00' };
+    const LETTER_COLS = ['red', 'blue', 'yellow', 'green'];
+    const FILTER_NAMES = { crt: 'Röhren-TV', n64: 'Konsole pur', aus: 'Scharf' };
+    const HEAD = { main: 'DATEI WÄHLEN', score: 'PUNKTE', copy: 'KOPIEREN', copy2: 'KOPIEREN', erase: 'LÖSCHEN' };
+    const SUB = {
+      main: 'Mit welcher Datei willst du spielen?', score: 'Von welcher Datei willst du die Sterne sehen?',
+      copy: 'Welche Datei soll kopiert werden?', copy2: () => `Wohin soll Datei ${U(src)} kopiert werden?`, erase: 'Welche Datei soll gelöscht werden?',
+    };
+    const face = $('.hud-item.lives svg');
+    const U = (s) => (s || '').toUpperCase();
+    let view = 'main', src = null, openedAt = 0, navPrev = 0, msgT = null, backTo = 'main';
+    const info = (s) => {
+      const d = readSlot(s);
+      return d ? { used: true, n: Object.keys(STARS).filter((id) => d.stars[id]).length, door: d.doorOpen } : { used: false, n: 0, door: false };
+    };
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    function setHead(text) {
+      head.replaceChildren();
+      [...text].forEach((ch, i) => {
+        const sp = el('span', ch === ' ' ? 'gap' : 'l ' + LETTER_COLS[i % 4], ch);
+        sp.style.setProperty('--i', i);
+        head.appendChild(sp);
+      });
+      head.setAttribute('aria-label', text);
+    }
+    function setSub(text, isMsg) {
+      clearTimeout(msgT);
+      sub.textContent = text || '';
+      sub.classList.toggle('msg', !!isMsg);
+      if (isMsg) {
+        const v = view;
+        msgT = setTimeout(() => { if (view === v && SUB[v]) setSub(typeof SUB[v] === 'function' ? SUB[v]() : SUB[v]); }, 2600);
+      }
+    }
+    function deny(msg) { Snd.deny(); setSub(msg, true); }
+    function cards(enabled) {
+      grid.replaceChildren();
+      for (const s of SLOTS) {
+        const inf = info(s), b = el('button', 'file-card ' + (inf.used ? 'used' : 'empty'));
+        b.type = 'button'; b.dataset.slot = s;
+        b.style.setProperty('--fc', COLS[s]);
+        if (!enabled(s, inf)) b.setAttribute('aria-disabled', 'true');
+        b.setAttribute('aria-label', `Datei ${U(s)}: ` + (inf.used ? `${inf.n} von ${STAR_TOTAL} Sternen` : 'neu'));
+        const body = el('span', 'fc-body');
+        body.appendChild(el('span', 'fc-name', 'DATEI ' + U(s)));
+        if (inf.used) {
+          const st = el('span', 'fc-stars');
+          st.append(el('span', 'fc-star', '★'), ' × ' + inf.n, el('small', null, ' / ' + STAR_TOTAL));
+          const meter = el('span', 'fc-meter'), bar = el('i');
+          bar.style.width = Math.round(inf.n / STAR_TOTAL * 100) + '%';
+          meter.appendChild(bar);
+          body.append(st, meter);
+        } else body.append(el('span', 'fc-new', 'NEU'), el('span', 'fc-empty', 'noch kein Spielstand'));
+        const pic = el('span', 'fc-pic');
+        if (inf.used && face) pic.appendChild(face.cloneNode(true)); else pic.textContent = '?';
+        b.append(el('span', 'fc-letter', U(s)), body, pic);
+        grid.appendChild(b);
+      }
+    }
+    // Cursor = Fokus + Klasse .sel (die bleibt auch sichtbar, wenn das Fenster gerade keinen Fokus hat)
+    function pick(b) {
+      for (const x of root.querySelectorAll('.sel')) if (x !== b) x.classList.remove('sel');
+      b.classList.add('sel');
+      if (document.activeElement !== b) b.focus({ preventScroll: true });
+    }
+    function focusFirst(sel) {
+      const b = (sel && root.querySelector(sel)) || [...root.querySelectorAll('button')].find((x) => x.offsetParent !== null && x.getAttribute('aria-disabled') !== 'true');
+      if (b) pick(b);
+    }
+    function show(v, msg) {
+      view = v; root.dataset.view = v;
+      setHead(HEAD[v]);
+      grid.hidden = false; panel.hidden = true; panel.replaceChildren();
+      acts.hidden = v !== 'main'; backRow.hidden = v === 'main';
+      const en = { main: () => true, score: (s, i) => i.used, copy: (s, i) => i.used, copy2: (s) => s !== src, erase: (s, i) => i.used }[v];
+      cards(en);
+      if (msg) setSub(msg, true); else setSub(typeof SUB[v] === 'function' ? SUB[v]() : SUB[v]);
+      focusFirst(v === 'copy2' ? `.file-card:not([data-slot="${src}"])` : null);
+    }
+    // Ansicht ohne Dateikarten (Punkte einer Datei, Ton, Rueckfrage)
+    function showPanel(v, title, subText, build) {
+      view = v; root.dataset.view = v;
+      setHead(title); setSub(subText);
+      grid.hidden = true; acts.hidden = true; backRow.hidden = v === 'confirm';
+      panel.replaceChildren(); panel.hidden = false;
+      build(panel);
+      focusFirst();
+    }
+    function ask(question, yes, from) {
+      backTo = from;
+      Snd.pause();
+      showPanel('confirm', 'SICHER?', '', (p) => {
+        p.appendChild(el('p', 'confirm-q', question));
+        const row = el('div', 'confirm-row'), bYes = el('button', 'fbtn w95 yes', 'JA'), bNo = el('button', 'fbtn w95 no', 'NEIN');
+        bYes.type = bNo.type = 'button';
+        bYes.addEventListener('click', yes);
+        bNo.addEventListener('click', () => { Snd.press(); show(backTo); });
+        row.append(bYes, bNo); p.appendChild(row);
+      });
+      focusFirst('.fbtn.no');   // Vorsicht zuerst: NEIN hat den Cursor
+    }
+    function showScore(s) {
+      const d = readSlot(s) || freshProgress(), inf = info(s);
+      src = s;
+      Snd.chime(4);
+      showPanel('scoreShow', 'DATEI ' + U(s), `★ ${inf.n} von ${STAR_TOTAL} Sternen · Sterntür ${d.doorOpen ? 'offen' : 'noch zu'}`, (p) => {
+        const groups = new Map();
+        for (const [id, st] of Object.entries(STARS)) { if (!groups.has(st.where)) groups.set(st.where, []); groups.get(st.where).push(id); }
+        const ul = el('ul', 'score-list');
+        ul.tabIndex = 0; ul.setAttribute('aria-label', 'Sterne nach Welten');
+        for (const [where, ids] of groups) {
+          const got = ids.filter((id) => d.stars[id]).length;
+          const li = el('li', got === ids.length ? 'full' : got ? 'some' : '');
+          li.title = ids.map((id) => (d.stars[id] ? '★ ' : '☆ ') + STARS[id].name).join('\n');
+          li.append(el('span', 'sl-name', where), el('span', 'sl-stars', ids.map((id) => (d.stars[id] ? '★' : '☆')).join('')), el('span', 'sl-n', got + '/' + ids.length));
+          ul.appendChild(li);
+        }
+        p.appendChild(ul);
+      });
+    }
+    function showSound() {
+      Snd.press();
+      showPanel('sound', 'TON & BILD', 'Gilt für alle Dateien.', (p) => {
+        const rows = [
+          ['Soundeffekte', () => (state.sfx ? 'AN' : 'AUS'), () => { state.sfx = !state.sfx; save(); syncButtons(); Snd.coin(); }],
+          ['Musik im Spiel', () => (state.music ? 'AN' : 'AUS'), () => { state.music = !state.music; save(); syncButtons(); Snd.press(); }],
+          ['Bildfilter', () => FILTER_NAMES[state.filter], () => { FilterPick.step(1); Snd.press(); }],
+        ];
+        for (const [label, val, flip] of rows) {
+          const row = el('div', 'snd-row'), b = el('button', 'fbtn w95 snd-val', val());
+          b.type = 'button';
+          b.setAttribute('aria-label', label + ': ' + val());
+          b.addEventListener('click', () => { flip(); b.textContent = val(); b.setAttribute('aria-label', label + ': ' + val()); });
+          row.append(el('span', 'snd-label', label), b);
+          p.appendChild(row);
+        }
+      });
+    }
+    function onCard(s, b) {
+      if (performance.now() - openedAt < 250) return;
+      const inf = info(s);
+      if (view === 'main') { Snd.coin(); start(s, b); return; }
+      if (view === 'score') { if (!inf.used) { deny(`Datei ${U(s)} ist noch leer.`); return; } showScore(s); return; }
+      if (view === 'copy') { if (!inf.used) { deny(`Datei ${U(s)} ist leer – da gibt es nichts zu kopieren.`); return; } src = s; Snd.press(); show('copy2'); return; }
+      if (view === 'copy2') {
+        if (s === src) { deny('Das ist dieselbe Datei.'); return; }
+        const doCopy = () => {
+          try { localStorage.setItem(slotKey(s), localStorage.getItem(slotKey(src))); } catch (e) { deny('Kopieren ging nicht (Speicher voll?).'); return; }
+          Snd.chime(7); show('main', `Datei ${U(src)} nach ${U(s)} kopiert!`);
+        };
+        const lost = inf.n === 0 ? 'Ihr Spielstand geht dabei verloren.' : inf.n === 1 ? 'Ihr einer Stern geht dabei verloren.' : `Ihre ${inf.n} Sterne gehen dabei verloren.`;
+        if (inf.used) ask(`Datei ${U(s)} überschreiben? ${lost}`, doCopy, 'copy2'); else doCopy();
+        return;
+      }
+      if (view === 'erase') {
+        if (!inf.used) { deny(`Datei ${U(s)} ist schon leer.`); return; }
+        ask(`Datei ${U(s)} wirklich löschen? ${inf.n === 0 ? 'Der Spielstand ist' : inf.n === 1 ? 'Der eine Stern ist' : `Alle ${inf.n} Sterne sind`} dann weg.`, () => {
+          try { localStorage.removeItem(slotKey(s)); } catch (e) {}
+          Snd.poof(); show('main', `Datei ${U(s)} gelöscht.`);
+        }, 'erase');
+      }
+    }
+    function back() {
+      if (performance.now() - openedAt < 200) return;
+      Snd.press();
+      if (view === 'main') { close(); mode = 'title'; titleEl.hidden = false; $('#pressStart').focus({ preventScroll: true }); return; }
+      if (view === 'confirm') { show(backTo); return; }
+      if (view === 'copy2') { show('copy'); return; }
+      if (view === 'scoreShow') { show('score'); focusFirst(`.file-card[data-slot="${src}"]`); return; }
+      show('main');
+    }
+    // Cursor raeumlich bewegen (Pfeiltasten, Stick, Steuerkreuz)
+    function move(dx, dy) {
+      const items = [...root.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+      const cur0 = items.find((b) => b.classList.contains('sel')) || (items.includes(document.activeElement) ? document.activeElement : null);
+      if (!cur0) { focusFirst(); return; }
+      const r = cur0.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let best = null, bs = Infinity;
+      for (const b of items) {
+        if (b === cur0) continue;
+        const q = b.getBoundingClientRect(), bx = q.left + q.width / 2, by = q.top + q.height / 2;
+        const along = (bx - cx) * dx + (by - cy) * dy;
+        if (along <= 4) continue;
+        const sc = along + (Math.abs((bx - cx) * dy) + Math.abs((by - cy) * dx)) * 2.2;
+        if (sc < bs) { bs = sc; best = b; }
+      }
+      if (best) { pick(best); Snd.tick(false); }
+    }
+    grid.addEventListener('click', (e) => { const b = e.target.closest('.file-card'); if (b) onCard(b.dataset.slot, b); });
+    acts.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-act]');
+      if (!b || performance.now() - openedAt < 250) return;
+      const a = b.dataset.act;
+      if (a === 'sound') { showSound(); return; }
+      Snd.press(); show(a);
+    });
+    backRow.addEventListener('click', back);
+    // Maus: der Cursor folgt dem Zeiger
+    root.addEventListener('pointerover', (e) => {
+      const b = e.target.closest('button');
+      if (b && e.pointerType === 'mouse' && !b.classList.contains('sel')) pick(b);
+    });
+    root.addEventListener('focusin', (e) => { const b = e.target.closest('button'); if (b) pick(b); });
+    document.addEventListener('keydown', (e) => {
+      if (mode !== 'files' || root.hidden) return;
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+      if (d) { e.preventDefault(); move(d[0], d[1]); return; }
+      if (e.key === 'Escape' || e.key === 'Backspace') { e.preventDefault(); back(); }
+    });
+    function open() {
+      mode = 'files'; openedAt = performance.now();
+      titleEl.hidden = true; root.hidden = false;
+      Snd.chime(0);
+      show('main');
+    }
+    function close() { root.hidden = true; clearTimeout(msgT); }
+    // Controller (Tastatur und Maus laufen ueber die normalen Knopf-Ereignisse)
+    function pad(inp) {
+      if (Input.st.device !== 'pad') { navPrev = 0; return; }
+      const dx = inp.mx > 0.6 ? 1 : inp.mx < -0.6 ? -1 : 0, dy = inp.my > 0.6 ? 1 : inp.my < -0.6 ? -1 : 0, code = dx * 3 + dy;
+      if (code && code !== navPrev) move(dx, dy);
+      navPrev = code;
+      if (performance.now() - openedAt < 250) return;
+      if (inp.jumpP || inp.startP) { const a = root.querySelector('button.sel'); if (a && a.offsetParent !== null) a.click(); else focusFirst(); }
+      else if (inp.actionP) back();
+    }
+    return { open, close, pad, back, get view() { return view; } };
+  })();
   function drawEnemy(e) {
     const [x, y, z] = e.pos;
     if (e.type === 'grummel' && e.skin === 'bug') {
@@ -12454,7 +12809,13 @@ void main() {
   }
 
   /* ═══════════ Hauptschleife ═══════════ */
-  const titleStarCtx = $('#titleStar').getContext('2d');
+  const titleStarCv = $('#titleStar'), titleStarCtx = titleStarCv.getContext('2d');
+  // Titelstern in Bildschirmaufloesung (scharf auch auf HiDPI)
+  function fitTitleStar() {
+    const d = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.round(titleStarCv.clientWidth * d) || 400, h = Math.round(titleStarCv.clientHeight * d) || 400;
+    if (titleStarCv.width !== w || titleStarCv.height !== h) { titleStarCv.width = w; titleStarCv.height = h; }
+  }
   let last = performance.now(), acc = 0, forced = null;
   const NO_INPUT = { mx: 0, my: 0, cx: 0, cy: 0, mdx: 0, mdy: 0, wheel: 0, jump: false, action: false, z: false, look: false, pause: false,
     jumpP: false, actionP: false, zP: false, lookP: false, pauseP: false, startP: false };
@@ -12489,10 +12850,11 @@ void main() {
     updateCine(dt);
     updateCamera(dt, inp);
     ArtGen.pump(64);
+    Skybox.pump();
     render();
     if (mode === 'pause') CatPick.tick(dt);
     updatePrompt(mode === 'play' && !Dialog.open ? interactable() : null);
-    if (!titleEl.hidden) StarGfx.draw(titleStarCtx, 400, 400, clock, { size: 0.36, speed: 1.8 });
+    if (!titleEl.hidden) { fitTitleStar(); StarGfx.draw(titleStarCtx, titleStarCv.width, titleStarCv.height, clock); }
     StarFx.draw();
     if (manualDt == null) requestAnimationFrame(frame);
   }
@@ -12503,11 +12865,11 @@ void main() {
     $('#btnMusic').setAttribute('aria-pressed', String(state.music));
   };
   const blurAfter = (fn) => (e) => { fn(e); if (e.currentTarget.blur) e.currentTarget.blur(); };
-  $('#pressStart').addEventListener('click', start);
+  $('#pressStart').addEventListener('click', pressStart);
   $('#btnSfx').addEventListener('click', blurAfter(() => { state.sfx = !state.sfx; save(); syncButtons(); Snd.unlock(); Snd.coin(); }));
   $('#btnMusic').addEventListener('click', blurAfter(() => {
     state.music = !state.music; save(); syncButtons();
-    Snd.unlock(); Snd.music(state.music && mode !== 'title' && mode !== 'pause');
+    Snd.unlock(); Snd.music(state.music && mode !== 'title' && mode !== 'files' && mode !== 'pause');
   }));
   $('#btnPause').addEventListener('click', blurAfter(() => { if (mode === 'pause') closePause(); else openPause(); }));
   $('#btnResume').addEventListener('click', closePause);
@@ -12534,22 +12896,46 @@ void main() {
     }
   });
 
-  /* ═══════════ Los ═══════════ */
-  getLevel('garden');
-  getLevel('hall');
-  if (state.doorOpen && starCount() >= 4) levels.hall.starDoor.open = 1;
-  cur = levels.garden;
-  respawn();
-  syncButtons();
-  renderHud();
-  // 90er-Besucherzaehler (zaehlt ehrlich nur die eigenen Besuche in diesem Browser)
-  try {
-    const visits = (parseInt(localStorage.getItem('glappa64-visits') || '0', 10) || 0) + 1;
-    localStorage.setItem('glappa64-visits', String(visits));
-    $('#visitCount').textContent = String(visits).padStart(6, '0');
-  } catch (e) { /* ohne Speicher bleibt 000001 */ }
-  $('#pressStart').focus({ preventScroll: true });
-  requestAnimationFrame(frame);
+  /* ═══════════ Los ═══════════
+     Der Ladebildschirm (Skript in glappa64.html) bekommt jeden Schritt gemeldet. Zwischen den Schritten
+     bekommt der Browser kurz Luft, damit Balken und Uhr weiterlaufen. Der Himmel wird von der
+     Grafikkarte im Hintergrund uebersetzt (beim allerersten Besuch der teuerste Teil). */
+  const Loader = window.G64Load || { step() {}, done() {}, fail() {} };
+  const breathe = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+  async function boot() {
+    Loader.step('garden');
+    await breathe();
+    getLevel('garden');
+    Loader.step('hall');
+    await breathe();
+    getLevel('hall');
+    cur = levels.garden;
+    respawn();
+    syncButtons();
+    renderHud();
+    // 90er-Besucherzaehler (zaehlt ehrlich nur die eigenen Besuche in diesem Browser)
+    try {
+      const visits = (parseInt(localStorage.getItem('glappa64-visits') || '0', 10) || 0) + 1;
+      localStorage.setItem('glappa64-visits', String(visits));
+      $('#visitCount').textContent = String(visits).padStart(6, '0');
+    } catch (e) { /* ohne Speicher bleibt 000001 */ }
+    Loader.step('sky');
+    Skybox.prepare(cur.sky);
+    for (const t0 = performance.now(); Skybox.ready(cur.sky) === null && performance.now() - t0 < 30000;) await breathe(30);
+    Loader.step('gpu');
+    await breathe();
+    updateCamera(0, NO_INPUT);
+    render();
+    // wartet, bis die Grafikkarte das erste Bild wirklich fertig hat (Himmel, Bildfilter, alle Puffer)
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    Loader.done();
+    fitTitleStar();
+    $('#pressStart').focus({ preventScroll: true });
+    requestAnimationFrame(frame);
+    // die uebrigen Himmel nacheinander im Hintergrund vorbereiten, damit spaeter kein Level stockt
+    Skybox.warm(Object.keys(Skybox.THEME).filter((k) => k !== cur.sky).concat('fractal'));
+  }
+  const booted = boot().catch((e) => { console.error('[glappa64]', e); Loader.fail(e); });
 
   /* ═══════════ Messbank (?debug → g64.measure()) ═══════════
      Faehrt jede Bewegung mit der echten Physik auf der Messbahn im Gym ab (x = -10, nach -z), Stick voll in
@@ -12616,7 +13002,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
-      measure: measureMoves, MOVES, Snd,
+      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; },
     };
   }
 })();
