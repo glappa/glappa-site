@@ -1,99 +1,52 @@
-<!-- ╔═══════════════════════════════════════════════════════════╗ -->
-<!--                  G L A P P A . D E                          -->
-<!-- ╚═══════════════════════════════════════════════════════════╝ -->
-
 <div align="center">
 
+# ✦ ★ ✦ &nbsp; G L A P P A . D E &nbsp; ✦ ★ ✦
 
-
-### ✦ ★ ✦ &nbsp; E I N E &nbsp; K L E I N E &nbsp; 9 0 ' s &nbsp; W E B S E I T E &nbsp; ✦ ★ ✦
+`▀▄▀▄▀▄ WELCOME 2 THE WEB ▄▀▄▀▄▀`
 
 ![Best Viewed In Netscape 4](https://img.shields.io/badge/BEST_VIEWED_IN-NETSCAPE_4-ff00ff?style=for-the-badge)
 ![Under Construction](https://img.shields.io/badge/STATUS-UNDER_CONSTRUCTION-ffff00?style=for-the-badge)
 ![No Tracking](https://img.shields.io/badge/NO_TRACKING-NO_ADS-00ff00?style=for-the-badge)
-![Powered by Dial-Up](https://img.shields.io/badge/POWERED_BY-DIAL--UP-00ffff?style=for-the-badge)
 
 **🌐 [glappa.de](https://glappa.de) &nbsp;•&nbsp; [home.glappa.de](https://home.glappa.de) &nbsp;•&nbsp; [search.glappa.de](https://search.glappa.de)**
-
-`▀▄▀▄▀▄ WELCOME 2 THE WEB ▄▀▄▀▄▀` &nbsp; `( ͡° ͜ʖ ͡°) RAISE UR DONGERS` &nbsp; `sudo rm -rf /langeweile`
 
 </div>
 
 ---
 
-## 🛸 Was ist Glappa?
+Eine handgemachte Retro-Webseite im Stil der späten 90er — Neon, animierte GIFs,
+Klick-Sounds und ein Glitzer-Cursor. Keine Werbung, kein Tracking, nur Vibes.
 
-Glappa ist eine handgemachte **Retro-Web-1.0-Spielwiese** im Stil der späten 90er /
-frühen 2000er — Neon, Sternenhimmel, animierte GIFs, „Under Construction"-Schilder,
-Klick-Sounds und ein Glitzer-Cursor. Dahinter steckt aber echte Technik: ein
-In-Browser-Terminal mit Boot-Animation, ein Musik-Player mit Fraktal-Visualizer,
-ein eigener YouTube-Downloader und eine selbst-gehostete, werbefreie Suchmaschine.
+## 🗺️ Seiten
 
-> ★ KEINE WERBUNG ★ KEIN TRACKING ★ NUR VIBES ★
-
----
-
-## 🗺️ Was kann man hier alles machen? — Übersicht
-
-| &nbsp; | Seite | Was du dort machen kannst |
+| &nbsp; | Seite | Was es ist |
 |:---:|:---|:---|
-| 🏠 | **[Glappa](https://glappa.de)** | Der Startpunkt — Neon-Hub mit Besucherzähler, zufälligen Lauftext-Sprüchen & Glitzer-Cursor |
-| 💻 | **[Terminal](https://glappa.de/terminal.html)** | Retro-Boot-Animation (BIOS-Beeps, Festplatten-Sound, XP-Startchime) → eingeschränkte In-Browser-Bash |
-| 📼 | **[Video](https://glappa.de/page1.html)** | „Was machst du hier?" — die Video-Ecke |
-| 🟣 | **[Bounce](https://glappa.de/bounce.html)** | Bouncy Balls Forever — der hypnotische DVD-Logo-Bildschirmschoner |
-| 🎵 | **[Tunes](https://home.glappa.de/home/tunes.html)** | Musik-Player für eigene Dateien + Winamp-Spektrum & Mandelbrot-Fraktal-Visualizer |
-| ⬇️ | **[YT.DL](https://home.glappa.de:8080/)** | YouTube-Videos als **MP3** oder **MP4** herunterladen — danach direkt „In Tunes öffnen" |
-| 🔍 | **[Search](https://search.glappa.de/)** | Eigene SearXNG-Metasuche im 90er-Skin — werbefrei, kein Tracking |
-| 🍄 | **[SUPER Secret Page](https://glappa.de/secret/pilzskip.html)** | „Du hast es gefunden." — Zugangscode erforderlich 😉 |
+| 🏠 | **[Start](https://glappa.de)** | Neon-Hub mit Besucherzähler und Glitzer-Cursor |
+| 💻 | **[Terminal](https://glappa.de/terminal.html)** | Boot-Animation und eine kleine Browser-Shell |
+| 🟣 | **[Bounce](https://glappa.de/bounce.html)** | DVD-Logo-Bildschirmschoner |
+| 🎵 | **[Tunes](https://home.glappa.de/home/tunes.html)** | Musik-Player mit Spektrum- und Fraktal-Visualizer |
+| ⬇️ | **[YT.DL](https://home.glappa.de:8080/)** | YouTube-Videos als MP3 oder MP4 laden |
+| 🔍 | **[Search](https://search.glappa.de/)** | Eigene SearXNG-Suche im 90er-Skin |
+| 📼 | **[Video](https://glappa.de/page1.html)** | Die Video-Ecke |
 | 🌡️ | **[Heat Death](https://home.glappa.de/home/index.html)** | Countdown bis zum Hitzetod des Universums |
+| 🍄 | **[Secret](https://glappa.de/secret/pilzskip.html)** | „Du hast es gefunden." — Code erforderlich 😉 |
 
----
-
-## ✨ Die Features im Detail
-
-### 💻 Terminal — `glappa.de/terminal.html`
-Beim Öffnen bootet ein simuliertes Retro-System:
-- **BIOS-POST-Beeps**, **RAM-Counter** (0 → 32768 KB) und **Festplatten-Spin-up-Sound** (alles per Web Audio API synthetisiert — keine Audio-Dateien!)
-- **Windows-XP-Style Klick-Sounds** bei jedem Tastendruck + Start-Chime
-- Danach eine **eingeschränkte Bash** nur für diese Session — probier `help`, `ls`, `whoami`, `reboot` …
-
-### 🎵 Tunes — `home.glappa.de/home/tunes.html`
-Ein vollwertiger In-Browser-Musik-Player:
-- Eigene Dateien per Button oder **Drag & Drop** laden (MP3 / WAV / OGG / FLAC / M4A …)
-- **Spektrum-Visualizer** im Winamp-Look + **Mandelbrot-Fraktal-Visualizer** (audio-reaktiv: Bass treibt den Zoom, Höhen die Farbe)
-- Playlist mit Suche, **Shuffle** & **Repeat**
-
-### ⬇️ YT.DL — `home.glappa.de:8080`
-- YouTube-Link einfügen → als **MP3** oder **MP4** herunterladen (yt-dlp + ffmpeg)
-- Nach dem Download führt ein Link **direkt in den Tunes-Player**, um die Datei reinzuziehen
-
-### 🔍 Search — `search.glappa.de`
-- Selbst-gehostete **[SearXNG](https://github.com/searxng/searxng)**-Metasuche, komplett im Glappa-Neon-Skin
-- **Kein Tracking, keine Werbung**, Ergebnisse aus vielen Quellen
-- Bilder-Suche als Kachel-Raster, Kategorien, Sprach-/Zeit-/Safe-Search-Filter
-- **Dateiformat-Filter** in der Bilder-Suche — „Alle Formate" oder gezielt GIF / JPG / PNG / WebP / SVG / BMP / TIFF / ICO / AVIF / HEIC
-
----
-
-## 🧰 Technik & Hosting
+## 🧰 Technik
 
 ```
    Internet
       │
-      ├─ glappa.de ............ Webhoster (statische Seiten) → leitet auf home.glappa.de
-      │
+      ├─ glappa.de ........... statisch, leitet auf home.glappa.de
       └─ VPS (Apache + Docker)
-          ├─ home.glappa.de ... statische Seiten (Terminal, Tunes, Bounce, …)
-          │                     + /api/counter → Besucherzähler (Flask)
-          ├─ :8080 ............ YT.DL Downloader (Flask, yt-dlp, ffmpeg)
-          └─ search.glappa.de . SearXNG-Container (Reverse-Proxy via Apache)
+          ├─ home.glappa.de .. Seiten + /api/counter
+          ├─ :8080 ........... YT.DL Downloader
+          └─ search.glappa.de  SearXNG
 ```
 
-- **Frontend:** handgeschriebenes HTML / CSS / Vanilla-JS — eine zentrale `script.js` (Navigation, Counter, Lauftext, Glitzer-Cursor)
-- **Backend:** Python / Flask (`home/app.py`) — YouTube-Downloader + server-seitiger Besucherzähler
-- **Suche:** SearXNG im Docker-Container, 90er-Skin via `_docker/searxng-static/glappa-style.css` + Bilder-Dateiformat-Filter via `_docker/searxng-static/glappa-search.js` (beide per Apache `mod_substitute` injiziert)
-- **Deployment:** Docker Compose (`_docker/docker-compose.vps.yml`) + Setup-Skripte (`_docker/setup-search-apache.sh`)
-- Läuft sogar auf einer **UGREEN NAS** — siehe `docker-compose.nas.yml` & `scripts/nas-deploy.sh`
+- **Frontend:** HTML, CSS und Vanilla-JS von Hand, zentrale `script.js`
+- **Backend:** Python / Flask (`home/app.py`) — Downloader und Besucherzähler
+- **Suche:** SearXNG im Container, Skin per Apache `mod_substitute` injiziert
+- **Deploy:** Docker Compose in `_docker/`, Skripte in `scripts/` — siehe [DEPLOY.md](DEPLOY.md)
 
 ---
 
@@ -101,12 +54,8 @@ Ein vollwertiger In-Browser-Musik-Player:
 
 ### ✦ Du bist Besucher Nr. `0000001` ✦
 
-`★ THANX 4 VISITING ★` &nbsp; `★ HONK IF U LOVE GIFS ★` &nbsp; `★ GLAPPA APPROVED ★`
+`★ THANX 4 VISITING ★` &nbsp; `★ HONK IF U LOVE GIFS ★`
 
 **Copyright © Glappa** &nbsp;·&nbsp; *Best viewed in 800×600* &nbsp;·&nbsp; `┬─┬ ノ( ゜-゜ノ) PUT IT BACK`
-
-![Made with Recycled Pixels](https://img.shields.io/badge/MADE_WITH-100%25_RECYCLED_PIXELS-ff66cc?style=flat-square)
-![Hugs Not Drugs](https://img.shields.io/badge/HUGS-NOT_DRUGS-00ff00?style=flat-square)
-![Y2K Ready](https://img.shields.io/badge/Y2K-READY-ffff00?style=flat-square)
 
 </div>
