@@ -257,24 +257,6 @@ services:
         max-size: "2m"
         max-file: "3"
 
-  # ── Mehrspieler fuer SUPER GLAPPA 64 (secret/glappa64.html) ──────────
-  # Reiner Verteiler fuer Posen + gemeinsame Sterne; Raeume nur im Speicher,
-  # keine Logs von IPs/Namen (mpgate/server.py). NUR localhost — von aussen
-  # ausschliesslich ueber Apache (/api/mp/ws), genau wie shellgate.
-  mpgate:
-    build:
-      context: mpgate
-    image: glappa-mpgate:latest
-    container_name: glappa-mpgate
-    ports:
-      - "127.0.0.1:8768:8768"
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "1m"
-        max-file: "2"
-
 volumes:
   glappa-downloads:
   ollama-models:

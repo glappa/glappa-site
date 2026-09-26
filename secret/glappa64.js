@@ -12216,120 +12216,277 @@ void main() {
     return headM;
   }
 
-  /* ═══════════ Mehrspieler (Koop) ═══════════
-     Raeume per 5-stelligem Code, gemeinsamer Fortschritt. Server: _docker/mpgate/server.py (lokal Port 8768,
-     auf dem VPS hinter Apache unter /api/mp/ws). Jeder rechnet seine Physik selbst und schickt ~15x/s seine fertige
-     Pose (POSE_KEYS); Mitspieler werden mit drawPose gezeichnet, DELAY ms verzoegert und dazwischen weich gemischt.
-     Sterne: beim Beitreten die eigenen mitschicken (der Raum haelt die Vereinigung), jeder neue Stern geht an alle
-     und landet in jedermanns Spielstand. Bewusst NICHT synchron (v1): Gegner, Muenzen, Schalter, Kisten. */
+  /* ═══════════ Mehrspieler (Koop, Peer-to-Peer) ═══════════
+     KEIN eigener Server: wer einen Raum erstellt, dessen Browser IST der Raum (Gastgeber). Die anderen verbinden sich per
+     WebRTC direkt mit ihm. Nur zum Finden laeuft der Verbindungsaufbau ueber den oeffentlichen PeerJS-Vermittler
+     (0.peerjs.com); klappt keine direkte Verbindung, springt dessen TURN-Relais ein. Die Bibliothek liegt im Repo
+     (secret/vendor/peerjs-1.5.5.min.js, MIT) und wird erst beim ersten Mehrspieler-Klick geladen.
+     Raum-Code = Peer-ID des Gastgebers (PREFIX + Code). Der Gastgeber verteilt Posen und Sterne und prueft alles wie
+     ein Server (Namen, Sterne, Posen, Drossel, max. 8 Spieler); gemeinsamer Fortschritt = Vereinigung aller Sterne.
+     Laedt der Gastgeber neu, uebernimmt er denselben Code wieder (sessionStorage), die Gaeste verbinden sich neu.
+     Datenschutz: Mitspieler und der Vermittler sehen die IP-Adresse - steht als Hinweis im Pausenmenue.
+     Jeder rechnet seine Physik selbst und schickt ~15x/s seine fertige Pose (POSE_KEYS); Mitspieler werden mit
+     drawPose gezeichnet, DELAY ms verzoegert und dazwischen weich gemischt. Nicht synchron (v1): Gegner, Muenzen,
+     Schalter, Kisten. */
   const Net = (() => {
-    const SEND_HZ = 15, DELAY = 110, NAME_KEY = 'glappa64-name', CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/;
+    const SEND_HZ = 15, DELAY = 110, NAME_KEY = 'glappa64-name', HOST_KEY = 'glappa64-mp-host';
+    const CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/, CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const PREFIX = 'glappa64-', LIB = 'vendor/peerjs-1.5.5.min.js', MAX_PLAYERS = 8, RATE = 40, MAX_STARS = 200;
+    const STAR_RE = /^[A-Za-z0-9_-]{1,32}$/, CAT_RE = /^[a-z]{1,12}$/, LEVEL_RE = /^[a-z0-9_]{1,24}$/;
     const ANGLE = POSE_KEYS.map((k) => k === 'yaw');
-    let ws = null, myId = null, room = '', status = 'aus', msg = '', sendT = 0, wantRoom = '', retry = 0, retryT = 0;
-    const others = new Map();                      // id -> { name, cat, buf: [{ t, lv, c, p }], head, pos }
+    let peer = null, role = '', hostConn = null, myId = null, room = '', status = 'aus', msg = '', sendT = 0;
+    let retry = 0, retryT = 0, retryCode = '', gen = 0, lastSt = null;
+    const others = new Map();                      // Anzeige: id -> { name, cat, buf: [{ t, lv, c, p }], head, pos }
+    const guests = new Map();                      // nur Gastgeber: id -> { id, conn, name, cat, st, bucket, bucketT }
+    let roomStars = new Set(), nextId = 2;         // nur Gastgeber (selbst id 1)
     const listeners = new Set();
     let name = '';
     try { name = localStorage.getItem(NAME_KEY) || ''; } catch (e) { /* ohne Speicher */ }
     if (!name) name = 'Gast-' + (100 + Math.floor(Math.random() * 900));
-    const url = () => (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)
-      ? `ws://${location.hostname}:8768/`
-      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/mp/ws`);
     const emit = () => { for (const f of listeners) f(); };
-    const send = (m) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+    const myStars = () => Object.keys(state.stars).filter((k) => state.stars[k] && STAR_RE.test(k));
+    const newCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
     function setUrlRoom(code) {
       try { const u = new URL(location.href); if (code) u.searchParams.set('raum', code); else u.searchParams.delete('raum'); history.replaceState(history.state, '', u); } catch (e) { /* egal */ }
     }
+    function remember(code) { try { if (code) sessionStorage.setItem(HOST_KEY, code); else sessionStorage.removeItem(HOST_KEY); } catch (e) { /* egal */ } }
+    // ── Pruefregeln wie im frueheren Raumserver: nie ungeprueft weiterreichen ──
+    const cleanName = (n) => String(n || '').replace(/[^\w äöüÄÖÜß.\-]/g, '').slice(0, 16).trim() || 'Gast';
+    const cleanStars = (ids) => (Array.isArray(ids) ? ids.slice(0, MAX_STARS).filter((x) => typeof x === 'string' && STAR_RE.test(x)) : []);
+    const isNum = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e5;
+    function cleanState(m) {
+      if (typeof m.lv !== 'string' || !LEVEL_RE.test(m.lv) || typeof m.c !== 'string' || !CAT_RE.test(m.c)) return null;
+      if (!Array.isArray(m.p) || m.p.length !== POSE_KEYS.length || !m.p.every(isNum)) return null;
+      return { lv: m.lv, c: m.c, p: m.p };
+    }
     function markStar(id) {
-      if (!STARS[id] || state.stars[id]) return false;
+      if (typeof id !== 'string' || !STAR_RE.test(id) || !Object.prototype.hasOwnProperty.call(STARS, id) || state.stars[id]) return false;
       state.stars[id] = true;
       return true;
     }
-    // keep: Raum behalten (Wiederverbinden); rejoin: Server darf den Raum neu anlegen (nach Neustart) - nur bei
-    // automatischem Wiederverbinden und bei Links, nie bei von Hand getippten Codes
-    function connect(code, keep, rejoin = keep) {
-      if (ws) { const o = ws; ws = null; try { o.close(); } catch (e) { /* egal */ } }
-      myId = null; others.clear();
-      if (!keep) { room = ''; retry = 0; }
-      wantRoom = code || 'NEW'; status = 'verbinde'; msg = ''; emit();
-      let welcomed = false, sock;
-      try { sock = new WebSocket(url()); } catch (e) { status = 'aus'; msg = 'Mehrspieler-Server nicht erreichbar.'; emit(); return; }
-      ws = sock;
-      sock.onopen = () => send({ t: 'join', room: wantRoom, rejoin: !!rejoin, name, cat: CAT.id, stars: Object.keys(state.stars).filter((k) => state.stars[k]) });
-      sock.onmessage = (ev) => {
-        if (ws !== sock) return;
-        let m;
-        try { m = JSON.parse(ev.data); } catch (e) { return; }
+    // ── PeerJS erst bei Bedarf laden ──
+    let libP = null;
+    function loadLib() {
+      if (window.Peer) return Promise.resolve();
+      if (!libP) {
+        libP = new Promise((res, rej) => {
+          const sc = document.createElement('script');
+          sc.src = LIB; sc.onload = res; sc.onerror = () => { libP = null; rej(new Error('lib')); };
+          document.head.appendChild(sc);
+        });
+      }
+      return libP;
+    }
+    // Peer beim Vermittler anmelden: liefert den offenen Peer, 'taken' (ID schon vergeben) oder einen Fehlertyp
+    function openPeer(id) {
+      return new Promise((resolve) => {
+        let p;
+        try { p = id ? new window.Peer(id, { debug: 0 }) : new window.Peer({ debug: 0 }); } catch (e) { resolve('error'); return; }
+        const done = (r) => { clearTimeout(t); p.off('open', onOpen); p.off('error', onErr); if (typeof r !== 'object') try { p.destroy(); } catch (x) { /* egal */ } resolve(r); };
+        const onOpen = () => done(p);
+        const onErr = (e) => done(e && e.type === 'unavailable-id' ? 'taken' : (e && e.type) || 'error');
+        const t = setTimeout(() => done('timeout'), 12000);
+        p.on('open', onOpen); p.on('error', onErr);
+      });
+    }
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    function teardown() {
+      gen++;
+      for (const g of guests.values()) try { g.conn.close(); } catch (e) { /* egal */ }
+      guests.clear(); others.clear();
+      if (hostConn) try { hostConn.close(); } catch (e) { /* egal */ }
+      hostConn = null;
+      if (peer) try { peer.destroy(); } catch (e) { /* egal */ }
+      peer = null; role = ''; myId = null; retryT = 0;
+    }
+    function fail(text) {
+      teardown(); status = 'aus'; msg = text; room = ''; setUrlRoom(''); emit();
+    }
+    // ── Gastgeber ──
+    async function host(prefer) {
+      teardown(); retry = 0; status = 'verbinde'; msg = ''; emit();
+      const my = gen;
+      try { await loadLib(); } catch (e) { if (my === gen) fail('Mehrspieler-Bibliothek nicht ladbar.'); return; }
+      // prefer = eigener Code nach Neuladen: der Vermittler gibt die alte Anmeldung evtl. erst nach ein paar Sekunden
+      // frei -> kurz nachfassen. Bleibt er belegt, ist dort schon ein Gastgeber (z. B. duplizierter Tab) -> beitreten.
+      for (let tries = 0; tries < (prefer ? 4 : 5) && my === gen; tries++) {
+        const code = prefer || newCode();
+        const p = await openPeer(PREFIX + code);
+        if (my !== gen) { if (typeof p === 'object') p.destroy(); return; }
+        if (p === 'taken') {
+          if (!prefer) continue;
+          if (tries < 3) { await wait(2000); continue; }
+          remember(''); join(prefer); return;
+        }
+        if (typeof p !== 'object') { fail('Vermittlung (PeerJS) nicht erreichbar – Internet/Firewall prüfen.'); return; }
+        peer = p; role = 'host'; myId = 1; room = code; status = 'drin'; msg = '';
+        roomStars = new Set(myStars()); nextId = 2;
+        peer.on('connection', onGuest);
+        peer.on('disconnected', () => { if (peer === p && !p.destroyed) try { p.reconnect(); } catch (e) { /* egal */ } });
+        peer.on('error', () => { /* einzelne Verbindungsfehler: der Raum laeuft weiter */ });
+        remember(code); setUrlRoom(code); emit();
+        toast(`\u{1F465} Raum ${code} – Code oder Link weitergeben zum Mitspielen`);
+        return;
+      }
+      if (my === gen) fail('Kein freier Raum-Code gefunden – bitte nochmal.');
+    }
+    function relay(m, except) {
+      for (const g of guests.values()) if (g !== except && g.conn.open) try { g.conn.send(m); } catch (e) { /* egal */ }
+    }
+    function allow(g) {                            // Drossel: RATE Nachrichten/s, kurze Spitzen erlaubt
+      const now = performance.now();
+      g.bucket = Math.min(RATE, g.bucket + (now - g.bucketT) / 1000 * RATE); g.bucketT = now;
+      if (g.bucket < 1) return false;
+      g.bucket -= 1;
+      return true;
+    }
+    function onGuest(conn) {
+      let g = null;
+      conn.on('data', (m) => {
+        if (!m || typeof m !== 'object' || role !== 'host') return;
+        if (!g) {
+          if (m.t !== 'join') { conn.close(); return; }
+          if (guests.size + 1 >= MAX_PLAYERS) { try { conn.send({ t: 'error', msg: `Raum ist voll (${MAX_PLAYERS} Spieler).` }); } catch (e) { /* egal */ } setTimeout(() => conn.close(), 400); return; }
+          g = { id: nextId++, conn, name: cleanName(m.name), cat: typeof m.cat === 'string' && CAT_RE.test(m.cat) ? m.cat : 'astro', st: null, bucket: RATE, bucketT: performance.now() };
+          const fresh = cleanStars(m.stars).filter((x) => !roomStars.has(x) && roomStars.size < MAX_STARS);
+          fresh.forEach((x) => roomStars.add(x));
+          const players = [{ id: 1, name, cat: CAT.id, st: lastSt }].concat([...guests.values()].map((x) => ({ id: x.id, name: x.name, cat: x.cat, st: x.st })));
+          try { conn.send({ t: 'welcome', id: g.id, room, stars: [...roomStars].sort(), players }); } catch (e) { return; }
+          guests.set(g.id, g);
+          const j = { t: 'join', id: g.id, name: g.name, cat: g.cat };
+          relay(j, g); onMsg(j);
+          if (fresh.length) { const st = { t: 'stars', ids: fresh, by: g.name }; relay(st, g); onMsg(st); }
+          return;
+        }
+        if (!allow(g)) return;
+        if (m.t === 'st') {
+          const st = cleanState(m);
+          if (!st) return;
+          g.st = st; g.cat = st.c;
+          const out = { t: 'st', id: g.id, lv: st.lv, c: st.c, p: st.p };
+          relay(out, g); onMsg(out);
+        } else if (m.t === 'star' && typeof m.id === 'string' && STAR_RE.test(m.id) && !roomStars.has(m.id) && roomStars.size < MAX_STARS) {
+          roomStars.add(m.id);
+          const out = { t: 'stars', ids: [m.id], by: g.name };
+          relay(out, g); onMsg(out);
+        }
+      });
+      conn.on('close', () => {
+        if (!g || guests.get(g.id) !== g) return;
+        guests.delete(g.id);
+        const l = { t: 'leave', id: g.id };
+        relay(l); onMsg(l);
+      });
+      conn.on('error', () => { /* close folgt */ });
+    }
+    // ── Gast ──
+    async function join(code, auto) {
+      teardown(); if (!auto) retry = 0;
+      status = 'verbinde'; msg = ''; emit();
+      const my = gen;
+      try { await loadLib(); } catch (e) { if (my === gen) fail('Mehrspieler-Bibliothek nicht ladbar.'); return; }
+      const p = await openPeer(null);
+      if (my !== gen) { if (typeof p === 'object') p.destroy(); return; }
+      if (typeof p !== 'object') { fail('Vermittlung (PeerJS) nicht erreichbar – Internet/Firewall prüfen.'); return; }
+      peer = p;
+      let opened = false, welcomed = false;
+      const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
+      hostConn = conn;
+      const giveUp = setTimeout(() => { if (my === gen && !opened) lost(code, false, 'Keine Verbindung zum Gastgeber – Netz oder Firewall blockiert die Direktverbindung.'); }, 12000);
+      peer.on('error', (e) => { if (my === gen && e && e.type === 'peer-unavailable') { clearTimeout(giveUp); lost(code, false); } });
+      peer.on('disconnected', () => { if (peer === p && !p.destroyed) try { p.reconnect(); } catch (e) { /* egal */ } });
+      conn.on('open', () => {
+        if (my !== gen) return;
+        opened = true; clearTimeout(giveUp); role = 'guest';
+        conn.send({ t: 'join', name, cat: CAT.id, stars: myStars() });
+      });
+      conn.on('data', (m) => {
+        if (my !== gen || !m || typeof m !== 'object') return;
         if (m.t === 'welcome') welcomed = true;
         onMsg(m);
-      };
-      sock.onclose = () => {
-        if (ws !== sock) return;
-        ws = null; myId = null; others.clear();
-        if (status !== 'fehler') {
-          if (room && retry < 5) { status = 'weg'; msg = 'Verbindung weg – verbinde neu …'; retryT = 1.5 + retry++; wantRoom = room; }
-          else { status = 'aus'; msg = welcomed || room ? 'Verbindung verloren.' : 'Mehrspieler-Server nicht erreichbar.'; room = ''; setUrlRoom(''); }
-        }
-        emit();
-      };
+      });
+      conn.on('close', () => { if (my === gen && status !== 'aus') lost(code, welcomed); });
     }
-    function leave() {
-      const o = ws; ws = null; myId = null; others.clear(); retryT = 0; room = ''; status = 'aus'; msg = '';
-      if (o) try { o.close(); } catch (e) { /* egal */ }
-      setUrlRoom(''); emit();
+    // Verbindung zum Gastgeber weg: ein paar Mal nachfassen (Gastgeber laedt vielleicht nur neu), dann aufgeben
+    function lost(code, wasIn, why) {
+      const tries = retry;
+      teardown();
+      if ((wasIn || tries > 0) && tries < 4) {
+        retry = tries + 1; retryCode = code; retryT = 2 * retry; status = 'weg'; room = code;
+        msg = 'Verbindung zum Gastgeber weg – versuche es erneut …';
+      } else {
+        status = 'aus'; room = ''; setUrlRoom('');
+        msg = wasIn || tries > 0 ? 'Der Gastgeber hat den Raum verlassen.' : why || 'Diesen Raum gibt es nicht (mehr) – Code prüfen.';
+      }
+      emit();
     }
+    // ── gemeinsame Nachrichtenverarbeitung (Gast bekommt sie vom Gastgeber, Gastgeber erzeugt sie selbst) ──
     function onMsg(m) {
       if (m.t === 'welcome') {
         myId = m.id; room = m.room; status = 'drin'; msg = ''; retry = 0;
         let n = 0;
         for (const id of m.stars || []) if (markStar(id)) n++;
         if (n) { save(); renderHud('stars'); }
-        for (const q of m.players || []) others.set(q.id, { name: q.name, cat: q.cat, buf: q.st ? [{ t: performance.now(), ...q.st }] : [] });
+        others.clear();
+        for (const q of m.players || []) others.set(q.id, { name: cleanName(q.name), cat: q.cat, buf: q.st && Array.isArray(q.st.p) ? [{ t: performance.now(), lv: q.st.lv, c: q.st.c, p: q.st.p }] : [] });
         setUrlRoom(room);
-        toast(n ? `\u{1F465} Raum ${room}: ${n} Stern${n === 1 ? '' : 'e'} von den anderen übernommen` : `\u{1F465} Raum ${room} – Code weitergeben zum Mitspielen`);
+        toast(n ? `\u{1F465} Raum ${room}: ${n} Stern${n === 1 ? '' : 'e'} von den anderen übernommen` : `\u{1F465} Im Raum ${room}`);
       } else if (m.t === 'join') {
-        others.set(m.id, { name: m.name, cat: m.cat, buf: [] });
-        toast(`\u{1F465} ${m.name} ist da`);
+        others.set(m.id, { name: cleanName(m.name), cat: m.cat, buf: [] });
+        toast(`\u{1F465} ${cleanName(m.name)} ist da`);
       } else if (m.t === 'leave') {
         const o = others.get(m.id);
         others.delete(m.id);
         if (o) toast(`\u{1F465} ${o.name} ist gegangen`);
       } else if (m.t === 'st') {
-        const o = others.get(m.id);
-        if (!o || !Array.isArray(m.p) || m.p.length !== POSE_KEYS.length) return;
+        const o = others.get(m.id), st = cleanState(m);   // auch als Gast pruefen: der Gastgeber ist nur ein Browser
+        if (!o || !st) return;
         const lvWas = o.buf.length ? o.buf[o.buf.length - 1].lv : null;
-        o.cat = m.c;
-        o.buf.push({ t: performance.now(), lv: m.lv, c: m.c, p: m.p });
+        o.cat = st.c;
+        o.buf.push({ t: performance.now(), lv: st.lv, c: st.c, p: st.p });
         if (o.buf.length > 12) o.buf.shift();
         if (lvWas === m.lv) return;                // sonst kein emit: kommt 15x pro Sekunde - nur bei Weltwechsel
       } else if (m.t === 'stars') {
         let n = 0;
         for (const id of m.ids || []) if (markStar(id)) n++;
-        if (n) { save(); renderHud('stars'); toast(`⭐ ${m.by} hat ${n === 1 ? 'einen Stern' : n + ' Sterne'} geholt – zählt für alle!`); }
-      } else if (m.t === 'error') {
-        status = 'fehler'; msg = m.msg || 'Fehler'; room = ''; setUrlRoom('');
-        const o = ws; ws = null;
-        if (o) try { o.close(); } catch (e) { /* egal */ }
+        if (n) { save(); renderHud('stars'); toast(`⭐ ${cleanName(m.by)} hat ${n === 1 ? 'einen Stern' : n + ' Sterne'} geholt – zählt für alle!`); }
+      } else if (m.t === 'error' || m.t === 'end') {
+        remember('');
+        fail(m.t === 'end' ? 'Der Gastgeber hat den Raum beendet.' : String(m.msg || 'Fehler').slice(0, 80));
+        return;
       }
       emit();
     }
     function tick(dt) {
-      if (retryT > 0 && !ws) { retryT -= dt; if (retryT <= 0) connect(wantRoom, true); }
-      if (!ws || ws.readyState !== 1 || !myId || !pl.netPose || !cur) return;
+      if (retryT > 0 && !peer) { retryT -= dt; if (retryT <= 0) join(retryCode, true); }
+      if (status !== 'drin' || !pl.netPose || !cur) return;
       if ((sendT -= dt) > 0) return;
       sendT = 1 / SEND_HZ;
       const P = pl.netPose;
-      send({ t: 'st', lv: cur.key, c: CAT.id, p: POSE_KEYS.map((k) => Math.round((P[k] || 0) * 1000) / 1000) });
+      const st = { lv: cur.key, c: CAT.id, p: POSE_KEYS.map((k) => Math.round((P[k] || 0) * 1000) / 1000) };
+      lastSt = st;
+      if (role === 'host') relay({ t: 'st', id: 1, lv: st.lv, c: st.c, p: st.p });
+      else if (role === 'guest' && hostConn && hostConn.open) try { hostConn.send({ t: 'st', lv: st.lv, c: st.c, p: st.p }); } catch (e) { /* egal */ }
+    }
+    function star(id) {
+      if (role === 'host') {
+        if (!STAR_RE.test(id) || roomStars.has(id)) return;
+        roomStars.add(id);
+        relay({ t: 'stars', ids: [id], by: name });
+      } else if (role === 'guest' && hostConn && hostConn.open) {
+        try { hostConn.send({ t: 'star', id }); } catch (e) { /* egal */ }
+      }
     }
     // Zustand zur Zeit t (DELAY ms zurueck): zwischen zwei Posen weich mischen, Drehwinkel ueber den kuerzeren Weg
     function sample(buf, t) {
       if (!buf.length) return null;
       if (t <= buf[0].t) return buf[0];
       for (let i = buf.length - 1; i > 0; i--) {
-        const a = buf[i - 1], b = buf[i];
-        if (a.t > t) continue;
-        if (t >= b.t || a.lv !== b.lv || a.c !== b.c) return b.t <= t ? b : a;
-        const k = (t - a.t) / (b.t - a.t);
-        return { lv: b.lv, c: b.c, p: a.p.map((v, j) => (ANGLE[j] ? v + angDiff(v, b.p[j]) * k : v + (b.p[j] - v) * k)) };
+        const x = buf[i - 1], y = buf[i];
+        if (x.t > t) continue;
+        if (t >= y.t || x.lv !== y.lv || x.c !== y.c) return y.t <= t ? y : x;
+        const k = (t - x.t) / (y.t - x.t);
+        return { lv: y.lv, c: y.c, p: x.p.map((v, j) => (ANGLE[j] ? v + angDiff(v, y.p[j]) * k : v + (y.p[j] - v) * k)) };
       }
       return buf[buf.length - 1];
     }
@@ -12372,10 +12529,28 @@ void main() {
         drawSign(MESH.nameTag, M4.from(x, y, z, Math.atan2(cam.pos[0] - x, cam.pos[2] - z)), { tex: tag(o.name), lit: 0 });
       }
     }
+    // Link ?raum=CODE: beitreten - oder, wenn DIESER Tab der Gastgeber war (Neuladen), den Raum wieder uebernehmen
     function autoJoin() {
-      if (ws || status !== 'aus') return;
+      if (peer || status !== 'aus') return;
       const c = (new URLSearchParams(location.search).get('raum') || '').toUpperCase();
-      if (CODE_RE.test(c)) connect(c, false, true);   // Code aus dem Link: nach einem Server-Neustart den Raum wiederbeleben
+      if (!CODE_RE.test(c)) return;
+      let hosted = '';
+      try { hosted = sessionStorage.getItem(HOST_KEY) || ''; } catch (e) { /* egal */ }
+      if (hosted === c) host(c); else join(c);
+    }
+    function leave() {
+      // Gaeste sofort Bescheid geben statt sie nachfassen zu lassen; Verbindungen erst kurz danach schliessen,
+      // damit 'end' noch rausgeht
+      let later = [];
+      if (role === 'host') { relay({ t: 'end' }); later = [...guests.values()].map((g) => g.conn); guests.clear(); }
+      const p = peer;
+      peer = null;
+      remember(''); retry = 0;
+      teardown(); status = 'aus'; msg = ''; room = ''; setUrlRoom(''); emit();
+      setTimeout(() => {
+        for (const c of later) try { c.close(); } catch (e) { /* egal */ }
+        if (p) try { p.destroy(); } catch (e) { /* egal */ }
+      }, 300);
     }
     function setName(n) {
       const v = String(n || '').replace(/[^\w äöüÄÖÜß.\-]/g, '').slice(0, 16).trim();
@@ -12383,15 +12558,31 @@ void main() {
       name = v;
       try { localStorage.setItem(NAME_KEY, name); } catch (e) { /* egal */ }
     }
+    // Seite zu/neu laden: Anmeldung sofort freigeben (sonst bleibt der Code beim Vermittler noch eine Weile belegt).
+    // Kommt die Seite aus dem Zurueck-Cache wieder, den Raum wieder aufnehmen.
+    let parked = null;
+    addEventListener('pagehide', () => {
+      if (!peer) return;
+      parked = status === 'drin' ? { role, room } : null;
+      teardown(); status = 'aus';
+    });
+    addEventListener('pageshow', (e) => {
+      if (!e.persisted || !parked) return;
+      const q = parked;
+      parked = null;
+      if (q.role === 'host') host(q.room); else join(q.room);
+    });
     return {
-      connect, leave, tick, drawOthers, shadows, drawTags, autoJoin, setName,
-      // Testhilfe (?debug): Verbindungszustand und was von wem angekommen ist
-      debug: () => ({ ws: ws && ws.readyState, myId, room, status, sendT: +sendT.toFixed(3), pose: !!pl.netPose,
-        others: [...others].map(([id, o]) => ({ id, name: o.name, n: o.buf.length, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : null })) }),
-      star(id) { send({ t: 'star', id }); },
+      // 'NEW' = Raum erstellen (dieser Browser wird Gastgeber), sonst Code = beitreten
+      connect(code) { if (code === 'NEW') { remember(''); host(); } else { remember(''); join(code); } },
+      leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star,
       onChange(f) { listeners.add(f); },
       get name() { return name; }, get room() { return room; }, get status() { return status; }, get msg() { return msg; },
+      get role() { return role; },
       get players() { return [...others.values()].map((o) => ({ name: o.name, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : '' })); },
+      // Testhilfe (?debug)
+      debug: () => ({ role, room, status, msg, myId, peer: peer && peer.id, guests: guests.size,
+        others: [...others].map(([id, o]) => ({ id, name: o.name, n: o.buf.length, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : null })) }),
     };
   })();
   MESH.nameTag = build((g) => planeGeo(g, I4, 1.5, 0.34, 1, 1, C.white));
@@ -12423,8 +12614,10 @@ void main() {
       $('#mpRoom').textContent = Net.room;
       const ps = Net.players;
       st.textContent = Net.status === 'verbinde' ? 'Verbinde …'
-        : on ? (ps.length ? `Im Raum mit ${ps.length} Mitspieler${ps.length === 1 ? '' : 'n'}. Geholte Sterne zählen für alle.` : 'Warte auf Mitspieler – Code oder Link weitergeben.')
-          : Net.msg || 'Zusammen spielen: einer erstellt einen Raum und gibt den Code weiter. Geholte Sterne gehören dann allen.';
+        : Net.status === 'weg' ? Net.msg
+          : on ? (ps.length ? `Im Raum mit ${ps.length} Mitspieler${ps.length === 1 ? '' : 'n'}${Net.role === 'host' ? ' – du bist Gastgeber, bleib im Spiel' : ''}. Geholte Sterne zählen für alle.`
+            : 'Warte auf Mitspieler – Code oder Link weitergeben. Du bist Gastgeber: der Raum lebt, solange dein Spiel offen ist.')
+            : Net.msg || 'Zusammen spielen: einer erstellt einen Raum und gibt den Code weiter. Geholte Sterne gehören dann allen.';
       list.replaceChildren(...ps.map((q) => { const li = document.createElement('li'); li.textContent = `${q.name} – ${where(q.lv)}`; return li; }));
     }
     Net.onChange(sync);

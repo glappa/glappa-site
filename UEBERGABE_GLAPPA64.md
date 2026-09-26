@@ -1,30 +1,22 @@
 # SUPER GLAPPA 64 – Übergabe für die nächste Sitzung
 
-> Stand: 2026-09-26 abends (Arbeit vom 25./26.09.). Diese Datei zuerst lesen, dann `LEVEL_DESIGN_TODO.md`.
+> Stand: 2026-09-26 spätabends. Diese Datei zuerst lesen, dann `LEVEL_DESIGN_TODO.md`.
 > Spiel: `secret/glappa64.html` + `secret/glappa64.js` (eigene WebGL-Engine, eine JS-Datei).
 
-## 0. Wichtigster Punkt: NICHTS davon ist committet oder deployed
+## 0. Stand: alles committet und live
 
-| Datei | Status |
-|---|---|
-| `secret/glappa64.js` | geändert – **JS `?v=97`**, `RAW_BYTES = 856314` |
-| `secret/glappa64.html` | geändert (Modell-Lader, Versionen, Figurenwahl-Raster, Mehrspieler-Abschnitt, Steuerungshilfe) |
-| `secret/glappa64-models.g64m` | **neu** – Blender-Modelle, **`?v=9`**, `MODEL_BYTES = 85100` |
-| `tools/blender/*.py` | **neu** – Blender-Pipeline |
-| `tools/pruefung/erreichbarkeit.js` | **neu** – Prüfwerkzeug für Physik-Änderungen |
-| `_docker/mpgate/` | **neu** – Mehrspieler-Raumserver (`server.py`, `Dockerfile`, `requirements.txt`, `test_protokoll.py`) |
-| `_docker/docker-compose.vps.yml` | geändert – Dienst `mpgate` (nur `127.0.0.1:8768`) |
-| `_docker/apache/home.glappa.de.conf` | **gemischt!** Von dieser Arbeit sind nur 2 Abschnitte: `<Location "/api/mp/ws">` (hinter `/api/shell/ws`) und `SetEnvIf … "^/api/mp/" pgp_dontlog`. Der `/backup/`-Block und die übrigen Änderungen darin sind **vom User** → beim Commit `git add -p` |
-| `.claude/launch.json` | geändert – Eintrag `glappa-mp` (lokaler Raumserver) |
-| `LEVEL_DESIGN_TODO.md` | geändert – Luftphysik-Entscheidung eingetragen |
-| `UEBERGABE_GLAPPA64.md` | diese Datei |
+- Commits auf `main`: `2ea610a` (Modelle, Physik, Kappi, Animationen, Schilder, Mehrspieler-Client), danach der
+  Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
+  rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
+- Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
+  **kein root nötig**). Aktuell **JS `?v=98`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
 
-**Nicht von dieser Arbeit, NICHT mit committen** (lagen schon vorher offen im Baum): die übrigen Abschnitte in
-`_docker/apache/home.glappa.de.conf` (s. o.), `_docker/glappa-watchdog.sh`, `scripts/README.md`, `scripts/auto-refresh-cookies.sh`, `scripts/refresh-cookies.sh`,
-`_docker/apache/onion.conf`, `glappa-site/`, `scripts/vps-image-backup.sh`, `scripts/yt-selftest.sh`.
+**Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
+`.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
+`scripts/auto-refresh-cookies.sh`, `scripts/refresh-cookies.sh`, `_docker/apache/onion.conf`, `glappa-site/`,
+`scripts/vps-image-backup.sh`, `scripts/yt-selftest.sh`.
 
 Commit nur auf ausdrücklichen Wunsch (Arbeitsweise: direkt auf `main`, siehe Memory „Single-branch workflow“).
-Deploy wie bisher: VPS `cd ~/glappa-site && git pull --ff-only` (DocumentRoot = Repo, kein root nötig).
 `tools/blender/__pycache__/` entsteht bei jedem Build – nicht committen.
 
 ---
@@ -101,80 +93,44 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Hände greifen abwechselnd vorn, Beine schräg nach hinten und gestaucht.
 - Steuerungshilfe im Pausenmenü nennt den Beinfeger. Nicht umgesetzt: Rutschtritt aus dem Hock-Rutscher (im Original eigener Move).
 
-### 1.8 Mehrspieler (fertig und lokal Ende-zu-Ende getestet 2026-09-26)
-- **Server** `_docker/mpgate/server.py`: reiner Verteiler, Räume (5 Zeichen, ohne I/O/0/1) nur im Speicher, max. 8 Spieler,
-  leere Räume leben 15 min, Drossel 40 Nachrichten/s, Origin-Prüfung (`MP_ORIGINS`), keine IP-/Namens-Logs.
-  `rejoin: true` belebt einen Raum nach Server-Neustart wieder (automatisches Wiederverbinden und `?raum=`-Links; von Hand
-  getippte unbekannte Codes bleiben ein Fehler). Test: `python _docker/mpgate/test_protokoll.py` → **17/17**.
-- **Client** (`glappa64.js`): `drawPlayer` rechnet nur noch die Pose; gezeichnet wird in `drawPose(G, P, FIG)` – dieselbe
-  Funktion zeichnet Mitspieler. `pl.netPose` (Felder = `POSE_KEYS`) geht 15×/s raus; `Net` (Modul vor `drawPlayer`) mischt
-  empfangene Posen 110 ms verzögert, Drehwinkel über `angDiff`. Namensschild über `drawSign` (scharf im Röhren-Filter),
-  Schatten für Mitspieler. Sterne: `collectStar` → `Net.star`; beim Beitreten schickt jeder seine Sterne, der Raum hält die
-  Vereinigung, alle schreiben sie in ihren Spielstand. Wiederverbinden bis 5× mit steigender Wartezeit.
-- **Oberfläche:** Pausenmenü „~ Mehrspieler ~" (Name, Raum erstellen, Code + Beitreten, Link kopieren, Verlassen, Mitspielerliste
-  mit Welt). Adresszeile bekommt `?raum=CODE`; wer den Link öffnet, tritt nach dem Start automatisch bei.
-- Tippen in Eingabefeldern ist keine Spieleingabe mehr (vorher wechselte „C" beim Namen-Tippen den Bildfilter).
-- **v1 bewusst NICHT synchron:** Gegner, Münzen, Schalter, Kisten, Spieler-Kollision, Chat.
-- Debug: `g64.Net.debug()` zeigt Verbindung, Raum und was von wem angekommen ist.
+### 1.8 Mehrspieler – Peer-to-Peer, KEIN eigener Server (2026-09-26)
+- **Warum so:** Der erste Ansatz (Raumserver `mpgate` hinter Apache) brauchte root für den Vhost und kam online nie an
+  („Mehrspieler-Server nicht erreichbar“). Auf Wunsch des Users läuft jetzt **nichts** mehr auf dem VPS dafür.
+- **Wie:** Wer „Raum erstellen“ drückt, dessen Browser **ist** der Raum (Gastgeber, Spieler-ID 1). Gäste verbinden sich per
+  WebRTC-DataChannel direkt mit ihm (Stern-Topologie, der Gastgeber reicht Posen/Sterne weiter). Bibliothek: **PeerJS 1.5.5**,
+  unverändert im Repo `secret/vendor/peerjs-1.5.5.min.js` (+ `LICENSE.txt`, MIT; sha512 gegen npm geprüft), wird erst beim
+  ersten Mehrspieler-Klick nachgeladen. Zum Finden dient der **öffentliche PeerJS-Vermittler** `0.peerjs.com`; STUN Google,
+  TURN-Ausweich `eu-0/us-0.turn.peerjs.com` (PeerJS-Vorgaben). Raum-Code = Peer-ID `glappa64-<CODE>`.
+- **Gastgeber prüft wie früher der Server:** Namen säubern, Stern-IDs `^[A-Za-z0-9_-]{1,32}$`, Posen (Level/Figur per Regex,
+  genau `POSE_KEYS.length` endliche Zahlen), Drossel 40 Nachrichten/s je Gast, max. 8 Spieler, gemeinsame Sterne = Vereinigung.
+  Gäste prüfen eingehende Posen/Sterne ebenfalls (der Gastgeber ist auch nur ein Browser).
+- **Lebensdauer:** Der Raum lebt, solange der Gastgeber-Tab offen ist. Lädt der Gastgeber neu, übernimmt er denselben Code
+  wieder (`sessionStorage` `glappa64-mp-host`; Vermittler gibt die ID evtl. erst nach Sekunden frei → 4 Versuche à 2 s, danach
+  als Gast beitreten), Gäste fassen bis 4× nach. „Verlassen“ als Gastgeber schickt `end` → Gäste sehen sofort
+  „Der Gastgeber hat den Raum beendet.“ Unbekannter Code → „Diesen Raum gibt es nicht (mehr)“ (nach ~0,5 s).
+- **Datenschutz:** Mitspieler (und der Vermittler) sehen die IP-Adresse – steht als Hinweis im Pausenmenü (`.mp-note`).
+- **Protokoll (JSON über DataChannel):** Gast→Gastgeber `join{name,cat,stars}`, `st{lv,c,p}`, `star{id}`;
+  Gastgeber→Gast `welcome{id,room,stars,players}`, `join{id,name,cat}`, `leave{id}`, `st{id,lv,c,p}`, `stars{ids,by}`,
+  `error{msg}`, `end`.
+- **Client-Rest unverändert:** `drawPlayer` rechnet die Pose, `drawPose(G, P, FIG)` zeichnet (auch Mitspieler); `pl.netPose`
+  (Felder = `POSE_KEYS`) 15×/s, 110 ms Verzögerung, Winkel über `angDiff`, Namensschild per `drawSign`, Schatten.
+  API von `Net` gleich geblieben (`connect('NEW')` = Gastgeber, `connect(code)` = Gast, `autoJoin`, `leave`, `star`, `debug`).
+- **Oberfläche:** Pausenmenü „~ Mehrspieler ~" (Name, Raum erstellen, Code + Beitreten, Link kopieren, Verlassen, Liste mit Welt).
+  Adresszeile bekommt `?raum=CODE`; wer den Link öffnet, tritt nach dem Start automatisch bei.
+- **v1 bewusst NICHT synchron:** Gegner, Münzen, Schalter, Kisten, Spieler-Kollision, Chat. Gastgeber-Wechsel (Raum
+  überlebt das Weggehen des Gastgebers) gibt es nicht.
+- Debug: `g64.Net.debug()` → `role` (host/guest), `room`, `status`, `peer`, `guests`, `others`.
 
 ---
 
 ## 2. Offene Aufgaben (Reihenfolge = Vorschlag)
 
-### 2.0 Mehrspieler live schalten (braucht root → macht der User)
-Auf dem VPS, nachdem der Stand gepusht ist, **ein Befehl** (fragt nach dem sudo-Passwort):
-```
-cd ~/glappa-site && bash _docker/setup-home-apache.sh
-```
-Der macht selbst `git pull`, installiert `_docker/apache/home.glappa.de.conf` als Vhost, `configtest` + Reload und
-`docker compose -f docker-compose.vps.yml up -d --build` – damit startet auch der neue Dienst `mpgate`.
-`mod_proxy_wstunnel` ist schon aktiv (shellgate). Prüfen: `docker ps` zeigt `glappa-mpgate`; im Spiel Pausenmenü →
-„Raum erstellen" → Code erscheint.
-Ohne diese Schritte zeigt das Spiel online nur „Mehrspieler-Server nicht erreichbar." – alles andere läuft normal.
+### 2.0 Mehrspieler: ggf. nachschärfen
+- Hinter strengen Firmen-/Schul-Firewalls (nur TCP 443) kann auch das PeerJS-TURN scheitern → dann bleibt es bei
+  „Verbinde …“ und nach 12 s „Keine Verbindung zum Gastgeber …“. Abhilfe wäre ein eigener TURN (coturn, bräuchte wieder den VPS).
+- Hintergrund-Tabs senden keine Posen (kein requestAnimationFrame) – im Browser normal, Gastgeber sollte im Vordergrund spielen.
 
-### 2.x ERLEDIGT 2026-09-26: Hocke-Moves (2.1) und Mehrspieler (2.2) – siehe 1.7/1.8. Die folgenden zwei Abschnitte sind nur noch Hintergrund.
-
-### 2.1 Krabbeln, Tritt und Schlag in der Hocke „genau wie im Original“ (User-Wunsch, noch nicht angefangen)
-- Referenzvideo: `C:\Users\Prieb\AppData\Local\Packages\Microsoft.ScreenSketch_8wekyb3d8bbwe\TempState\Recordings\20260925-2149-36.2265802.mp4`
-  (37 s, 726×498, SM64 Bob-omb-Schlachtfeld). **Mario ist nur ~30 px groß** → mit ffmpeg um die Figur zuschneiden und
-  vergrößern (`crop`/`scale`), mit 10–15 fps; Kontaktbögen per `tile` (Schrift-Einblendung `drawtext` geht NICHT, Fontconfig fehlt).
-- Zu sehen: Hocken, Krabbeln, Beinfeger in der Hocke (Drehung am Boden), Rutschtritt, Schläge.
-- Im Code: Krabbel-Pose in `drawPlayer` (Zweig `pl.grounded && (pl.crawl || pl.forceCrouch)`), Hocke über `crouchK`,
-  Angriff `attack`/`hitInFront`/`startDive`, Schlag-Posen über `pl.punchN`/`pExt`. Prüfen, ob B in der Hocke überhaupt
-  einen eigenen Angriff auslöst (im Original: Beinfeger im Stand-Hocken, Rutschtritt aus dem Lauf).
-- Arbeitsweise, die gut funktioniert hat: Video-Abschnitte ansehen → Posen umbauen → **Posen-Tafel rendern**
-  (siehe 3.3) und gegen die Videobilder halten.
-
-### 2.2 Multiplayer (entschieden, noch nicht angefangen)
-**Entscheidungen des Users:** eigene Engine behalten · Koop mit **gemeinsamem Fortschritt** · **Räume per Code**.
-SM64-/sm64coopdx-Code kommt nicht in Frage (eigenes Spiel bleibt eigenes Spiel).
-
-**Server – nach vorhandenem Muster `shellgate`/`displaygate`:**
-- Neuer Ordner `_docker/mpgate/` mit `Dockerfile`, `requirements.txt` (`websockets`), `server.py` (asyncio).
-- Dienst in `_docker/docker-compose.vps.yml`, Port **nur** `127.0.0.1:8768:8768` (8765 shellgate, 8766/8767 displaygate belegt).
-- Apache in `_docker/apache/home.glappa.de.conf` (wie `/api/shell/ws`):
-  `<Location "/api/mp/ws"> ProxyPass "ws://127.0.0.1:8768/" retry=0 timeout=3600 … </Location>`.
-  `mod_proxy_wstunnel` ist schon aktiv (shellgate läuft). **Apache-Änderung + Reload braucht root → macht der User.**
-- Server-Regeln: Raum-Code 5 Zeichen `[A-Z0-9]`, max. 8 Spieler, Name ≤ 16 Zeichen (filtern), Nachrichten ≤ 2 KB,
-  ≤ 30 Nachrichten/s je Verbindung, leere Räume verfallen, **keine IPs loggen** (wie PGP-Chat).
-  Raum hält Mitglieder + Stern-Menge (Vereinigung).
-
-**Protokoll (JSON):** `join{room|new, name, cat}` → `welcome{id, room, players, stars}`; `st{level, pose[], pos, face}` ~15 Hz;
-`join/leave{id}`; `star{id}` → an alle.
-
-**Client (glappa64.js):**
-- **Pose statt Rohzustand senden:** `drawPlayer` in zwei Teile trennen – Posenberechnung (bleibt) und
-  `drawPose(G, pose, opts)` (die `part(...)`-Aufrufe am Ende). Die fertige Pose (Beine/Arme/Kopf/Schweif/Rumpf,
-  `rx/rz/spin/dy`, Stauchung, Lider, Figur-ID) als kompaktes Array senden; fremde Spieler nur mit `drawPose` zeichnen.
-  Grund: `drawPlayer` hängt an vielen Modulvariablen (`crouchK`, `turnRate`, `faceLast`, `zzz`), die fremde Spieler sonst verstellen.
-- Zwischenpuffer ~100 ms, Winkel mit Winkel-Lerp.
-- Nur Spieler in derselben Welt zeichnen; Namensschild über dem Kopf per `signTexture` + `drawSign` (scharf im Filter).
-- Pausenmenü: Abschnitt „Mehrspieler“ (Name, Raum erstellen → Code anzeigen, Beitreten, Verlassen); Link `glappa64.html?raum=CODE`.
-- Sterne: `collectStar` → an Server; empfangene Sterne im lokalen Spielstand eintragen (ohne Stern-Filmchen, nur Hinweis
-  „<Name> hat einen Stern!“). Beim Beitreten Vereinigung der Sterne aller Mitglieder.
-- v1 bewusst NICHT: Gegner/Münzen/Schalter synchronisieren, Spieler-Kollision, Chat.
-- Lokal testen: Server lokal starten (über `.claude/launch.json` + `preview_start`, nicht per Bash), zwei Browser-Tabs =
-  zwei Spieler; auf `localhost` direkt `ws://localhost:8768` statt `/api/mp/ws`.
+### 2.x ERLEDIGT 2026-09-26: Hocke-Moves und Mehrspieler – siehe 1.7/1.8.
 
 ### 2.3 Kleinere Punkte
 - Köpfe + Körper der 4 Katzen nach Blender (Körper hat sichtbare Naht zwischen Brust- und Hüft-Ellipsoid).
@@ -207,11 +163,15 @@ SM64-/sm64coopdx-Code kommt nicht in Frage (eigenes Spiel bleibt eigenes Spiel).
 - Heredocs mit Umlauten/Sonderzeichen scheitern in Git-Bash öfter → Patch-Skripte als Datei schreiben.
 
 ### 3.2b Mehrspieler lokal testen
-- Raumserver: `preview_start` mit `glappa-mp` (Port 8768). Auf `localhost` verbindet das Spiel direkt mit `ws://localhost:8768/`.
-- Zwei Spieler = zwei Browser-Tabs. **Beide teilen `localStorage`** → Namen vor dem Laden per `localStorage.setItem('glappa64-name', …)`
-  setzen. Hintergrund-Tabs haben `innerWidth 0` → vor Bildaufnahmen `resize_window` auf den Tab.
-- Frames per `g64.advance` treiben, dazwischen `await new Promise(r => setTimeout(r, 200))`, damit WebSocket-Nachrichten
-  verarbeitet werden. Posen gehen nur, solange Frames laufen (verdeckte Tabs ohne rAF senden nichts).
+- Kein eigener Server nötig: `glappa-static` reicht, die Verbindung läuft auch lokal über den öffentlichen PeerJS-Vermittler
+  (Internet nötig). Zwei Spieler = zwei Browser-Tabs: Tab A `g64.Net.connect('NEW')`, Tab B `…?debug&raum=<CODE>` oder
+  `g64.Net.connect('<CODE>')`.
+- **Beide Tabs teilen `localStorage`** (Name + Spielstand!) → Namen per `g64.Net.setName(…)` direkt vor dem Verbinden setzen.
+  Hintergrund-Tabs haben `innerWidth 0` → vor Bildaufnahmen `tabs_select`/`resize_window`.
+- Frames per `g64.advance` treiben, dazwischen `await new Promise(r => setTimeout(r, 200))`, damit Nachrichten ankommen.
+  Posen und das automatische Nachfassen (`tick`) laufen nur, solange Frames laufen.
+- Am 26.09. so geprüft: Beitritt per Link, Posen in beide Richtungen, Sterne in beide Richtungen, Gastgeber lädt neu
+  (gleicher Code, Gast verbindet sich selbst wieder), Gastgeber verlässt (Gast bekommt sofort Bescheid), falscher Code.
 
 ### 3.3 Physik geändert? Dann
 1. `g64.measure()` → `MOVES` übernehmen, 2. `tools/pruefung/erreichbarkeit.js` alt/neu laufen lassen (Anleitung im Dateikopf),
