@@ -38,7 +38,7 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 | Rutschen | steile Flächen | Rutschbahnen, Eis | ✅ Rutschbahn (`ramp(..., {chute})`), Eis (`tag 'ice'`), steile Rampen ab 44° (`STEEP`, `steepDown`) – bergauf hinein bremst die Schwerkraft, dann geht es bergab |
 
 - [ ] Alle Bewegungen implementieren und in einem leeren Test-Level („Gym“) tunen
-  - Alle Bewegungen der Tabelle sind drin; Gym `buildGym` (nur über `?gym`, mit `?debug&gym` + `g64.measure()` zum Nachmessen). **Offen: Tuning der Luftphysik** – siehe „Offene Frage“ unter Entscheidungen
+  - Alle Bewegungen der Tabelle sind drin; Gym `buildGym` (nur über `?gym`, mit `?debug&gym` + `g64.measure()` zum Nachmessen). Luftphysik entschieden 2026-09-25 (siehe Entscheidungen)
 - [x] Trägheit (spürbares Beschleunigen/Bremsen)
   - `GROUND_ACC`/`GROUND_BRAKE`/`OVER_BRAKE`/`SKID_BRAKE` + Kehrtwenden-Rutscher (`pl.skid`), Eis extra glatt. Werte hat der User am 2026-09-21 bewusst straff gewünscht („zu rutschig“) – nicht zurückdrehen.
 - [x] Coyote Time + automatisches Hochziehen an Kanten
@@ -262,15 +262,21 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 - **Gangarten:** Schwellen 35 % / 75 % von `RUN`; Tastatur: G halten = schleichen (Strg/Alt kollidieren mit Browser-Kürzeln).
 - **Steile Hänge:** rutschen ab 44°. Die steilste begehbare Rampe in den bestehenden Welten hat 41° (nachgemessen), dort ändert sich nichts. Neue Level: Hang ≥ 45° bauen, wenn man dort nicht hochlaufen soll.
 - **Stimme:** keine Worte, nur Katzen-Silben (eigene Synthese, keine Samples) – so gibt es keine Nähe zu Original-Stimmen. Hängt am Sound-Schalter.
-- **Offene Frage – Luftphysik (vom User zu entscheiden):** Das Gym hat gezeigt, dass die Luftsteuerung (Stick vorwärts +2,3 E/F²) stärker ist als die Luftbremse (−1 E/F² über 32 E/F): wer den Stick hält, wird in der Luft immer schneller, und über die Sprungkette schaukelt sich das auf. Folge: Doppelsprung 25 m, Dreifachsprung 34 m weit (~30 m/s), der Weitsprung schafft aber nur 11 m – er ist damit die *kürzeste* Möglichkeit für „große Lücken“. Nicht eigenmächtig geändert, weil das Sprungweiten in allen bestehenden Welten verschiebt. Probehalber gemessen (nicht committet):
+- **Luftphysik & Tempo – entschieden 2026-09-25** (User: „nicht so schnell, wie im Super Mario 64, der Dreifachsprung geht viel zu hoch – muss genervt werden“). Umgesetzt in `secret/glappa64.js` beim Spieler-Block:
+  - **Luftschub wie im Vorbild:** `AIR_THRUST` = 1,5 E/F² (vorher 2,3). Die Luftgrenze `AIR_DRAG` ist jetzt gleich `RUN` – in der Luft wird man höchstens so schnell wie im Lauf, die Sprungkette schaukelt sich nicht mehr auf. Das war der Kern von „zu schnell“: Doppel-/Dreifachsprung flogen 25/34 m weit.
+  - **Weitsprung mit halber Schwerkraft** wie im Vorbild (`LONG_GRAV`): er ist jetzt der weiteste Sprung (14,9 m).
+  - **Lauftempo** `RUN` = 27 E/F = 11,1 m/s (Vorbild 32 = 13,2 m/s).
+  - **Anlauf** wie im Vorbild geformt (kräftiger Antritt, der nachlässt, `GROUND_ACC`/`ACC_FADE`): volles Tempo nach 0,43 s statt 0,15 s. **Bremsen unverändert straff** (0,1 s) – der Wunsch „nicht rutschig“ vom 2026-09-21 gilt weiter.
+  - **Sprungkraft** `JUMP_K` = 0,86 auf alle eigenen Absprünge (`jv()`): Höhe ×0,74, Flugzeit ×0,86, Verhältnisse zwischen den Bewegungen bleiben. Dreifachsprung 8,06 → 5,95 m. Federn und Gegner-Abpraller sind absichtlich nicht betroffen.
+  - Schwellen (Rutscher, Weitsprung, Dreifachsprung) hängen jetzt relativ an `RUN` statt an festen E/F-Werten.
 
-  | Variante | Laufsprung | Doppel | Dreifach | Weitsprung | Seitsalto | Wandsprung |
+  | | Laufsprung | Doppel | Dreifach | Weitsprung | Seitsalto | Wandsprung |
   | --- | --- | --- | --- | --- | --- | --- |
-  | jetzt | 13,7 m | 24,9 m | 34,2 m | 11,0 m (1,5 m hoch) | 13,6 m | 18,0 m |
-  | A: Luftschub 1,5 statt 2,3 + Weitsprung mit halber Schwerkraft (wie im Vorbild) | 11,0 m | 13,7 m | 15,9 m | 20,4 m (3,0 m hoch) | 10,1 m | 13,7 m |
-  | B: Luftschub 2,3 nur bis zur Luftbremse + Weitsprung mit halber Schwerkraft | 10,7 m | 13,0 m | 14,9 m | 19,6 m (3,0 m hoch) | 11,5 m | 13,3 m |
+  | vorher | 4,2 m / 13,7 m | 7,1 / 24,9 | 8,1 / 34,2 | 1,5 / 11,0 | 6,5 / 13,6 | 6,5 / 18,0 |
+  | jetzt (Höhe / Weite) | 2,95 / 7,7 | 4,35 / 9,7 | 5,95 / 11,5 | 2,24 / 14,9 | 4,8 / 7,7 | 4,8 / 10,4 |
 
-  Nach der Entscheidung: `g64.measure()` laufen lassen, `MOVES` übernehmen (`GRID` und Gym passen sich selbst an) und Lücken in den bestehenden Welten nachprüfen, die bisher nur per Doppel-/Dreifachsprung über ~15 m zu schaffen waren.
+  `MOVES` neu gemessen, `g64.measure()` meldet überall `diff` 0. **Erreichbarkeit geprüft:** alle 20 festen Sterne in 21 Welten per Graphensuche mit alter und neuer Tabelle durchgerechnet – keiner geht verloren. Drei Sterne erfasst das Modell grundsätzlich nicht (Uhrspitze: Kolben; Teppich: fliegender Teppich; Wasserfall: Rampen) und wurden von Hand nachgesehen: Stufen ≤ 2,5 m, per Kantengriff (bis 4,5 m über den Füßen) bzw. Doppelsprung aus dem Stand (3,4 m) machbar. Die Pilztreppe am Wasserfall (+2,4 m je Stufe) geht jetzt nicht mehr mit einfachem Hüpfen, sondern mit Hochziehen.
+  - **Nicht nachgemessen:** Wandsprung-Schacht im Gym (alte Gipfelwerte im Code als veraltet markiert).
 
 ## Fortschritt
 

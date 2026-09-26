@@ -302,7 +302,7 @@
       hurt: ['iau', [900, 700, 450], 0.32], oof: ['ou', [520, 380], 0.18], gasp: ['a', [480, 540], 0.2, 1],
       die: ['iaau', [820, 900, 600, 340], 0.9], star: ['iau', [700, 1050, 1250], 0.45],
     };
-    const VOICE_PITCH = { knuddel: 1.12, sphinx: 0.9, neon: 1.06 };   // je Figur etwas hoeher oder tiefer
+    const VOICE_PITCH = { knuddel: 1.12, sphinx: 0.9, neon: 1.06, kappi: 0.95 };   // je Figur etwas hoeher oder tiefer
     api.voice = fx((name) => {
       const v = VOICE[name], c = ac();
       if (!v || !c) return;
@@ -1007,6 +1007,79 @@
     return { p: mk(g.pos), n: mk(g.nrm), c: mk(g.col), t: mk(g.uv), count: g.pos.length / 3 };
   }
   function build(fn) { const g = new Geo(); fn(g); return upload(g); }
+
+  /* ═══════════ Blender-Modelle (G64M) ═══════════
+     Der Ladebildschirm holt secret/glappa64-models.g64m parallel zum Skript und legt den
+     Puffer in window.G64_MODELS ab. Die Datei enthaelt indizierte, quantisierte Teilmeshes;
+     hier werden sie auf genau die flachen Float32-Puffer aufgefaltet, die upload() erwartet.
+     Fehlt die Datei oder ist sie kaputt, bleibt MODELS leer und alles laeuft prozedural
+     weiter — ein fehlendes Asset darf das Spiel nie anhalten. */
+  const MODEL_CPU = {};   // flache Arrays je Teil (fuer bakeModel), gleiche Daten wie in MODELS
+  const MODELS = (() => {
+    const out = {};
+    const buf = window.G64_MODELS;
+    if (!buf || !buf.byteLength) return out;
+    try {
+      const dv = new DataView(buf), a4 = (n) => (n + 3) & ~3;
+      if (dv.getUint32(0, false) !== 0x4736344D) throw new Error('kein G64M');
+      if (dv.getUint16(4, true) !== 1) throw new Error('unbekannte Version');
+      const dec = new TextDecoder('utf-8');
+      let o = 8;
+      for (let k = dv.getUint16(6, true); k > 0; k--) {
+        const ln = dv.getUint16(o, true);
+        const name = dec.decode(new Uint8Array(buf, o + 2, ln));
+        o = a4(o + 2 + ln);
+        const flags = dv.getUint32(o, true); o += 4;
+        const bb = []; for (let i = 0; i < 6; i++) { bb.push(dv.getFloat32(o, true)); o += 4; }
+        const vn = dv.getUint32(o, true), tn = dv.getUint32(o + 4, true), off = dv.getUint32(o + 8, true);
+        o += 12;
+        let q = off;
+        const pos = new Int16Array(buf, q, vn * 3); q += a4(vn * 6);
+        const nrm = new Int16Array(buf, q, vn * 3); q += a4(vn * 6);
+        const col = new Uint8Array(buf, q, vn * 3); q += a4(vn * 3);
+        let uv = null;
+        if (flags & 1) { uv = new Int16Array(buf, q, vn * 2); q += a4(vn * 4); }
+        const idx = (flags & 2) ? new Uint32Array(buf, q, tn * 3) : new Uint16Array(buf, q, tn * 3);
+        // Entquantisieren und entindizieren
+        const m = tn * 3;
+        const P = new Float32Array(m * 3), N = new Float32Array(m * 3), Cc = new Float32Array(m * 3), T = new Float32Array(m * 2);
+        const sx = (bb[3] - bb[0]) / 65535, sy = (bb[4] - bb[1]) / 65535, sz = (bb[5] - bb[2]) / 65535;
+        for (let i = 0; i < m; i++) {
+          const j = idx[i], j3 = j * 3, i3 = i * 3;
+          P[i3] = (pos[j3] + 32768) * sx + bb[0];
+          P[i3 + 1] = (pos[j3 + 1] + 32768) * sy + bb[1];
+          P[i3 + 2] = (pos[j3 + 2] + 32768) * sz + bb[2];
+          N[i3] = nrm[j3] / 32767; N[i3 + 1] = nrm[j3 + 1] / 32767; N[i3 + 2] = nrm[j3 + 2] / 32767;
+          Cc[i3] = col[j3] / 255; Cc[i3 + 1] = col[j3 + 1] / 255; Cc[i3 + 2] = col[j3 + 2] / 255;
+          if (uv) { T[i * 2] = uv[j * 2] / 1024; T[i * 2 + 1] = uv[j * 2 + 1] / 1024; }
+        }
+        out[name] = upload({ pos: P, nrm: N, col: Cc, uv: T });
+        MODEL_CPU[name] = { P, N, C: Cc };
+      }
+    } catch (e) {
+      console.warn('[glappa64] Modelldatei nicht lesbar, bleibe prozedural:', e.message);
+      for (const k in out) delete out[k];
+      for (const k in MODEL_CPU) delete MODEL_CPU[k];
+    }
+    return out;
+  })();
+  /* Blender-Requisit in eine Geo einbacken (Matrix m): kostet keinen eigenen Zeichenaufruf, das Teil wird
+     Teil der statischen Levelgeometrie. false = Modell nicht da, dann baut der Aufrufer selbst etwas. */
+  function bakeModel(g, name, m) {
+    const src = MODEL_CPU[name];
+    if (!src) return false;
+    const { P, N, C: Cm } = src;
+    for (let i = 0; i < P.length; i += 9) {
+      const vs = [], ns = [], cs = [];
+      for (let k = 0; k < 9; k += 3) {
+        vs.push(M4.point(m, [P[i + k], P[i + k + 1], P[i + k + 2]]));
+        ns.push(v3.norm(M4.dir(m, [N[i + k], N[i + k + 1], N[i + k + 2]])));
+        cs.push([Cm[i + k], Cm[i + k + 1], Cm[i + k + 2]]);
+      }
+      g.tri(vs[0], vs[1], vs[2], cs, null, ns);
+    }
+    return true;
+  }
 
   const NO_TINT = [0, 0, 0, 0];
   function draw(mesh, model, o = {}) {
@@ -2390,10 +2463,25 @@ vec3 art(vec2 p) {
       tail(g, gw) { catTail(g, { n: 10, r0: 0.06, len: 0.11, curl: 0.22, col: SK, ring: NEON, tip: CYAN, tipR: 0.06, tipGlow: true }, gw); },
     });
   }
-  // Figuren im 64er-Look: grob unterteilt (lowPoly)
-  const CATS = lowPoly(() => CAT_DEFS.map((d) => {
+  // 5) Kappi: nach den Proportionen einer N64-Figur gebaut (riesiger Kopf, kurzer Koerper), komplett aus
+  //    Blender (tools/blender/kappi.py). Ohne geladene Modelldatei gibt es Kappi nicht - siehe CATS.
+  CAT_DEFS.push({
+    id: 'kappi', name: 'Kappi', blenderOnly: true,
+    rig: { legX: 0.155, legY: 0.672, bodyY: 0.887, armX: 0.32, armY: 1.078, headY: 1.63, headZ: 0.03, tailY: 0.66, tailZ: -0.24 },
+  });
+  /* Figuren im 64er-Look: grob unterteilt (lowPoly).
+     Liegt in der G64M-Datei ein Teil namens <id>.<teil> (z. B. 'astro.head'), ersetzt es das
+     prozedurale Teil samt Leucht-Mesh <id>.<teil>.glow. Teile ohne Modell bleiben wie sie sind,
+     so laesst sich Stueck fuer Stueck umstellen. Die Blender-Teile muessen dieselben
+     Gelenk-Urspruenge treffen wie rig — sonst bricht die Animation in drawPlayer(). */
+  const CAT_PARTS = ['head', 'body', 'arm', 'leg', 'tail', 'lids'];
+  const CATS = lowPoly(() => CAT_DEFS.filter((d) => !d.blenderOnly || CAT_PARTS.every((k) => MODELS[d.id + '.' + k])).map((d) => {
     const c = { id: d.id, name: d.name, rig: d.rig, glow: {} };
-    for (const k of ['head', 'body', 'arm', 'leg', 'tail', 'lids']) if (d[k]) [c[k], c.glow[k]] = build2(d[k]);
+    for (const k of CAT_PARTS) if (d[k]) [c[k], c.glow[k]] = build2(d[k]);
+    for (const k of CAT_PARTS) {
+      const m = MODELS[d.id + '.' + k];
+      if (m) { c[k] = m; c.glow[k] = MODELS[d.id + '.' + k + '.glow'] || null; }
+    }
     return c;
   }));
   const buildLP = (fn) => lowPoly(() => build(fn));
@@ -2721,6 +2809,90 @@ vec3 art(vec2 p) {
       c.lineJoin = 'round'; c.lineWidth = Math.max(6, fs * 0.2); c.strokeStyle = '#000'; c.fillStyle = col;
       lines.forEach((l, k) => { c.strokeText(l, cx, y0 + k * lh, avail); c.fillText(l, cx, y0 + k * lh, avail); });
     }, 512, 176);
+  }
+  /* ─── Holzschilder im 64er-Stil ───
+     Korpus (Pfosten + Brett) kommt aus Blender (tools/blender/props.py, 'sign.body'); die Vorderseite ist eine
+     eigene Flaeche mit Textur je Schild, gezeichnet ueber L.decals -> drawSign, damit die Schrift auch unter dem
+     Roehren-Filter scharf bleibt. Masse muessen zu props.py passen. */
+  const SIGN_Y = 1.72, SIGN_FRONT = 0.265;
+  MESH.signFace = build((g) => planeGeo(g, I4, 1.64, 0.88, 1, 1, C.white));
+  // Titel aus dem Schildtext: erste Zeile ohne Sterne, vor ':' bzw. am Satzende gekuerzt; Wegweiser je Richtung eine Zeile
+  function signTitle(speaker, text) {
+    if (speaker === 'Wegweiser') return text.map((t) => t.split(/[·:]/)[0].trim().toUpperCase());
+    let t = String(text[0] || '').split('\n')[0].replace(/★/g, '').trim();
+    const cut = t.search(/[:.!?…]/);
+    if (cut > 0 && cut <= 24) t = t.slice(0, cut + (/[!?…]/.test(t[cut]) ? 1 : 0)).trim();
+    else if (t.length > 24) t = t.split(' ').slice(0, 3).join(' ') + ' …';
+    return [t.toUpperCase()];
+  }
+  // Schild schaut zum Startpunkt der Welt (von dort kommt man meist); direkt am Start zur Blickrichtung des Spielers
+  function signFacing(L, x, z) {
+    const dx = L.spawn[0] - x, dz = L.spawn[2] - z;
+    return Math.hypot(dx, dz) < 3 ? (L.spawnFace ?? 0) + Math.PI : Math.atan2(dx, dz);
+  }
+  const signTexCache = new Map();
+  function signFaceTex(lines, stars) {
+    const key = lines.join('\n') + (stars ? '\u2605' : '');
+    let tex = signTexCache.get(key);
+    if (tex) return tex;
+    let h0 = 7;
+    for (const ch of key) h0 = (h0 * 31 + ch.codePointAt(0)) % 2147483000;
+    const rnd = seeded(h0);                        // jede Tafel eigene, aber feste Maserung
+    tex = signTexture((c, w, h) => {
+      const bg = c.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#d49c5f'); bg.addColorStop(1, '#b57b42');
+      c.fillStyle = bg; c.fillRect(0, 0, w, h);
+      for (let i = 0; i < 30; i++) {               // Maserung: unruhige waagrechte Linien
+        const y0 = rnd() * h, amp = 1 + rnd() * 4, f = 0.006 + rnd() * 0.012, ph = rnd() * 6;
+        c.strokeStyle = `rgba(105,58,20,${0.08 + rnd() * 0.22})`; c.lineWidth = 0.8 + rnd() * 2.2;
+        c.beginPath();
+        for (let x = 0; x <= w; x += 8) { const y = y0 + Math.sin(x * f + ph) * amp; if (x) c.lineTo(x, y); else c.moveTo(x, y); }
+        c.stroke();
+      }
+      for (let k = 0; k < 2; k++) {                 // Aeste
+        const kx = 40 + rnd() * (w - 80), ky = 30 + rnd() * (h - 60);
+        for (let r = 3; r > 0; r--) {
+          c.strokeStyle = `rgba(90,48,16,${0.18 + r * 0.06})`; c.lineWidth = 1.5;
+          c.beginPath(); c.ellipse(kx, ky, 5 + r * 5, 2 + r * 2.2, 0, 0, TAU); c.stroke();
+        }
+      }
+      c.strokeStyle = 'rgba(70,34,10,.55)'; c.lineWidth = 5; c.strokeRect(14, 14, w - 28, h - 28);   // eingekerbter Rand
+      c.strokeStyle = 'rgba(255,226,170,.35)'; c.lineWidth = 2; c.strokeRect(17.5, 17.5, w - 35, h - 35);
+      for (const [nx, ny] of [[26, 26], [w - 26, 26], [26, h - 26], [w - 26, h - 26]]) {                // Naegel
+        c.fillStyle = '#3a2410'; c.beginPath(); c.arc(nx, ny, 5, 0, TAU); c.fill();
+        c.fillStyle = 'rgba(255,230,190,.55)'; c.beginPath(); c.arc(nx - 1.5, ny - 1.5, 1.8, 0, TAU); c.fill();
+      }
+      // Schrift wie eingeschnitzt: dunkle Fuellung, darunter rechts eine helle Kante
+      const padX = stars ? 74 : 44, avail = w - padX * 2;
+      const font = (fs) => { c.font = `900 ${fs}px "Arial Black", "Comic Sans MS", "Comic Neue", sans-serif`; };
+      let Ls = lines.slice(0, 3), fs = Ls.length === 1 ? 66 : 50;
+      font(fs);
+      const widest = () => Math.max(...Ls.map((l) => c.measureText(l).width));
+      while (fs > 34 && widest() > avail) { fs -= 2; font(fs); }
+      if (Ls.length === 1 && widest() > avail) {   // an Leerzeichen/Bindestrich nahe der Mitte umbrechen
+        const t = Ls[0];
+        let best = -1;
+        for (let k = 1; k < t.length - 1; k++) if ((t[k] === ' ' || t[k] === '-') && (best < 0 || Math.abs(k - t.length / 2) < Math.abs(best - t.length / 2))) best = k;
+        if (best > 0) Ls = [t.slice(0, best + (t[best] === '-' ? 1 : 0)), t.slice(best + 1)];
+        fs = 52; font(fs);
+        while (fs > 26 && widest() > avail) { fs -= 2; font(fs); }
+      }
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      const lh = fs * 1.08, y0 = h / 2 - (Ls.length - 1) * lh / 2 + 2;
+      Ls.forEach((l, k) => {
+        const y = y0 + k * lh;
+        c.fillStyle = 'rgba(255,228,178,.7)'; c.fillText(l, w / 2 + 2, y + 2.5, avail);
+        c.fillStyle = '#3b1d08'; c.fillText(l, w / 2, y, avail);
+      });
+      if (stars) {
+        c.font = `900 ${Math.round(fs * 0.8)}px "Segoe UI Symbol", "Arial Unicode MS", sans-serif`;
+        for (const sx of [padX / 2 + 8, w - padX / 2 - 8]) {
+          c.fillStyle = 'rgba(255,228,178,.7)'; c.fillText('\u2605', sx + 2, h / 2 + 4.5);
+          c.fillStyle = '#3b1d08'; c.fillText('\u2605', sx, h / 2 + 2);
+        }
+      }
+    }, 492, 264);
+    signTexCache.set(key, tex);
+    return tex;
   }
   // Tuer in der Halle oder einem Flur, die in einen Raum fuehrt. dir = Richtung aus der Wand in den Flur:
   // 'e' (+x, Tuer in der Westwand), 'w' (-x, Ostwand), 's' (+z, Nordwand), 'n' (-z, Suedwand)
@@ -4621,10 +4793,18 @@ vec3 art(vec2 p) {
         for (let i = 0; i < n; i++) { const t = n === 1 ? 0 : i / (n - 1); L.coin('yellow', lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)); }
       },
       coinRing(cx, y, cz, r, n) { for (let i = 0; i < n; i++) { const t = i / n * TAU; L.coin('yellow', cx + Math.cos(t) * r, y, cz + Math.sin(t) * r); } },
+      // sign: true = Schild mit Titel aus dem Text; { title, ry } ueberschreibt Titel bzw. Blickrichtung; false = nur Sprecher
       talker(x, y, z, speaker, text, sign = true) {
         if (sign) {
-          cyl(g, M4.from(x, y, z), 0.12, 0.12, 1.5, 5, hex('#6b4214'));
-          box(g, M4.from(x, y + 1.8, z, 0.3), 2, 1.2, 0.2, { top: hex('#6b4214'), side: hex('#9c6630') });
+          const o = sign === true ? {} : sign;
+          const sm = M4.from(x, y, z, o.ry ?? signFacing(L, x, z));
+          if (!bakeModel(g, 'sign.body', sm)) {       // ohne Modelldatei: gleicher Umriss aus Quadern
+            box(g, M4.mul(sm, M4.from(0, SIGN_Y, 0.17)), 1.72, 0.96, 0.18, hex('#8a5a2b'));
+            box(g, M4.mul(sm, M4.from(0, 1.1, 0)), 0.2, 2.2, 0.2, hex('#6b4214'));
+          }
+          const lines = o.title ? [].concat(o.title) : signTitle(speaker, text);
+          L.decals.push({ mesh: MESH.signFace, model: M4.mul(sm, M4.from(0, SIGN_Y, SIGN_FRONT)),
+            tex: signFaceTex(lines, /★/.test(String(text[0] || ''))) });
           L.solid(x - 0.2, y, z - 0.2, x + 0.2, y + 2.4, z + 0.2, 'sign');
         }
         L.talkers.push({ pos: [x, y, z], speaker, text });
@@ -9718,9 +9898,19 @@ void main() {
     // tapped: jeder Druck zaehlt bis zur naechsten Abfrage, auch wenn die Taste schon vor dem Bild wieder los ist
     // (bei niedriger Bildrate ging ein kurzes Antippen sonst verloren)
     const tapped = new Set();
+    /* Gegenrichtungen (W/S, A/D): sind beide gedrueckt, gilt die zuletzt gedrueckte. Beim schnellen Umgreifen
+       haelt man kurz beide - vorher ergab das "kein Stick", die straffe Bremse frass das Tempo, und die
+       Kehrtwende (-> Seitsalto) kam nie zustande. */
+    const AXIS = { KeyW: ['y', -1], ArrowUp: ['y', -1], KeyS: ['y', 1], ArrowDown: ['y', 1],
+      KeyA: ['x', -1], ArrowLeft: ['x', -1], KeyD: ['x', 1], ArrowRight: ['x', 1] };
+    const lastAxis = { x: 0, y: 0 };
+    const axis = (neg, pos, a) => (neg && pos ? lastAxis[a] : (pos ? 1 : 0) - (neg ? 1 : 0));
+    const typing = (e) => e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
     addEventListener('keydown', (e) => {
+      if (typing(e) && e.code !== 'Escape') return;   // sonst wechselt z. B. "C" beim Namen-Tippen den Bildfilter
       keys.add(e.code);
       if (!e.repeat) tapped.add(e.code);
+      if (AXIS[e.code] && !e.repeat) lastAxis[AXIS[e.code][0]] = AXIS[e.code][1];
       st.device = 'keyboard';
       if (GAME_KEYS.has(e.code) && mode !== 'pause' && mode !== 'ending' && mode !== 'files') e.preventDefault();
     });
@@ -9843,8 +10033,8 @@ void main() {
     const dz = (v) => (Math.abs(v) < 0.2 ? 0 : (v - Math.sign(v) * 0.2) / 0.8);
     function poll() {
       const k = (c) => keys.has(c) || tapped.has(c);
-      let mx = (k('KeyD') || k('ArrowRight') ? 1 : 0) - (k('KeyA') || k('ArrowLeft') ? 1 : 0);
-      let my = (k('KeyS') || k('ArrowDown') ? 1 : 0) - (k('KeyW') || k('ArrowUp') ? 1 : 0);
+      let mx = axis(k('KeyA') || k('ArrowLeft'), k('KeyD') || k('ArrowRight'), 'x');
+      let my = axis(k('KeyW') || k('ArrowUp'), k('KeyS') || k('ArrowDown'), 'y');
       let cx = (k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0), cy = 0;
       let jump = k('Space') || k('KeyJ');
       let action = k('KeyF') || k('KeyB') || k('Enter') || k('KeyK') || mouseHeld;
@@ -9905,11 +10095,31 @@ void main() {
   const UFF = UF * 30;             // 1 Einheit/Frame pro Frame in m/s²
   const R = 0.45, PH = 2.2, STEP_UP = 0.55;
   const GRAV = 4 * UFF, TERMINAL = 75 * UF;
-  const RUN = 32 * UF;             // Hoechsttempo am Boden (13,2 m/s)
-  const AIR_DRAG = 32 * UF, LONG_DRAG = 48 * UF;
+  /* Tempo und Sprungkraft (2026-09-25, Wunsch: "nicht so schnell, wie im Vorbild, Dreifachsprung viel zu hoch").
+     Das Vorbild laeuft mit 32 E/F; hier gedrosselt auf 27. In der Luft wird man hoechstens so schnell wie im
+     Lauf - sonst ist Huepfen schneller als Rennen und die Sprungkette schaukelt sich auf. */
+  const RUN = 27 * UF;             // Hoechsttempo am Boden (11,1 m/s)
+  const AIR_DRAG = RUN, LONG_DRAG = RUN * 1.5;
+  const AIR_THRUST = 1.5 * UFF;    // Luftschub mit Stick wie im Vorbild (vorher 2,3: Tempo lief in der Luft davon)
+  const LONG_GRAV = 0.5;           // Weitsprung faellt mit halber Schwerkraft wie im Vorbild
+  /* Eigene Spruenge: Grundwerte des Vorbilds (42/52/69/62/30 E/F), gleichmaessig um JUMP_K gedaempft.
+     Hoehe ~ JUMP_K², Flugzeit ~ JUMP_K - die Verhaeltnisse zwischen den Bewegungen bleiben also erhalten.
+     Federn und Abpraller von Gegnern laufen NICHT hierueber, die treffen ihre Ziele weiter. */
+  const JUMP_K = 0.86;
+  const jv = (base, f = 0) => (base + 0.25 * f) * JUMP_K * UF;
   const TURN_RATE = 16;            // Drehen am Boden (rad/s): Kehrtwende in 0,2 s
-  // Direkte Steuerung (Wunsch "sehr responsive"): volles Tempo nach ~0,15 s, Stillstand nach ~0,1 s
-  const GROUND_ACC = 90, GROUND_BRAKE = 130, OVER_BRAKE = 45, SKID_BRAKE = 90;   // m/s²
+  /* Anlauf wie im Vorbild geformt: kraeftiger Antritt, der zum Hoechsttempo hin nachlaesst (ACC_FADE).
+     Volles Tempo nach ~0,43 s (vorher 0,15 s, Vorbild ~1,6 s). Bremsen bleibt straff wie gewuenscht
+     (2026-09-21 "zu rutschig"): Stillstand nach ~0,1 s. */
+  const GROUND_ACC = 42, ACC_FADE = 0.65, GROUND_BRAKE = 130, OVER_BRAKE = 45, SKID_BRAKE = 90;   // m/s²
+  /* Seitsalto: Der Rutscher bei der Kehrtwende ist wegen SKID_BRAKE nach ~0,1 s vorbei - zu kurz, um A zu
+     treffen (gemessen: nur 0-6 Frames, mit kurzem Umgreifen 2-4). Wie im Vorbild (Nachlaufphase der Wende)
+     zaehlt A deshalb noch SIDEFLIP_WINDOW nach Beginn der Kehrtwende als Seitsalto. SKID_GRACE: kurz vorher
+     schnell genug gewesen reicht, damit ein paar Frames Umgreifen den Rutscher nicht verhindern. */
+  const SIDEFLIP_WINDOW = 0.3, SKID_GRACE = 0.12;
+  /* Beinfeger wie im Vorbild: B in der Hocke (oder beim Krabbeln) -> seitlich flach zu Boden, ein gestrecktes Bein
+     fegt einmal rundum, dann zurueck in die Hocke. Trifft alles im Umkreis SWEEP_R, einmal pro Feger. */
+  const SWEEP_DUR = 0.5, SWEEP_R = 1.9;
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
@@ -9922,22 +10132,23 @@ void main() {
      Anlauf mit vollem Tempo, Stick die ganze Zeit in Sprungrichtung.
      Gemessen mit g64.measure() im Gym (?debug&gym) — nach Physik-Aenderungen neu messen. */
   const MOVES = {
-    hop:      { h: 0.41, d: 3.13,  t: 0.24 },   // A im Lauf nur angetippt
-    jump:     { h: 2.96, d: 0,     t: 0.69 },   // aus dem Stand, A gehalten
-    runJump:  { h: 4.21, d: 13.7,  t: 0.83 },
-    double:   { h: 7.11, d: 24.91, t: 1.08 },
-    triple:   { h: 8.06, d: 34.15, t: 1.14 },
-    backflip: { h: 6.5,  d: 2.21,  t: 1.02 },   // d nach hinten
-    sideflip: { h: 6.5,  d: 13.63, t: 1.02 },
-    long:     { h: 1.5,  d: 11.03, t: 0.49 },
-    wallkick: { h: 6.5,  d: 17.96, t: 1.02 },   // pro Wandsprung, weg von der Wand
-    dive:     { h: 0.47, d: 4.4,   t: 0.28 },   // nur die Flugphase, danach Bauchrutscher
-    rollout:  { h: 1.18, d: 6.81,  t: 0.44 },   // A im Bauchrutscher
+    hop:      { h: 0.3,  d: 2.04,  t: 0.2 },    // A im Lauf nur angetippt
+    jump:     { h: 2.18, d: 0,     t: 0.6 },    // aus dem Stand, A gehalten
+    runJump:  { h: 2.95, d: 7.74,  t: 0.69 },
+    double:   { h: 4.35, d: 9.7,   t: 0.84 },
+    triple:   { h: 5.95, d: 11.52, t: 0.98 },
+    backflip: { h: 4.8,  d: 2.21,  t: 0.88 },   // d nach hinten
+    sideflip: { h: 4.8,  d: 7.74,  t: 0.88 },
+    long:     { h: 2.24, d: 14.93, t: 0.86 },   // weitester Sprung, wie im Vorbild
+    wallkick: { h: 4.8,  d: 10.35, t: 0.88 },   // pro Wandsprung, weg von der Wand
+    dive:     { h: 0.47, d: 4.32,  t: 0.28 },   // nur die Flugphase, danach Bauchrutscher
+    rollout:  { h: 1.18, d: 5.7,   t: 0.44 },   // A im Bauchrutscher
   };
   /* Wandsprung-Grenzen (Wunsch: an der Wand nicht mehr endlos hochkommen):
      dieselbe Wand zweimal hintereinander geht nicht, jeder weitere Wandsprung im selben Flug ist
      schwaecher, und nach MAX_KICKS ist Schluss, bis Glappo wieder Boden, Kante oder Wasser hat.
-     Gemessen im Gym-Schacht (7,2 m breit): Gipfel 7,2 / 11,4 / 13,9 / 15,2 m, dann ist Schluss. */
+     Die Schachthoehen stammen noch aus der Physik vor 2026-09-25 (7,2 / 11,4 / 13,9 / 15,2 m) - mit
+     JUMP_K liegen sie niedriger; bei Bedarf im Gym-Schacht neu messen. */
   const MAX_KICKS = 4, KICK_FALLOFF = 0.8;
   const canWallKick = (n) => (pl.kicks || 0) < MAX_KICKS
     && !(pl.kickN && n[0] * pl.kickN[0] + n[2] * pl.kickN[2] > 0.7);
@@ -9969,6 +10180,7 @@ void main() {
     waterObj: null, waterJump: false, swimPh: 0, strokeT: -9, ledgeCool: 0, hangBox: null, hangN: null, hangT: 0,
     climbK: 0, climbDur: 0.5, climbFrom: null, climbTo: null, appearT: -9,
     punchN: 0, punchDur: 0.26, comboT: -9,
+    skidT: -9, skidTo: 0, fastT: -9,   // Kehrtwende: Beginn, Zielrichtung, zuletzt schnell genug (Seitsalto-Fenster)
   };
   function headBlocked(L, p) {
     for (const b of near(L, p[0], p[2])) {
@@ -10140,6 +10352,8 @@ void main() {
     pl.invuln = Math.max(0, pl.invuln - dt);
     pl.hurtT = Math.max(0, pl.hurtT - dt);
     pl.punchT = Math.max(0, pl.punchT - dt);
+    pl.sweepT = Math.max(0, (pl.sweepT || 0) - dt);
+    if (pl.sweepT > 0 && !pl.sweepHit && pl.sweepT < SWEEP_DUR * 0.75) { pl.sweepHit = true; hitInFront(SWEEP_R, true, true); }
     pl.frozen = Math.max(0, pl.frozen - dt);
     pl.jumpBuf = Math.max(0, pl.jumpBuf - dt);
     pl.holdGrace = Math.max(0, pl.holdGrace - dt);
@@ -10161,7 +10375,7 @@ void main() {
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
     const wx = cy * inp.mx + sy * inp.my, wz = -sy * inp.mx + cy * inp.my;
     let mag = Math.min(1, Math.hypot(wx, wz));
-    if (lock || pl.looking || pl.action === 'pound') mag = 0;
+    if (lock || pl.looking || pl.action === 'pound' || pl.sweepT > 0) mag = 0;
     const moving = mag > 0.05;
     const intended = moving ? Math.atan2(wx, wz) : pl.face;
     const dYaw = angDiff(pl.face, intended);
@@ -10210,12 +10424,16 @@ void main() {
       }
     } else if (pl.grounded) {
       pl.side = 0;
-      pl.crouch = ((!lock && inp.z) || pl.forceCrouch) && !water;
+      pl.crouch = ((!lock && inp.z) || pl.forceCrouch || pl.sweepT > 0) && !water;
+      if (pl.sweepT > 0) { pl.speed = 0; pl.crawl = false; }
       const gtag = pl.groundBox ? pl.groundBox.tag : '';
       const icy = gtag === 'ice', fr = icy ? 0.16 : 1;
       const top = RUN * mag * (water ? 0.5 : 1);
       // Kehrtwende: Stick deutlich zurueck (> ~100°) bei Tempo -> rutschen
-      if (!pl.crouch && !pl.skid && moving && Math.abs(dYaw) > 1.75 && pl.speed >= 16 * UF) { pl.skid = true; Snd.skid(); dust(p, 4); }
+      if (pl.speed >= RUN * 0.5) pl.fastT = time;
+      if (!pl.crouch && !pl.skid && moving && Math.abs(dYaw) > 1.75 && time - (pl.fastT ?? -9) < SKID_GRACE) {
+        pl.skid = true; pl.skidT = time; pl.skidTo = intended; Snd.skid(); dust(p, 4);
+      }
       pl.crawl = false;
       if (pl.skid) {
         pl.speed = Math.max(0, pl.speed - (icy ? 2.5 * UFF * fr : SKID_BRAKE) * dt);
@@ -10238,33 +10456,37 @@ void main() {
         if (icy) {
           if (pl.speed < top) pl.speed = Math.min(top, pl.speed + (1.1 * UFF - pl.speed * 30 / 43) * 0.35 * dt);
           else pl.speed = Math.max(top, pl.speed - UFF * fr * dt);
-        } else if (pl.speed < top) pl.speed = Math.min(top, Math.max(0, pl.speed) + GROUND_ACC * dt);
+        } else if (pl.speed < top) {
+          const v = Math.max(0, pl.speed);
+          pl.speed = Math.min(top, v + GROUND_ACC * (1 - ACC_FADE * v / RUN) * dt);
+        }
         else pl.speed = Math.max(top, pl.speed - OVER_BRAKE * dt);
       } else {
         pl.speed = towardZero(pl.speed, (icy ? UFF * fr : GROUND_BRAKE) * dt);   // anhalten (auf Eis rutscht es weiter)
       }
 
       // Springen vom Boden — auch ein Druck kurz vor der Landung zaehlt
-      if (!lock && (inp.jumpP || pl.jumpBuf > 0)) {
+      if (!lock && !(pl.sweepT > 0) && (inp.jumpP || pl.jumpBuf > 0)) {
         if (!inp.jumpP) pl.holdGrace = 0.3;                   // gepuffert: nicht als "losgelassen" werten
         const f = Math.max(0, pl.speed) / UF;                 // Tempo in E/F
         const chain = time - pl.landT <= CHAIN_WINDOW ? pl.landFrom : '';
-        const wantLong = (pl.crouch || time - (pl.zDownT ?? -9) < LONG_WINDOW) && pl.speed >= 10 * UF;
+        const wantLong = (pl.crouch || time - (pl.zDownT ?? -9) < LONG_WINDOW) && pl.speed >= RUN * 0.31;
         pl.jumpT = time; pl.jumpSpeed = Math.max(0, pl.speed);
         if (water) {
           airborne('jump', 13, pl.speed); pl.waterJump = true; Snd.splash();
-        } else if (pl.skid) {
-          pl.face = intended; airborne('sideflip', 62 * UF, 8 * UF); Snd.jump(3); Snd.voice('flip');
+        } else if (pl.skid || (!pl.crouch && time - (pl.skidT ?? -9) < SIDEFLIP_WINDOW)) {
+          pl.face = moving ? intended : (pl.skidTo ?? intended); pl.skidT = -9;
+          airborne('sideflip', jv(62), 8 * UF); Snd.jump(3); Snd.voice('flip');
         } else if (wantLong) {
-          airborne('long', 30 * UF, Math.min(pl.speed * 1.5, 48 * UF)); Snd.jump(2); Snd.voice('long');
+          airborne('long', jv(30), Math.min(pl.speed * 1.5, LONG_DRAG)); Snd.jump(2); Snd.voice('long');
         } else if (pl.crouch && Math.abs(pl.speed) < 1.5) {
-          airborne('backflip', 62 * UF, -16 * UF); Snd.jump(3); Snd.voice('flip');
-        } else if (chain === 'double' && pl.speed > 20 * UF) {
-          airborne('triple', 69 * UF, pl.speed * 0.8); Snd.jump(3); Snd.voice('yay');
+          airborne('backflip', jv(62), -16 * UF); Snd.jump(3); Snd.voice('flip');
+        } else if (chain === 'double' && pl.speed > RUN * 0.625) {
+          airborne('triple', jv(69), pl.speed * 0.8); Snd.jump(3); Snd.voice('yay');
         } else if (chain === 'jump' || chain === 'fall' || chain === 'sideflip') {
-          airborne('double', (52 + 0.25 * f) * UF, pl.speed * 0.8); Snd.jump(2); Snd.voice('hoi'); jumpRing(p);
+          airborne('double', jv(52, f), pl.speed * 0.8); Snd.jump(2); Snd.voice('hoi'); jumpRing(p);
         } else {
-          airborne('jump', (42 + 0.25 * f) * UF, pl.speed * 0.8); Snd.jump(1); Snd.voice('hop');
+          airborne('jump', jv(42, f), pl.speed * 0.8); Snd.jump(1); Snd.voice('hop');
         }
         if (!water) dust(p, 5);
       }
@@ -10317,7 +10539,7 @@ void main() {
         if (moving && !lock && pl.action !== 'knock' && pl.action !== 'bonk' && pl.action !== 'dive') {
           if (pl.action !== 'long') pl.face += clamp(dYaw, -3.2 * dt, 3.2 * dt);
           const dY = angDiff(pl.face, intended);
-          pl.speed += 2.3 * UFF * Math.cos(dY) * mag * dt;
+          pl.speed += AIR_THRUST * Math.cos(dY) * mag * dt;
           pl.side = Math.sin(dY) * mag * 16 * UF;
         }
         if (pl.speed > (pl.action === 'long' || pl.action === 'dive' ? LONG_DRAG : AIR_DRAG)) pl.speed -= UFF * dt;
@@ -10334,21 +10556,21 @@ void main() {
         } else if (wallOk) {
           const n = pl.wall, k = Math.pow(KICK_FALLOFF, pl.kicks || 0);
           pl.face = Math.atan2(n[0], n[2]);
-          airborne('wallkick', 62 * UF * k, 24 * UF);
+          airborne('wallkick', jv(62) * k, 24 * UF);
           pl.kicks = (pl.kicks || 0) + 1; pl.kickN = n;
           pl.wallT = -9;
           Snd.jump(2); Snd.voice('hop'); dust([p[0] - n[0] * R, p[1] + 1, p[2] - n[2] * R], 6); rumble(0.25, 60);
         } else if (pl.coyote > 0) {
-          airborne('jump', (42 + 0.25 * Math.max(0, pl.speed) / UF) * UF, pl.speed * 0.8); Snd.jump(1); Snd.voice('hop');
+          airborne('jump', jv(42, Math.max(0, pl.speed) / UF), pl.speed * 0.8); Snd.jump(1); Snd.voice('hop');
         } else {
           pl.jumpBuf = 0.1;
         }
       }
       if (!lock && (inp.zP || inp.lookP) && pl.action !== 'pound' && !water) {
         const since = time - (pl.jumpT ?? -9), fresh = since < LONG_WINDOW && ['jump', 'double', 'triple'].includes(pl.action);
-        if (fresh && inp.zP && pl.action !== 'triple' && pl.jumpSpeed >= 10 * UF) {
+        if (fresh && inp.zP && pl.action !== 'triple' && pl.jumpSpeed >= RUN * 0.31) {
           // Z kam einen Tick nach A: gemeint war ein Weitsprung, kein Stampfer
-          airborne('long', 30 * UF, Math.min(pl.jumpSpeed * 1.5, 48 * UF)); Snd.jump(2); Snd.voice('long');
+          airborne('long', jv(30), Math.min(pl.jumpSpeed * 1.5, LONG_DRAG)); Snd.jump(2); Snd.voice('long');
         } else if (!fresh) {
           pl.action = 'pound'; pl.pound = 0; pl.speed = 0; pl.side = 0; pl.vel[1] = 0;
           Snd.press(); Snd.voice('pound');
@@ -10357,7 +10579,7 @@ void main() {
     }
     // Schwerkraft
     if (!pl.grounded && pl.action !== 'pound' && pl.action !== 'swim') {
-      pl.vel[1] = Math.max(pl.vel[1] - GRAV * (water ? 0.55 : 1) * dt, water ? -8 : -TERMINAL);
+      pl.vel[1] = Math.max(pl.vel[1] - GRAV * (water ? 0.55 : pl.action === 'long' ? LONG_GRAV : 1) * dt, water ? -8 : -TERMINAL);
     }
     if (pl.action === 'swim') pl.vel[1] = clamp(pl.vel[1], -5, 6);
 
@@ -10680,6 +10902,7 @@ void main() {
     s.gone = true;
     const isNew = !state.stars[s.id];
     state.stars[s.id] = true; save();
+    if (isNew) Net.star(s.id);                     // Mehrspieler: zaehlt fuer alle im Raum
     renderHud('stars');
     mode = 'starget';
     // Schrift Buchstabe fuer Buchstabe (jeder ploppt versetzt auf und wippt danach)
@@ -11492,7 +11715,8 @@ void main() {
     return null;
   }
   // Trifft alles vor Glappo in Reichweite; liefert true bei einem Treffer
-  function hitInFront(range, kick) {
+  // all = rundum statt nur nach vorn (Beinfeger); weggestossen wird dann vom Spieler weg
+  function hitInFront(range, kick, all = false) {
     const fx = Math.sin(pl.face), fz = Math.cos(pl.face);
     let hit = false;
     for (const e of cur.enemies) {
@@ -11502,7 +11726,7 @@ void main() {
       // beim Wurm zaehlt das naechste Segment
       const q = e.type === 'worm' ? [e.pos, ...e.segs].reduce((a, b) => (dist2D(b, pl.pos) < dist2D(a, pl.pos) ? b : a)) : e.pos;
       const dx = q[0] - pl.pos[0], dz = q[2] - pl.pos[2], d = Math.hypot(dx, dz);
-      if (d > range || Math.abs(q[1] - pl.pos[1]) > (e.type === 'popup' ? 2.4 : 1.6) || (dx * fx + dz * fz) / (d || 1) < 0.25) continue;
+      if (d > range || Math.abs(q[1] - pl.pos[1]) > (e.type === 'popup' ? 2.4 : 1.6) || (!all && (dx * fx + dz * fz) / (d || 1) < 0.25)) continue;
       hit = true;
       if (e.type === 'grummel') squashGrummel(e);
       else if (e.type === 'ghost') poofGhost(e);
@@ -11510,7 +11734,10 @@ void main() {
       else if (e.type === 'virus') splitVirus(e);
       else if (e.type === 'worm') crashWorm(e);
       else if (e.type === 'popup') closePopup(e);
-      else if (e.type === 'bomb') { e.state = 'lit'; e.t = Math.min(e.t || 9, 1.2); e.face += Math.PI; e.pos[0] += fx * (kick ? 2.5 : 1.2); e.pos[2] += fz * (kick ? 2.5 : 1.2); Snd.fuse(); }
+      else if (e.type === 'bomb') {
+        const ux = all ? dx / (d || 1) : fx, uz = all ? dz / (d || 1) : fz;
+        e.state = 'lit'; e.t = Math.min(e.t || 9, 1.2); e.face += Math.PI; e.pos[0] += ux * (kick ? 2.5 : 1.2); e.pos[2] += uz * (kick ? 2.5 : 1.2); Snd.fuse();
+      }
     }
     if (hit) {
       const fp = [pl.pos[0] + fx * 0.9, pl.pos[1] + (kick ? 0.8 : 1.3), pl.pos[2] + fz * 0.9];
@@ -11532,6 +11759,12 @@ void main() {
       if (pl.inWater) return;
       if (Math.abs(pl.speed) > 4) startDive();
       else if (pl.punchT <= 0) { pl.punchN = 3; pl.punchDur = pl.punchT = 0.34; pl.comboT = time; Snd.punch(3); Snd.voice('kick'); hitInFront(2.4, true); }
+      return;
+    }
+    if (pl.sweepT > 0) return;
+    if ((pl.crouch || pl.crawl || pl.forceCrouch) && Math.abs(pl.speed) < 3.5) {
+      pl.sweepT = SWEEP_DUR; pl.sweepHit = false; pl.punchN = 0; pl.punchT = 0; pl.speed = 0;
+      Snd.punch(3); Snd.voice('kick');
       return;
     }
     if (pl.speed > 8.5 && !pl.crouch && !pl.crawl) { startDive(); return; }
@@ -11739,7 +11972,7 @@ void main() {
       else enterLevel(/[?&]gym\b/.test(location.search) ? 'gym' : 'garden');   // ?gym = Testlevel fuers Moveset
       if (state.music) Snd.music(true);
       return Iris.open(null, null, 700);
-    }).then(() => { mode = 'play'; setTimeout(intro, 1300); });
+    }).then(() => { mode = 'play'; setTimeout(intro, 1300); Net.autoJoin(); });
   }
   function intro() {
     if (mode !== 'play' || Dialog.open) return;
@@ -11954,6 +12187,250 @@ void main() {
     draw(MESH.shadow, M4.from(x, gy + 0.04, z, 0, 0, 0, size * k), { tint: SHADOW_TINT, alpha: 0.32, lit: 0 });
   }
   let faceLast = 0, turnRate = 0;
+  /* ═══════════ Figur aus fertiger Pose ═══════════
+     drawPlayer rechnet die Pose des eigenen Spielers; Mitspieler kommen mit derselben Pose ueber das Netz (Net).
+     So sehen sie bei allen gleich aus, ohne dass die Posen-Logik doppelt existiert. Liefert die Kopfmatrix. */
+  const POSE_KEYS = ['x', 'y', 'z', 'yaw', 'rx', 'rz', 'dy', 'sx', 'sy', 'legL', 'legR', 'splL', 'splR', 'legSYL', 'legSYR',
+    'bob', 'sink', 'breathe', 'ck', 'bodyYaw', 'tailRx', 'tailRz', 'armL', 'armR', 'outL', 'outR', 'headTilt', 'headRoll', 'headYaw', 'bl'];
+  const FIG_STD = { shine: 0.06, rim: 0.16, lit: 0.78 };
+  function drawPose(G, P, FIG = FIG_STD) {
+    const RG = G.rig, GLOW = { lit: 0, tint: FIG.tint };
+    const base = M4.mul(M4.from(P.x, P.y + 1.1 + P.dy, P.z, P.yaw, P.rx, P.rz), M4.from(0, -1.1, 0, 0, 0, 0, P.sx, P.sy, P.sx));
+    const part = (key, tx, ty, tz, rx2, rz2, o = FIG, ry2 = 0, sc = 1, scy = sc) => {
+      const m = M4.mul(base, M4.from(tx, ty + P.bob, tz, ry2, rx2, rz2, sc, scy, sc));
+      draw(G[key], m, o);
+      if (G.glow[key]) draw(G.glow[key], m, GLOW);
+      return m;
+    };
+    part('leg', -RG.legX, RG.legY - P.bob, 0, P.legL, -P.splL, FIG, 0, 1, P.legSYL);
+    part('leg', RG.legX, RG.legY - P.bob, 0, P.legR, P.splR, FIG, 0, 1, P.legSYR);
+    part('body', 0, RG.bodyY + P.sink * 0.3, 0, 0, 0, FIG, P.bodyYaw, P.breathe * (1 + 0.07 * P.ck), P.breathe * (1 - 0.1 * P.ck));
+    part('tail', 0, RG.tailY, RG.tailZ, P.tailRx, P.tailRz);
+    // Schultern drehen mit dem Rumpf (bodyYaw), sonst loesen sich die Arme beim Laufen von den Schultern
+    const cyw = Math.cos(P.bodyYaw), syw = Math.sin(P.bodyYaw);
+    part('arm', -RG.armX * cyw, RG.armY + P.sink * 0.7, RG.armX * syw, P.armL, -P.outL, FIG, P.bodyYaw);
+    part('arm', RG.armX * cyw, RG.armY + P.sink * 0.7, -RG.armX * syw, P.armR, P.outR, FIG, P.bodyYaw);
+    const headOpt = { shine: 0.14, rim: FIG.rim, lit: 0.78, tint: FIG.tint };
+    const headM = part('head', 0, RG.headY + P.sink, RG.headZ, P.headTilt, P.headRoll, headOpt, P.headYaw);
+    if (G.lids && P.bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, P.bl, 1)), headOpt);
+    return headM;
+  }
+
+  /* ═══════════ Mehrspieler (Koop) ═══════════
+     Raeume per 5-stelligem Code, gemeinsamer Fortschritt. Server: _docker/mpgate/server.py (lokal Port 8768,
+     auf dem VPS hinter Apache unter /api/mp/ws). Jeder rechnet seine Physik selbst und schickt ~15x/s seine fertige
+     Pose (POSE_KEYS); Mitspieler werden mit drawPose gezeichnet, DELAY ms verzoegert und dazwischen weich gemischt.
+     Sterne: beim Beitreten die eigenen mitschicken (der Raum haelt die Vereinigung), jeder neue Stern geht an alle
+     und landet in jedermanns Spielstand. Bewusst NICHT synchron (v1): Gegner, Muenzen, Schalter, Kisten. */
+  const Net = (() => {
+    const SEND_HZ = 15, DELAY = 110, NAME_KEY = 'glappa64-name', CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/;
+    const ANGLE = POSE_KEYS.map((k) => k === 'yaw');
+    let ws = null, myId = null, room = '', status = 'aus', msg = '', sendT = 0, wantRoom = '', retry = 0, retryT = 0;
+    const others = new Map();                      // id -> { name, cat, buf: [{ t, lv, c, p }], head, pos }
+    const listeners = new Set();
+    let name = '';
+    try { name = localStorage.getItem(NAME_KEY) || ''; } catch (e) { /* ohne Speicher */ }
+    if (!name) name = 'Gast-' + (100 + Math.floor(Math.random() * 900));
+    const url = () => (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)
+      ? `ws://${location.hostname}:8768/`
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/mp/ws`);
+    const emit = () => { for (const f of listeners) f(); };
+    const send = (m) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
+    function setUrlRoom(code) {
+      try { const u = new URL(location.href); if (code) u.searchParams.set('raum', code); else u.searchParams.delete('raum'); history.replaceState(history.state, '', u); } catch (e) { /* egal */ }
+    }
+    function markStar(id) {
+      if (!STARS[id] || state.stars[id]) return false;
+      state.stars[id] = true;
+      return true;
+    }
+    // keep: Raum behalten (Wiederverbinden); rejoin: Server darf den Raum neu anlegen (nach Neustart) - nur bei
+    // automatischem Wiederverbinden und bei Links, nie bei von Hand getippten Codes
+    function connect(code, keep, rejoin = keep) {
+      if (ws) { const o = ws; ws = null; try { o.close(); } catch (e) { /* egal */ } }
+      myId = null; others.clear();
+      if (!keep) { room = ''; retry = 0; }
+      wantRoom = code || 'NEW'; status = 'verbinde'; msg = ''; emit();
+      let welcomed = false, sock;
+      try { sock = new WebSocket(url()); } catch (e) { status = 'aus'; msg = 'Mehrspieler-Server nicht erreichbar.'; emit(); return; }
+      ws = sock;
+      sock.onopen = () => send({ t: 'join', room: wantRoom, rejoin: !!rejoin, name, cat: CAT.id, stars: Object.keys(state.stars).filter((k) => state.stars[k]) });
+      sock.onmessage = (ev) => {
+        if (ws !== sock) return;
+        let m;
+        try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (m.t === 'welcome') welcomed = true;
+        onMsg(m);
+      };
+      sock.onclose = () => {
+        if (ws !== sock) return;
+        ws = null; myId = null; others.clear();
+        if (status !== 'fehler') {
+          if (room && retry < 5) { status = 'weg'; msg = 'Verbindung weg – verbinde neu …'; retryT = 1.5 + retry++; wantRoom = room; }
+          else { status = 'aus'; msg = welcomed || room ? 'Verbindung verloren.' : 'Mehrspieler-Server nicht erreichbar.'; room = ''; setUrlRoom(''); }
+        }
+        emit();
+      };
+    }
+    function leave() {
+      const o = ws; ws = null; myId = null; others.clear(); retryT = 0; room = ''; status = 'aus'; msg = '';
+      if (o) try { o.close(); } catch (e) { /* egal */ }
+      setUrlRoom(''); emit();
+    }
+    function onMsg(m) {
+      if (m.t === 'welcome') {
+        myId = m.id; room = m.room; status = 'drin'; msg = ''; retry = 0;
+        let n = 0;
+        for (const id of m.stars || []) if (markStar(id)) n++;
+        if (n) { save(); renderHud('stars'); }
+        for (const q of m.players || []) others.set(q.id, { name: q.name, cat: q.cat, buf: q.st ? [{ t: performance.now(), ...q.st }] : [] });
+        setUrlRoom(room);
+        toast(n ? `\u{1F465} Raum ${room}: ${n} Stern${n === 1 ? '' : 'e'} von den anderen übernommen` : `\u{1F465} Raum ${room} – Code weitergeben zum Mitspielen`);
+      } else if (m.t === 'join') {
+        others.set(m.id, { name: m.name, cat: m.cat, buf: [] });
+        toast(`\u{1F465} ${m.name} ist da`);
+      } else if (m.t === 'leave') {
+        const o = others.get(m.id);
+        others.delete(m.id);
+        if (o) toast(`\u{1F465} ${o.name} ist gegangen`);
+      } else if (m.t === 'st') {
+        const o = others.get(m.id);
+        if (!o || !Array.isArray(m.p) || m.p.length !== POSE_KEYS.length) return;
+        const lvWas = o.buf.length ? o.buf[o.buf.length - 1].lv : null;
+        o.cat = m.c;
+        o.buf.push({ t: performance.now(), lv: m.lv, c: m.c, p: m.p });
+        if (o.buf.length > 12) o.buf.shift();
+        if (lvWas === m.lv) return;                // sonst kein emit: kommt 15x pro Sekunde - nur bei Weltwechsel
+      } else if (m.t === 'stars') {
+        let n = 0;
+        for (const id of m.ids || []) if (markStar(id)) n++;
+        if (n) { save(); renderHud('stars'); toast(`⭐ ${m.by} hat ${n === 1 ? 'einen Stern' : n + ' Sterne'} geholt – zählt für alle!`); }
+      } else if (m.t === 'error') {
+        status = 'fehler'; msg = m.msg || 'Fehler'; room = ''; setUrlRoom('');
+        const o = ws; ws = null;
+        if (o) try { o.close(); } catch (e) { /* egal */ }
+      }
+      emit();
+    }
+    function tick(dt) {
+      if (retryT > 0 && !ws) { retryT -= dt; if (retryT <= 0) connect(wantRoom, true); }
+      if (!ws || ws.readyState !== 1 || !myId || !pl.netPose || !cur) return;
+      if ((sendT -= dt) > 0) return;
+      sendT = 1 / SEND_HZ;
+      const P = pl.netPose;
+      send({ t: 'st', lv: cur.key, c: CAT.id, p: POSE_KEYS.map((k) => Math.round((P[k] || 0) * 1000) / 1000) });
+    }
+    // Zustand zur Zeit t (DELAY ms zurueck): zwischen zwei Posen weich mischen, Drehwinkel ueber den kuerzeren Weg
+    function sample(buf, t) {
+      if (!buf.length) return null;
+      if (t <= buf[0].t) return buf[0];
+      for (let i = buf.length - 1; i > 0; i--) {
+        const a = buf[i - 1], b = buf[i];
+        if (a.t > t) continue;
+        if (t >= b.t || a.lv !== b.lv || a.c !== b.c) return b.t <= t ? b : a;
+        const k = (t - a.t) / (b.t - a.t);
+        return { lv: b.lv, c: b.c, p: a.p.map((v, j) => (ANGLE[j] ? v + angDiff(v, b.p[j]) * k : v + (b.p[j] - v) * k)) };
+      }
+      return buf[buf.length - 1];
+    }
+    function drawOthers() {
+      if (!others.size || !cur) return;
+      const t = performance.now() - DELAY;
+      for (const o of others.values()) {
+        o.head = null;
+        const sm = sample(o.buf, t);
+        if (!sm || sm.lv !== cur.key) continue;
+        const P = {};
+        POSE_KEYS.forEach((k, j) => { P[k] = sm.p[j]; });
+        const G = CATS.find((c) => c.id === sm.c) || CATS.find((c) => c.id === 'astro') || CATS[0];
+        const headM = drawPose(G, P);
+        o.head = M4.point(headM, [0, 0.95, 0]);
+        o.pos = [P.x, P.y, P.z];
+      }
+    }
+    function shadows() { for (const o of others.values()) if (o.head) shadowAt(o.pos[0], o.pos[1], o.pos[2], 0.75); }
+    // Namensschild ueber dem Kopf - ueber drawSign, damit es auch im Roehren-Filter scharf bleibt
+    const tagTex = new Map();
+    function tag(nm) {
+      let t = tagTex.get(nm);
+      if (!t) {
+        t = signTexture((c, w, h) => {
+          c.fillStyle = '#10103a'; c.fillRect(0, 0, w, h);
+          c.strokeStyle = '#ff5cf0'; c.lineWidth = 6; c.strokeRect(3, 3, w - 6, h - 6);
+          c.font = '900 40px "Comic Sans MS", "Comic Neue", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+          c.lineJoin = 'round'; c.lineWidth = 7; c.strokeStyle = '#000'; c.strokeText(nm, w / 2, h / 2 + 2, w - 24);
+          c.fillStyle = '#fff45c'; c.fillText(nm, w / 2, h / 2 + 2, w - 24);
+        }, 320, 72, 512, 128);
+        tagTex.set(nm, t);
+      }
+      return t;
+    }
+    function drawTags() {
+      for (const o of others.values()) {
+        if (!o.head) continue;
+        const [x, y, z] = o.head;
+        drawSign(MESH.nameTag, M4.from(x, y, z, Math.atan2(cam.pos[0] - x, cam.pos[2] - z)), { tex: tag(o.name), lit: 0 });
+      }
+    }
+    function autoJoin() {
+      if (ws || status !== 'aus') return;
+      const c = (new URLSearchParams(location.search).get('raum') || '').toUpperCase();
+      if (CODE_RE.test(c)) connect(c, false, true);   // Code aus dem Link: nach einem Server-Neustart den Raum wiederbeleben
+    }
+    function setName(n) {
+      const v = String(n || '').replace(/[^\w äöüÄÖÜß.\-]/g, '').slice(0, 16).trim();
+      if (!v) return;
+      name = v;
+      try { localStorage.setItem(NAME_KEY, name); } catch (e) { /* egal */ }
+    }
+    return {
+      connect, leave, tick, drawOthers, shadows, drawTags, autoJoin, setName,
+      // Testhilfe (?debug): Verbindungszustand und was von wem angekommen ist
+      debug: () => ({ ws: ws && ws.readyState, myId, room, status, sendT: +sendT.toFixed(3), pose: !!pl.netPose,
+        others: [...others].map(([id, o]) => ({ id, name: o.name, n: o.buf.length, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : null })) }),
+      star(id) { send({ t: 'star', id }); },
+      onChange(f) { listeners.add(f); },
+      get name() { return name; }, get room() { return room; }, get status() { return status; }, get msg() { return msg; },
+      get players() { return [...others.values()].map((o) => ({ name: o.name, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : '' })); },
+    };
+  })();
+  MESH.nameTag = build((g) => planeGeo(g, I4, 1.5, 0.34, 1, 1, C.white));
+  // Pausenmenue: Abschnitt "Mehrspieler"
+  (() => {
+    const nameIn = $('#mpName'), codeIn = $('#mpCode'), st = $('#mpStatus'), list = $('#mpList');
+    if (!nameIn) return;
+    nameIn.value = Net.name;
+    nameIn.addEventListener('change', () => { Net.setName(nameIn.value); nameIn.value = Net.name; });
+    $('#mpNew').addEventListener('click', () => { Net.setName(nameIn.value); Net.connect('NEW'); Snd.press(); });
+    $('#mpJoin').addEventListener('click', () => {
+      Net.setName(nameIn.value);
+      const c = codeIn.value.trim().toUpperCase();
+      if (/^[A-HJ-NP-Z2-9]{5}$/.test(c)) { Net.connect(c); Snd.press(); } else { st.textContent = 'Der Code hat 5 Zeichen (Buchstaben A–Z ohne I/O, Ziffern 2–9).'; }
+    });
+    codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#mpJoin').click(); });
+    $('#mpLeave').addEventListener('click', () => { Net.leave(); Snd.press(); });
+    $('#mpCopy').addEventListener('click', () => {
+      const u = location.origin + location.pathname + '?raum=' + Net.room;
+      const done = () => { st.textContent = 'Link kopiert – einfach weiterschicken: ' + u; };
+      if (navigator.clipboard) navigator.clipboard.writeText(u).then(done, () => { st.textContent = u; }); else st.textContent = u;
+    });
+    const where = (lv) => (levels[lv] && levels[lv].name) || (lv ? lv : '…');
+    function sync() {
+      const on = Net.status === 'drin';
+      $('#mpOff').hidden = on || Net.status === 'verbinde' || Net.status === 'weg';
+      $('#mpOn').hidden = !on;
+      nameIn.disabled = on;
+      $('#mpRoom').textContent = Net.room;
+      const ps = Net.players;
+      st.textContent = Net.status === 'verbinde' ? 'Verbinde …'
+        : on ? (ps.length ? `Im Raum mit ${ps.length} Mitspieler${ps.length === 1 ? '' : 'n'}. Geholte Sterne zählen für alle.` : 'Warte auf Mitspieler – Code oder Link weitergeben.')
+          : Net.msg || 'Zusammen spielen: einer erstellt einen Raum und gibt den Code weiter. Geholte Sterne gehören dann allen.';
+      list.replaceChildren(...ps.map((q) => { const li = document.createElement('li'); li.textContent = `${q.name} – ${where(q.lv)}`; return li; }));
+    }
+    Net.onChange(sync);
+    sync();
+  })();
+
   function drawPlayer() {
     const cine = Cine.active;
     // Eintauchen: aufleuchten, in die Laenge ziehen, verschwinden (die Funken fliegen ins Bild)
@@ -11970,6 +12447,9 @@ void main() {
     const a = pl.action;
     let spin = (a === 'pound' && pl.pound < 0.3 ? pl.pound / 0.3 * TAU : 0) + dissolve * dissolve * 9;
     let rx = 0, rz = 0, dy = 0;
+    // Beinfeger: sweepK = Fortschritt 0..1, sweepE = Huellkurve (weich rein aus der Hocke, weich zurueck)
+    const sweepK = pl.sweepT > 0 ? 1 - pl.sweepT / SWEEP_DUR : 0;
+    const sweepE = pl.sweepT > 0 ? smooth(Math.min(1, sweepK / 0.14, (1 - sweepK) / 0.16)) : 0;
     const lying = pl.knock > 0, swim = a === 'swim' && !pl.grounded;
     const swim01 = swim ? clamp(pl.speed / 4.8, 0, 1) : 0;
     if (a === 'triple') rx = pl.flip;
@@ -11984,7 +12464,14 @@ void main() {
     else if (swim) { rx = lerp(0.25, 1.35, swim01); dy = swim01 * 0.35 + Math.sin(pl.swimPh * 0.5) * 0.05; }
     else if (a === 'climb') rx = Math.sin(pl.climbK * Math.PI) * 0.55;
     else if (lying) { rx = -1.3; dy = -0.72; }
-    else if (pl.crawl || (pl.grounded && pl.forceCrouch)) { rx = 1.2; dy = -0.62; }   // unter niedriger Decke auch im Stand
+    else if (pl.sweepT > 0) {
+      // seitlich flach zu Boden und einmal um die eigene Achse (das gestreckte Bein fegt dabei rundum)
+      rz = 1.2 * sweepE; dy = -0.62 * sweepE;
+      spin += TAU * smooth(clamp((sweepK - 0.1) / 0.78, 0, 1));
+    } else if (pl.crawl || (pl.grounded && pl.forceCrouch)) {
+      // Krabbeln wie im Vorbild: Rumpf fast waagrecht, auf Haenden und Knien (Hoehe folgt der Beinlaenge der Figur)
+      rx = 1.38; dy = -0.3 - CAT.rig.legY * 0.45;
+    }   // unter niedriger Decke auch im Stand
     else if (pl.skid) rx = -0.35;
     let stretch = 1 + dissolve * 0.6, thin = 1 - dissolve * 0.6;
     if (a === 'double') { const k = clamp(pl.vel[1] * 0.012, -0.12, 0.16); stretch += k; thin -= k * 0.55; }
@@ -12004,7 +12491,7 @@ void main() {
     turnRate = turnRate * 0.82 + dF * 18;
     const turn = clamp(turnRate, -1.2, 1.2);
     const free = pl.grounded && !lying && !pl.crawl && !pl.forceCrouch && !pl.crouch && !swim && a !== 'slide' && a !== 'dive';
-    if (free) { rx += 0.2 * run01 * run01; rz += -turn * 0.22 * run01; }
+    if (free) { rx += 0.42 * run01 * run01; rz += -turn * 0.22 * run01; }
     if (free && pl.gait === 'sneak') { rx += 0.2; dy -= 0.12; }
     // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten
     const idle = free && run01 < 0.05 && !pl.hold && pk < 0 && !cine ? idleState(pl.idleT || 0) : null;
@@ -12018,24 +12505,24 @@ void main() {
     const crouchTo = pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' ? 1 : 0;
     for (let i = 0; i < 3; i++) { crouchV += ((crouchTo - crouchK) * 900 - crouchV * 36) * cdt / 3; crouchK += crouchV * cdt / 3; }
     if (!pl.grounded || swim || lying || cine) { crouchK = 0; crouchV = 0; }   // Absprung aus der Hocke: Luftpose uebernimmt sofort
-    const ck = clamp(crouchK, 0, 1.12), cUp = clamp(-crouchK, 0, 0.3);
+    const ck = clamp(crouchK, 0, 1.12) * (1 - sweepE), cUp = clamp(-crouchK, 0, 0.3);
     // Hock-Rutscher: aus vollem Lauf geduckt -> Ruecklage und Arme zum Balancieren
     const cSlide = pl.crouch ? clamp((Math.abs(pl.speed) - 1.5) / 5, 0, 1) : 0;
-    const cLean = ck * lerp(0.3, -0.14, cSlide), cLegW = -0.72, cSplay = 0.42 * ck, cLegSY = 1 - 0.3 * ck;
+    const cLean = ck * lerp(0.3, -0.14, cSlide), cLegW = -0.72, cSplay = 0.5 * ck, cLegSY = 1 - 0.3 * ck;
     if (ck > 0.001) {
       const L2 = CAT.rig.legY;
       rx += cLean;
       // so weit absenken, dass die Fuesse am Boden bleiben (+ die Hueft-Anhebung durch das Vorbeugen)
-      dy -= ck * (L2 - L2 * (1 - 0.3) * Math.cos(cLegW) * Math.cos(0.42)) + (1.1 - L2) * (1 - Math.cos(cLean));
+      dy -= ck * (L2 - L2 * (1 - 0.3) * Math.cos(cLegW) * Math.cos(0.5)) + (1.1 - L2) * (1 - Math.cos(cLean));
       dy += Math.sin(clock * 3.1) * 0.01 * ck;   // atmen in der Hocke
     }
     if (cUp > 0) { stretch += cUp * 0.55; thin -= cUp * 0.25; }
     if (idle && idle.kind === 'chase') { spin += smooth(idle.k) * TAU * 2; dy += Math.abs(Math.sin(idle.k * Math.PI * 8)) * 0.1 * env; }
     if (idle && idle.kind === 'stretch') { stretch += 0.07 * env; thin -= 0.035 * env; dy += 0.06 * env; }
     if (idle && idle.kind === 'sleep') { dy -= 0.46 * env; rx -= 0.14 * env; }
-    const base = M4.mul(M4.from(p[0], p[1] + 1.1 + dy, p[2], pl.face + spin + twist, rx, rz),
-      M4.from(0, -1.1, 0, 0, 0, 0, sx * ek * thin, sq * ek * stretch, sx * ek * thin));
-    let legL, legR, armL, armR, armOut = 0.2, headTilt = 0;
+    let legL, legR, armL, armR, armOut = 0.2, headTilt = 0, armOutR = null;
+    // legSY*: Bein in der Laenge stauchen = sieht aus wie ein gebeugtes Knie (die Beine sind aus einem Stueck)
+    let legSYL = 1, legSYR = 1, legSplay = 0, bodyYaw = 0, legOutR = 0;
     let tailRx = -1.85 + run01 * 0.35, tailRz = Math.sin(clock * 2.3) * 0.3;
     if (lying) {
       legL = -1.1; legR = -0.7; armL = armR = -2.8; armOut = 1.2; headTilt = 0.4;
@@ -12057,9 +12544,19 @@ void main() {
       legL = Math.sin(ph * (1.2 + swim01)) * (0.35 + swim01 * 0.15); legR = -legL;
       headTilt = -swim01 * 1.0;
       tailRx = lerp(-1.3, -2.7, swim01); tailRz = Math.sin(ph * 1.3) * 0.55;
+    } else if (pl.sweepT > 0) {
+      // Beinfeger: unteres Bein angewinkelt, oberes gestreckt weit abgespreizt; unterer Arm stuetzt am Boden,
+      // oberer balanciert nach aussen; Kopf schaut ueber die Schulter nach vorn
+      legL = -0.9; legSYL = 0.72; legR = -0.35; legOutR = 1.25;
+      armL = -0.5; armOut = 1.25; armR = -1.1; armOutR = 0.9;
+      headTilt = -0.35; tailRx = -1.2; tailRz = 1.0;
     } else if (pl.grounded && (pl.crawl || pl.forceCrouch)) {
+      // Krabbeln wie im Vorbild: Haende greifen abwechselnd vor dem Gesicht nach vorn, Knie am Boden, Unterschenkel
+      // flach nach hinten (Bein schraeg nach hinten und gestaucht), Kopf hoch und schaut nach vorn
       const c = Math.sin(pl.walk * 2.4);
-      armL = -1.3 + c * 0.5; armR = -1.3 - c * 0.5; legL = 0.7 - c * 0.45; legR = 0.7 + c * 0.45; armOut = 0.15; headTilt = -0.9;
+      armL = -2.05 + c * 0.4; armR = -2.05 - c * 0.4; armOut = 0.22;
+      legL = -0.35 - c * 0.3; legR = -0.35 + c * 0.3; legSYL = legSYR = 0.86;
+      headTilt = -1.5;
       tailRx = -2.4;
     } else if (a === 'bonk') {
       legL = -0.9; legR = -0.5; armL = armR = -2.7; armOut = 1;
@@ -12070,8 +12567,18 @@ void main() {
       legL = sw * 0.6; legR = -legL; armL = -1.25 + sw * 0.12; armR = -1.25 - sw * 0.12; armOut = 0.35;
       tailRx = -2.4; tailRz += sw * 0.15;
     } else if (pl.grounded) {
-      legL = sw * 0.95 * run01; legR = -legL; armL = -legL * 0.8; armR = legL * 0.8;
-      if (run01 < 0.05) { armOut = 0.12 + Math.sin(clock * 2) * 0.03; }
+      /* Laufen wie im Vorbild: das Bein vorn nur maessig, hinten weit ausgeschlagen und gestaucht (wirkt wie ein
+         hochgeschlagener Unterschenkel), Arme pumpen kraeftig und leicht abgespreizt, der Rumpf dreht gegen die
+         Schritte, der Kopf haelt gegen die Vorlage. Beim Gehen skaliert alles mit run01 herunter: aufrecht,
+         kleine Schritte, Arme pendeln leicht. */
+      const kick = (s2) => (s2 < 0 ? s2 * 0.85 : s2 * 1.3) * run01;
+      legL = kick(sw); legR = kick(-sw);
+      legSYL = 1 - 0.15 * Math.max(0, sw) * run01; legSYR = 1 - 0.15 * Math.max(0, -sw) * run01;
+      armL = -sw * 1.05 * run01; armR = sw * 1.05 * run01;
+      armOut = 0.2 + 0.12 * run01;
+      bodyYaw = sw * 0.14 * run01;
+      headTilt -= 0.3 * run01 * run01;
+      if (run01 < 0.05) { armOut = 0.24 + Math.sin(clock * 2) * 0.03; legSplay = 0.06; }   // Stand: Arme weg vom Koerper, Fuesse leicht auseinander
       tailRz += sw * 0.25 * run01;
     } else if (a === 'pound') {
       legL = legR = -1.2; armL = armR = -0.4; armOut = 1.1;
@@ -12080,23 +12587,51 @@ void main() {
     } else if (a === 'dive' || a === 'slide') {
       armL = armR = -3.05; armOut = 0.18; legL = 0.25; legR = 0.15; headTilt = -1.1; tailRx = -3.0;
       if (a === 'slide') { const w = Math.sin(clock * 18) * 0.08 * clamp(pl.speed / 10, 0, 1); armOut += w; legL += w; }
-    } else if (a === 'triple' || a === 'backflip' || a === 'sideflip' || a === 'rollout') {
-      legL = legR = -1.3; armL = armR = -0.5; armOut = 0.6;
+    } else if (a === 'triple' || a === 'rollout') {
+      // Dreifachsprung wie im Vorbild: eng eingerollter Salto vorwaerts (Knie an die Brust, Arme um die Knie,
+      // Kopf eingezogen); im letzten Viertel oeffnet sich die Figur zur Landung
+      const open = smooth(clamp((pl.flip / TAU - 0.75) / 0.25, 0, 1));
+      legL = legR = lerp(-1.65, -0.35, open); legSYL = legSYR = lerp(0.78, 1, open);
+      armL = armR = lerp(-1.0, -0.55, open); armOut = lerp(0.18, 0.95, open);
+      headTilt = lerp(0.45, 0, open);
+    } else if (a === 'backflip' || a === 'sideflip') {
+      // Rueckwaerts-/Seitsalto wie im Vorbild: beim Absprung beide Arme steil hoch, dann weit ausgebreitet
+      // (T-Form) mit gestreckten, geschlossenen Beinen durch die ganze Drehung
+      const k = smooth(clamp(pl.flip / TAU / 0.25, 0, 1));
+      armL = armR = lerp(-2.95, -0.15, k); armOut = lerp(0.18, 1.45, k);
+      legL = legR = lerp(0.1, 0.2, k); legSplay = 0.03;
+      headTilt = -0.15;
     } else if (a === 'double') {
-      // Zweiter Sprung: Hocke mit angezogenen Knien, Arme hoch — beim Fallen streckt sich alles wieder
-      const up = clamp(pl.vel[1] / 16, -1, 1), tuck = clamp(0.4 + up * 0.8, 0, 1);
-      legL = -1.5 * tuck - 0.1; legR = -1.2 * tuck + 0.14;
-      armL = armR = -2.5 - 0.5 * tuck; armOut = 0.3 + 0.6 * tuck;
-      headTilt = 0.2 * up;
-      tailRx = -2.5 + (1 - tuck) * 0.9; tailRz += Math.sin(clock * 7) * 0.14;
+      // Doppelsprung wie im Vorbild: Arme weit zur Seite ausgebreitet, ein Knie hoch, das andere Bein gestreckt;
+      // beim Fallen sinken die Arme ein Stueck und die Beine gehen zur Landung auseinander
+      const up = clamp(pl.vel[1] / 16, -1, 1), rise = clamp(0.5 + up * 0.5, 0, 1);
+      armL = armR = lerp(-0.55, -0.25, rise); armOut = lerp(1.05, 1.45, rise);
+      legL = lerp(-0.45, -1.3, rise); legSYL = lerp(1, 0.8, rise); legR = lerp(-0.1, 0.25, rise);
+      headTilt = 0.1 * up;
+      tailRx = -2.5 + (1 - rise) * 0.9; tailRz += Math.sin(clock * 7) * 0.14;
+    } else if (a === 'jump' || a === 'wallkick') {
+      // Einzelsprung wie im Vorbild: rechte Faust steil nach oben, linker Arm nach hinten unten, linkes Knie hoch,
+      // rechtes Bein gestreckt. Beim Fallen senkt sich die Faust und die Beine strecken sich zur Landung
+      const up = clamp(pl.vel[1] / 14, -1, 1), rise = clamp(0.55 + up * 0.45, 0, 1);
+      armR = lerp(-2.2, -3.0, rise); armOutR = 0.3;   // leicht abgespreizt, sonst verschwindet die Faust neben grossen Koepfen
+      armL = lerp(0.2, 0.55, rise); armOut = lerp(0.45, 0.3, rise);
+      legL = lerp(-0.5, -1.25, rise); legSYL = lerp(0.95, 0.8, rise);
+      legR = lerp(0.05, 0.3, rise);
+      tailRx = -1.3 + clamp(pl.vel[1] * 0.04, -0.6, 0.4);
     } else {
       legL = -0.7; legR = 0.35; armL = armR = -2.4; armOut = 0.5; tailRx = -1.3 + clamp(pl.vel[1] * 0.04, -0.6, 0.4);
+    }
+    const sinceLand = time - (pl.landT ?? -9);
+    if (pl.grounded && !lying && run01 < 0.35 && sinceLand < 0.4 && ['backflip', 'sideflip', 'triple', 'double'].includes(pl.landFrom)) {
+      const k = 1 - smooth(sinceLand / 0.4);
+      armOut = lerp(armOut, 1.15, k); armL = lerp(armL, -0.2, k); armR = lerp(armR, -0.2, k);
     }
     if (ck > 0.001) {                                // Hocke (siehe crouchK) ueber die Bodenpose mischen
       const w = Math.min(1, ck);
       legL = lerp(legL, cLegW - cLean, w); legR = lerp(legR, cLegW - cLean, w);
-      armL = lerp(armL, lerp(-0.72, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-0.72, -1.05, cSlide) - cLean, w);
-      armOut = lerp(armOut, lerp(0.14, 1.05, cSlide), w);
+      // Haende wie im Vorbild seitlich am Kopf hochgezogen; beim Hock-Rutscher zum Balancieren nach aussen
+      armL = lerp(armL, lerp(-2.7, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-2.7, -1.05, cSlide) - cLean, w);
+      armOut = lerp(armOut, lerp(0.45, 1.05, cSlide), w);
       headTilt -= cLean * 1.1 + 0.08 * w;          // Kopf bleibt beim Vorbeugen gerade nach vorn gerichtet
       tailRx = lerp(tailRx, -1.3, w); tailRz = lerp(tailRz, 0.55 + Math.sin(clock * 1.6) * 0.12, w);
     }
@@ -12114,7 +12649,7 @@ void main() {
       }
     }
     // Leerlauf: Glieder, Kopf und Lider je nach Animation
-    let armOutR = null, headYawAdd = 0, lidK = 0;
+    let headYawAdd = 0, lidK = 0;
     if (idle) {
       const e = env, s = Math.sin;
       if (idle.kind === 'look') {                       // Umschauen: erst links, dann rechts
@@ -12136,38 +12671,30 @@ void main() {
     }
     if (mode === 'starget' && pl.grounded) { armR = -2.95; armOutR = 0.35; armL = -0.4; headTilt -= 0.3; }   // Siegerpose
     if (pl.looking) headTilt = -0.55;
-    const bob = pl.grounded ? Math.abs(sw) * 0.05 * run01 + Math.sin(clock * 2.2) * 0.012 : 0;
+    const bob = pl.grounded ? Math.abs(sw) * 0.07 * run01 + Math.sin(clock * 2.2) * 0.012 : 0;
     const glowK = dissolve > 0 ? dissolve : appear < 1 ? (1 - appear) * 0.9 : 0;
     const FIG = { shine: 0.06, rim: 0.16 + glowK * 1.6, lit: 0.78, tint: glowK > 0 ? [1, 1, 0.92, glowK] : undefined };
-    const G = CAT, RG = G.rig, GLOW = { lit: 0, tint: FIG.tint };
-    const part = (key, tx, ty, tz, rx2, rz2, o = FIG, ry2 = 0, sc = 1, scy = sc) => {
-      const m = M4.mul(base, M4.from(tx, ty + bob, tz, ry2, rx2, rz2, sc, scy, sc));
-      draw(G[key], m, o);
-      if (G.glow[key]) draw(G.glow[key], m, GLOW);
-      return m;
-    };
     // in der Hocke: Beine nach aussen gewinkelt und verkuerzt (gebeugte Knie), Koerper gestaucht, Kopf sinkt ein
-    part('leg', -RG.legX, RG.legY - bob, 0, legL, -cSplay, FIG, 0, 1, cLegSY);
-    part('leg', RG.legX, RG.legY - bob, 0, legR, cSplay, FIG, 0, 1, cLegSY);
     const cSink = -0.11 * ck;
     // Atmen im Stand: der Koerper hebt und senkt sich ganz leicht
     const sleeping = idle && idle.kind === 'sleep';
     const breathe = pl.grounded && run01 < 0.05 && !lying ? 1 + Math.sin(clock * (sleeping ? 1.1 : 1.7)) * (sleeping ? 0.035 : 0.016) : 1;
-    part('body', 0, RG.bodyY + cSink * 0.3, 0, 0, 0, FIG, 0, breathe * (1 + 0.07 * ck), breathe * (1 - 0.1 * ck));
-    // Schweif schwingt in Kurven nach aussen
-    part('tail', 0, RG.tailY, RG.tailZ, tailRx, tailRz + turn * 0.35);
-    part('arm', -RG.armX, RG.armY + cSink * 0.7, 0, armL, -armOut);
-    part('arm', RG.armX, RG.armY + cSink * 0.7, 0, armR, armOutR ?? armOut);
     // Kopf schaut leicht in die Kurve; alle paar Sekunden ein Ohrenzucken
     const twitch = Math.max(0, Math.sin(clock * 0.41)) > 0.995 ? Math.sin(clock * 40) * 0.08 : 0;
-    const headOpt = { shine: 0.14, rim: FIG.rim, lit: 0.78, tint: FIG.tint };
     // im Stand schaut der Kopf ein Stueck zur Kamera, im Lauf in die Kurve
     const toCam = angDiff(pl.face, Math.atan2(cam.pos[0] - p[0], cam.pos[2] - p[2]));
     const headYaw = (run01 < 0.06 && pl.grounded && !lying ? clamp(toCam, -0.55, 0.55) * 0.5 * (1 - env) : clamp(turn * 0.25, -0.35, 0.35)) + headYawAdd;
-    const headM = part('head', 0, RG.headY + cSink, RG.headZ, headTilt, Math.sin(clock * 1.3) * 0.05 + twitch, headOpt, headYaw);
     // Blinzeln: das Lid wird in der Hoehe aufgezogen (beim Gaehnen/Schlafen bleibt es zu)
     const bl = swim || lying ? 0 : Math.max(blinkAt(clock, 0), lidK);
-    if (G.lids && bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), headOpt);
+    // Fertige Pose: drawPose zeichnet daraus die Figur - dieselbe Pose geht an die Mitspieler (Net)
+    const P = pl.netPose = {
+      x: p[0], y: p[1], z: p[2], yaw: pl.face + spin + twist, rx, rz, dy, sx: sx * ek * thin, sy: sq * ek * stretch,
+      legL, legR, splL: cSplay + legSplay, splR: cSplay + legSplay + legOutR, legSYL: cLegSY * legSYL, legSYR: cLegSY * legSYR,
+      bob, sink: cSink, breathe, ck, bodyYaw, tailRx, tailRz: tailRz + turn * 0.35,
+      armL, armR, outL: armOut, outR: armOutR ?? armOut,
+      headTilt, headRoll: Math.sin(clock * 1.3) * 0.05 + twitch, headYaw, bl,
+    };
+    const headM = drawPose(CAT, P, FIG);
     // Schlaf-Zs steigen aus dem Kopf auf
     if (sleeping && env > 0.6 && clock - zzzT > 1.3) { zzzT = clock; zzz.push({ t0: clock, p: M4.point(headM, [0.2, 0.35, 0]) }); }
     for (let i = zzz.length - 1; i >= 0; i--) {
@@ -12217,6 +12744,7 @@ void main() {
      in die kleinen Karten-Canvas kopiert. Die ausgewaehlte Figur dreht sich und winkt. */
   const CatPick = (() => {
     const SIZE = 192, root = $('#catPick');
+    root.style.setProperty('--n', CATS.length);   // so viele Spalten wie Figuren (Kappi gibt es nur mit Modelldatei)
     let fb = null, ok = false, px = null, img = null, t = 0, built = false;
     const cards = [];
     function setup() {
@@ -12708,6 +13236,7 @@ void main() {
     Life.drawOpaque(L);
     if (L.drawSolid) L.drawSolid();
     for (const d of L.decals) drawSign(d.mesh, d.model, { tex: d.tex, lit: 0.9 });
+    Net.drawTags();
 
     // Level-Extras (undurchsichtig)
     if (L.blueSwitch) {
@@ -12746,6 +13275,7 @@ void main() {
     for (const e of L.enemies) drawEnemy(e);
     if (curTrip) setTrip(0);
     drawPlayer();
+    Net.drawOthers();
     if (curTrip) setTrip(curTrip);
 
     // Durchsichtiges
@@ -12754,6 +13284,7 @@ void main() {
     gl.enable(gl.POLYGON_OFFSET_FILL);
     gl.polygonOffset(-2, -2);
     if (!pl.entering) shadowAt(pl.pos[0], pl.pos[1], pl.pos[2], 0.75);
+    Net.shadows();
     for (const e of L.enemies) {
       if (e.state === 'dead' || e.state === 'gone' || e.state === 'wait' || e.state === 'off' || e.state === 'hide') continue;
       shadowAt(e.pos[0], e.pos[1], e.pos[2], e.type === 'toast' ? 0.9 : e.type === 'roller' ? e.r * e.scale : e.type === 'bat' ? 0.6 : 1);
@@ -12851,6 +13382,7 @@ void main() {
     updateCamera(dt, inp);
     ArtGen.pump(64);
     Skybox.pump();
+    Net.tick(dt);
     render();
     if (mode === 'pause') CatPick.tick(dt);
     updatePrompt(mode === 'play' && !Dialog.open ? interactable() : null);
@@ -12980,7 +13512,7 @@ void main() {
       backflip: run(null, (k) => IN({ z: true, zP: k === 0, jump: k >= 6, jumpP: k === 6 })),
       sideflip: run(full, (k) => IN({ my: k < 2 ? -1 : 1, jump: pl.skid || k > 60, jumpP: pl.skid })),
       long: run(full, (k) => IN({ my: -1, z: k < 3, zP: k === 0, jump: k >= 1, jumpP: k === 1 })),
-      wallkick: run(() => airborne('wallkick', 62 * UF, 24 * UF), () => IN({ my: -1 })),
+      wallkick: run(() => airborne('wallkick', jv(62), 24 * UF), () => IN({ my: -1 })),
       dive: run(full, (k) => IN({ my: -1, action: k === 0, actionP: k === 0 })),
       rollout: run(full, (k) => IN({ my: -1, action: k === 0, actionP: k === 0, jump: pl.action === 'slide', jumpP: pl.action === 'slide' }), 2),
     };
@@ -13002,7 +13534,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
-      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; },
+      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net,
     };
   }
 })();
