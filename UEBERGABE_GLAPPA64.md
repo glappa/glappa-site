@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=104`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
+  **kein root nötig**). Aktuell **JS `?v=107`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -144,6 +144,22 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Rückwärts-/Seitsalto, Weitsprung, Wandsprung, Stampfer, Schlag-Kombo, Sprungtritt, Hechtsprung + Abrollen, Beinfeger,
   Kehrtwenden-Rutscher, Kurvenlage, Umschauen/Strecken/Schlafen, Knallkisten greifen/werfen (einen Bowser gibt es nicht).
 - `g64.measure()` danach: alle `diff` = 0 (keine gemessene Bewegung verändert).
+
+### 1.11 Animationen nach Video 3/4 + Rückwärts-Weitsprung (BLJ) (2026-09-27)
+- Videos: `…\Recordings60927-0050-36.4834232.mp4` (Hocke nah, Beinfeger, Krabbeln, Bremsen, Rennen, Landung) und
+  `…60927-0053-28.3100043.mp4` (BLJs von vorn, Einzelsprünge von der Seite). Frames per ffmpeg `crop`+`tile`.
+- **Hocke** Vorlage 0,72 rad (Seitenansicht zeigt ~45–55° Buckel), Faust vor dem Gesicht (Arm Weltlage −2,3).
+- **Beinfeger** jetzt Liegestütz (rx 1,05, Arme senkrecht zum Boden), gestrecktes Bein flach nach hinten-außen, eine Drehung.
+- **Krabbeln** rx 1,15 (vorher 1,38), Höhe aus Beinlänge, Hände vorn am Boden, Kopf hoch.
+- **Bremsen** 0,75 s: Phase 1 zurückgelehnt rutschen, Fäuste vorn; Phase 2 nach vorn nachkippen (`brkA`/`brkB`).
+- **Kehrtwende** Arme T; **Rennen** Ellbogen außen (`armOut` bis 0,6), Fäuste eher vorn; **Stand** Arme weiter weg.
+- **Landung** nach Dreifach/Salto/Doppel: T-Pose halten (`tHold` 0,8/0,6/0,45 s), dann sinken.
+- **Einzelsprung** fallend: Faust nach vorn, anderer Arm zurück, Beine angewinkelt hinten, leichte Vorlage.
+- **Weitsprung** rx 0,62 (vorher 1,15 = Hechtsprung-Look), Arme seitlich ausgebreitet, Knie angezogen.
+- **BLJ:** Weitsprung auch mit Rückwärts-Tempo (≤ −`BLJ_MIN` 1,5), Tempo ×1,5 nur nach vorn gedeckelt. Flach bleibt es
+  begrenzt (Luft zieht zurück). **Treppen-Trick** (Tag `stair`, A gehalten): Landung auf/Einflug in eine Stufe = sofort
+  nächster BLJ (`bljAgain`, flach mit `BLJ_STAIR_VY` 3 m/s), über Treppen keine Luftbremse → Hallentreppe: 5 → 180 m/s in
+  9 Stufen, Deckel `BLJ_MAX` 250. Bonk-Rückprall auf 12 m/s gedeckelt. Treppen: Halle (10 Stufen), Turm (og), Terrasse.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

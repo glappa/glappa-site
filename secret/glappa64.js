@@ -10126,7 +10126,14 @@ void main() {
      Trifft einmal pro Tritt; A im Ausrutschen = Abrollen. */
   const SLIDEKICK_MIN = 3.5, SLIDEKICK_HOP = 12 * UF, KICKSLIDE_BRAKE = 16;
   // Bremsen aus vollem Lauf (Stick los): kurze Rutsch-Pose mit Staub - der Bremsweg selbst bleibt straff
-  const BRAKE_FROM = 0.6, BRAKE_POSE = 0.3;
+  const BRAKE_FROM = 0.6, BRAKE_POSE = 0.75;   // Pose: erst zuruecklehnen und rutschen, dann nach vorn nachkippen
+  /* Rueckwaerts-Weitsprung (BLJ) wie im Vorbild: im Weitsprung Stick zurueck -> das Tempo kippt ins Minus; landet man
+     geduckt und springt sofort wieder (Z + A), wird das Minus-Tempo wie jedes Weitsprung-Tempo mal 1,5 genommen - nur ist
+     die Obergrenze bloss fuers Vorwaerts-Tempo da. In der Luft zieht es (wie im Vorbild) langsam zurueck, auf flachem
+     Boden schaukelt sich also nichts auf. Der beruehmte Fehler: auf TREPPEN (Tag 'stair') mit gehaltenem A setzt jede
+     Stufenkante sofort den naechsten Weitsprung an -> mal 1,5 pro Stufe -> "unendlich" schnell (gedeckelt auf BLJ_MAX,
+     damit Zahlen und Kollision heil bleiben; duenne Waende sind bei dem Tempo trotzdem durchlaessig - wie im Original). */
+  const BLJ_MIN = 1.5, BLJ_MAX = 250, BLJ_STAIR_VY = 3;   // auf der Treppe flach abspringen: Figur klebt an den Stufen
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
@@ -10208,6 +10215,22 @@ void main() {
     if (!s || Math.abs(s.y1 - s.y0) < STEEP * Math.abs(s.c1 - s.c0)) return null;
     const down = -Math.sign((s.y1 - s.y0) / (s.c1 - s.c0));
     return s.axis === 0 ? [down, 0] : [0, down];
+  }
+  // Treppenstufe (Tag 'stair') unter dem Punkt - die hoechste, falls mehrere
+  function stairUnder(L, p) {
+    let best = null;
+    for (const b of near(L, p[0], p[2])) {
+      if (b.tag !== 'stair' || p[0] < b.min[0] - 0.1 || p[0] > b.max[0] + 0.1 || p[2] < b.min[2] - 0.1 || p[2] > b.max[2] + 0.1) continue;
+      if (!best || b.max[1] > best.max[1]) best = b;
+    }
+    return best;
+  }
+  // BLJ-Kette: sofort der naechste Rueckwaerts-Weitsprung, Tempo mal 1,5 (nur nach vorn gedeckelt)
+  function bljAgain(p) {
+    airborne('long', BLJ_STAIR_VY, clamp(pl.speed * 1.5, -BLJ_MAX, LONG_DRAG));
+    pl.bljN = (pl.bljN || 0) + 1;
+    if (clock - (pl.bljSnd ?? -9) > 0.07) { pl.bljSnd = clock; Snd.jump(2); dust(p, 2); }
+    if (pl.bljN === 6) toast('\u26A1 BLJ! Tempo baut sich auf …');
   }
   function airborne(action, vy, speed) {
     if (action !== 'dive') pl.fallTop = pl.pos[1];   // jeder neue Absprung beginnt eine neue Fallhoehe
@@ -10378,6 +10401,9 @@ void main() {
     // Aufstehen geht nur, wenn ueber dem Kopf Platz ist
     pl.forceCrouch = pl.grounded && pl.h < PH && headBlocked(L, p);
 
+    // BLJ: rueckwaerts im Weitsprung mit gehaltenem A (Treppen-Trick, siehe BLJ_MAX)
+    pl.aHeld = !lock && !!inp.jump;
+    const bljOn = pl.action === 'long' && pl.speed < -BLJ_MIN && pl.aHeld && !pl.grounded;
     // Stick-Richtung relativ zur Kamera
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
     const wx = cy * inp.mx + sy * inp.my, wz = -sy * inp.mx + cy * inp.my;
@@ -10482,7 +10508,7 @@ void main() {
         if (!inp.jumpP) pl.holdGrace = 0.3;                   // gepuffert: nicht als "losgelassen" werten
         const f = Math.max(0, pl.speed) / UF;                 // Tempo in E/F
         const chain = time - pl.landT <= CHAIN_WINDOW ? pl.landFrom : '';
-        const wantLong = (pl.crouch || time - (pl.zDownT ?? -9) < LONG_WINDOW) && pl.speed >= RUN * 0.31;
+        const wantLong = (pl.crouch || time - (pl.zDownT ?? -9) < LONG_WINDOW) && (pl.speed >= RUN * 0.31 || pl.speed <= -BLJ_MIN);
         pl.jumpT = time; pl.jumpSpeed = Math.max(0, pl.speed);
         if (water) {
           airborne('jump', 13, pl.speed); pl.waterJump = true; Snd.splash();
@@ -10490,7 +10516,7 @@ void main() {
           pl.face = moving ? intended : (pl.skidTo ?? intended); pl.skidT = -9;
           airborne('sideflip', jv(62), 8 * UF); Snd.jump(3); Snd.voice('flip');
         } else if (wantLong) {
-          airborne('long', jv(30), Math.min(pl.speed * 1.5, LONG_DRAG)); Snd.jump(2); Snd.voice('long');
+          airborne('long', jv(30), clamp(pl.speed * 1.5, -BLJ_MAX, LONG_DRAG)); Snd.jump(2); Snd.voice('long');
         } else if (pl.crouch && Math.abs(pl.speed) < 1.5) {
           airborne('backflip', jv(62), -16 * UF); Snd.jump(3); Snd.voice('flip');
         } else if (chain === 'double' && pl.speed > RUN * 0.625) {
@@ -10546,7 +10572,7 @@ void main() {
         // Luftsteuerung: vor/zurueck beschleunigen, seitlich driften und sanft in Stickrichtung drehen.
         // Ohne Stick bremst es spuerbar (nur Weitsprung/Hechtsprung behalten ihren Schwung).
         const keep = pl.action === 'long' || pl.action === 'dive' || pl.action === 'bounce' || pl.action === 'slidekick';
-        pl.speed = towardZero(pl.speed, (moving || keep ? 0.35 * UFF : 10) * dt);
+        if (!(bljOn && stairUnder(L, p))) pl.speed = towardZero(pl.speed, (moving || keep ? 0.35 * UFF : 10) * dt);
         pl.side = 0;
         if (moving && !lock && pl.action !== 'knock' && pl.action !== 'bonk' && pl.action !== 'dive' && pl.action !== 'slidekick') {
           if (pl.action !== 'long') pl.face += clamp(dYaw, -3.2 * dt, 3.2 * dt);
@@ -10555,7 +10581,7 @@ void main() {
           pl.side = Math.sin(dY) * mag * 16 * UF;
         }
         if (pl.speed > (pl.action === 'long' || pl.action === 'dive' ? LONG_DRAG : AIR_DRAG)) pl.speed -= UFF * dt;
-        if (pl.speed < -16 * UF) pl.speed += 2 * UFF * dt;
+        if (pl.speed < -16 * UF && !(bljOn && stairUnder(L, p))) pl.speed += 2 * UFF * dt;
         // A losgelassen, waehrend es noch schnell nach oben geht: Sprung kappen
         if ((pl.action === 'jump' || pl.action === 'double') && !inp.jump && pl.holdGrace <= 0 && pl.vel[1] > 20 * UF) pl.vel[1] /= 4;
       }
@@ -10601,7 +10627,16 @@ void main() {
     const kd = Math.pow(0.02, dt); pl.push[0] *= kd; pl.push[2] *= kd;
     p[0] += vx * dt; p[2] += vz * dt; p[1] += pl.vel[1] * dt;
     pl.h = pl.grounded && (pl.crouch || pl.action === 'slide' || pl.action === 'kickslide') ? CROUCH_H : PH;
-    const hit = pushOut(L, p, R, pl.h, Math.max(prevY, p[1]) + (pl.grounded ? STEP_UP : 0.15));
+    let hit = pushOut(L, p, R, pl.h, Math.max(prevY, p[1]) + (pl.grounded ? STEP_UP : 0.15));
+    // BLJ-Treppen-Trick: rueckwaerts im Weitsprung mit gehaltenem A gegen eine Stufenkante -> sofort der naechste Weitsprung
+    if (bljOn) {
+      const st = hit && hit.b.tag === 'stair' ? hit.b : stairUnder(L, p);
+      if (st && st.max[1] - p[1] < 0.9 && st.max[1] - p[1] > (hit && hit.b === st ? -0.3 : 0)) {
+        p[1] = st.max[1] + 0.01;
+        bljAgain(p);
+        if (hit && hit.b === st) hit = null;
+      }
+    }
     if (hit && chute && pl.action === 'slide') {
       // An der Bande der Rutschbahn entlanggleiten statt abprallen
       const n = hit.n, fx = Math.sin(pl.face), fz = Math.cos(pl.face), d = fx * n[0] + fz * n[2];
@@ -10615,7 +10650,7 @@ void main() {
         if (into > 16 * UF || pl.action === 'long' || pl.action === 'dive') {
           // BONK: mit Wucht dagegen -> abprallen, Sternchen sehen, hinfallen
           pl.face = Math.atan2(-hit.n[0], -hit.n[2]);
-          pl.action = 'bonk'; pl.speed = -Math.max(5, into * 0.45); pl.side = 0; pl.flip = 0;
+          pl.action = 'bonk'; pl.speed = -clamp(into * 0.45, 5, 12); pl.side = 0; pl.flip = 0;   // gedeckelt (BLJ-Tempo)
           pl.vel[1] = Math.min(pl.vel[1], 4);
           Snd.bonk(); Snd.voice('oof'); rumble(0.6, 160); cam.shake = Math.max(cam.shake, 0.25);
           burst([p[0] - hit.n[0] * R, p[1] + 1.7, p[2] - hit.n[2] * R], 10, { spread: 3, up: 3, upRand: 2, life: .6, size: .16, cols: [[1, .95, .3], [1, 1, 1]], grav: 4 });
@@ -10721,6 +10756,8 @@ void main() {
 
   function onLand(gb, impact) {
     const from = pl.action;
+    if (from === 'long' && pl.aHeld && pl.speed < -BLJ_MIN && gb && gb.tag === 'stair') { bljAgain(pl.pos); return; }
+    pl.bljN = 0;
     pl.waterJump = false;
     pl.landT = time; pl.landFrom = from;
     pl.action = 'ground'; pl.flip = 0;
@@ -12717,7 +12754,7 @@ void main() {
     if (a === 'triple') rx = pl.flip;
     else if (a === 'backflip') rx = -pl.flip;
     else if (a === 'sideflip') rz = pl.flip;
-    else if (a === 'long') rx = 1.15;
+    else if (a === 'long') rx = 0.62;   // Weitsprung wie im Vorbild: schraeg vorgebeugt, nicht flach wie ein Hechtsprung
     else if (a === 'dive') rx = 1.45;
     else if (a === 'slide') { rx = 1.52; dy = -0.78; }
     else if (a === 'slidekick' || a === 'kickslide') {
@@ -12728,16 +12765,20 @@ void main() {
     else if (a === 'rollout') rx = pl.flip;
     else if (a === 'bonk') rx = -0.55;
     else if (a === 'double') rx = clamp(-pl.vel[1] * 0.016, -0.3, 0.42);
+    else if (a === 'jump' || a === 'wallkick') rx = 0.3 * clamp(-pl.vel[1] / 10, 0, 1);   // beim Fallen nach vorn lehnen
     else if (swim) { rx = lerp(0.25, 1.35, swim01); dy = swim01 * 0.35 + Math.sin(pl.swimPh * 0.5) * 0.05; }
     else if (a === 'climb') rx = Math.sin(pl.climbK * Math.PI) * 0.55;
     else if (lying) { rx = -1.3; dy = -0.72; }
     else if (pl.sweepT > 0) {
-      // seitlich flach zu Boden und einmal um die eigene Achse (das gestreckte Bein fegt dabei rundum)
-      rz = 1.2 * sweepE; dy = -0.62 * sweepE;
+      // Beinfeger wie im Vorbild (Video 3): tief nach vorn auf beide Haende (wie ein Liegestuetz), ein Bein gestreckt
+      // flach nach hinten-aussen, und einmal rundum - das gestreckte Bein fegt dabei ueber den Boden
+      rx = 1.05 * sweepE; rz = 0.28 * sweepE; dy = -0.55 * sweepE;
       spin += TAU * smooth(clamp((sweepK - 0.1) / 0.78, 0, 1));
     } else if (pl.crawl || (pl.grounded && pl.forceCrouch)) {
-      // Krabbeln wie im Vorbild: Rumpf fast waagrecht, auf Haenden und Knien (Hoehe folgt der Beinlaenge der Figur)
-      rx = 1.38; dy = -0.3 - CAT.rig.legY * 0.45;
+      // Krabbeln wie im Vorbild: Rumpf schraeg (Kopf hoch), Haende vorn am Boden, Knie am Boden, Fuesse hinten.
+      // Hoehe so, dass die (gestauchten) Beine gerade den Boden erreichen - aus der Beinlaenge der Figur
+      const L2 = CAT.rig.legY;
+      rx = 1.15; dy = L2 * 0.86 * Math.cos(0.8) - (L2 - 1.1) * Math.cos(rx) - 1.1;
     }   // unter niedriger Decke auch im Stand
     else if (pl.skid) rx = -0.35;
     let stretch = 1 + dissolve * 0.6, thin = 1 - dissolve * 0.6;
@@ -12758,9 +12799,11 @@ void main() {
     turnRate = turnRate * 0.82 + dF * 18;
     const turn = clamp(turnRate, -1.2, 1.2);
     const free = pl.grounded && !lying && !pl.crawl && !pl.forceCrouch && !pl.crouch && !swim && a !== 'slide' && a !== 'dive' && a !== 'kickslide';
-    // Bremsrutscher: zuruecklehnen, Fuesse vor (blendet am Ende weich aus)
-    const brk = free && pl.brakeT > 0 ? smooth(Math.min(1, pl.brakeT / 0.1)) : 0;
-    if (brk) rx -= 0.3 * brk;
+    // Bremsen wie im Vorbild: erst zurueckgelehnt rutschen (brkA), nach dem Halt kurz nach vorn nachkippen (brkB)
+    const bu = free && pl.brakeT > 0 ? 1 - pl.brakeT / BRAKE_POSE : -1;
+    const brkA = bu < 0 ? 0 : smooth(clamp(bu / 0.05, 0, 1)) * (1 - smooth(clamp((bu - 0.3) / 0.12, 0, 1)));
+    const brkB = bu < 0.3 ? 0 : Math.sin(clamp((bu - 0.3) / 0.7, 0, 1) * Math.PI);
+    rx += -0.3 * brkA + 0.55 * brkB;
     if (free) { rx += 0.42 * run01 * run01; rz += -turn * 0.22 * run01; }
     if (free && pl.gait === 'sneak') { rx += 0.2; dy -= 0.12; }
     // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten
@@ -12781,7 +12824,7 @@ void main() {
     /* Masse nach Video 2 (Vorbild von hinten und von der Seite): Figur bleibt ~70 % so hoch wie im Stand,
        Oberkoerper deutlich vor (Po nach hinten), Kopf tief zwischen den Schultern, Blick geradeaus, Faeuste vor und
        neben dem Gesicht, Fuesse breit. */
-    const cLean = ck * lerp(0.42, -0.14, cSlide), cLegW = -0.72, cSpl = 0.4, cSplay = cSpl * ck, cLegSY = 1 - 0.3 * ck;
+    const cLean = ck * lerp(0.72, -0.14, cSlide), cLegW = -0.72, cSpl = 0.4, cSplay = cSpl * ck, cLegSY = 1 - 0.3 * ck;
     if (ck > 0.001) {
       const L2 = CAT.rig.legY;
       rx += cLean;
@@ -12820,21 +12863,25 @@ void main() {
     } else if (pl.sweepT > 0) {
       // Beinfeger: unteres Bein angewinkelt, oberes gestreckt weit abgespreizt; unterer Arm stuetzt am Boden,
       // oberer balanciert nach aussen; Kopf schaut ueber die Schulter nach vorn
-      legL = -0.9; legSYL = 0.72; legR = -0.35; legOutR = 1.25;
-      armL = -0.5; armOut = 1.25; armR = -1.1; armOutR = 0.9;
-      headTilt = -0.35; tailRx = -1.2; tailRz = 1.0;
+      // Arme senkrecht zum Boden (Weltlage ~0 = abzueglich der Vorlage), gestrecktes Bein flach nach hinten-aussen,
+      // das andere kniet; Kopf hoch, Blick nach vorn
+      const lean = 1.05 * sweepE;
+      armL = armR = -0.1 - lean; armOut = 0.55;
+      legR = 1.35 - lean; legOutR = 0.85; legL = 0.55 - lean; legSYL = 0.7;
+      headTilt = -0.85 * sweepE; tailRx = -1.2; tailRz = 1.0;
     } else if (pl.grounded && (pl.crawl || pl.forceCrouch)) {
       // Krabbeln wie im Vorbild: Haende greifen abwechselnd vor dem Gesicht nach vorn, Knie am Boden, Unterschenkel
       // flach nach hinten (Bein schraeg nach hinten und gestaucht), Kopf hoch und schaut nach vorn
       const c = Math.sin(pl.walk * 2.4);
-      armL = -2.05 + c * 0.4; armR = -2.05 - c * 0.4; armOut = 0.22;
-      legL = -0.35 - c * 0.3; legR = -0.35 + c * 0.3; legSYL = legSYR = 0.86;
-      headTilt = -1.5;
+      armL = -1.4 + c * 0.35; armR = -1.4 - c * 0.35; armOut = 0.28;      // Weltlage ~ -0.25: Haende vorn am Boden
+      legL = -0.35 - c * 0.25; legR = -0.35 + c * 0.25; legSYL = legSYR = 0.86;
+      headTilt = -1.0;
       tailRx = -2.4;
     } else if (a === 'bonk') {
       legL = -0.9; legR = -0.5; armL = armR = -2.7; armOut = 1;
     } else if (pl.grounded && pl.skid) {
-      legL = -0.6; legR = -0.2; armL = armR = -1.2; armOut = 0.9;
+      // Kehrtwende wie im Vorbild: Arme weit zur Seite ausgebreitet, Fuesse vorn in den Boden gestemmt
+      legL = -0.6; legR = -0.2; legSYR = 0.85; armL = armR = -0.4; armOut = 1.35; headTilt = 0.1;
     } else if (pl.grounded && pl.gait === 'sneak') {
       // Schleichen: geduckt auf Zehenspitzen, Pfoten vorn, kurze vorsichtige Schritte
       legL = sw * 0.6; legR = -legL; armL = -1.25 + sw * 0.12; armR = -1.25 - sw * 0.12; armOut = 0.35;
@@ -12847,16 +12894,19 @@ void main() {
       const kick = (s2) => (s2 < 0 ? s2 * 0.85 : s2 * 1.3) * run01;
       legL = kick(sw); legR = kick(-sw);
       legSYL = 1 - 0.15 * Math.max(0, sw) * run01; legSYR = 1 - 0.15 * Math.max(0, -sw) * run01;
-      armL = -sw * 1.05 * run01; armR = sw * 1.05 * run01;
-      armOut = 0.2 + 0.12 * run01;
+      // Arme wie im Vorbild: pumpen kraeftig, Faeuste eher vorn, Ellbogen weit nach aussen
+      armL = (-sw * 1.05 - 0.2) * run01; armR = (sw * 1.05 - 0.2) * run01;
+      armOut = 0.22 + 0.38 * run01;
       bodyYaw = sw * 0.14 * run01;
       headTilt -= 0.3 * run01 * run01;
-      if (run01 < 0.05) { armOut = 0.24 + Math.sin(clock * 2) * 0.03; legSplay = 0.06; }   // Stand: Arme weg vom Koerper, Fuesse leicht auseinander
+      if (run01 < 0.05) { armOut = 0.34 + Math.sin(clock * 2) * 0.03; armL = armR = -0.12; legSplay = 0.07; }   // Stand wie im Vorbild: Arme leicht angewinkelt weg vom Koerper, Fuesse auseinander
       tailRz += sw * 0.25 * run01;
     } else if (a === 'pound') {
       legL = legR = -1.2; armL = armR = -0.4; armOut = 1.1;
     } else if (a === 'long') {
-      legL = legR = 0.9; armL = armR = -1.7; armOut = 0.15; tailRx = -2.9;
+      // Weitsprung (auch rueckwaerts) wie im Vorbild: Arme seitlich weit ausgebreitet und leicht vor, Knie angezogen,
+      // Unterschenkel nach hinten, Kopf hoch
+      legL = 0.55; legR = 0.75; legSYL = legSYR = 0.78; armL = armR = -0.75; armOut = 1.0; headTilt = -0.5; tailRx = -2.6;
     } else if (a === 'slidekick' || a === 'kickslide') {
       // Rutschtritt: vorderes Bein gestreckt nach vorn, das andere angewinkelt, Arme zum Abstuetzen/Balancieren
       // seitlich nach hinten, Kopf schaut nach vorn ueber die Fuesse
@@ -12896,28 +12946,43 @@ void main() {
       armL = lerp(0.2, 0.55, rise); armOut = lerp(0.45, 0.3, rise);
       legL = lerp(-0.5, -1.25, rise); legSYL = lerp(0.95, 0.8, rise);
       legR = lerp(0.05, 0.3, rise);
+      // Fallen wie im Vorbild (Video 4): die Faust kommt nach vorn, der andere Arm geht nach hinten, beide Beine
+      // angewinkelt nach hinten - die Figur "greift" nach vorn Richtung Landung
+      const fall = smooth(clamp(-pl.vel[1] / 10, 0, 1));
+      if (fall > 0) {
+        armR = lerp(armR, -1.55, fall); armL = lerp(armL, 0.55, fall);
+        legL = lerp(legL, 0.3, fall); legSYL = lerp(legSYL, 0.78, fall); legR = lerp(legR, 0.45, fall); legSYR = lerp(1, 0.8, fall);
+        headTilt -= 0.2 * fall;
+      }
       tailRx = -1.3 + clamp(pl.vel[1] * 0.04, -0.6, 0.4);
     } else {
       legL = -0.7; legR = 0.35; armL = armR = -2.4; armOut = 0.5; tailRx = -1.3 + clamp(pl.vel[1] * 0.04, -0.6, 0.4);
     }
-    if (brk) {                                     // Bremsrutscher: Beine vor, Arme nach hinten-aussen
-      legL = lerp(legL, -0.75, brk); legR = lerp(legR, -0.35, brk); legSYR = lerp(legSYR, 0.85, brk);
-      armL = lerp(armL, 0.55, brk); armR = lerp(armR, 0.4, brk); armOut = lerp(armOut, 0.75, brk);
-      headTilt += 0.25 * brk; tailRx = lerp(tailRx, -2.6, brk);
+    if (brkA) {                                    // Bremsen, Phase 1: Fuesse vorn gestemmt, Faeuste vorn
+      legL = lerp(legL, -0.75, brkA); legR = lerp(legR, -0.3, brkA); legSYR = lerp(legSYR, 0.82, brkA);
+      armL = lerp(armL, -1.25, brkA); armR = lerp(armR, -1.1, brkA); armOut = lerp(armOut, 0.4, brkA);
+      headTilt += 0.2 * brkA; tailRx = lerp(tailRx, -2.6, brkA);
+    }
+    if (brkB) {                                    // Phase 2: nach vorn nachkippen, Arme haengen vorn, Kopf sinkt
+      armL = lerp(armL, -0.5, brkB); armR = lerp(armR, -0.45, brkB); armOut = lerp(armOut, 0.3, brkB);
+      legSYL = lerp(legSYL, 0.92, brkB); legSYR = lerp(legSYR, 0.92, brkB); headTilt += 0.15 * brkB;
     }
     const sinceLand = time - (pl.landT ?? -9);
-    if (pl.grounded && !lying && run01 < 0.35 && sinceLand < 0.4 && ['backflip', 'sideflip', 'triple', 'double'].includes(pl.landFrom)) {
-      const k = 1 - smooth(sinceLand / 0.4);
-      armOut = lerp(armOut, 1.15, k); armL = lerp(armL, -0.2, k); armR = lerp(armR, -0.2, k);
+    // Landung nach Salto/Doppel-/Dreifachsprung wie im Vorbild: Arme waagrecht ausgebreitet (T), eine Weile halten,
+    // dann locker sinken lassen - nach dem Dreifachsprung am laengsten
+    const tHold = { triple: 0.8, backflip: 0.6, sideflip: 0.6, double: 0.45 }[pl.landFrom] || 0;
+    if (pl.grounded && !lying && run01 < 0.35 && sinceLand < tHold) {
+      const k = 1 - smooth(clamp((sinceLand - tHold * 0.6) / (tHold * 0.4), 0, 1));
+      armOut = lerp(armOut, 1.48, k); armL = lerp(armL, -0.05, k); armR = lerp(armR, -0.05, k);
     }
     if (ck > 0.001) {                                // Hocke (siehe crouchK) ueber die Bodenpose mischen
       const w = Math.min(1, ck);
       legL = lerp(legL, cLegW - cLean, w); legR = lerp(legR, cLegW - cLean, w);
       // Faeuste wie im Vorbild vor und neben dem Gesicht (Arm schraeg nach oben-vorn, Ellbogen raus);
       // beim Hock-Rutscher zum Balancieren nach aussen. Winkel in Weltlage, darum - cLean.
-      armL = lerp(armL, lerp(-2.5, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-2.5, -1.05, cSlide) - cLean, w);
+      armL = lerp(armL, lerp(-2.3, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-2.3, -1.05, cSlide) - cLean, w);
       armOut = lerp(armOut, lerp(0.52, 1.05, cSlide), w);
-      headTilt -= cLean * 1.05 - 0.06 * w;         // Kopf bleibt beim Vorbeugen gerade, schaut leicht nach unten-vorn
+      headTilt -= cLean * 0.9 - 0.04 * w;          // Kopf geht nur ein Stueck mit: schaut nach vorn-unten wie im Vorbild
       tailRx = lerp(tailRx, -0.45, w); tailRz = lerp(tailRz, 1.2 + Math.sin(clock * 1.6) * 0.12, w);   // Schwanz seitlich am Boden, verdeckt von hinten nicht den Kopf
     }
     if (pl.hold && !lying && !swim) {               // Kiste ueber dem Kopf: beide Arme hoch
