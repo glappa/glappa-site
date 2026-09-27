@@ -33,16 +33,17 @@
     return p;
   }
   const legacy = readJSON(slotKey('a')) || {};
-  const opts = Object.assign({ sfx: true, music: false, filter: 'crt' },
+  const opts = Object.assign({ sfx: true, music: true, filter: 'crt' },
     { sfx: legacy.sfx, music: legacy.music, filter: legacy.filter }, readJSON(OPTS_KEY) || {});
-  for (const k of ['sfx', 'music']) if (typeof opts[k] !== 'boolean') opts[k] = k === 'sfx';
+  for (const k of ['sfx', 'music']) if (typeof opts[k] !== 'boolean') opts[k] = true;
+  if (opts.mv !== 2) opts.music = true;   // 2026-09-27: eigene Musik je Welt -> einmal fuer alle einschalten
   if (!['crt', 'n64', 'aus'].includes(opts.filter)) opts.filter = 'crt';
   const state = Object.assign(freshProgress(), readSlot('a') || {}, { sfx: opts.sfx, music: opts.music, filter: opts.filter });
   // erst nach der Dateiauswahl wird ein Spielstand geschrieben (vorher nur die Einstellungen)
   let slot = null;
   const save = () => {
     try {
-      localStorage.setItem(OPTS_KEY, JSON.stringify({ sfx: state.sfx, music: state.music, filter: state.filter }));
+      localStorage.setItem(OPTS_KEY, JSON.stringify({ sfx: state.sfx, music: state.music, filter: state.filter, mv: 2 }));
       if (slot) localStorage.setItem(slotKey(slot), JSON.stringify({ stars: state.stars, doorOpen: state.doorOpen, intro: state.intro }));
     } catch (e) {}
   };
@@ -107,7 +108,7 @@
         ctx = new C();
         const master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
         sfxBus = ctx.createGain(); sfxBus.gain.value = 0.6; sfxBus.connect(master);
-        musicBus = ctx.createGain(); musicBus.gain.value = 0.22; musicBus.connect(master);
+        musicBus = ctx.createGain(); musicBus.gain.value = 0.13; musicBus.connect(master);   // Musik gut hoerbar, aber unter Stimme und Klaengen
         noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
         const d = noiseBuf.getChannelData(0);
         for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -263,69 +264,679 @@
       }),
     };
 
-    // Eigene kleine Schleife (keine Nintendo-Melodie): 8 Takte, Achtel-Raster
-    const MEL = ('E5 . G5 . C6 . G5 E5 A5 . G5 E5 C5 . . . F5 . A5 . C6 . A5 F5 G5 . B5 . D6 C6 B5 G5 ' +
-                 'E5 . G5 . C6 . E6 D6 C6 . A5 . E5 . A5 C6 D6 . C6 A5 B5 . G5 . C6 . G5 E5 C5 . . .').split(' ');
-    const BASS = ('C3 . G2 . C3 . G2 . A2 . E3 . A2 . E3 . F2 . C3 . F2 . C3 . G2 . D3 . G2 . D3 . ' +
-                  'C3 . G2 . C3 . G2 . A2 . E3 . A2 . E3 . D3 . A2 . G2 . D3 . C3 . G2 . C3 . . .').split(' ');
-    let musicTimer = null, step = 0, nextT = 0;
-    function schedule() {
-      const slot = 60 / 132 / 2;
-      if (nextT < ctx.currentTime) nextT = ctx.currentTime + .03;
-      while (nextT < ctx.currentTime + .15) {
-        const at = nextT - ctx.currentTime;
-        const m = MEL[step % MEL.length], b = BASS[step % BASS.length];
-        if (m !== '.') tone(N(m), at, slot * .8, { vol: .09, bus: musicBus });
-        if (b !== '.') tone(N(b), at, slot * 1.6, { type: 'triangle', vol: .3, bus: musicBus });
-        if (step % 2) noise(at, .04, { filter: 'highpass', f: 7000, vol: .05, bus: musicBus });
-        step++; nextT += slot;
-      }
-    }
-    api.music = (on) => {
-      if (on) {
-        if (musicTimer || !ac()) return;
-        nextT = ctx.currentTime + .05;
-        musicTimer = setInterval(schedule, 40);
-      } else if (musicTimer) {
-        clearInterval(musicTimer); musicTimer = null;
-      }
+    /* ═══════════ Musik: ein eigenes Stueck je Welt ═══════════
+       Alle Melodien sind eigene Kompositionen. Die Klangfarben sind kleine Synthesizer nach dem Klang einer
+       64er-Konsole (Anhang des Users 2026-09-27, nur vermessen, nichts davon eingebaut): fast reine Sinus-Glocken,
+       die ineinander nachklingen, Blechsaetze, Harfen, Stimmen mit Vibrato - alles durch einen weichen Tiefpass
+       (~7 kHz, die Vorlagen sind mit 16 kHz abgetastet) und einen gemeinsamen Hall.
+       Notation (TRACKS): Takte mit '|' getrennt, ein Zeichen je Rasterschritt: Note ('C5', 'F#4', 'Bb3'),
+       '-' = halten, '.' = Pause. Akkorde (c): einer je Takt, 'C,G' = je halber Takt.
+       Stimmen (P): i = Instrument; ohne weitere Angabe spielt sie die Melodie m (src: 'm2' = zweite Stimme);
+       bass = Akkordstufen je Schritt (R 3 5 7 8, '<' = Halbton unter dem naechsten Grundton); arp = Nummern der
+       Akkordtoene; stab = 'x' Akkordschlag; pad = Akkord halten. o = Oktave, oct = Melodie verschieben,
+       res = Raster der Stimme (Schritte je Schlag), in = nur in diesen Teilen. Schlagzeug (D): x / X betont / g leise. */
+    const TRACKS = {
+      title: {
+        gain: 0.57, bpm: 116, beats: 4, div: 2, swing: 0.1, rev: 0.3, form: 'AABA',
+        S: {
+          A: { c: 'C Am F G C Am Dm,G C',
+            m: 'G4 - C5 - E5 - G5 - | A5 - G5 E5 C5 - A4 - | F4 - A4 C5 F5 - E5 D5 | D5 - - - G4 - . . | G4 - C5 - E5 - G5 A5 | C6 - B5 A5 G5 - E5 - | F5 - E5 D5 B4 - D5 - | C5 - - - - - . .' },
+          B: { c: 'F G Em Am F G E7 Am,G',
+            m: 'A5 - - G5 F5 - C5 - | D5 - B4 - G4 - D5 - | E5 - G5 - B5 - A5 G5 | A5 - - - E5 - . . | F5 - A5 - C6 - A5 F5 | G5 - - F5 D5 - B4 - | G#4 - B4 - D5 - E5 - | C5 - - - B4 - D5 -' },
+        },
+        P: [{ i: 'brass', v: 0.3 }, { i: 'bell', v: 0.14, oct: 1, in: 'B' }, { i: 'strings', pad: 1, o: 4, v: 0.06 },
+          { i: 'bass', bass: 'R . . 5 R . 5 .', o: 2, v: 0.5 }],
+        D: { kick: 'x . . . x . . .', snare: '. . x . . . x g', hat: 'x x x x x x x x' },
+      },
+      garden: {
+        gain: 1.58, bpm: 138, beats: 4, div: 2, swing: 0.18, rev: 0.22, form: 'AABB',
+        S: {
+          A: { c: 'F Bb F C F Bb Gm,C F',
+            m: 'C5 . F5 . A5 - G5 F5 | D5 - F5 - Bb5 - A5 G5 | A5 - C6 - A5 F5 C5 - | E5 - G5 - C5 - . . | C5 . F5 . A5 - G5 F5 | D5 - F5 - Bb5 - D6 C6 | Bb5 - A5 G5 E5 - G5 - | F5 - - - F4 . . .' },
+          B: { c: 'Dm Bb C F,A7 Dm G7 Bb,C F',
+            m: 'A5 - - F5 D5 - A4 - | Bb4 - D5 - F5 - D5 - | E5 - G5 - C6 - Bb5 - | A5 - F5 - C#5 - E5 - | D5 - F5 A5 D6 - C6 A5 | B5 - G5 - F5 - D5 - | D5 - F5 - E5 - G5 - | F5 - - - . . C5 .' },
+        },
+        P: [{ i: 'marimba', v: 0.34 }, { i: 'flute', v: 0.1, oct: -1, in: 'B' }, { i: 'pizz', bass: 'R . 5 . R . 5 <', o: 2, v: 0.5 },
+          { i: 'pad', pad: 1, o: 4, v: 0.05 }, { i: 'kalimba', arp: '. 0 . 1 . 2 . 1', o: 4, v: 0.07, in: 'A' }],
+        D: { kick: 'x . . . x . . .', snare: '. . x . . . x .', shaker: 'x g x g x g x g' },
+      },
+      hall: {
+        gain: 0.64, bpm: 100, beats: 3, div: 2, swing: 0, rev: 0.45, form: 'AB',
+        S: {
+          A: { c: 'Bb Gm Eb F Bb Gm Cm,F Bb',
+            m: 'F5 - - - D5 - | G5 - Bb5 - A5 G5 | G5 - - - Eb5 - | F5 - - - - - | F5 - D6 - C6 Bb5 | A5 - G5 - D5 - | Eb5 - D5 - C5 - | Bb4 - - - - -' },
+          B: { c: 'Eb Bb Cm F Gm Eb Cm,F Bb',
+            m: 'G5 - - Bb5 Ab5 G5 | F5 - D5 - Bb4 - | Eb5 - - G5 F5 Eb5 | D5 - - - C5 - | D5 - G5 - Bb5 - | Bb5 - - G5 Eb5 - | C5 - Eb5 - A4 - | Bb4 - - - - -' },
+        },
+        P: [{ i: 'strings', v: 0.2 }, { i: 'harp', arp: '0 1 2 3 2 1', o: 4, v: 0.13 }, { i: 'choir', pad: 1, o: 4, v: 0.05 },
+          { i: 'bass', bass: 'R - - - 5 -', o: 2, v: 0.4 }],
+      },
+      og: {
+        gain: 0.95, bpm: 108, beats: 4, div: 2, swing: 0, rev: 0.4, form: 'AB',
+        S: {
+          A: { c: 'D Bm G A D F#m G,A D',
+            m: 'A4 - D5 - F#5 - - - | F#5 - E5 D5 B4 - - - | B4 - D5 - G5 - F#5 E5 | E5 - - - A4 - - - | A4 - D5 - F#5 - A5 - | C#6 - B5 A5 F#5 - - - | G5 - F#5 - E5 - C#5 - | D5 - - - - - - -' },
+          B: { c: 'G A F#m Bm Em A G,A D',
+            m: 'D5 - G5 - B5 - - - | C#6 - B5 - A5 - E5 - | F#5 - A5 - C#6 - - - | D6 - C#6 - B5 - F#5 - | G5 - B5 - E6 - D6 - | C#6 - - - A5 - - - | B5 - A5 - G5 - E5 - | F#5 - - - D5 - - -' },
+        },
+        P: [{ i: 'strings', v: 0.22 }, { i: 'brass', v: 0.13, oct: -1, in: 'B' }, { i: 'choir', pad: 1, o: 4, v: 0.05 },
+          { i: 'tuba', bass: 'R - - - 5 - - -', o: 2, v: 0.34 }, { i: 'harp', arp: '0 1 2 3 4 3 2 1', o: 4, v: 0.07, in: 'A' }],
+        D: { timp: 'x . . . . . . . | x . . . x . . .', snare: '. . . . . . . . | . . . . . . g g' },
+      },
+      keller: {
+        gain: 2.17, bpm: 84, beats: 4, div: 2, swing: 0, rev: 0.55, form: 'AB',
+        S: {
+          A: { c: 'Dm Dm Bb A Dm Gm Bb,A Dm',
+            m: 'D5 - - - F5 - E5 - | D5 - - - A4 - - - | Bb4 - D5 - F5 - - - | E5 - - - C#5 - - - | D5 - F5 - A5 - - - | G5 - F5 - D5 - Bb4 - | D5 - - - C#5 - E5 - | D5 - - - - - - -' },
+          B: { c: 'Gm Dm Bb A Gm Dm E,A Dm',
+            m: 'Bb5 - - - A5 - G5 - | F5 - - - D5 - - - | F5 - D5 - Bb4 - D5 - | C#5 - - - E5 - - - | G5 - - - Bb5 - A5 G5 | A5 - - - F5 - D5 - | G#5 - - - A5 - - - | D5 - - - - - - -' },
+        },
+        P: [{ i: 'bell', v: 0.2 }, { i: 'strings', pad: 1, o: 3, v: 0.08 }, { i: 'pizz', bass: 'R . 5 . 8 . 5 .', o: 2, v: 0.4 },
+          { i: 'celesta', arp: '. . . . . . 4 .', o: 5, v: 0.06 }],
+        D: { tom: 'x . . . . . . . | . . . . . . . .' },
+      },
+      hof: {
+        gain: 1.1, bpm: 96, beats: 3, div: 2, swing: 0, rev: 0.5, form: 'AB',
+        S: {
+          A: { c: 'Em Am B7 Em C Am B7 Em',
+            m: 'B5 - - - G5 - | A5 - C6 - B5 A5 | F#5 - - - D#5 - | E5 - - - - - | E5 - G5 - C6 - | B5 - A5 - E5 - | D#5 - F#5 - A5 - | G5 - F#5 - E5 -' },
+          B: { c: 'Am Em Am B7 C G Am,B7 Em',
+            m: 'C6 - - - A5 - | B5 - - - G5 - | E5 - A5 - C6 - | B5 - - - - - | G5 - E5 - C5 - | D5 - G5 - B5 - | A5 - - F#5 - D#5 | E5 - - - - -' },
+        },
+        P: [{ i: 'musicbox', v: 0.24 }, { i: 'celesta', arp: '0 . 1 . 2 .', o: 4, v: 0.07 }, { i: 'pad', pad: 1, o: 3, v: 0.06 },
+          { i: 'sub', bass: 'R - - - - -', o: 2, v: 0.25 }],
+      },
+      desert: {
+        gain: 1.27, bpm: 112, beats: 4, div: 2, swing: 0.08, rev: 0.3, form: 'AABB',
+        S: {
+          A: { c: 'E E F E E Dm F,E E',
+            m: 'E5 - F5 - G#5 - A5 - | B5 - A5 G#5 F5 - E5 - | F5 - A5 - C6 - B5 A5 | G#5 - - - E5 - - - | B4 - E5 - F5 G#5 A5 - | D5 - F5 - A5 - G#5 F5 | F5 - E5 - F5 - G#5 - | E5 - - - - - . .' },
+          B: { c: 'Am E Dm E Am F E E',
+            m: 'A5 - C6 - B5 A5 G#5 A5 | B5 - - - G#5 - E5 - | F5 - A5 - D6 - C6 B5 | G#5 - F5 - E5 - - - | E5 - A5 - C6 - E6 - | D6 - C6 - A5 - F5 - | G#5 - A5 - B5 - C6 B5 | G#5 - - - E5 - . .' },
+        },
+        P: [{ i: 'pluck', v: 0.3 }, { i: 'flute', v: 0.09, oct: -1, in: 'B' }, { i: 'sub', bass: 'R - - - - - - -', o: 2, v: 0.2 },
+          { i: 'pluck', bass: 'R . . R . . 5 .', o: 3, v: 0.13 }, { i: 'strings', pad: 1, o: 4, v: 0.04 }],
+        D: { dum: 'x . . . x . . .', tek: '. x . x . . x .', shaker: 'g g g g g g g g' },
+      },
+      dust: {
+        gain: 0.72, bpm: 126, beats: 4, div: 2, swing: 0, rev: 0.25, form: 'AB',
+        S: {
+          A: { c: 'Am Am F G Am Am F E',
+            m: 'A4 - - - C5 - E5 - | D5 - C5 - B4 - A4 - | C5 - - - F5 - E5 - | D5 - - - B4 - G4 - | A4 - C5 - E5 - A5 - | G5 - E5 - C5 - E5 - | F5 - - - E5 - C5 - | B4 - - - G#4 - E4 -' },
+          B: { c: 'Dm Am Dm E F G Am,G E',
+            m: 'F5 - - - D5 - F5 A5 | E5 - - - C5 - A4 - | D5 - F5 - A5 - D6 - | B5 - - - G#5 - - - | A5 - - - C6 - A5 F5 | G5 - - - D5 - B4 - | C5 - E5 - D5 - B4 - | E5 - - - - - - -' },
+        },
+        P: [{ i: 'lead', v: 0.18 }, { i: 'synbass', bass: 'R R R R R R R R', o: 2, v: 0.28 }, { i: 'brass', stab: 'x . . x . . x .', o: 4, v: 0.07, in: 'B' },
+          { i: 'strings', pad: 1, o: 3, v: 0.05 }],
+        D: { kick: 'x . . . x . x .', snare: '. . x . . . x . | . . x . . g x x', hat: 'x x x x x x x x' },
+      },
+      terminal: {
+        gain: 0.58, bpm: 144, beats: 4, div: 4, swing: 0, rev: 0.15, form: 'AB',
+        S: {
+          A: { c: 'Am F C G Am F Dm,E Am',
+            m: 'A5 - E5 - A5 B5 C6 - | A5 - F5 - C6 - A5 - | G5 - E5 - C5 - E5 G5 | B5 - - - G5 - D5 - | A5 - C6 - E6 - D6 C6 | C6 - A5 - F5 - A5 C6 | D6 - C6 - B5 - G#5 - | A5 - - - - - . .' },
+          B: { c: 'F G Em Am F G Am,G E',
+            m: 'F5 - A5 - C6 - - - | B5 - D6 - G5 - - - | E5 - G5 - B5 - E6 - | C6 - - - A5 - - - | F5 - F5 - A5 - C6 - | D6 - C6 - B5 - G5 - | A5 - E5 - D5 - G5 - | G#5 - - - E5 - - -' },
+        },
+        P: [{ i: 'chip', res: 2, v: 0.11 }, { i: 'chip12', arp: '0 1 2 3', o: 4, v: 0.045 }, { i: 'bass', res: 2, bass: 'R 8 R 8 R 8 R 8', o: 2, v: 0.45 }],
+        D: { ckick: 'x . . . . . . . x . . . . . . .', cnoise: '. . x . . . x . . . x . . . x x' },
+      },
+      video: {
+        gain: 0.52, bpm: 72, beats: 2, div: 3, swing: 0, rev: 0.5, form: 'AB',
+        S: {
+          A: { c: 'Eb Cm Ab Bb Eb Gm Ab,Bb Eb',
+            m: 'G5 - - Bb5 - - | G5 - - Eb5 - - | C6 - Bb5 Ab5 - - | F5 - - - - - | G5 - - Bb5 - Eb6 | D6 - - Bb5 - - | C6 - - D6 - - | Eb6 - - - - -' },
+          B: { c: 'Ab Eb Fm Bb Cm Ab Fm,Bb Eb',
+            m: 'Eb5 - F5 Ab5 - - | G5 - - Eb5 - - | F5 - Ab5 C6 - - | Bb5 - - - F5 - | G5 - - Eb6 - - | C6 - - Ab5 - - | Ab5 - - D5 - - | Eb5 - - - - -' },
+        },
+        P: [{ i: 'flute', v: 0.2 }, { i: 'epiano', arp: '0 1 2 3 2 1', o: 4, v: 0.09 }, { i: 'pad', pad: 1, o: 3, v: 0.06 },
+          { i: 'bass', bass: 'R - - 5 - -', o: 2, v: 0.35 }],
+        D: { shaker: '. . g . . g' },
+      },
+      aquarium: {
+        gain: 0.85, bpm: 70, beats: 4, div: 2, swing: 0, rev: 0.6, form: 'A',
+        S: {
+          A: { c: 'Ab Fm Db Eb Ab Cm Db,Eb Ab',
+            m: 'C6 - - - Eb6 - - - | C6 - - - Ab5 - - - | F5 - Ab5 - Db6 - C6 - | Bb5 - - - G5 - - - | Ab5 - C6 - Eb6 - F6 - | Eb6 - - - C6 - - - | Db6 - C6 - Bb5 - G5 - | Ab5 - - - - - - -' },
+        },
+        P: [{ i: 'celesta', v: 0.2 }, { i: 'harp', arp: '0 1 2 3 4 3 2 1', o: 4, v: 0.08 }, { i: 'pad', pad: 1, o: 3, v: 0.07 },
+          { i: 'sub', bass: 'R - - - - - - -', o: 2, v: 0.24 }],
+      },
+      bounce: {
+        gain: 1.98, bpm: 152, beats: 4, div: 2, swing: 0, rev: 0.25, form: 'AABB',
+        S: {
+          A: { c: 'G C G D G C D G',
+            m: 'D5 - G5 - B5 - G5 - | C6 - B5 - A5 - G5 - | B5 - D6 - B5 - G5 - | A5 - - - D5 - - - | D5 - G5 - B5 - D6 - | E6 - D6 - C6 - E5 - | F#5 - A5 - D6 - C6 - | B5 - - - G5 - . .' },
+          B: { c: 'Em C G D Em C A7 D',
+            m: 'E5 - G5 - B5 - - - | C6 - B5 - G5 - - - | D5 - G5 - B5 - D6 - | F#5 - - - A5 - - - | G5 - B5 - E6 - D6 - | C6 - - - E5 - G5 - | C#6 - B5 - A5 - G5 - | F#5 - - - D5 - . .' },
+        },
+        P: [{ i: 'xylo', v: 0.3 }, { i: 'tuba', bass: 'R . . . 5 . . .', o: 2, v: 0.36 }, { i: 'pizz', stab: '. . x . . . x .', o: 4, v: 0.06 },
+          { i: 'bell', v: 0.05, oct: 1, in: 'B' }],
+        D: { sleigh: 'x . x . x . x .', kick: 'x . . . x . . .', tock: '. . . . . . . x' },
+      },
+      spuk: {
+        gain: 0.99, bpm: 92, beats: 4, div: 2, swing: 0.1, rev: 0.5, form: 'AB',
+        S: {
+          A: { c: 'Cm Cm Ab G Cm Fm Ab,G Cm',
+            m: 'C5 - Eb5 - G5 - F#5 - | G5 - Eb5 - C5 - - - | Ab4 - C5 - Eb5 - D5 - | B4 - D5 - F5 - - - | C5 - Eb5 - G5 - C6 - | Ab5 - G5 - F5 - C5 - | Eb5 - C5 - D5 - B4 - | C5 - - - - - . .' },
+          B: { c: 'Fm Cm Db G Fm Cm Db,G Cm',
+            m: 'F5 - Ab5 - C6 - B5 - | C6 - G5 - Eb5 - - - | F5 - Ab5 - Db6 - C6 - | B5 - - - G5 - - - | Ab5 - G5 - F5 - Eb5 - | G5 - - - Eb5 - - - | F5 - Db5 - D5 - B4 - | C5 - - - - - . .' },
+        },
+        P: [{ i: 'organ', v: 0.13 }, { i: 'harpsi', arp: '0 1 2 1 0 1 2 1', o: 4, v: 0.06 }, { i: 'strings', pad: 1, o: 3, v: 0.06 },
+          { i: 'bass', bass: 'R . . . 5 . . .', o: 2, v: 0.4 }],
+        D: { tock: 'x . . . x . . .' },
+      },
+      uhrwerk: {
+        gain: 1.87, bpm: 120, beats: 4, div: 4, swing: 0, rev: 0.25, form: 'AB',
+        S: {
+          A: { c: 'Bm G D A Bm G Em,F# Bm',
+            m: 'F#5 - - - B5 - - - | G5 - F#5 - E5 - D5 - | F#5 - - - A5 - - - | E5 - - - C#5 - - - | D5 - F#5 - B5 - D6 - | D6 - B5 - G5 - E5 - | G5 - E5 - A#4 - C#5 - | B4 - - - - - - -' },
+          B: { c: 'G A F#m Bm G A F# F#',
+            m: 'B5 - - - D6 - - - | C#6 - - - E6 - - - | C#6 - A5 - F#5 - A5 - | B5 - - - F#5 - - - | G5 - B5 - D6 - B5 - | A5 - C#6 - E6 - C#6 - | A#5 - - - F#5 - - - | C#6 - - - - - - -' },
+        },
+        P: [{ i: 'xylo', res: 2, v: 0.26 }, { i: 'marimba', arp: '0 2 1 2 0 2 1 2 0 2 1 2 0 2 1 2', o: 4, v: 0.07 },
+          { i: 'tuba', res: 2, bass: 'R . 5 . R . 5 .', o: 2, v: 0.32 }],
+        D: { tick: 'x . . . . . . . x . . . . . . .', tock: '. . . . x . . . . . . . x . . .', hat: '. . x . . . x . . . x . . . x .' },
+      },
+      fraktal: {
+        gain: 0.7, bpm: 96, beats: 4, div: 2, swing: 0, rev: 0.7, form: 'A',
+        S: {
+          A: { c: 'Cmaj7 D Cmaj7 D Am7 Bm7 Cmaj7,D Em',
+            m: 'E6 - - - B5 - - - | F#6 - - - A5 - - - | G5 - B5 - E6 - - - | D6 - - - - - A5 - | C6 - - - E6 - - - | D6 - - - F#6 - - - | G6 - - - F#6 - - - | E6 - - - - - - -' },
+        },
+        P: [{ i: 'bell', v: 0.15 }, { i: 'choir', pad: 1, o: 4, v: 0.06 }, { i: 'celesta', arp: '0 2 1 3 2 4 3 1', o: 5, v: 0.045 },
+          { i: 'sub', bass: 'R - - - - - - -', o: 2, v: 0.22 }],
+      },
+      pilz: {
+        gain: 1.19, bpm: 116, beats: 4, div: 2, swing: 0.2, rev: 0.3, form: 'AABB',
+        S: {
+          A: { c: 'Dm G Dm G F C Dm,G Dm',
+            m: 'D5 - F5 - A5 - G5 F5 | B4 - D5 - G5 - - - | A5 - C6 - A5 - F5 - | G5 - - - D5 - - - | C5 - F5 - A5 - C6 - | E6 - D6 - C6 - G5 - | F5 - E5 - D5 - B4 - | D5 - - - . . A4 .' },
+          B: { c: 'Bb C Dm Am Bb C Gm,A Dm',
+            m: 'D5 - F5 - Bb5 - A5 - | G5 - E5 - C5 - - - | F5 - A5 - D6 - C6 - | A5 - - - E5 - - - | F5 - Bb5 - D6 - - - | E6 - D6 - C6 - G5 - | Bb5 - G5 - C#6 - A5 - | D6 - - - - - . .' },
+        },
+        P: [{ i: 'flute', v: 0.22 }, { i: 'kalimba', arp: '0 . 1 2 . 1 2 .', o: 4, v: 0.09 }, { i: 'pizz', bass: 'R . . 5 . . R .', o: 2, v: 0.45 }],
+        D: { tock: 'x . . x . . x .', shaker: '. g . g . g . g' },
+      },
+      neon: {
+        gain: 0.78, bpm: 122, beats: 4, div: 4, swing: 0, rev: 0.25, form: 'AB',
+        S: {
+          A: { c: 'Am7 Am7 Dm7 Dm7 Fmaj7 E7 Am7,Dm7 E7',
+            m: 'E5 - G5 - A5 - - - | C6 - A5 - G5 - E5 - | F5 - - - A5 - C6 - | D6 - C6 - A5 - - - | E5 - A5 - C6 - E6 - | D6 - B5 - G#5 - E5 - | A5 - C6 - F5 - A5 - | G#5 - - - B5 - - -' },
+          B: { c: 'Fmaj7 G Em7 Am7 Fmaj7 G E7 E7',
+            m: 'A5 - - - C6 - - - | D6 - - - B5 - - - | G5 - - - B5 - D6 - | C6 - - - A5 - - - | F5 - A5 - C6 - E6 - | D6 - - - G5 - - - | G#5 - B5 - D6 - E6 - | D6 - C6 - B5 - G#5 -' },
+        },
+        P: [{ i: 'lead', res: 2, v: 0.15 }, { i: 'synbass', res: 2, bass: 'R 8 R 8 R 8 R 8', o: 2, v: 0.28 },
+          { i: 'slap', stab: '. . . . x . . x . . x . . . . .', o: 4, v: 0.045 }, { i: 'strings', pad: 1, o: 4, v: 0.06, in: 'B' }],
+        D: { kick: 'x . . . x . . . x . . . x . . .', clap: '. . . . x . . . . . . . x . . .', ohat: '. . x . . . x . . . x . . . x .',
+          hat: 'x . . x x . . x x . . x x . . x' },
+      },
+      verlies: {
+        gain: 0.83, bpm: 76, beats: 4, div: 2, swing: 0, rev: 0.6, form: 'A',
+        S: {
+          A: { c: 'Fm Fm Db C Fm Bbm Db,C Fm',
+            m: 'F4 - - - Ab4 - G4 - | F4 - - - C4 - - - | Db4 - F4 - Ab4 - - - | G4 - - - E4 - - - | F4 - Ab4 - C5 - - - | Db5 - C5 - Bb4 - F4 - | Ab4 - - - G4 - - - | F4 - - - - - - -' },
+        },
+        P: [{ i: 'brass', v: 0.18 }, { i: 'strings', pad: 1, o: 3, v: 0.08 }, { i: 'sub', bass: 'R - - - - - - -', o: 2, v: 0.28 },
+          { i: 'pizz', bass: 'R . . R . . . .', o: 2, v: 0.3 }],
+        D: { anvil: '. . . . . . . . | x . . . . . . .', timp: 'x . . . . . . . | x . . . . . . .' },
+      },
+      bibliothek: {
+        gain: 0.91, bpm: 88, beats: 3, div: 2, swing: 0, rev: 0.35, form: 'AB',
+        S: {
+          A: { c: 'G D Em C G Am,D G,D G',
+            m: 'D5 - G5 A5 B5 C6 | D6 - A5 - F#5 - | G5 - E5 F#5 G5 A5 | G5 - - - E5 - | D5 - B4 C5 D5 E5 | C5 - A4 D5 - F#5 | G5 - B4 A4 - F#4 | G4 - - - - -' },
+          B: { c: 'Em Bm C D G C D G',
+            m: 'B5 - G5 - E5 - | F#5 - D5 - B4 - | C5 - E5 G5 C6 - | A5 - - - F#5 - | G5 - B5 - D6 - | E6 - C6 - G5 - | F#5 - A5 - C6 - | B5 - - - G5 -' },
+        },
+        P: [{ i: 'harpsi', v: 0.19 }, { i: 'harpsi', arp: '0 2 1 2 1 2', o: 3, v: 0.05 }, { i: 'bass', bass: 'R - - - 5 -', o: 2, v: 0.3 }],
+      },
+      musik: {
+        gain: 0.79, bpm: 112, beats: 4, div: 2, swing: 0.22, rev: 0.3, form: 'A',
+        S: {
+          A: { c: 'C A7 Dm G7 C E7 F,G7 C',
+            m: 'E5 - G5 - C6 - E6 - | C#6 - E6 - A5 - G5 - | F5 - A5 - D6 - C6 - | B5 - G5 - F5 - D5 - | C5 - E5 - G5 - E5 - | G#5 - B5 - E6 - D6 - | C6 - A5 - B5 - G5 - | C6 - - - . . . .' },
+        },
+        P: [{ i: 'epiano', v: 0.2 }, { i: 'bass', bass: 'R . . . 5 . . .', o: 2, v: 0.4 }, { i: 'epiano', stab: '. . x . . . x .', o: 4, v: 0.05 }],
+        D: { hat: '. . x . . . x .', kick: 'x . . . x . . .' },
+      },
+      spiel: {
+        gain: 2.04, bpm: 140, beats: 4, div: 2, swing: 0.12, rev: 0.2, form: 'A',
+        S: {
+          A: { c: 'E C#m A B E G#m A,B E',
+            m: 'B4 - E5 - G#5 - B5 - | C#6 - B5 - G#5 - E5 - | A5 - C#6 - E6 - C#6 - | D#6 - - - B5 - - - | E6 - D#6 - B5 - G#5 - | B5 - G#5 - D#5 - G#5 - | A5 - C#6 - B5 - D#6 - | E6 - - - . . . .' },
+        },
+        P: [{ i: 'steel', v: 0.24 }, { i: 'chip12', arp: '0 1 2 1', o: 4, v: 0.035 }, { i: 'slap', bass: 'R . R 5 . R 5 .', o: 2, v: 0.28 }],
+        D: { kick: 'x . . . x . . .', snare: '. . x . . . x .', hat: 'x x x x x x x x' },
+      },
+      sternwarte: {
+        gain: 1.05, bpm: 66, beats: 4, div: 2, swing: 0, rev: 0.7, form: 'A',
+        S: {
+          A: { c: 'E F# E F# C#m B A B',
+            m: 'G#5 - - - B5 - - - | A#5 - - - C#6 - - - | B5 - - - E6 - - - | C#6 - - - - - - - | E6 - - - C#6 - - - | D#6 - - - B5 - - - | C#6 - - - A5 - - - | B5 - - - - - - -' },
+        },
+        P: [{ i: 'celesta', v: 0.2 }, { i: 'choir', pad: 1, o: 4, v: 0.06 }, { i: 'harp', arp: '0 1 2 3 4 3 2 1', o: 4, v: 0.06 },
+          { i: 'sub', bass: 'R - - - - - - -', o: 2, v: 0.2 }],
+      },
     };
 
-    /* Glappos Stimme: eigene Katzen-Silben per Formant-Synthese — ein Saegezahn laeuft durch drei
-       Bandpaesse, die von Vokal zu Vokal gleiten. [Vokale, Tonhoehen-Verlauf (Hz), Dauer (s), Hauch] */
-    const FORMANT = { a: [800, 1250, 2700], e: [480, 1900, 2700], i: [310, 2300, 3100], o: [520, 880, 2500], u: [340, 780, 2300] };
+    const MUS = (() => {
+      const PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+      const CH = { '': [0, 4, 7], m: [0, 3, 7], 7: [0, 4, 7, 10], maj7: [0, 4, 7, 11], m7: [0, 3, 7, 10], dim: [0, 3, 6],
+        aug: [0, 4, 8], sus4: [0, 5, 7], sus2: [0, 2, 7], 6: [0, 4, 7, 9], m6: [0, 3, 7, 9] };
+      const acc = (s) => (s === '#' ? 1 : s === 'b' ? -1 : 0);
+      const midi = (s) => { const m = /^([A-G])([#b]?)(\d)$/.exec(s); return m ? PC[m[1]] + acc(m[2]) + (+m[3] + 1) * 12 : null; };
+      const hz = (n) => 440 * Math.pow(2, (n - 69) / 12);
+      const chordOf = (s) => { const m = /^([A-G])([#b]?)(.*)$/.exec(s); return { root: (PC[m[1]] + acc(m[2]) + 12) % 12, iv: CH[m[3]] || CH[''] }; };
+      const toks = (s) => s.split(/\s+/).filter((x) => x && x !== '|');
+      // Texte einmal in Listen umwandeln
+      function prep(T) {
+        if (T.tpb) return T;
+        for (const S of Object.values(T.S)) {
+          S.bars = toks(S.c).map((c) => c.split(',').map(chordOf));
+          for (const k of ['m', 'm2']) if (S[k]) S[k + 'T'] = toks(S[k]);
+        }
+        for (const p of T.P) {
+          p.r = T.div / (p.res || T.div);
+          for (const k of ['bass', 'arp', 'stab']) if (p[k]) p.pat = toks(p[k]);
+        }
+        T.DT = Object.entries(T.D || {}).map(([k, s]) => [k, toks(s)]);
+        T.tpb = T.beats * T.div;
+        return T;
+      }
+
+      let mix = null, lp = null, duckG = null, fanG = null, conv = null, P = null, timer = 0, duckOn = false, muffOn = false;
+      const pulse = {};
+      function graph() {
+        if (mix) return;
+        const c = ctx;
+        lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 7000; lp.Q.value = 0.5;
+        duckG = c.createGain(); fanG = c.createGain(); mix = c.createGain();
+        conv = c.createConvolver(); conv.buffer = impulse(c, 2.6);
+        mix.connect(lp); conv.connect(lp); lp.connect(duckG); duckG.connect(fanG); fanG.connect(musicBus);
+        for (const d of [0.25, 0.125]) {   // Pulswellen fuer den Chip-Klang
+          const n = 40, re = new Float32Array(n), im = new Float32Array(n);
+          for (let k = 1; k < n; k++) re[k] = 2 / (k * Math.PI) * Math.sin(k * Math.PI * d);
+          pulse[d] = c.createPeriodicWave(re, im);
+        }
+      }
+      // Hall: abklingendes, leicht dumpfes Rauschen (Stereo), 12 ms Vorverzoegerung
+      function impulse(c, sec) {
+        const len = Math.floor(c.sampleRate * sec), b = c.createBuffer(2, len, c.sampleRate);
+        for (let ch = 0; ch < 2; ch++) {
+          const d = b.getChannelData(ch);
+          let y = 0;
+          for (let i = 0; i < len; i++) {
+            const t = i / c.sampleRate;
+            y += (Math.random() * 2 - 1 - y) * 0.35;
+            d[i] = t < 0.012 ? 0 : y * Math.exp(-t * 2.1) * (1 - i / len);
+          }
+        }
+        return b;
+      }
+
+      // ── Bausteine ──
+      function osc(type, f, t, t1, dest, det = 0) {
+        const o = ctx.createOscillator();
+        if (typeof type === 'string') o.type = type; else o.setPeriodicWave(type);
+        o.frequency.setValueAtTime(f, t);
+        if (det) o.detune.setValueAtTime(det, t);
+        o.connect(dest); o.start(t); o.stop(t1);
+        return o;
+      }
+      function amp(dest, v) { const g = ctx.createGain(); g.gain.value = v; g.connect(dest); return g; }
+      function filt(type, f, q, dest) { const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(dest); return b; }
+      function perc(dest, t, v, dec) {   // Anschlag: sofort da, exponentiell weg
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+        g.connect(dest); return g;
+      }
+      function hold(dest, t, v, a, d, r) {   // gehaltener Ton: anschwellen, bis d halten, ausklingen
+        const g = ctx.createGain(), e = t + Math.max(a, d);
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + a); g.gain.setValueAtTime(v, e); g.gain.linearRampToValueAtTime(0, e + r);
+        g.connect(dest); return g;
+      }
+      function decay(dest, t, v, d, to, tau, r) {   // Anschlag, dann gegen "to" abfallend (Klavier, Bass)
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + 0.006); g.gain.setTargetAtTime(v * to, t + 0.006, tau);
+        g.gain.setTargetAtTime(0, t + Math.max(0.03, d), r);
+        g.connect(dest); return g;
+      }
+      function vib(oscs, t, t1, rate, depth, delay = 0.12) {
+        const l = ctx.createOscillator(), g = ctx.createGain();
+        l.frequency.value = rate; g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(depth, t + delay + 0.15);
+        l.connect(g); for (const o of oscs) g.connect(o.frequency);
+        l.start(t); l.stop(t1);
+      }
+      const partials = (f, t, v, dest, list) => list.forEach(([r, gv, dec]) => osc('sine', f * r, t, t + dec + 0.05, perc(dest, t, v * gv, dec)));
+      function noiseAt(t, dur, dest) {
+        const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+        s.connect(dest); s.start(t, Math.random() * 0.5); s.stop(t + dur);
+      }
+      function fm(f, t, t1, dest, ratio, index, idxDecay) {   // Traeger + Modulator (E-Piano, Steeldrum)
+        const car = osc('sine', f, t, t1, dest), mg = ctx.createGain();
+        mg.gain.setValueAtTime(f * index, t); mg.gain.exponentialRampToValueAtTime(f * index * 0.05 + 0.01, t + idxDecay);
+        mg.connect(car.frequency);
+        osc('sine', f * ratio, t, t1, mg);
+      }
+
+      // ── Instrumente: (Frequenz, Start, Dauer, Lautstaerke, Ziel) ──
+      const INST = {
+        bell: (f, t, d, v, o) => partials(f, t, v, o, [[1, 1, 1.6], [2, 0.28, 0.6], [3.01, 0.12, 0.3], [4.16, 0.05, 0.15]]),
+        celesta: (f, t, d, v, o) => partials(f, t, v, o, [[1, 1, 0.9], [4, 0.16, 0.12], [2, 0.1, 0.4]]),
+        musicbox: (f, t, d, v, o) => partials(f, t, v, o, [[1, 1, 1.3], [3, 0.28, 0.2], [5.04, 0.08, 0.08]]),
+        marimba: (f, t, d, v, o) => partials(f, t, v, o, [[1, 1, 0.5], [4, 0.32, 0.06], [10, 0.07, 0.015]]),
+        xylo: (f, t, d, v, o) => partials(f, t, v, o, [[1, 1, 0.3], [3, 0.38, 0.07], [6.2, 0.1, 0.03]]),
+        kalimba: (f, t, d, v, o) => partials(f, t, v, o, [[1, 1, 0.8], [5.4, 0.2, 0.07], [2, 0.08, 0.3]]),
+        harp: (f, t, d, v, o) => { osc('triangle', f, t, t + 1.5, perc(o, t, v, 1.4)); osc('sine', f * 2, t, t + 0.6, perc(o, t, v * 0.2, 0.5)); },
+        pluck: (f, t, d, v, o) => {
+          const lf = filt('lowpass', f * 8, 1.5, perc(o, t, v, 0.7));
+          lf.frequency.setValueAtTime(f * 8, t); lf.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.25);
+          osc('sawtooth', f, t, t + 0.75, lf);
+        },
+        harpsi: (f, t, d, v, o) => { const hp = filt('highpass', 500, 0.7, perc(o, t, v, 0.45)); osc('square', f, t, t + 0.5, hp); osc('sawtooth', f * 2, t, t + 0.5, amp(hp, 0.3)); },
+        pizz: (f, t, d, v, o) => osc('triangle', f, t, t + 0.3, filt('lowpass', 1400, 0.7, perc(o, t, v, 0.25))),
+        epiano: (f, t, d, v, o) => fm(f, t, t + d + 0.6, decay(o, t, v, d, 0.25, 0.5, 0.12), 1, 1.2, 0.6),
+        steel: (f, t, d, v, o) => fm(f, t, t + 0.75, perc(o, t, v, 0.7), 2, 0.7, 0.15),
+        flute: (f, t, d, v, o) => {
+          const g = hold(o, t, v, 0.05, d, 0.1), t1 = t + d + 0.15;
+          vib([osc('sine', f, t, t1, g), osc('triangle', f, t, t1, amp(g, 0.2))], t, t1, 5.2, f * 0.006);
+        },
+        lead: (f, t, d, v, o) => {
+          const t1 = t + d + 0.12;
+          vib([osc('square', f, t, t1, filt('lowpass', 2600, 0.7, hold(o, t, v, 0.02, d, 0.08)))], t, t1, 5.6, f * 0.008);
+        },
+        chip: (f, t, d, v, o) => osc(pulse[0.25], f, t, t + d + 0.03, hold(o, t, v, 0.002, d, 0.02)),
+        chip12: (f, t, d, v, o) => osc(pulse[0.125], f, t, t + d + 0.03, hold(o, t, v, 0.002, d, 0.02)),
+        brass: (f, t, d, v, o) => {
+          const t1 = t + d + 0.15, lf = filt('lowpass', f * 1.2, 1.2, hold(o, t, v, 0.035, d, 0.12));
+          lf.frequency.setValueAtTime(f * 1.2, t); lf.frequency.linearRampToValueAtTime(f * 5, t + 0.07); lf.frequency.setTargetAtTime(f * 3, t + 0.07, 0.15);
+          osc('sawtooth', f, t, t1, lf, -7); osc('sawtooth', f, t, t1, lf, 7);
+        },
+        strings: (f, t, d, v, o) => {
+          const t1 = t + d + 0.5, lf = filt('lowpass', 2400, 0.5, hold(o, t, v, 0.22, d, 0.45));
+          vib([-9, 0, 9].map((det) => osc('sawtooth', f, t, t1, amp(lf, 0.5), det)), t, t1, 5, f * 0.004, 0.2);
+        },
+        pad: (f, t, d, v, o) => {
+          const t1 = t + d + 1.05, lf = filt('lowpass', 1400, 0.5, hold(o, t, v, 0.6, d, 1));
+          osc('triangle', f, t, t1, lf, -6); osc('triangle', f, t, t1, lf, 6); osc('sawtooth', f, t, t1, amp(lf, 0.25));
+        },
+        choir: (f, t, d, v, o) => {
+          const t1 = t + d + 0.85, g = hold(o, t, v * 4, 0.45, d, 0.8);
+          const a = filt('bandpass', 720, 4, g), b = filt('bandpass', 1150, 5, amp(g, 0.6));
+          for (const det of [-8, 8]) { osc('sawtooth', f, t, t1, a, det); osc('sawtooth', f, t, t1, b, det); }
+        },
+        organ: (f, t, d, v, o) => { const g = hold(o, t, v, 0.01, d, 0.06); [[1, 0.6], [2, 0.35], [3, 0.18], [4, 0.12]].forEach(([r, gv]) => osc('sine', f * r, t, t + d + 0.1, amp(g, gv))); },
+        bass: (f, t, d, v, o) => { const g = decay(o, t, v, d, 0.6, 0.25, 0.04); osc('triangle', f, t, t + d + 0.3, g); osc('sine', f, t, t + d + 0.3, amp(g, 0.6)); },
+        slap: (f, t, d, v, o) => {
+          const lf = filt('lowpass', f * 12, 1, perc(o, t, v, 0.35 + Math.min(d, 0.3)));
+          lf.frequency.setValueAtTime(f * 12, t); lf.frequency.exponentialRampToValueAtTime(f * 2, t + 0.12);
+          osc('square', f, t, t + 0.7, lf);
+        },
+        tuba: (f, t, d, v, o) => osc('sawtooth', f, t, t + d + 0.1, filt('lowpass', f * 3, 0.8, hold(o, t, v, 0.05, d, 0.08))),
+        synbass: (f, t, d, v, o) => {
+          const g = hold(o, t, v, 0.005, d, 0.06), lf = filt('lowpass', f * 10, 2, g);
+          lf.frequency.setValueAtTime(f * 10, t); lf.frequency.exponentialRampToValueAtTime(f * 2.5, t + 0.18);
+          osc('sawtooth', f, t, t + d + 0.08, lf); osc('sine', f, t, t + d + 0.08, amp(g, 0.5));
+        },
+        sub: (f, t, d, v, o) => { const g = hold(o, t, v, 0.25, d, 0.5); osc('sine', f, t, t + d + 0.55, g); osc('triangle', f * 2, t, t + d + 0.55, amp(g, 0.15)); },
+      };
+      const DRUM = {
+        kick: (t, v, o) => osc('sine', 150, t, t + 0.3, perc(o, t, v, 0.28)).frequency.exponentialRampToValueAtTime(48, t + 0.09),
+        snare: (t, v, o) => { noiseAt(t, 0.18, filt('bandpass', 1900, 0.8, perc(o, t, v, 0.16))); osc('triangle', 190, t, t + 0.1, perc(o, t, v * 0.5, 0.08)); },
+        hat: (t, v, o) => noiseAt(t, 0.05, filt('highpass', 7500, 0.7, perc(o, t, v, 0.035))),
+        ohat: (t, v, o) => noiseAt(t, 0.2, filt('highpass', 7000, 0.7, perc(o, t, v, 0.18))),
+        shaker: (t, v, o) => noiseAt(t, 0.08, filt('bandpass', 5500, 2, perc(o, t, v, 0.06))),
+        clap: (t, v, o) => { for (const dt of [0, 0.011, 0.023]) noiseAt(t + dt, 0.13, filt('bandpass', 1400, 1.2, perc(o, t + dt, v, dt > 0.02 ? 0.12 : 0.02))); },
+        tick: (t, v, o) => osc('sine', 2200, t, t + 0.04, perc(o, t, v, 0.025)),
+        tock: (t, v, o) => osc('sine', 1100, t, t + 0.05, perc(o, t, v, 0.035)),
+        dum: (t, v, o) => osc('sine', 115, t, t + 0.4, perc(o, t, v, 0.35)).frequency.exponentialRampToValueAtTime(75, t + 0.2),
+        tek: (t, v, o) => { noiseAt(t, 0.05, filt('bandpass', 3500, 1.5, perc(o, t, v, 0.04))); osc('sine', 620, t, t + 0.04, perc(o, t, v * 0.5, 0.03)); },
+        tom: (t, v, o) => osc('sine', 180, t, t + 0.35, perc(o, t, v, 0.3)).frequency.exponentialRampToValueAtTime(90, t + 0.25),
+        timp: (t, v, o) => { osc('sine', 98, t, t + 1, perc(o, t, v, 0.9)).frequency.exponentialRampToValueAtTime(88, t + 0.6); noiseAt(t, 0.1, filt('lowpass', 300, 0.7, perc(o, t, v * 0.4, 0.08))); },
+        sleigh: (t, v, o) => { for (let k = 0; k < 4; k++) noiseAt(t + k * 0.028, 0.05, filt('highpass', 6500, 1, perc(o, t + k * 0.028, v * (1 - k * 0.2), 0.04))); },
+        anvil: (t, v, o) => partials(520, t, v, o, [[1, 1, 1.2], [2.76, 0.5, 0.6], [4.1, 0.3, 0.4], [5.3, 0.2, 0.2]]),
+        ckick: (t, v, o) => osc('square', 120, t, t + 0.12, perc(o, t, v, 0.1)).frequency.exponentialRampToValueAtTime(40, t + 0.06),
+        cnoise: (t, v, o) => noiseAt(t, 0.06, filt('lowpass', 4000, 0.7, perc(o, t, v, 0.05))),
+      };
+      const DVOL = { kick: 0.55, snare: 0.28, hat: 0.06, ohat: 0.06, shaker: 0.06, clap: 0.22, tick: 0.1, tock: 0.1, dum: 0.45, tek: 0.14,
+        tom: 0.3, timp: 0.4, sleigh: 0.05, anvil: 0.08, ckick: 0.3, cnoise: 0.08 };
+
+      // ── Abspielen ──
+      const secOf = (Q) => Q.T.S[Q.T.form[Q.sec]];
+      function chordAt(Q, S, bar, st) { const cs = S.bars[bar]; return cs[Math.min(cs.length - 1, Math.floor(st * cs.length / Q.T.tpb))]; }
+      function nextRoot(Q, S) {
+        if (Q.bar + 1 < S.bars.length) return S.bars[Q.bar + 1][0].root;
+        return Q.T.S[Q.T.form[(Q.sec + 1) % Q.T.form.length]].bars[0][0].root;
+      }
+      const ival = (ch, k) => ch.iv[k % ch.iv.length] + 12 * Math.floor(k / ch.iv.length);
+      function bassNote(tok, ch, base, Q, S) {
+        if (tok === 'R') return base;
+        if (tok === '3') return base + ch.iv[1];
+        if (tok === '5') return base + ch.iv[2];
+        if (tok === '7') return base + (ch.iv[3] ?? 10);
+        if (tok === '8') return base + 12;
+        if (tok === '<') { let n = base - ch.root + nextRoot(Q, S) - 1; if (n > base + 6) n -= 12; if (n < base - 6) n += 12; return n; }
+        return null;
+      }
+      function step(Q, t) {
+        const T = Q.T, name = T.form[Q.sec], S = T.S[name], st = Q.st, bar = Q.bar, sd = 60 / T.bpm / T.div;
+        const ch = chordAt(Q, S, bar, st);
+        for (const p of T.P) {
+          if ((p.in && !p.in.includes(name)) || st % p.r) continue;
+          const k = st / p.r, per = T.tpb / p.r, len = sd * p.r, play = INST[p.i];
+          if (!play) continue;
+          if (p.pat) {
+            const pat = p.pat, i = (bar * per + k) % pat.length, tok = pat[i];
+            if (tok === '-' || tok === '.') continue;
+            let n = 1;
+            while (n < pat.length && pat[(i + n) % pat.length] === '-') n++;
+            const base = 12 * (p.o + 1) + ch.root;
+            if (p.bass) { const m = bassNote(tok, ch, base, Q, S); if (m != null) play(hz(m), t, n * len * 0.95, p.v, Q.bus); }
+            else if (p.arp) play(hz(base + ival(ch, +tok)), t, n * len * 0.95, p.v, Q.bus);
+            else for (const iv of ch.iv) play(hz(base + iv), t, tok === 'X' ? n * len : Math.min(n * len, 0.2), p.v, Q.bus);
+          } else if (p.pad) {
+            const cs = S.bars[bar], part = T.tpb / cs.length;
+            if (st % part) continue;
+            for (const iv of ch.iv) play(hz(12 * (p.o + 1) + ch.root + iv), t, part * sd, p.v, Q.bus);
+          } else {
+            const mt = S[(p.src || 'm') + 'T'];
+            if (!mt) continue;
+            const i = bar * per + k, tok = mt[i];
+            if (!tok || tok === '-' || tok === '.') continue;
+            let n = 1;
+            while (mt[i + n] === '-') n++;
+            const m = midi(tok);
+            if (m != null) play(hz(m + 12 * (p.oct || 0)), t, n * len * 0.95, p.v, Q.bus);
+          }
+        }
+        for (const [k, pat] of T.DT) {
+          const tok = pat[(bar * T.tpb + st) % pat.length];
+          if (tok === 'x' || tok === 'X' || tok === 'g') DRUM[k](t, DVOL[k] * (tok === 'X' ? 1.3 : tok === 'g' ? 0.45 : 1), Q.bus);
+        }
+      }
+      function advance(Q) {
+        if (++Q.st < Q.T.tpb) return;
+        Q.st = 0;
+        if (++Q.bar < secOf(Q).bars.length) return;
+        Q.bar = 0; Q.sec = (Q.sec + 1) % Q.T.form.length;
+      }
+      function plan(Q, until) {   // alle Schritte bis "until" vorausplanen
+        const T = Q.T, sd = 60 / T.bpm / T.div;
+        while (Q.next < until) {
+          const sub = Q.st % T.div;
+          const sw = T.swing && T.div % 2 === 0 && sub === T.div / 2 ? T.swing * 30 / T.bpm : 0;
+          step(Q, Q.next + sw);
+          advance(Q); Q.next += sd;
+        }
+      }
+      function tick() {
+        if (!P) return;
+        const now = ctx.currentTime;
+        if (P.next < now - 0.3) P.next = now + 0.05;   // Tab hing: nicht alles nachholen
+        plan(P, now + 0.22);
+      }
+      // Testhilfe: ein Stueck komplett in den (gerade getauschten) Offline-Kontext planen
+      function offline(id, sec) {
+        const keep = [mix, lp, duckG, fanG, conv, pulse[0.25], pulse[0.125]];
+        mix = null; graph();
+        plan(start(id), sec);
+        [mix, lp, duckG, fanG, conv, pulse[0.25], pulse[0.125]] = keep;
+      }
+      function start(id) {
+        const T = prep(TRACKS[id]), now = ctx.currentTime, bus = ctx.createGain();
+        bus.gain.setValueAtTime(0, now); bus.gain.linearRampToValueAtTime(T.gain || 1, now + 0.5);
+        bus.connect(mix);
+        const send = amp(conv, T.rev);
+        bus.connect(send);
+        return { id, T, bus, send, sec: 0, bar: 0, st: 0, next: now + 0.08 };
+      }
+      function fade(Q) {
+        const now = ctx.currentTime;
+        Q.bus.gain.cancelScheduledValues(now); Q.bus.gain.setValueAtTime(Q.bus.gain.value, now); Q.bus.gain.linearRampToValueAtTime(0, now + 0.6);
+        setTimeout(() => { Q.bus.disconnect(); Q.send.disconnect(); }, 3500);   // erst nach dem Hall-Ausklang abklemmen
+      }
+      // w = { id, duck, muffle } oder null (aus). gain je Stueck: offline auf gleichen Pegel gemessen (renderSong)
+      function set(w) {
+        if (!ctx || ctx.state !== 'running') return;
+        graph();
+        const id = w && TRACKS[w.id] ? w.id : null;
+        if ((P ? P.id : null) !== id) {
+          if (P) fade(P);
+          P = id ? start(id) : null;
+          if (P && !timer) timer = setInterval(tick, 50);
+          if (!P && timer) { clearInterval(timer); timer = 0; }
+        }
+        const now = ctx.currentTime, d = !!(w && w.duck), m = !!(w && w.muffle);
+        if (d !== duckOn) { duckOn = d; duckG.gain.setTargetAtTime(d ? 0.35 : 1, now, 0.12); }
+        if (m !== muffOn) { muffOn = m; lp.frequency.setTargetAtTime(m ? 900 : 7000, now, 0.25); }
+      }
+      // Fanfare (Stern): Musik kurz fast weg, danach sanft zurueck
+      function duckFor(sec) {
+        if (!fanG) return;
+        const now = ctx.currentTime;
+        fanG.gain.cancelScheduledValues(now); fanG.gain.setValueAtTime(fanG.gain.value, now);
+        fanG.gain.setTargetAtTime(0.1, now, 0.05); fanG.gain.setTargetAtTime(1, now + sec, 0.5);
+      }
+      return { set, duckFor, offline, TRACKS, get playing() { return P ? P.id : null; } };
+    })();
+    api.song = (w) => MUS.set(w);
+    api.duckMusic = (sec) => MUS.duckFor(sec);
+    api.MUS = MUS;
+    // Testhilfe (?debug): Stueck offline rechnen, gleiche Kette wie im Spiel (ohne Master)
+    api.renderSong = (id, sec = 8, sr = 22050) => {
+      const realCtx = ctx, realBus = musicBus, oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(2, sr * sec, sr);
+      if (!noiseBuf) ac();
+      ctx = oc; musicBus = oc.createGain(); musicBus.gain.value = 0.13; musicBus.connect(oc.destination);
+      try { MUS.offline(id, sec); } finally { ctx = realCtx; musicBus = realBus; }
+      return oc.startRendering();
+    };
+
+    /* Katzenstimme im "Gnarp"-Stil (Wunsch 2026-09-27, Vorlage: eine Aufnahme der Alien-Katze "Gnarpy" - nur
+       vermessen, nichts davon eingebaut): mittlere Tonlage (Grundton ~110-170 Hz) mit weiten Gleitern (faellt bei
+       Schreck, steigt bei Freude bis ~330 Hz), sehr starke naeselnde Resonanz um 3,6 kHz und Knarren ueber einen
+       Unterton auf der halben Frequenz - daher das "gnarp". Saegezahn + Unterton -> Formant-Bandpaesse + Nasal-Band
+       -> leichte Saettigung. Laute: a e i o u, n = Nasal-Anlaut, r = "rp"-Ende (dort knarrt es staerker).
+       Eintrag: [Laute, Tonhoehen-Verlauf (Hz), Dauer (s), Hauch, Knarren 0..1]; mehrere Silben = Liste davon. */
+    const FORMANT = { a: [760, 1250, 2600], e: [480, 1900, 2600], i: [320, 2250, 3000], o: [520, 900, 2450], u: [350, 800, 2300],
+      n: [260, 1750, 2600], r: [500, 1300, 1700] };
     const VOICE = {
-      hop: ['ua', [520, 600], 0.11, 1], hoi: ['oi', [560, 720, 760], 0.15], yay: ['iaau', [620, 950, 1150, 1000], 0.4],
-      flip: ['ui', [500, 820], 0.18], long: ['aa', [720, 600], 0.22, 1], dive: ['uo', [560, 480], 0.2, 1],
-      punch: ['a', [640, 560], 0.07, 1], punch2: ['i', [700, 610], 0.07, 1], kick: ['ia', [640, 780, 700], 0.14, 1],
-      pound: ['u', [430, 380], 0.1], climb: ['e', [520, 600], 0.09, 1], throw: ['ia', [620, 720], 0.12, 1],
-      hurt: ['iau', [900, 700, 450], 0.32], oof: ['ou', [520, 380], 0.18], gasp: ['a', [480, 540], 0.2, 1],
-      die: ['iaau', [820, 900, 600, 340], 0.9], star: ['iau', [700, 1050, 1250], 0.45],
+      hop: ['na', [150, 172], 0.12, 1, 0.3], hoi: ['noi', [150, 200, 185], 0.17, 0, 0.3],
+      yay: [['nar', [180, 230, 160], 0.2, 0, 0.5], ['niar', [210, 300, 330, 260], 0.3, 0, 0.35]],
+      flip: ['nui', [140, 235], 0.2, 0, 0.3], long: ['naar', [215, 170, 128], 0.26, 1, 0.5], dive: ['nuo', [185, 130], 0.22, 1, 0.4],
+      punch: ['na', [165, 138], 0.08, 1, 0.35], punch2: ['ni', [180, 150], 0.08, 1, 0.35], kick: ['niar', [170, 215, 150], 0.16, 1, 0.5],
+      pound: ['nur', [130, 104], 0.13, 0, 0.6], climb: ['ne', [150, 175], 0.1, 1, 0.3], throw: ['niar', [165, 205, 160], 0.14, 1, 0.4],
+      hurt: ['niaur', [262, 205, 118], 0.34, 0, 0.7], oof: ['nour', [152, 100], 0.2, 0, 0.75], gasp: ['a', [140, 162], 0.2, 1, 0.1],
+      die: ['niaaur', [232, 250, 170, 88], 0.95, 0, 0.8],
+      star: [['nar', [175, 205, 135], 0.22, 0, 0.55], ['nar', [190, 250, 175], 0.28, 0, 0.55]],   // "gnarp gnarp!"
     };
     const VOICE_PITCH = { knuddel: 1.12, sphinx: 0.9, neon: 1.06, kappi: 0.95 };   // je Figur etwas hoeher oder tiefer
-    api.voice = fx((name) => {
-      const v = VOICE[name], c = ac();
-      if (!v || !c) return;
-      const [vow, f0, dur, breath] = v, t0 = c.currentTime, k = VOICE_PITCH[CAT.id] || 1, vol = 0.1;   // offline gemessen: so laut wie die Sprung-Klaenge
-      const src = c.createOscillator(), lfo = c.createOscillator(), lg = c.createGain(), env = c.createGain();
-      src.type = 'sawtooth';
-      f0.forEach((f, i) => (i ? src.frequency.linearRampToValueAtTime(f * k, t0 + dur * i / (f0.length - 1)) : src.frequency.setValueAtTime(f * k, t0)));
-      lfo.frequency.value = 6.5; lg.gain.value = f0[0] * k * 0.03; lfo.connect(lg); lg.connect(src.frequency);   // leichtes Vibrato
-      env.gain.setValueAtTime(0.0001, t0); env.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
-      env.gain.setValueAtTime(vol, t0 + dur * 0.6); env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      env.connect(sfxBus);
-      [[3, 1.6], [4, 1], [5, 0.45]].forEach(([q, gain], j) => {
+    const VOICE_VOL = 0.24;   // offline gemessen (voiceOffline): im Mittel so laut wie die alte Stimme und die Sprung-Klaenge
+    let shapeCurve = null, voiceNoise = null;
+    // eine Silbe in Kontext c nach dest (Kontext frei waehlbar: so laesst sie sich auch offline messen)
+    function gnarp(c, dest, syl, t0, k, vol) {
+      const [vow, f0, dur, breath, fry] = syl, t1 = t0 + dur + 0.06, rp = vow.endsWith('r');
+      const src = c.createOscillator(), sub = c.createOscillator(), amO = c.createOscillator();
+      const subG = c.createGain(), am = c.createGain(), amG = c.createGain(), sum = c.createGain(), env = c.createGain();
+      src.type = 'sawtooth'; sub.type = 'square';
+      const glide = (prm, mul) => f0.forEach((f, i) => (i ? prm.linearRampToValueAtTime(f * k * mul, t0 + dur * i / (f0.length - 1)) : prm.setValueAtTime(f * k * mul, t0)));
+      glide(src.frequency, 1); glide(sub.frequency, 0.5); glide(amO.frequency, 0.5);
+      // Zittern: zwei schiefe, langsame Schwingungen auf der Tonhoehe
+      for (const [rate, depth] of [[11, 0.012], [6.3, 0.018]]) {
+        const l = c.createOscillator(), lg = c.createGain();
+        l.frequency.value = rate; lg.gain.value = f0[0] * k * depth; l.connect(lg); lg.connect(src.frequency); l.start(t0); l.stop(t1);
+      }
+      // Knarren: Unterton + Lautstaerke-Schwankung mit halber Frequenz (Perioden-Verdopplung); am "rp"-Ende mehr
+      const fe = rp ? Math.min(0.95, fry + 0.35) : fry;
+      subG.gain.setValueAtTime(fry * 0.35, t0); subG.gain.linearRampToValueAtTime(fe * 0.35, t0 + dur);
+      am.gain.setValueAtTime(1 - fry * 0.45, t0); am.gain.linearRampToValueAtTime(1 - fe * 0.45, t0 + dur);
+      amG.gain.setValueAtTime(fry * 0.45, t0); amG.gain.linearRampToValueAtTime(fe * 0.45, t0 + dur);
+      amO.connect(amG); amG.connect(am.gain);
+      src.connect(am); sub.connect(subG); subG.connect(am);
+      // Formanten gleiten von Laut zu Laut; dazu das kraeftige Nasal-Band und etwas Brustton
+      const kf = Math.pow(k, 0.25);
+      [[3.5, 2.3], [5, 0.6], [6, 0.3]].forEach(([q, gain], j) => {   // Staerken per Bandvergleich mit der Vorlage eingestellt
         const bp = c.createBiquadFilter(), g = c.createGain();
         bp.type = 'bandpass'; bp.Q.value = q; g.gain.value = gain;
         [...vow].forEach((ch, i) => {
-          const f = FORMANT[ch][j] * 1.3 * Math.sqrt(k);   // kleines Wesen: Formanten hoeher als beim Menschen
-          if (i) bp.frequency.linearRampToValueAtTime(f, t0 + dur * 0.8 * i / (vow.length - 1)); else bp.frequency.setValueAtTime(f, t0);
+          const f = FORMANT[ch][j] * kf;
+          if (i) bp.frequency.linearRampToValueAtTime(f, t0 + dur * 0.85 * i / (vow.length - 1)); else bp.frequency.setValueAtTime(f, t0);
         });
-        src.connect(bp); bp.connect(g); g.connect(env);
+        am.connect(bp); bp.connect(g); g.connect(sum);
       });
-      if (breath) noise(0, 0.05, { filter: 'highpass', f: 2500, vol: 0.08 });
-      src.start(t0); lfo.start(t0); src.stop(t0 + dur + 0.05); lfo.stop(t0 + dur + 0.05);
+      const nasal = c.createBiquadFilter(), ng = c.createGain();
+      nasal.type = 'bandpass'; nasal.frequency.value = 3700 * kf; nasal.Q.value = 5; ng.gain.value = 1.7;
+      am.connect(nasal); nasal.connect(ng); ng.connect(sum);
+      const body = c.createBiquadFilter(), bg = c.createGain();
+      body.type = 'lowpass'; body.frequency.value = 380; bg.gain.value = 0.1;
+      am.connect(body); body.connect(bg); bg.connect(sum);
+      if (!shapeCurve) {
+        shapeCurve = new Float32Array(1024);
+        for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; shapeCurve[i] = Math.tanh(x * 1.8) / Math.tanh(1.8); }
+      }
+      // nur leicht saettigen (zu viel Antrieb macht aus der Stimme eine Kreissaege), danach oben abrunden:
+      // in der Vorlage liegt fast alles unter 1,5 kHz, dazu das Nasal-Band - darueber kaum etwas
+      const sh = c.createWaveShaper(), top = c.createBiquadFilter();
+      sh.curve = shapeCurve; sum.gain.value = 0.3;
+      top.type = 'lowpass'; top.frequency.value = 4000; top.Q.value = 0.6;
+      const low = c.createBiquadFilter(), mid = c.createBiquadFilter();   // Klangregler: weniger Bass, mehr Vokal-Kern
+      low.type = 'lowshelf'; low.frequency.value = 330; low.gain.value = -7;
+      mid.type = 'peaking'; mid.frequency.value = 950; mid.Q.value = 0.9; mid.gain.value = 5;
+      sum.connect(sh); sh.connect(top); top.connect(low); low.connect(mid); mid.connect(env);
+      env.gain.setValueAtTime(0.0001, t0); env.gain.exponentialRampToValueAtTime(vol, t0 + 0.025);
+      env.gain.setValueAtTime(vol, t0 + dur * 0.65); env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      env.connect(dest);
+      for (const o of [src, sub, amO]) { o.start(t0); o.stop(t1); }
+      if (breath) {   // Hauch am Anfang
+        if (!voiceNoise || voiceNoise.sampleRate !== c.sampleRate) {
+          voiceNoise = c.createBuffer(1, c.sampleRate >> 2, c.sampleRate);
+          const d = voiceNoise.getChannelData(0);
+          for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        }
+        const s2 = c.createBufferSource(), hp = c.createBiquadFilter(), hg = c.createGain();
+        s2.buffer = voiceNoise; hp.type = 'highpass'; hp.frequency.value = 2500;
+        hg.gain.setValueAtTime(vol * 0.8, t0); hg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
+        s2.connect(hp); hp.connect(hg); hg.connect(dest); s2.start(t0); s2.stop(t0 + 0.06);
+      }
+      return t0 + dur;
+    }
+    function say(c, dest, name, t0, k, vol = VOICE_VOL) {
+      const v = VOICE[name];
+      if (!v) return t0;
+      let t = t0;
+      for (const syl of Array.isArray(v[0]) ? v : [v]) t = gnarp(c, dest, syl, t, k, vol) + 0.035;
+      return t;
+    }
+    api.voice = fx((name) => {
+      const c = ac();
+      if (c) say(c, sfxBus, name, c.currentTime, VOICE_PITCH[CAT.id] || 1);
     });
+    // Testhilfe: Stimme offline rechnen (fuer Lautstaerke- und Klangvergleich)
+    api.voiceOffline = (name, k = 1, sr = 24000) => {
+      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, oc = new C(1, sr * 2, sr);
+      say(oc, oc.destination, name, 0.02, k);
+      return oc.startRendering();
+    };
     return api;
   })();
 
@@ -11091,7 +11702,7 @@ void main() {
     }));
     $('#starGetName').textContent = STARS[s.id].name;
     StarFx.start(s.pos, isNew);
-    Snd.starGet(); Snd.voice('star'); rumble(0.5, 300);
+    Snd.starGet(); Snd.duckMusic(2.6); Snd.voice('star'); rumble(0.5, 300);
     pl.speed = 0;
     setTimeout(() => {
       $('#starGet').hidden = true;
@@ -12168,7 +12779,6 @@ void main() {
       try { ret = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); sessionStorage.removeItem('glappa64-return'); } catch (e) { ret = null; }
       if (ret && BUILDERS[ret.level] && Array.isArray(ret.pos)) { enterLevel(ret.level, ret.pos, ret.face || 0, ret.face || 0); pl.appearT = clock + 0.5; }
       else enterLevel(/[?&]gym\b/.test(location.search) ? 'gym' : 'garden');   // ?gym = Testlevel fuers Moveset
-      if (state.music) Snd.music(true);
       return Iris.open(null, null, 700);
     }).then(() => { mode = 'play'; setTimeout(intro, 1300); Net.autoJoin(); });
   }
@@ -12199,7 +12809,7 @@ void main() {
   function openPause() {
     if (mode !== 'play' || Dialog.open) return;
     mode = 'pause'; Input.unlock();
-    Snd.pause(); Snd.music(false);
+    Snd.pause();
     $('#pauseCourse').textContent = `${cur.name} · Datei ${(slot || 'a').toUpperCase()} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`;
     const ul = $('#starList');
     ul.replaceChildren();
@@ -12224,7 +12834,6 @@ void main() {
     mode = 'play'; uiCool = 0.12;
     if (Input.escHeld()) Input.lockAfterEscUp(); else Input.lock();   // mit Esc: Maus erst nach dem Loslassen
     Snd.pause();
-    if (state.music) Snd.music(true);
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
   function closeEnding() {
@@ -14204,7 +14813,7 @@ void main() {
       if (A.phase === 'letter') {
         if (A.t > 1.1) letter.classList.add('show');
         if (A.t > 7.2) el.classList.add('out');
-        if (A.t > 8) { A.t = 0; setPhase('fly'); if (state.music) Snd.music(true); }
+        if (A.t > 8) { A.t = 0; setPhase('fly'); }
       } else if (A.phase === 'fly' && A.t >= FLY_T) { A.t = 0; setPhase('arrive'); }
       else if (A.phase === 'arrive') {
         if (el.classList.contains('flash')) { if (A.t > 0.1) el.classList.add('out'); if (A.t > 0.9) { el.hidden = true; el.classList.remove('flash', 'out'); } }
@@ -14220,7 +14829,6 @@ void main() {
       pl.pos = SPOT.slice(); pl.face = Math.PI; pl.vel = [0, 0, 0]; pl.grounded = true; pl.action = 'ground';
       cam.yaw = 0; cam.pitch = 0.34; cam.dist = 12; cam.snap = true; cam.manual = 0;
       mode = 'play';
-      if (state.music) Snd.music(true);
       setTimeout(intro, 500); Net.autoJoin();
     }
     const beamY = () => (A && A.phase === 'arrive' ? A.t : 0);
@@ -14290,8 +14898,21 @@ void main() {
     jumpP: false, actionP: false, zP: false, lookP: false, pauseP: false, startP: false };
   const EDGES = ['jumpP', 'actionP', 'zP', 'lookP'];
   const pend = { jumpP: false, actionP: false, zP: false, lookP: false };
+  // Welche Musik gerade laufen soll - jedes Bild abgefragt, Snd.song wechselt nur bei einer Aenderung.
+  // Bilderzimmer spielen das Stueck ihrer Welt gedaempft (wie durch das Bild gehoert), Pause = leiser.
+  const SONG_OF = { hall: 'hall', og: 'og', keller: 'keller', hof: 'hof', desert: 'desert', dust: 'dust', terminal: 'terminal', video: 'video',
+    aquarium: 'aquarium', bounce: 'bounce', spuk: 'spuk', uhrwerk: 'uhrwerk', fraktal: 'fraktal', pilz: 'pilz', neon: 'neon', verlies: 'verlies',
+    bibliothek: 'bibliothek', musik: 'musik', spiel: 'spiel', sternwarte: 'sternwarte', gym: 'spiel' };
+  function wantedSong() {
+    if (!state.music || document.hidden) return null;
+    if (mode === 'title' || mode === 'files' || mode === 'ending') return { id: 'title' };
+    if (mode === 'intro' || !cur) return { id: 'garden' };
+    const k = cur.key, paint = k.startsWith('bild_'), base = paint ? k.slice(5) : k;
+    return { id: SONG_OF[base] || 'garden', duck: mode === 'pause', muffle: paint };
+  }
   function frame(now, manualDt) {
     const dt = manualDt ?? Math.min(0.05, Math.max(0, (now - last) / 1000));
+    Snd.song(wantedSong());
     if (manualDt == null) last = now;
     clock += dt;
     const inp = forced ? Object.assign({}, NO_INPUT, forced) : Input.poll();
@@ -14345,7 +14966,7 @@ void main() {
   $('#btnSfx').addEventListener('click', blurAfter(() => { state.sfx = !state.sfx; save(); syncButtons(); Snd.unlock(); Snd.coin(); }));
   $('#btnMusic').addEventListener('click', blurAfter(() => {
     state.music = !state.music; save(); syncButtons();
-    Snd.unlock(); Snd.music(state.music && mode !== 'title' && mode !== 'files' && mode !== 'pause');
+    Snd.unlock();
   }));
   $('#btnPause').addEventListener('click', blurAfter(() => { if (mode === 'pause') closePause(); else openPause(); }));
   /* Vollbild: eigener Knopf (Fullscreen-API). Dort laesst Chrome/Edge die Seite per Keyboard Lock Tasten wie Strg+W
@@ -14386,7 +15007,7 @@ void main() {
   $('#btnEndBack').addEventListener('click', closeEnding);
   $('#btnEndReset').addEventListener('click', resetGame);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { Snd.music(false); if (mode === 'play' && !Dialog.open) openPause(); }
+    if (document.hidden) { Snd.song(null); if (mode === 'play' && !Dialog.open) openPause(); }
   });
   addEventListener('pageshow', (e) => {
     if (!e.persisted) return;

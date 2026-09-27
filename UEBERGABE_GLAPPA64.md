@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=118`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=119`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -207,6 +207,26 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Ohren stecken oben durch die Kappe statt seitlich wie Hörner.
 - Falle beim Testen: Der Browser cached `glappa64.html` selbst → nach Änderungen mit `&nc=<Zeit>` laden, sonst läuft
   heimlich die alte `?v=`-Fassung. Vor Figuren/Schildern ist B „reden“, nicht „schlagen“ (Wolki steht bei (5, 30)).
+
+### 1.14 Musik je Welt + Gnarp-Stimme (2026-09-27)
+- **Musik**: statt einer 8-Takt-Schleife 22 eigene Stücke (`TRACKS` im Snd-Modul, alle Melodien eigene Kompositionen):
+  title, garden, hall, og, keller, hof, desert, dust, terminal, video, aquarium, bounce, spuk, uhrwerk, fraktal, pilz,
+  neon, verlies, bibliothek, musik, spiel, sternwarte. Engine `MUS`: Synth-Instrumente (Glocke, Celesta, Spieluhr,
+  Marimba, Xylophon, Kalimba, Harfe, Zupf, Cembalo, Pizzicato, E-Piano/Steeldrum per FM, Flöte/Lead mit Vibrato, Chip-
+  Pulse, Blech, Streicher, Pad, Chor, Orgel, Bässe) + Schlagzeug, gemeinsamer Hall (Faltung) und Tiefpass 7 kHz.
+  Klangfarben nach den SM64-Klängen des Users NUR vermessen (Spektrogramme: Sinusglocken mit Echo, Blechsätze,
+  Harfen-Glissando, Vibrato, 16-kHz-Abtastung) – keine Datei eingebaut.
+- Notation je Stück: Takte mit `|`, je Schritt Note/`-`/`.`; Akkorde je Takt (`C,G` = halbe); Stimmen `P` (Melodie,
+  `bass` Stufen R 3 5 7 8 `<`, `arp`, `stab`, `pad`, `res`, `in`), Schlagzeug `D`. Prüfskript im Kopf der Übergabe
+  nachbauen: Taktlängen, Noten, Akkorde (alle 22 fehlerfrei).
+- Auswahl: `wantedSong()` jedes Bild → `Snd.song({id, duck, muffle})`; Bilderzimmer `bild_X` spielen X gedämpft
+  (Tiefpass 900 Hz), Pause = 35 %, Stern-Fanfare `Snd.duckMusic(2,6)`, Tab versteckt = aus. `gain` je Stück offline
+  auf gleichen Pegel gemessen (`Snd.renderSong(id, sek)`), Musik-Bus 0,13 (unter Stimme/Klängen).
+- **Musik ist jetzt Vorgabe an**; alte Einstellungen einmalig umgestellt (`opts.mv = 2`).
+- **Stimme im Gnarp-Stil** (Vorlage mp3 des Users vermessen): Grundton 100–330 Hz mit Gleitern, Knarren per Unterton
+  und AM mit halber Frequenz, Nasal-Band 3,7 kHz, Klangregler. Bandenergien per ffmpeg-Bandpass gegen die Vorlage
+  abgeglichen (alle Bänder ±3 dB). `VOICE` kennt Silbenlisten (`star` = „gnarp gnarp“). Test: `Snd.voiceOffline(name)`.
+- Testfalle: versteckter Browser-Pane drosselt Timer → Musik dort nicht in Echtzeit prüfbar, dafür `renderSong`.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
