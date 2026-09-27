@@ -10383,7 +10383,7 @@ void main() {
     pl.hurtT = Math.max(0, pl.hurtT - dt);
     pl.punchT = Math.max(0, pl.punchT - dt);
     pl.sweepT = Math.max(0, (pl.sweepT || 0) - dt);
-    if (pl.sweepT > 0 && !pl.sweepHit && pl.sweepT < SWEEP_DUR * 0.75) { pl.sweepHit = true; hitInFront(SWEEP_R, true, true); }
+    if (pl.sweepT > 0 && !pl.sweepHit && pl.sweepT < SWEEP_DUR * 0.75) { pl.sweepHit = true; hitInFront(SWEEP_R, true, true, 1); }
     pl.frozen = Math.max(0, pl.frozen - dt);
     pl.jumpBuf = Math.max(0, pl.jumpBuf - dt);
     pl.holdGrace = Math.max(0, pl.holdGrace - dt);
@@ -10744,6 +10744,16 @@ void main() {
     }
     pl.squash += (1 - pl.squash) * Math.min(1, dt * 12);   // Hocke staucht NICHT mehr (eigene Pose, siehe crouchK)
     const flipRate = { triple: 9, backflip: 8, sideflip: 9, rollout: 11 }[pl.action];
+    // PvP: Hechtsprung rammt einmal, Draufspringen federt ab
+    if (pl.action === 'dive' && !pl.diveHit && pvpHit(1.4, 's', 2)) pl.diveHit = true;
+    if (!pl.grounded && pl.vel[1] < -1 && pl.action !== 'pound') {
+      for (const t of Net.targets()) {
+        const top = pl.pos[1] - t.pos[1];
+        if (Math.hypot(t.pos[0] - pl.pos[0], t.pos[2] - pl.pos[2]) < 0.85 && top > 1.2 && top < 2.6 && Net.hit(t.id, 'w', 1)) {
+          bounceOff(); Snd.stomp(); break;
+        }
+      }
+    }
     // Rutschtritt: die Fuesse treffen einmal, was vorn im Weg ist
     if ((pl.action === 'slidekick' || pl.action === 'kickslide') && !pl.skHit && pl.speed > 3) pl.skHit = hitInFront(1.8, true);
     // Rutschen gegen eine Wand: abrupt stoppen (ausser in der Rutschbahn)
@@ -10764,6 +10774,7 @@ void main() {
     pl.squash = impact < -20 ? 0.62 : 0.8;
     if (from === 'pound') {
       cam.shake = 0.35; rumble(0.6, 160); Snd.stomp();
+      pvpHit(2.8, 's', 3, true);
       burst([pl.pos[0], pl.pos[1] + .1, pl.pos[2]], 14, { spread: 6, up: 1.5, upRand: 1, life: .5, size: .3, cols: [[.96, .94, .86]], grav: 2 });
       for (const e of cur.enemies) {
         if (dist2D(e.pos, pl.pos) < 2.8 && Math.abs(e.pos[1] - pl.pos[1]) < 1.6) {
@@ -10785,6 +10796,10 @@ void main() {
       // Hechtsprung endet im Bauchrutscher
       pl.action = 'slide'; pl.squash = 0.75;
       dust(pl.pos, 7); Snd.stomp();
+    } else if (from === 'knock' && pl.knockHard) {
+      // harter PvP-Treffer: auf dem Ruecken landen und kurz liegen bleiben (wie im Vorbild)
+      pl.knockHard = false; pl.knock = 0.6; pl.speed = 0; pl.push = [0, 0, 0]; pl.squash = 0.7;
+      dust(pl.pos, 8); Snd.stomp();
     } else if (from === 'bonk') {
       // nach dem Bonk kurz auf dem Hosenboden liegen
       pl.knock = 0.55; pl.speed = 0; pl.squash = 0.6;
@@ -10873,6 +10888,29 @@ void main() {
   const paintAway = (pt, p) => (pt.axis === 'x' ? Math.abs(p[2] - pt.z) : Math.abs(p[0] - pt.x));
   const paintLocalX = (pt, p) => (pt.axis === 'x' ? p[0] - pt.x : pt.wallTag === 'wallL' ? -(p[2] - pt.z) : p[2] - pt.z) / (pt.scale || 1);
 
+  /* PvP-Treffer von einem Mitspieler, wie im Vorbild: zum Angreifer drehen, rueckwaerts weggeschleudert, bei harten
+     Treffern (Tritt, Hechtsprung, Rutschtritt, Stampfer) landet man auf dem Ruecken; danach blinkend unverwundbar. */
+  function hitByPlayer(from, dmg, strong, byName) {
+    if (mode !== 'play' || Dialog.open || pl.invuln > 0 || pl.dead || Cine.active || pl.entering) return;
+    const p = pl.pos;
+    pl.face = Math.atan2(from[0] - p[0], from[2] - p[2]);
+    hurtPlayer(dmg, [from[0], p[1], from[2]], strong);
+    pl.knockHard = strong;
+    burst([p[0], p[1] + 1.3, p[2]], 12, { spread: 3, up: 2, upRand: 2, life: .4, size: .16, cols: [[1, 1, 1], [1, .9, .4]], grav: 2 });
+    cam.shake = Math.max(cam.shake, strong ? 0.3 : 0.18);
+    if (byName && run.health > 0) toast(`\u{1F4A5} ${byName} hat dich erwischt!`);
+  }
+  // PvP: Mitspieler in Reichweite treffen (vor Glappo oder rundum). Liefert true bei mindestens einem Treffer.
+  function pvpHit(range, k, d, all = false) {
+    const fx = Math.sin(pl.face), fz = Math.cos(pl.face);
+    let any = false;
+    for (const t of Net.targets()) {
+      const dx = t.pos[0] - pl.pos[0], dz = t.pos[2] - pl.pos[2], dd = Math.hypot(dx, dz);
+      if (dd > range || Math.abs(t.pos[1] - pl.pos[1]) > 1.6 || (!all && (dx * fx + dz * fz) / (dd || 1) < 0.25)) continue;
+      if (Net.hit(t.id, k, d)) any = true;
+    }
+    return any;
+  }
   function hurtPlayer(n, from, strong) {
     if (pl.invuln > 0 || pl.dead) return;
     if (pl.hold) dropHold(false);
@@ -11683,7 +11721,7 @@ void main() {
     if (!c.faded && t > 1.72) { c.faded = true; MagicFade.on(c.tint); }
     if (!c.done && t > 2.2) {
       c.done = true;
-      if (!pt.level) { location.href = new URL(pt.href, location.href).href; return; }
+      if (!pt.level) { leavingOnPurpose = true; location.href = new URL(pt.href, location.href).href; return; }
       pt.swirl = 0; pt.rip = null;
       Cine.active = null;
       document.body.classList.remove('cine');
@@ -11775,9 +11813,9 @@ void main() {
   }
   // Trifft alles vor Glappo in Reichweite; liefert true bei einem Treffer
   // all = rundum statt nur nach vorn (Beinfeger); weggestossen wird dann vom Spieler weg
-  function hitInFront(range, kick, all = false) {
+  function hitInFront(range, kick, all = false, pvpD = kick ? 2 : 1) {
     const fx = Math.sin(pl.face), fz = Math.cos(pl.face);
-    let hit = false;
+    let hit = pvpHit(range, kick ? 's' : 'w', pvpD, all);   // Mitspieler (PvP) wie Gegner
     for (const e of cur.enemies) {
       if (e.state === 'dead' || e.state === 'gone' || e.state === 'squash' || e.state === 'off' || e.state === 'crash' || e.type === 'roller') continue;
       if (e.shy && e.hide > 0.65) continue;   // durchsichtig: der Schlag geht durch
@@ -11807,6 +11845,7 @@ void main() {
   }
   function startDive() {
     const air = !pl.grounded;
+    pl.diveHit = false;
     airborne('dive', air ? Math.max(Math.min(pl.vel[1], 6), 3) : 7, Math.max(pl.speed, 13) + (air ? 1.5 : 3));
     pl.punchT = 0;
     Snd.dive(); Snd.voice('dive'); if (!air) dust(pl.pos, 5);
@@ -12300,7 +12339,12 @@ void main() {
      Datenschutz: Mitspieler und der Vermittler sehen die IP-Adresse - steht als Hinweis im Pausenmenue.
      Jeder rechnet seine Physik selbst und schickt ~15x/s seine fertige Pose (POSE_KEYS); Mitspieler werden mit
      drawPose gezeichnet, DELAY ms verzoegert und dazwischen weich gemischt. Nicht synchron (v1): Gegner, Muenzen,
-     Schalter, Kisten. */
+     Schalter, Kisten.
+     PvP (Schalter beim Gastgeber, Vorgabe an): der ANGREIFER erkennt Treffer an der gezeichneten Mitspieler-Position
+     (was man sieht, trifft man) und schickt {t:'hit', to, k, d, x, z}; der Gastgeber prueft (gleiche Welt, Abstand,
+     Drossel) und reicht an das Opfer weiter. Das Opfer reagiert selbst wie im Vorbild (hitByPlayer: zum Angreifer
+     drehen, rueckwaerts weggeschleudert, bei harten Treffern auf den Ruecken, danach blinkend unverwundbar).
+     Die Posen tragen die Lebensenergie mit (hp) - dafuer die Mitspieler-Liste (renderLobby). */
   const Net = (() => {
     const SEND_HZ = 15, DELAY = 110, NAME_KEY = 'glappa64-name', SESSION_KEY = 'glappa64-mp';
     const CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/, CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -12315,7 +12359,8 @@ void main() {
     const NO_RTC = 'Dein Browser hat WebRTC abgeschaltet (z. B. Tor-/Mullvad-Browser, LibreWolf, strenger Datenschutz-Modus) – damit geht der Mehrspieler nicht.';
     const ANGLE = POSE_KEYS.map((k) => k === 'yaw');
     let peer = null, role = '', hostConn = null, myId = null, room = '', status = 'aus', msg = '', sendT = 0;
-    let retry = 0, retryTimer = 0, gen = 0, lastSt = null, lastIce = '';
+    let retry = 0, retryTimer = 0, gen = 0, lastSt = null, lastIce = '', pvp = true;
+    const lastHitAt = new Map();                   // Angreifer: Mitspieler-id -> Zeit des letzten Treffers (kein Dauerfeuer)
     const others = new Map();                      // Anzeige: id -> { name, cat, buf: [{ t, lv, c, p }], head, pos }
     const guests = new Map();                      // nur Gastgeber: id -> { id, conn, name, cat, st, bucket, bucketT }
     let roomStars = new Set(), nextId = 2;         // nur Gastgeber (selbst id 1)
@@ -12343,7 +12388,27 @@ void main() {
     function cleanState(m) {
       if (typeof m.lv !== 'string' || !LEVEL_RE.test(m.lv) || typeof m.c !== 'string' || !CAT_RE.test(m.c)) return null;
       if (!Array.isArray(m.p) || m.p.length !== POSE_KEYS.length || !m.p.every(isNum)) return null;
-      return { lv: m.lv, c: m.c, p: m.p };
+      const hp = Number.isInteger(m.hp) && m.hp >= 0 && m.hp <= 8 ? m.hp : 8;
+      return { lv: m.lv, c: m.c, p: m.p, hp };
+    }
+    // Treffer-Nachricht pruefen: k = 'w' (leicht) / 's' (hart), d = Schaden 1..3, x/z = Standort des Angreifers
+    function cleanHit(m) {
+      if (!Number.isInteger(m.to) || !(m.k === 'w' || m.k === 's') || !Number.isInteger(m.d) || m.d < 1 || m.d > 3) return null;
+      if (!isNum(m.x) || !isNum(m.z)) return null;
+      return { to: m.to, k: m.k, d: m.d, x: m.x, z: m.z };
+    }
+    // Gastgeber: darf "by" "to" ueberhaupt treffen? (PvP an, gleiche Welt, nah genug)
+    function plausible(byId, toId) {
+      if (!pvp) return false;
+      const stOf = (id) => (id === 1 ? lastSt : (guests.get(id) || {}).st);
+      const a = stOf(byId), b = stOf(toId);
+      return !!(a && b && a.lv === b.lv && Math.hypot(a.p[0] - b.p[0], a.p[2] - b.p[2]) < 8);
+    }
+    // Treffer beim Opfer ankommen lassen (Name fuer die Meldung)
+    function hitMe(m, byId) {
+      if (!pvp) return;
+      const o = others.get(byId);
+      hitByPlayer([m.x, 0, m.z], m.d, m.k === 's', o ? o.name : '');
     }
     function markStar(id) {
       if (typeof id !== 'string' || !STAR_RE.test(id) || !Object.prototype.hasOwnProperty.call(STARS, id) || state.stars[id]) return false;
@@ -12440,8 +12505,8 @@ void main() {
           g = { id: nextId++, conn, name: cleanName(m.name), cat: typeof m.cat === 'string' && CAT_RE.test(m.cat) ? m.cat : 'astro', st: null, bucket: RATE, bucketT: performance.now() };
           const fresh = cleanStars(m.stars).filter((x) => !roomStars.has(x) && roomStars.size < MAX_STARS);
           fresh.forEach((x) => roomStars.add(x));
-          const players = [{ id: 1, name, cat: CAT.id, st: lastSt }].concat([...guests.values()].map((x) => ({ id: x.id, name: x.name, cat: x.cat, st: x.st })));
-          try { conn.send({ t: 'welcome', id: g.id, room, stars: [...roomStars].sort(), players }); } catch (e) { return; }
+          const players = [{ id: 1, name, cat: CAT.id, st: lastSt }].concat([...guests.values()].map((x) => ({ id: x.id, name: x.name, cat: x.cat, st: x.st })));   // st traegt hp mit
+          try { conn.send({ t: 'welcome', id: g.id, room, stars: [...roomStars].sort(), players, pvp }); } catch (e) { return; }
           guests.set(g.id, g);
           const j = { t: 'join', id: g.id, name: g.name, cat: g.cat };
           relay(j, g); onMsg(j);
@@ -12453,8 +12518,14 @@ void main() {
           const st = cleanState(m);
           if (!st) return;
           g.st = st; g.cat = st.c;
-          const out = { t: 'st', id: g.id, lv: st.lv, c: st.c, p: st.p };
+          const out = { t: 'st', id: g.id, lv: st.lv, c: st.c, p: st.p, hp: st.hp };
           relay(out, g); onMsg(out);
+        } else if (m.t === 'hit') {
+          const hm = cleanHit(m);
+          if (!hm || hm.to === g.id || !plausible(g.id, hm.to)) return;
+          const out = { t: 'hit', by: g.id, k: hm.k, d: hm.d, x: hm.x, z: hm.z };
+          if (hm.to === 1) hitMe(out, g.id);
+          else { const v = guests.get(hm.to); if (v && v.conn.open) try { v.conn.send(out); } catch (e) { /* egal */ } }
         } else if (m.t === 'star' && typeof m.id === 'string' && STAR_RE.test(m.id) && !roomStars.has(m.id) && roomStars.size < MAX_STARS) {
           roomStars.add(m.id);
           const out = { t: 'stars', ids: [m.id], by: g.name };
@@ -12520,17 +12591,17 @@ void main() {
     // ── gemeinsame Nachrichtenverarbeitung (Gast bekommt sie vom Gastgeber, Gastgeber erzeugt sie selbst) ──
     function onMsg(m) {
       if (m.t === 'welcome') {
-        myId = m.id; room = m.room; status = 'drin'; msg = ''; retry = 0;
+        myId = m.id; room = m.room; status = 'drin'; msg = ''; retry = 0; pvp = m.pvp !== false;
         remember(room, 'guest');
         let n = 0;
         for (const id of m.stars || []) if (markStar(id)) n++;
         if (n) { save(); renderHud('stars'); }
         others.clear();
-        for (const q of m.players || []) others.set(q.id, { name: cleanName(q.name), cat: q.cat, buf: q.st && Array.isArray(q.st.p) ? [{ t: performance.now(), lv: q.st.lv, c: q.st.c, p: q.st.p }] : [] });
+        for (const q of m.players || []) others.set(q.id, { name: cleanName(q.name), cat: q.cat, hp: q.st && Number.isInteger(q.st.hp) ? q.st.hp : 8, buf: q.st && Array.isArray(q.st.p) ? [{ t: performance.now(), lv: q.st.lv, c: q.st.c, p: q.st.p }] : [] });
         setUrlRoom(room);
         toast(n ? `\u{1F465} Raum ${room}: ${n} Stern${n === 1 ? '' : 'e'} von den anderen übernommen` : `\u{1F465} Im Raum ${room}`);
       } else if (m.t === 'join') {
-        others.set(m.id, { name: cleanName(m.name), cat: m.cat, buf: [] });
+        others.set(m.id, { name: cleanName(m.name), cat: m.cat, hp: 8, buf: [] });
         toast(`\u{1F465} ${cleanName(m.name)} ist da`);
       } else if (m.t === 'leave') {
         const o = others.get(m.id);
@@ -12540,14 +12611,22 @@ void main() {
         const o = others.get(m.id), st = cleanState(m);   // auch als Gast pruefen: der Gastgeber ist nur ein Browser
         if (!o || !st) return;
         const lvWas = o.buf.length ? o.buf[o.buf.length - 1].lv : null;
-        o.cat = st.c;
+        const hpWas = o.hp;
+        o.cat = st.c; o.hp = st.hp;
         o.buf.push({ t: performance.now(), lv: st.lv, c: st.c, p: st.p });
         if (o.buf.length > 12) o.buf.shift();
-        if (lvWas === m.lv) return;                // sonst kein emit: kommt 15x pro Sekunde - nur bei Weltwechsel
+        if (lvWas === m.lv && hpWas === o.hp) return;   // sonst kein emit: kommt 15x pro Sekunde - nur bei Welt-/Energiewechsel
       } else if (m.t === 'stars') {
         let n = 0;
         for (const id of m.ids || []) if (markStar(id)) n++;
         if (n) { save(); renderHud('stars'); toast(`⭐ ${cleanName(m.by)} hat ${n === 1 ? 'einen Stern' : n + ' Sterne'} geholt – zählt für alle!`); }
+      } else if (m.t === 'cfg') {
+        pvp = m.pvp !== false;
+        toast(pvp ? '\u2694 PvP ist an – Treffer tun Mitspielern weh' : '\u{1F54A} PvP ist aus – ihr koennt euch nicht verletzen');
+      } else if (m.t === 'hit') {
+        const hm = cleanHit({ ...m, to: myId });
+        if (hm && Number.isInteger(m.by)) hitMe(hm, m.by);
+        return;
       } else if (m.t === 'error' || m.t === 'end') {
         fail(m.t === 'end' ? 'Der Gastgeber hat den Raum beendet.' : String(m.msg || 'Fehler').slice(0, 80));
         return;
@@ -12564,10 +12643,40 @@ void main() {
       if ((sendT -= dt) > 0) return;
       sendT = 1 / SEND_HZ;
       const P = pl.netPose;
-      const st = { lv: cur.key, c: CAT.id, p: POSE_KEYS.map((k) => Math.round((P[k] || 0) * 1000) / 1000) };
+      const st = { lv: cur.key, c: CAT.id, p: POSE_KEYS.map((k) => Math.round((P[k] || 0) * 1000) / 1000), hp: run.health };
       lastSt = st;
-      if (role === 'host') relay({ t: 'st', id: 1, lv: st.lv, c: st.c, p: st.p });
-      else if (role === 'guest' && hostConn && hostConn.open) try { hostConn.send({ t: 'st', lv: st.lv, c: st.c, p: st.p }); } catch (e) { /* egal */ }
+      if (role === 'host') relay({ t: 'st', id: 1, lv: st.lv, c: st.c, p: st.p, hp: st.hp });
+      else if (role === 'guest' && hostConn && hostConn.open) try { hostConn.send({ t: 'st', lv: st.lv, c: st.c, p: st.p, hp: st.hp }); } catch (e) { /* egal */ }
+    }
+    // Angreifer: Mitspieler "id" getroffen (k = 'w'/'s', d = Schaden). Liefert true, wenn der Treffer rausging.
+    function hit(id, k, d) {
+      if (!pvp || status !== 'drin' || !pl.pos) return false;
+      const now = performance.now();
+      if (now - (lastHitAt.get(id) || -1e9) < 350) return false;
+      lastHitAt.set(id, now);
+      const m = { t: 'hit', to: id, k, d, x: Math.round(pl.pos[0] * 100) / 100, z: Math.round(pl.pos[2] * 100) / 100 };
+      if (role === 'host') {
+        const v = guests.get(id);
+        if (!v || !v.conn.open) return false;
+        try { v.conn.send({ t: 'hit', by: 1, k, d, x: m.x, z: m.z }); } catch (e) { return false; }
+      } else if (role === 'guest' && hostConn && hostConn.open) {
+        try { hostConn.send(m); } catch (e) { return false; }
+      } else return false;
+      return true;
+    }
+    // Mitspieler, die gerade in dieser Welt gezeichnet werden (Position = was man sieht)
+    function targets() {
+      const out = [];
+      if (!pvp || status !== 'drin') return out;
+      for (const [id, o] of others) if (o.head && o.pos) out.push({ id, pos: o.pos });
+      return out;
+    }
+    function setPvp(on) {
+      if (role !== 'host') return;
+      pvp = !!on;
+      relay({ t: 'cfg', pvp });
+      toast(pvp ? '\u2694 PvP ist an' : '\u{1F54A} PvP ist aus');
+      emit();
     }
     function star(id) {
       if (role === 'host') {
@@ -12681,7 +12790,11 @@ void main() {
       leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star,
       onChange(f) { listeners.add(f); },
       get name() { return name; }, get room() { return room; }, get status() { return status; }, get msg() { return msg; },
-      get role() { return role; },
+      get role() { return role; }, get pvp() { return pvp; }, get myId() { return myId; },
+      hit, targets, setPvp,
+      // Mitspieler-Liste: [{ id, name, cat, lv, hp, host, me }] - man selbst zuerst
+      lobby: () => [{ id: myId, name, cat: CAT.id, lv: cur ? cur.key : '', hp: run.health, host: role === 'host', me: true }]
+        .concat([...others].map(([id, o]) => ({ id, name: o.name, cat: o.cat, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : '', hp: o.hp ?? 8, host: id === 1, me: false }))),
       get players() { return [...others.values()].map((o) => ({ name: o.name, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : '' })); },
       // Testhilfe (?debug)
       debug: () => ({ role, room, status, msg, myId, peer: peer && peer.id, guests: guests.size, retry, ice: lastIce,
@@ -12690,6 +12803,58 @@ void main() {
     };
   })();
   MESH.nameTag = build((g) => planeGeo(g, I4, 1.5, 0.34, 1, 1, C.white));
+  /* Mitspieler-Liste im Spiel (oben links, glappa.de-Stil): Name, Figur, Welt, Energie, Gastgeber-Krone.
+     Tab oder Klick auf den Kopf klappt sie ein (gemerkt). Aktualisiert bei Aenderungen und 2x pro Sekunde. */
+  const Lobby = (() => {
+    const box = $('#mpHud'), list = $('#mpHudList'), head = $('#mpHudHead'), roomEl = $('#mpHudRoom'), pvpEl = $('#mpHudPvp');
+    if (!box) return { render() {}, toggle() {} };
+    const CAT_COL = { knuddel: '#74d45a', sphinx: '#f0b884', astro: '#9a5cff', neon: '#ff4dd2', kappi: '#2b8bff' };
+    let folded = false;
+    try { folded = localStorage.getItem('glappa64-lobby') === 'zu'; } catch (e) { /* egal */ }
+    const where = (lv) => (levels[lv] && levels[lv].name) || (lv ? lv : '…');
+    function render() {
+      const on = Net.status === 'drin' && !['title', 'files', 'ending'].includes(mode);
+      box.hidden = !on;
+      if (!on) return;
+      box.classList.toggle('folded', folded);
+      roomEl.textContent = Net.room;
+      pvpEl.textContent = Net.pvp ? '\u2694 PvP' : '\u{1F54A} friedlich';
+      pvpEl.className = 'mp-hud-pvp ' + (Net.pvp ? 'on' : 'off');
+      const rows = Net.lobby();
+      head.title = `${rows.length} im Raum – Tab zum Ein-/Ausklappen`;
+      list.replaceChildren(...rows.map((q) => {
+        const li = document.createElement('li');
+        if (q.me) li.className = 'me';
+        const dot = document.createElement('span'); dot.className = 'mp-dot'; dot.style.background = CAT_COL[q.cat] || '#fff';
+        dot.textContent = (CATS.find((c) => c.id === q.cat) || { name: '?' }).name.slice(0, 2);
+        const nm = document.createElement('span'); nm.className = 'mp-nm';
+        nm.textContent = (q.host ? '\u{1F451} ' : '') + q.name + (q.me ? ' (du)' : '');
+        const hp = document.createElement('span'); hp.className = 'mp-hp'; hp.title = `Energie ${q.hp}/8`;
+        for (let i = 0; i < 8; i++) {
+          const seg = document.createElement('i');
+          if (i < q.hp) seg.className = q.hp <= 2 ? 'r' : q.hp <= 5 ? 'y' : 'g';
+          hp.appendChild(seg);
+        }
+        const wo = document.createElement('span'); wo.className = 'mp-wo'; wo.textContent = where(q.lv);
+        li.append(dot, nm, hp, wo);
+        return li;
+      }));
+    }
+    function toggle() {
+      folded = !folded;
+      try { localStorage.setItem('glappa64-lobby', folded ? 'zu' : 'auf'); } catch (e) { /* egal */ }
+      render();
+    }
+    head.addEventListener('click', () => { toggle(); head.blur(); });
+    Net.onChange(render);
+    setInterval(render, 500);
+    return { render, toggle };
+  })();
+  addEventListener('keydown', (e) => {
+    if (e.code !== 'Tab' || e.ctrlKey || e.altKey || !['play', 'pause'].includes(mode) || Net.status !== 'drin') return;
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') && mode === 'pause') return;   // Tab im Menue bleibt Tab
+    e.preventDefault(); Lobby.toggle();
+  });
   // Pausenmenue: Abschnitt "Mehrspieler"
   (() => {
     const nameIn = $('#mpName'), codeIn = $('#mpCode'), st = $('#mpStatus'), list = $('#mpList');
@@ -12704,6 +12869,7 @@ void main() {
     });
     codeIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#mpJoin').click(); });
     $('#mpLeave').addEventListener('click', () => { Net.leave(); Snd.press(); });
+    $('#mpPvp').addEventListener('click', () => { Net.setPvp(!Net.pvp); Snd.press(); });
     $('#mpCopy').addEventListener('click', () => {
       const u = location.origin + location.pathname + '?raum=' + Net.room;
       const done = () => { st.textContent = 'Link kopiert – einfach weiterschicken: ' + u; };
@@ -12715,6 +12881,9 @@ void main() {
       $('#mpOff').hidden = on || busy;
       $('#mpOn').hidden = !on && !busy;
       $('#mpCopy').hidden = !on;
+      $('#mpPvp').hidden = !on || Net.role !== 'host';
+      $('#mpPvp').textContent = Net.pvp ? '\u2694 PvP: an' : '\u{1F54A} PvP: aus';
+      $('#mpPvp').setAttribute('aria-pressed', String(Net.pvp));
       $('#mpLeave').textContent = on ? 'Verlassen' : 'Abbrechen';
       nameIn.disabled = on || busy;
       $('#mpRoom').textContent = Net.room || '…';
@@ -12764,6 +12933,7 @@ void main() {
     }
     else if (a === 'rollout') rx = pl.flip;
     else if (a === 'bonk') rx = -0.55;
+    else if (a === 'knock') rx = -0.5 - 0.35 * clamp(-pl.vel[1] / 12, 0, 1);   // rueckwaerts weggeschleudert
     else if (a === 'double') rx = clamp(-pl.vel[1] * 0.016, -0.3, 0.42);
     else if (a === 'jump' || a === 'wallkick') rx = 0.3 * clamp(-pl.vel[1] / 10, 0, 1);   // beim Fallen nach vorn lehnen
     else if (swim) { rx = lerp(0.25, 1.35, swim01); dy = swim01 * 0.35 + Math.sin(pl.swimPh * 0.5) * 0.05; }
@@ -12879,6 +13049,8 @@ void main() {
       tailRx = -2.4;
     } else if (a === 'bonk') {
       legL = -0.9; legR = -0.5; armL = armR = -2.7; armOut = 1;
+    } else if (a === 'knock') {                    // getroffen: Arme und Beine fliegen nach vorn, Kopf nickt vor
+      legL = -0.95; legR = -0.55; armL = armR = -1.9; armOut = 0.95; headTilt = 0.35;
     } else if (pl.grounded && pl.skid) {
       // Kehrtwende wie im Vorbild: Arme weit zur Seite ausgebreitet, Fuesse vorn in den Boden gestemmt
       legL = -0.6; legR = -0.2; legSYR = 0.85; armL = armR = -0.4; armOut = 1.35; headTilt = 0.1;
@@ -13762,6 +13934,38 @@ void main() {
     Snd.unlock(); Snd.music(state.music && mode !== 'title' && mode !== 'files' && mode !== 'pause');
   }));
   $('#btnPause').addEventListener('click', blurAfter(() => { if (mode === 'pause') closePause(); else openPause(); }));
+  /* Vollbild: eigener Knopf (Fullscreen-API). Dort laesst Chrome/Edge die Seite per Keyboard Lock Tasten wie Strg+W
+     abfangen -> gesperrt, mit Hinweis. Esc bleibt frei (Vollbild verlassen + Pause wie gewohnt). Browser ohne
+     Keyboard Lock (Firefox) und F11-Vollbild: beim Schliessen/Neuladen fragt der Browser nach ("Seite verlassen?"). */
+  const LOCK_KEYS = ['KeyW', 'KeyQ', 'KeyA', 'KeyS', 'KeyD', 'KeyE', 'KeyR', 'KeyT', 'KeyN'];
+  const isFull = () => !!document.fullscreenElement || (innerWidth >= screen.width - 1 && innerHeight >= screen.height - 1);
+  let leavingOnPurpose = false;
+  function syncFull() {
+    const full = !!document.fullscreenElement;
+    $('#btnFull').setAttribute('aria-pressed', String(full));
+    try {
+      if (full && navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(LOCK_KEYS).catch(() => {});
+      else if (!full && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+    } catch (e) { /* ohne Keyboard Lock: beforeunload unten fragt nach */ }
+  }
+  $('#btnFull').addEventListener('click', blurAfter(() => {
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => toast('Vollbild geht hier nicht – F11 probieren'));
+  }));
+  document.addEventListener('fullscreenchange', syncFull);
+  addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyW' || e.code === 'KeyQ') && isFull() && mode !== 'title') {
+      e.preventDefault();
+      toast('\u{1F512} Strg+' + e.code.slice(3) + ' ist im Vollbild gesperrt – erst Vollbild verlassen (Esc)');
+    }
+  }, true);
+  // Links und Webseiten-Bilder verlassen die Seite absichtlich - dann nicht nachfragen
+  document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('a[href]')) leavingOnPurpose = true; }, true);
+  addEventListener('beforeunload', (e) => {
+    if (leavingOnPurpose || !isFull() || mode === 'title' || mode === 'files') return;
+    e.preventDefault(); e.returnValue = '';
+  });
   $('#btnResume').addEventListener('click', closePause);
   $('#btnReset').addEventListener('click', resetGame);
   $('#btnLeave').addEventListener('click', () => { closePause(); leaveBack(); });
@@ -13892,7 +14096,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
-      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net,
+      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby,
     };
   }
 })();
