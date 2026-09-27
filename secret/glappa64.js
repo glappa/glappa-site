@@ -10121,6 +10121,12 @@ void main() {
   /* Beinfeger wie im Vorbild: B in der Hocke (oder beim Krabbeln) -> seitlich flach zu Boden, ein gestrecktes Bein
      fegt einmal rundum, dann zurueck in die Hocke. Trifft alles im Umkreis SWEEP_R, einmal pro Feger. */
   const SWEEP_DUR = 0.5, SWEEP_R = 1.9;
+  /* Rutschtritt wie im Vorbild: B beim Hock-Rutscher (ab SLIDEKICK_MIN) -> kleiner Hopser mit den Fuessen voraus,
+     mindestens Lauftempo, prallt beim ersten Aufsetzen einmal ab und rutscht dann auf dem Hosenboden aus (kickslide).
+     Trifft einmal pro Tritt; A im Ausrutschen = Abrollen. */
+  const SLIDEKICK_MIN = 3.5, SLIDEKICK_HOP = 12 * UF, KICKSLIDE_BRAKE = 16;
+  // Bremsen aus vollem Lauf (Stick los): kurze Rutsch-Pose mit Staub - der Bremsweg selbst bleibt straff
+  const BRAKE_FROM = 0.6, BRAKE_POSE = 0.3;
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
@@ -10206,7 +10212,7 @@ void main() {
   function airborne(action, vy, speed) {
     if (action !== 'dive') pl.fallTop = pl.pos[1];   // jeder neue Absprung beginnt eine neue Fallhoehe
     pl.action = action; pl.vel[1] = vy; pl.speed = speed; pl.side = 0; pl.flip = 0;
-    pl.grounded = false; pl.coyote = 0; pl.skid = false; pl.crouch = false; pl.jumpBuf = 0; pl.waterJump = false;
+    pl.grounded = false; pl.coyote = 0; pl.skid = false; pl.crouch = false; pl.jumpBuf = 0; pl.waterJump = false; pl.brakeT = 0;
   }
 
   /* ─── Kantengriff: im Fallen an Kanten festhalten, hochziehen oder loslassen ─── */
@@ -10394,8 +10400,8 @@ void main() {
     }
     // Rutschbahn oder zu steiler Hang: wer sie betritt, rutscht auf dem Bauch bergab
     const chute = pl.grounded && pl.groundBox ? pl.groundBox.chute || steepDown(pl.groundBox) : null;
-    if (chute && pl.action !== 'slide' && !pl.dead) { pl.action = 'slide'; pl.skid = false; pl.crouch = false; }
-    if (pl.grounded && pl.action === 'slide') {
+    if (chute && pl.action !== 'slide' && pl.action !== 'kickslide' && !pl.dead) { pl.action = 'slide'; pl.skid = false; pl.crouch = false; }
+    if (pl.grounded && (pl.action === 'slide' || pl.action === 'kickslide')) {
       // Bauchrutscher: bremst langsam ab, leicht lenkbar; A = Abrollen nach vorn
       pl.side = 0; pl.crouch = false; pl.skid = false; pl.crawl = false;
       if (chute) {
@@ -10413,7 +10419,8 @@ void main() {
         }
       } else {
         if (!lock && moving) pl.face += clamp(dYaw, -1.8 * dt, 1.8 * dt);
-        pl.speed = Math.max(0, pl.speed - (pl.groundBox && pl.groundBox.tag === 'ice' ? 3 : 12) * dt);
+        const brake = pl.groundBox && pl.groundBox.tag === 'ice' ? 3 : pl.action === 'kickslide' ? KICKSLIDE_BRAKE : 12;
+        pl.speed = Math.max(0, pl.speed - brake * dt);
       }
       if (pl.speed > 2 && Math.random() < dt * 22) dust(p, 1);
       pl.scrapeT = (pl.scrapeT || 0) - dt;
@@ -10463,8 +10470,12 @@ void main() {
         }
         else pl.speed = Math.max(top, pl.speed - OVER_BRAKE * dt);
       } else {
+        // aus vollem Lauf losgelassen: Bremsrutscher (nur Pose, Staub, Geraeusch - der Weg bleibt so kurz wie vorher)
+        if (!icy && !(pl.brakeT > 0) && pl.speed > RUN * BRAKE_FROM && !lock) { pl.brakeT = BRAKE_POSE; Snd.skid(); dust(p, 4); }
         pl.speed = towardZero(pl.speed, (icy ? UFF * fr : GROUND_BRAKE) * dt);   // anhalten (auf Eis rutscht es weiter)
       }
+      if (moving || pl.crouch || pl.skid) pl.brakeT = 0;
+      else if (pl.brakeT > 0) pl.brakeT -= dt;
 
       // Springen vom Boden — auch ein Druck kurz vor der Landung zaehlt
       if (!lock && !(pl.sweepT > 0) && (inp.jumpP || pl.jumpBuf > 0)) {
@@ -10534,10 +10545,10 @@ void main() {
       } else {
         // Luftsteuerung: vor/zurueck beschleunigen, seitlich driften und sanft in Stickrichtung drehen.
         // Ohne Stick bremst es spuerbar (nur Weitsprung/Hechtsprung behalten ihren Schwung).
-        const keep = pl.action === 'long' || pl.action === 'dive' || pl.action === 'bounce';
+        const keep = pl.action === 'long' || pl.action === 'dive' || pl.action === 'bounce' || pl.action === 'slidekick';
         pl.speed = towardZero(pl.speed, (moving || keep ? 0.35 * UFF : 10) * dt);
         pl.side = 0;
-        if (moving && !lock && pl.action !== 'knock' && pl.action !== 'bonk' && pl.action !== 'dive') {
+        if (moving && !lock && pl.action !== 'knock' && pl.action !== 'bonk' && pl.action !== 'dive' && pl.action !== 'slidekick') {
           if (pl.action !== 'long') pl.face += clamp(dYaw, -3.2 * dt, 3.2 * dt);
           const dY = angDiff(pl.face, intended);
           pl.speed += AIR_THRUST * Math.cos(dY) * mag * dt;
@@ -10589,7 +10600,7 @@ void main() {
     const vx = sf * pl.speed + cf * pl.side + pl.push[0] + pl.carry[0], vz = cf * pl.speed - sf * pl.side + pl.push[2] + pl.carry[1];
     const kd = Math.pow(0.02, dt); pl.push[0] *= kd; pl.push[2] *= kd;
     p[0] += vx * dt; p[2] += vz * dt; p[1] += pl.vel[1] * dt;
-    pl.h = pl.grounded && (pl.crouch || pl.action === 'slide') ? CROUCH_H : PH;
+    pl.h = pl.grounded && (pl.crouch || pl.action === 'slide' || pl.action === 'kickslide') ? CROUCH_H : PH;
     const hit = pushOut(L, p, R, pl.h, Math.max(prevY, p[1]) + (pl.grounded ? STEP_UP : 0.15));
     if (hit && chute && pl.action === 'slide') {
       // An der Bande der Rutschbahn entlanggleiten statt abprallen
@@ -10678,7 +10689,7 @@ void main() {
     else if (pl.action === 'swim') pl.action = 'fall';
     updateAir(dt);
     if (!pl.grounded && pl.ledgeCool <= 0 && !lock && !pl.entering
-        && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'dive'].includes(pl.action)) {
+        && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'dive', 'slidekick'].includes(pl.action)) {
       if (pl.action !== 'long' && (pl.action !== 'swim' || moving) && tryLedgeGrab(L)) return;
       if (moving && tryMantle(L, intended)) return;
     }
@@ -10696,10 +10707,12 @@ void main() {
       if ((pl.gait === 'walk' || pl.gait === 'run') && !pl.skid) Snd.step(pl.inWater ? 'water' : gt === 'ice' ? 'ice' : '', pl.gait === 'run');
       else if (pl.crawl) Snd.step('soft');
     }
-    pl.squash += ((pl.crouch ? 0.7 : 1) - pl.squash) * Math.min(1, dt * 12);
+    pl.squash += (1 - pl.squash) * Math.min(1, dt * 12);   // Hocke staucht NICHT mehr (eigene Pose, siehe crouchK)
     const flipRate = { triple: 9, backflip: 8, sideflip: 9, rollout: 11 }[pl.action];
+    // Rutschtritt: die Fuesse treffen einmal, was vorn im Weg ist
+    if ((pl.action === 'slidekick' || pl.action === 'kickslide') && !pl.skHit && pl.speed > 3) pl.skHit = hitInFront(1.8, true);
     // Rutschen gegen eine Wand: abrupt stoppen (ausser in der Rutschbahn)
-    if (pl.grounded && pl.action === 'slide' && !chute && hit && hit.b.max[1] > p[1] + 0.6) {
+    if (pl.grounded && (pl.action === 'slide' || pl.action === 'kickslide') && !chute && hit && hit.b.max[1] > p[1] + 0.6) {
       pl.speed = 0; pl.action = 'ground'; pl.frozen = Math.max(pl.frozen, 0.25); Snd.stomp(); cam.shake = Math.max(cam.shake, 0.15);
     }
     if (flipRate) pl.flip = Math.min(TAU, pl.flip + dt * flipRate);
@@ -10722,6 +10735,14 @@ void main() {
           if (e.type === 'spiky' && e.state === 'walk') hurtPlayer(2, e.pos, true);
           if (e.type === 'bomb' && e.state !== 'gone') e.state = 'lit', e.t = Math.min(e.t || 9, 0.3);
         }
+      }
+    } else if (from === 'slidekick') {
+      if (!pl.kickBounce && impact < -2) {
+        // erstes Aufsetzen: mit halber Fallgeschwindigkeit noch einmal hoch (wie im Vorbild)
+        pl.kickBounce = true; pl.action = 'slidekick'; pl.grounded = false; pl.vel[1] = -impact * 0.5;
+        dust(pl.pos, 4); Snd.land(0);
+      } else {
+        pl.action = 'kickslide'; dust(pl.pos, 6); Snd.stomp();
       }
     } else if (from === 'dive') {
       // Hechtsprung endet im Bauchrutscher
@@ -10905,7 +10926,7 @@ void main() {
     state.stars[s.id] = true; save();
     if (isNew) Net.star(s.id);                     // Mehrspieler: zaehlt fuer alle im Raum
     renderHud('stars');
-    mode = 'starget';
+    mode = 'starget'; pl.starT = clock;
     // Schrift Buchstabe fuer Buchstabe (jeder ploppt versetzt auf und wippt danach)
     const txt = isNew ? 'DU HAST EINEN STERN!' : 'DEN HAST DU SCHON!', tEl = $('#starGetText');
     tEl.setAttribute('aria-label', txt);
@@ -11753,9 +11774,14 @@ void main() {
     pl.punchT = 0;
     Snd.dive(); Snd.voice('dive'); if (!air) dust(pl.pos, 5);
   }
+  function startSlideKick() {
+    airborne('slidekick', SLIDEKICK_HOP, Math.max(pl.speed, RUN));
+    pl.kickBounce = false; pl.skHit = false; pl.punchT = 0; pl.punchN = 0;
+    Snd.punch(3); Snd.voice('kick'); dust(pl.pos, 5);
+  }
   function attack() {
     const a = pl.action;
-    if (['hang', 'climb', 'pound', 'bonk', 'dive', 'slide', 'knock', 'swim'].includes(a) || pl.knock > 0 || pl.hurtT > 0) return;
+    if (['hang', 'climb', 'pound', 'bonk', 'dive', 'slide', 'knock', 'swim', 'slidekick', 'kickslide'].includes(a) || pl.knock > 0 || pl.hurtT > 0) return;
     if (!pl.grounded) {
       if (pl.inWater) return;
       if (Math.abs(pl.speed) > 4) startDive();
@@ -11763,7 +11789,8 @@ void main() {
       return;
     }
     if (pl.sweepT > 0) return;
-    if ((pl.crouch || pl.crawl || pl.forceCrouch) && Math.abs(pl.speed) < 3.5) {
+    if (pl.crouch && !pl.crawl && !pl.forceCrouch && pl.speed >= SLIDEKICK_MIN) { startSlideKick(); return; }
+    if ((pl.crouch || pl.crawl || pl.forceCrouch) && Math.abs(pl.speed) < SLIDEKICK_MIN) {
       pl.sweepT = SWEEP_DUR; pl.sweepHit = false; pl.punchN = 0; pl.punchT = 0; pl.speed = 0;
       Snd.punch(3); Snd.voice('kick');
       return;
@@ -12693,6 +12720,11 @@ void main() {
     else if (a === 'long') rx = 1.15;
     else if (a === 'dive') rx = 1.45;
     else if (a === 'slide') { rx = 1.52; dy = -0.78; }
+    else if (a === 'slidekick' || a === 'kickslide') {
+      // zurueckgelehnt, Fuesse voraus; am Boden liegt der Po auf (Hoehe aus der Beinlaenge der Figur)
+      rx = a === 'kickslide' ? -1.15 : -0.95;
+      if (a === 'kickslide') dy = -(1.1 - (1.1 - CAT.rig.legY) * Math.cos(rx)) + 0.12;
+    }
     else if (a === 'rollout') rx = pl.flip;
     else if (a === 'bonk') rx = -0.55;
     else if (a === 'double') rx = clamp(-pl.vel[1] * 0.016, -0.3, 0.42);
@@ -12725,7 +12757,10 @@ void main() {
     faceLast = pl.face;
     turnRate = turnRate * 0.82 + dF * 18;
     const turn = clamp(turnRate, -1.2, 1.2);
-    const free = pl.grounded && !lying && !pl.crawl && !pl.forceCrouch && !pl.crouch && !swim && a !== 'slide' && a !== 'dive';
+    const free = pl.grounded && !lying && !pl.crawl && !pl.forceCrouch && !pl.crouch && !swim && a !== 'slide' && a !== 'dive' && a !== 'kickslide';
+    // Bremsrutscher: zuruecklehnen, Fuesse vor (blendet am Ende weich aus)
+    const brk = free && pl.brakeT > 0 ? smooth(Math.min(1, pl.brakeT / 0.1)) : 0;
+    if (brk) rx -= 0.3 * brk;
     if (free) { rx += 0.42 * run01 * run01; rz += -turn * 0.22 * run01; }
     if (free && pl.gait === 'sneak') { rx += 0.2; dy -= 0.12; }
     // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten
@@ -12737,18 +12772,21 @@ void main() {
        Die Beine sind aus einem Stueck: gewinkelt + verkuerzt wirken sie wie gebeugte Knie. */
     const cdt = clamp(clock - crouchLast, 0, 0.05);
     crouchLast = clock;
-    const crouchTo = pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' ? 1 : 0;
+    const crouchTo = pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' && a !== 'kickslide' ? 1 : 0;
     for (let i = 0; i < 3; i++) { crouchV += ((crouchTo - crouchK) * 900 - crouchV * 36) * cdt / 3; crouchK += crouchV * cdt / 3; }
     if (!pl.grounded || swim || lying || cine) { crouchK = 0; crouchV = 0; }   // Absprung aus der Hocke: Luftpose uebernimmt sofort
     const ck = clamp(crouchK, 0, 1.12) * (1 - sweepE), cUp = clamp(-crouchK, 0, 0.3);
     // Hock-Rutscher: aus vollem Lauf geduckt -> Ruecklage und Arme zum Balancieren
     const cSlide = pl.crouch ? clamp((Math.abs(pl.speed) - 1.5) / 5, 0, 1) : 0;
-    const cLean = ck * lerp(0.3, -0.14, cSlide), cLegW = -0.72, cSplay = 0.5 * ck, cLegSY = 1 - 0.3 * ck;
+    /* Masse nach Video 2 (Vorbild von hinten und von der Seite): Figur bleibt ~70 % so hoch wie im Stand,
+       Oberkoerper deutlich vor (Po nach hinten), Kopf tief zwischen den Schultern, Blick geradeaus, Faeuste vor und
+       neben dem Gesicht, Fuesse breit. */
+    const cLean = ck * lerp(0.42, -0.14, cSlide), cLegW = -0.72, cSpl = 0.4, cSplay = cSpl * ck, cLegSY = 1 - 0.3 * ck;
     if (ck > 0.001) {
       const L2 = CAT.rig.legY;
       rx += cLean;
       // so weit absenken, dass die Fuesse am Boden bleiben (+ die Hueft-Anhebung durch das Vorbeugen)
-      dy -= ck * (L2 - L2 * (1 - 0.3) * Math.cos(cLegW) * Math.cos(0.5)) + (1.1 - L2) * (1 - Math.cos(cLean));
+      dy -= ck * (L2 - L2 * (1 - 0.3) * Math.cos(cLegW) * Math.cos(cSpl)) + (1.1 - L2) * (1 - Math.cos(cLean));
       dy += Math.sin(clock * 3.1) * 0.01 * ck;   // atmen in der Hocke
     }
     if (cUp > 0) { stretch += cUp * 0.55; thin -= cUp * 0.25; }
@@ -12819,6 +12857,12 @@ void main() {
       legL = legR = -1.2; armL = armR = -0.4; armOut = 1.1;
     } else if (a === 'long') {
       legL = legR = 0.9; armL = armR = -1.7; armOut = 0.15; tailRx = -2.9;
+    } else if (a === 'slidekick' || a === 'kickslide') {
+      // Rutschtritt: vorderes Bein gestreckt nach vorn, das andere angewinkelt, Arme zum Abstuetzen/Balancieren
+      // seitlich nach hinten, Kopf schaut nach vorn ueber die Fuesse
+      legR = -0.55; legL = -0.05; legSYL = 0.72; legSplay = 0.12;
+      armL = armR = 0.55; armOut = 1.1; headTilt = a === 'kickslide' ? 0.95 : 0.75;
+      tailRx = -0.4; tailRz = Math.sin(clock * 9) * 0.2;
     } else if (a === 'dive' || a === 'slide') {
       armL = armR = -3.05; armOut = 0.18; legL = 0.25; legR = 0.15; headTilt = -1.1; tailRx = -3.0;
       if (a === 'slide') { const w = Math.sin(clock * 18) * 0.08 * clamp(pl.speed / 10, 0, 1); armOut += w; legL += w; }
@@ -12856,6 +12900,11 @@ void main() {
     } else {
       legL = -0.7; legR = 0.35; armL = armR = -2.4; armOut = 0.5; tailRx = -1.3 + clamp(pl.vel[1] * 0.04, -0.6, 0.4);
     }
+    if (brk) {                                     // Bremsrutscher: Beine vor, Arme nach hinten-aussen
+      legL = lerp(legL, -0.75, brk); legR = lerp(legR, -0.35, brk); legSYR = lerp(legSYR, 0.85, brk);
+      armL = lerp(armL, 0.55, brk); armR = lerp(armR, 0.4, brk); armOut = lerp(armOut, 0.75, brk);
+      headTilt += 0.25 * brk; tailRx = lerp(tailRx, -2.6, brk);
+    }
     const sinceLand = time - (pl.landT ?? -9);
     if (pl.grounded && !lying && run01 < 0.35 && sinceLand < 0.4 && ['backflip', 'sideflip', 'triple', 'double'].includes(pl.landFrom)) {
       const k = 1 - smooth(sinceLand / 0.4);
@@ -12864,11 +12913,12 @@ void main() {
     if (ck > 0.001) {                                // Hocke (siehe crouchK) ueber die Bodenpose mischen
       const w = Math.min(1, ck);
       legL = lerp(legL, cLegW - cLean, w); legR = lerp(legR, cLegW - cLean, w);
-      // Haende wie im Vorbild seitlich am Kopf hochgezogen; beim Hock-Rutscher zum Balancieren nach aussen
-      armL = lerp(armL, lerp(-2.7, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-2.7, -1.05, cSlide) - cLean, w);
-      armOut = lerp(armOut, lerp(0.45, 1.05, cSlide), w);
-      headTilt -= cLean * 1.1 + 0.08 * w;          // Kopf bleibt beim Vorbeugen gerade nach vorn gerichtet
-      tailRx = lerp(tailRx, -1.3, w); tailRz = lerp(tailRz, 0.55 + Math.sin(clock * 1.6) * 0.12, w);
+      // Faeuste wie im Vorbild vor und neben dem Gesicht (Arm schraeg nach oben-vorn, Ellbogen raus);
+      // beim Hock-Rutscher zum Balancieren nach aussen. Winkel in Weltlage, darum - cLean.
+      armL = lerp(armL, lerp(-2.5, -1.05, cSlide) - cLean, w); armR = lerp(armR, lerp(-2.5, -1.05, cSlide) - cLean, w);
+      armOut = lerp(armOut, lerp(0.52, 1.05, cSlide), w);
+      headTilt -= cLean * 1.05 - 0.06 * w;         // Kopf bleibt beim Vorbeugen gerade, schaut leicht nach unten-vorn
+      tailRx = lerp(tailRx, -0.45, w); tailRz = lerp(tailRz, 1.2 + Math.sin(clock * 1.6) * 0.12, w);   // Schwanz seitlich am Boden, verdeckt von hinten nicht den Kopf
     }
     if (pl.hold && !lying && !swim) {               // Kiste ueber dem Kopf: beide Arme hoch
       armL = armR = -3.02; armOut = 0.24; headTilt = Math.min(headTilt, -0.1);
@@ -12889,6 +12939,10 @@ void main() {
       const e = env, s = Math.sin;
       if (idle.kind === 'look') {                       // Umschauen: erst links, dann rechts
         headYawAdd = s(idle.k * TAU) * 0.85 * e; headTilt -= 0.12 * e; tailRz += s(clock * 3) * 0.3 * e;
+      } else if (idle.kind === 'tap') {                 // ungeduldig mit dem Fuss tippen, Haende in die Hueften
+        legR = lerp(legR, -0.1 - Math.max(0, s(clock * 10)) * 0.2, e); legL = lerp(legL, 0.04, e);
+        armL = armR = lerp(armL, -0.3, e); armOut = lerp(armOut, 0.95, e);
+        headYawAdd = s(clock * 1.4) * 0.12 * e; tailRz += s(clock * 5) * 0.35 * e;
       } else if (idle.kind === 'stretch') {             // Strecken und Gaehnen: Arme hoch, Kopf in den Nacken
         armL = armR = lerp(armL, -2.95, e); armOut = lerp(armOut, 0.55, e); headTilt -= 0.5 * e;
         tailRx = lerp(tailRx, -2.7, e); lidK = smooth((e - 0.55) / 0.35);
@@ -12904,13 +12958,17 @@ void main() {
         lidK = e > 0.6 ? 1 : 0;
       }
     }
-    if (mode === 'starget' && pl.grounded) { armR = -2.95; armOutR = 0.35; armL = -0.4; headTilt -= 0.3; }   // Siegerpose
+    if (mode === 'starget' && pl.grounded) {        // Siegerpose: einmal drehen (kleiner Hopser), dann Faust hoch
+      const k = clamp((clock - (pl.starT ?? -9)) / 0.5, 0, 1), up = smooth(clamp((k - 0.55) / 0.45, 0, 1));
+      spin += TAU * smooth(k); dy += Math.sin(k * Math.PI) * 0.25;
+      armR = lerp(-1.2, -2.95, up); armOutR = 0.35; armL = -0.4; armOut = lerp(1.1, armOut, up); headTilt -= 0.3 * up;
+    }
     if (pl.looking) headTilt = -0.55;
     const bob = pl.grounded ? Math.abs(sw) * 0.07 * run01 + Math.sin(clock * 2.2) * 0.012 : 0;
     const glowK = dissolve > 0 ? dissolve : appear < 1 ? (1 - appear) * 0.9 : 0;
     const FIG = { shine: 0.06, rim: 0.16 + glowK * 1.6, lit: 0.78, tint: glowK > 0 ? [1, 1, 0.92, glowK] : undefined };
     // in der Hocke: Beine nach aussen gewinkelt und verkuerzt (gebeugte Knie), Koerper gestaucht, Kopf sinkt ein
-    const cSink = -0.11 * ck;
+    const cSink = -0.17 * ck;
     // Atmen im Stand: der Koerper hebt und senkt sich ganz leicht
     const sleeping = idle && idle.kind === 'sleep';
     const breathe = pl.grounded && run01 < 0.05 && !lying ? 1 + Math.sin(clock * (sleeping ? 1.1 : 1.7)) * (sleeping ? 0.035 : 0.016) : 1;
@@ -12945,7 +13003,7 @@ void main() {
   let crouchK = 0, crouchV = 0, crouchLast = 0;   // Feder der Hocke (drawPlayer)
   /* Leerlauf-Abfolge: nach 3 s alle 4 s eine Animation (Umschauen, Strecken, Pfote putzen,
      Schwanz jagen), ab 19 s schlaeft Glappo ein. env blendet jede Animation weich ein und aus. */
-  const IDLE_START = 3, IDLE_CYCLE = 4, IDLE_SLEEP = 19, IDLE_KINDS = ['look', 'stretch', 'paw', 'chase'];
+  const IDLE_START = 3, IDLE_CYCLE = 4, IDLE_SLEEP = 23, IDLE_KINDS = ['look', 'tap', 'stretch', 'paw', 'chase'];
   function idleState(t) {
     if (t < IDLE_START) return null;
     if (t >= IDLE_SLEEP) { const k = Math.min(1, (t - IDLE_SLEEP) / 1.4); return { kind: 'sleep', k, env: smooth(k) }; }

@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=99`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
+  **kein root nötig**). Aktuell **JS `?v=104`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -128,6 +128,22 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - **v1 bewusst NICHT synchron:** Gegner, Münzen, Schalter, Kisten, Spieler-Kollision, Chat. Gastgeber-Wechsel (Raum
   überlebt das Weggehen des Gastgebers) gibt es nicht.
 - Debug: `g64.Net.debug()` → `role` (host/guest), `room`, `status`, `peer`, `guests`, `retry`, `ice`, `session`, `rtc`, `others`.
+
+### 1.10 Kern-Bewegungen komplett + Hocke wie im Vorbild (2026-09-27)
+- **Hocke war ein Klumpen:** eine alte Stauchung (`pl.squash` → 0,7 beim Hocken) wirkte ZUSÄTZLICH zur Hocken-Pose →
+  Kopfmitte bei 42 % der Standhöhe, Figur 120 % breit. Stauchung raus; Pose nach Video 2 neu (von hinten + Seite):
+  Vorlage 0,42 rad (Po nach hinten), Kopf tiefer zwischen die Schultern (`cSink` −0,17), Fäuste vor/neben dem Gesicht
+  (Arm Weltlage −2,5, `armOut` 0,52), Spreizung 0,4, Schwanz seitlich am Boden. Kappi-Kopfmitte jetzt 1,04 m (Stand 1,63).
+- **Neu: Rutschtritt** (`slidekick` → einmal abprallen → `kickslide`): B im Hock-Rutscher ab `SLIDEKICK_MIN` 3,5 m/s,
+  Hopser `12 E/F`, mind. Lauftempo, lenkt nicht, trifft einmal (`pl.skHit`, `hitInFront(1.8, true)`), A beim Ausrutschen =
+  Abrollen. Gemessen: ~7,2 m ab Hock-Beginn aus vollem Lauf.
+- **Neu: Bremsrutscher** beim Loslassen aus ≥ 60 % Lauftempo: nur Pose/Staub/Geräusch (`pl.brakeT`, 0,3 s), Bremsweg
+  unverändert 0,43 m (User wollte 21.09. „nicht rutschig“).
+- **Neu im Leerlauf:** Fuß tippen (`IDLE_KINDS` jetzt 5, Einschlafen ab 23 s). **Stern-Tanz:** eine Drehung + Hopser, dann Faust hoch.
+- Schon vorhanden (geprüft): Gehen/Rennen/Schleichen nach Stick-Ausschlag, Krabbeln, Einzel-/Doppel-/Dreifachsprung,
+  Rückwärts-/Seitsalto, Weitsprung, Wandsprung, Stampfer, Schlag-Kombo, Sprungtritt, Hechtsprung + Abrollen, Beinfeger,
+  Kehrtwenden-Rutscher, Kurvenlage, Umschauen/Strecken/Schlafen, Knallkisten greifen/werfen (einen Bowser gibt es nicht).
+- `g64.measure()` danach: alle `diff` = 0 (keine gemessene Bewegung verändert).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
