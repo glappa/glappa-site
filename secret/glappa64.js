@@ -11890,6 +11890,7 @@ void main() {
     'mountain', 'pyramid', 'clockwall', 'hull', 'cabin', 'bigwall', 'roof', 'glass']);
   const cam = { yaw: 0, pitch: 0.34, dist: 12, pos: [0, 6, 20], tgt: [0, 1.6, 0], manual: 0, shake: 0, view: I4, proj: I4, snap: true, look: 0 };
   function updateCamera(dt, inp) {
+    if (Intro.active) { Intro.camera(); return; }
     if (Cine.active) { cineCamera(); return; }
     if (mode === 'title' || mode === 'files') {
       const a = time * 0.09;
@@ -12057,7 +12058,10 @@ void main() {
     let ret = null;
     try { ret = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); } catch (e) { ret = null; }
     if (ret && SLOTS.includes(ret.slot)) { start(ret.slot, $('#pressStart')); return; }
-    FileMenu.open();
+    if (titleEl.classList.contains('leaving')) return;
+    TitleHead.leave(); Snd.press();
+    titleEl.classList.add('leaving');
+    setTimeout(() => { titleEl.classList.remove('leaving'); if (mode === 'title') FileMenu.open(); }, 480);
   }
   // Spiel mit Datei s starten; from = Element, aus dem sich die Blende schliesst
   function start(s, from) {
@@ -12066,6 +12070,13 @@ void main() {
     const sd = levels.hall.starDoor;
     sd.opening = false; sd.open = state.doorOpen && starCount() >= 4 ? 1 : 0;
     renderHud();
+    let back = null;
+    try { back = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); } catch (e) { back = null; }
+    if (!(back && BUILDERS[back.level]) && !/[?&]gym\b/.test(location.search)) {
+      Snd.unlock(); Snd.start();
+      Intro.run(!state.intro);   // neue Datei: ganzer Vorspann, sonst nur die UFO-Ankunft
+      return;
+    }
     mode = 'iris';
     Input.lock();   // Maus einfangen (der Start-Klick zaehlt als Geste)
     Snd.unlock(); Snd.start();
@@ -12156,6 +12167,7 @@ void main() {
   let pauseNav = 0;
   function handleUI(inp) {
     if (mode === 'title') { if (inp.startP) pressStart(); return; }
+    if (mode === 'intro') { if (inp.startP || inp.jumpP || inp.actionP) Intro.skip(); return; }
     if (mode === 'files') { FileMenu.pad(inp); return; }
     if (Dialog.open) {
       if (inp.jumpP || inp.actionP || inp.startP) Dialog.advance();
@@ -12813,7 +12825,7 @@ void main() {
     try { folded = localStorage.getItem('glappa64-lobby') === 'zu'; } catch (e) { /* egal */ }
     const where = (lv) => (levels[lv] && levels[lv].name) || (lv ? lv : '…');
     function render() {
-      const on = Net.status === 'drin' && !['title', 'files', 'ending'].includes(mode);
+      const on = Net.status === 'drin' && !['title', 'files', 'ending', 'intro'].includes(mode);
       box.hidden = !on;
       if (!on) return;
       box.classList.toggle('folded', folded);
@@ -13726,6 +13738,7 @@ void main() {
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     signMark = Post.begin(w, h) ? 0 : 1;
     signQueue.length = 0;
+    if (mode === 'title' || mode === 'files') { renderMenu(w, h); return; }
     const L = cur;
     // Unter Wasser: blauer, dichter Nebel
     let fogCol = L.fog, fogN = L.fogNear, fogF = L.fogFar;
@@ -13804,7 +13817,8 @@ void main() {
     }
     for (const e of L.enemies) drawEnemy(e);
     if (curTrip) setTrip(0);
-    drawPlayer();
+    if (!Intro.playerHidden()) drawPlayer();
+    Intro.draw();
     Net.drawOthers();
     if (curTrip) setTrip(curTrip);
 
@@ -13813,7 +13827,8 @@ void main() {
     gl.depthMask(false);
     gl.enable(gl.POLYGON_OFFSET_FILL);
     gl.polygonOffset(-2, -2);
-    if (!pl.entering) shadowAt(pl.pos[0], pl.pos[1], pl.pos[2], 0.75);
+    if (!pl.entering && !Intro.playerHidden()) shadowAt(pl.pos[0], pl.pos[1], pl.pos[2], 0.75);
+    Intro.drawAlpha();
     Net.shadows();
     for (const e of L.enemies) {
       if (e.state === 'dead' || e.state === 'gone' || e.state === 'wait' || e.state === 'off' || e.state === 'hide') continue;
@@ -13869,6 +13884,308 @@ void main() {
     Post.end(w, h);
   }
 
+
+  /* ═══════════ Titelbild + Vorspann (Ablauf wie im Vorbild, alle Inhalte eigen) ═══════════
+     Titel: gekachelter "SUPER GLAPPA 64"-Hintergrund (eigenes Logo) statt Schloss, davor der grosse Kopf der
+     gewaehlten Figur - folgt dem Zeiger, laesst sich am Gesicht ziehen und federt zurueck; PRESS START unten links.
+     PRESS START: Kopf dreht sich weg, das Dateifenster zoomt aus der Mitte auf.
+     Neue Datei: Weissblende -> Himmel + Meer mit Glappas Brief -> Wolki (Kamerawolke) fliegt mit der Kamera ueber das
+     Schloss, am Buntglasfenster vorbei, ueber Graben und Garten -> ein UFO beamt die Figur zum Start herunter ->
+     Nahaufnahme -> Schwenk hinter die Figur -> Wolkis Begruessung. Vorhandene Datei: nur die UFO-Ankunft.
+     Jederzeit ueberspringbar (A / Enter / Klick). Von einer Webseite zurueck: kein Vorspann (weiter wie bisher). */
+  const MENU_TILE = 5.5;
+  const MenuBg = (() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+    const c = cv.getContext('2d');
+    const grd = c.createRadialGradient(256, 256, 30, 256, 256, 400);
+    grd.addColorStop(0, '#2c2384'); grd.addColorStop(1, '#0b0930');
+    c.fillStyle = grd; c.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 3000; i++) {
+      c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},${(Math.random() * 0.07).toFixed(3)})`;
+      c.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+    }
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+    const word = (txt, x, y, size, fill) => {
+      c.font = `900 ${size}px "Comic Sans MS", "Comic Neue", sans-serif`;
+      c.lineWidth = size * 0.18; c.strokeStyle = '#07051f'; c.strokeText(txt, x, y);
+      c.fillStyle = fill; c.fillText(txt, x, y);
+    };
+    word('SUPER', 236, 140, 96, '#3558e8');
+    word('GLAPPA', 256, 262, 124, '#4a72ff');
+    word('64', 404, 368, 104, '#c42a3c');
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // Flaeche aus N x N Kacheln, jede Kachel traegt die ganze Textur
+    const N = 18, S = MENU_TILE;
+    const mesh = build((g) => {
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N; j++) {
+          const x0 = (i - N / 2) * S, y0 = (j - N / 2) * S;
+          g.quad([x0, y0, 0], [x0 + S, y0, 0], [x0 + S, y0 + S, 0], [x0, y0 + S, 0], C.white, [[0, 1], [1, 1], [1, 0], [0, 0]]);
+        }
+      }
+    });
+    return { tex, mesh };
+  })();
+  // Wolki, die Kamerawolke: Wattewolke mit Kulleraugen, haelt eine Kamera vor sich
+  MESH.wolki = build((g) => {
+    const W = hex('#ffffff'), WS = hex('#dfe9ff');
+    [[0, 0, 0, 1.0], [-0.8, -0.15, 0.1, 0.62], [0.8, -0.15, 0.1, 0.62], [-0.35, 0.45, -0.1, 0.58], [0.4, 0.4, -0.15, 0.55], [0, -0.35, 0.35, 0.55]]
+      .forEach(([x, y, z, r], i) => sphere(g, M4.from(x, y, z), r, r * 0.9, r, 10, 7, i % 2 ? WS : W, true));
+    for (const sx of [-1, 1]) {
+      sphere(g, M4.from(sx * 0.3, 0.18, 0.86), 0.2, 0.26, 0.1, 8, 6, hex('#ffffff'), true);
+      sphere(g, M4.from(sx * 0.3, 0.15, 0.94), 0.1, 0.14, 0.06, 8, 6, hex('#16162a'), true);
+    }
+    cyl(g, M4.from(0, -0.55, 0.95, 0, Math.PI / 2), 0.05, 0.05, 0.5, 5, hex('#5a4a3a'));
+    box(g, M4.from(0, -0.62, 1.45), 0.7, 0.5, 0.45, hex('#2a2a36'));
+    cyl(g, M4.from(0, -0.6, 1.65, 0, Math.PI / 2), 0.2, 0.17, 0.3, 10, hex('#101018'));
+    box(g, M4.from(0.2, -0.32, 1.45), 0.18, 0.1, 0.18, hex('#ff3050'));
+  });
+  // Das UFO, das die Figur herunterbeamt (passt zum Alien): Metallscheibe, Glaskuppel, Lichterkranz
+  MESH.ufo = build((g) => {
+    sphere(g, I4, 2.6, 0.55, 2.6, 16, 8, hex('#b8c0d0'), true);
+    cyl(g, M4.from(0, -0.55, 0), 1.2, 0.9, 0.35, 12, hex('#6a7080'));
+  });
+  MESH.ufoGlow = build((g) => {
+    sphere(g, M4.from(0, 0.3, 0), 1.25, 1.05, 1.25, 12, 6, hex('#7af7ff'), true, 0, Math.PI / 2);
+    const cols = ['#ffe14a', '#ff5fd2', '#7cff7a', '#6fd3ff'];
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * TAU;
+      sphere(g, M4.from(Math.sin(a) * 2.35, 0.02, Math.cos(a) * 2.35), 0.2, 0.2, 0.2, 6, 4, hex(cols[i % 4]), true);
+    }
+  });
+
+  // ── Titel: Kopf, der dem Zeiger folgt und sich ziehen laesst ──
+  const TitleHead = (() => {
+    const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, drag: null, sx: 0, sy: 0, vx: 0, vy: 0, poke: 0, leave: -1 };
+    const inHead = (x, y) => Math.hypot((x - 0.5) * innerWidth / innerHeight, y - 0.5) < 0.24;
+    titleEl.addEventListener('pointermove', (e) => {
+      st.px = e.clientX / innerWidth; st.py = e.clientY / innerHeight;
+      if (st.drag) { st.sx = clamp((st.px - st.drag[0]) * 2.6, -0.85, 0.85); st.sy = clamp(-(st.py - st.drag[1]) * 2.6, -0.85, 0.85); }
+    });
+    titleEl.addEventListener('pointerdown', (e) => {
+      if (e.target.closest && e.target.closest('button, a')) return;
+      const x = e.clientX / innerWidth, y = e.clientY / innerHeight;
+      if (!inHead(x, y)) return;
+      st.drag = [x, y]; st.poke = 1; Snd.unlock(); Snd.blip();
+      try { titleEl.setPointerCapture(e.pointerId); } catch (x2) { /* egal */ }
+    });
+    const release = () => { if (!st.drag) return; st.drag = null; if (Math.abs(st.sx) + Math.abs(st.sy) > 0.25) Snd.boing(); };
+    titleEl.addEventListener('pointerup', release);
+    titleEl.addEventListener('pointercancel', release);
+    function tick(dt) {
+      const k = Math.min(1, dt * 6);
+      st.yaw += (clamp((st.px - 0.5) * 1.4, -0.7, 0.7) - st.yaw) * k;
+      st.pitch += (clamp((st.py - 0.5) * 0.9, -0.45, 0.45) - st.pitch) * k;
+      if (!st.drag) {   // zurueckfedern mit Nachwippen
+        st.vx += (-st.sx * 140 - st.vx * 9) * dt; st.vy += (-st.sy * 140 - st.vy * 9) * dt;
+        st.sx += st.vx * dt; st.sy += st.vy * dt;
+      }
+      st.poke = Math.max(0, st.poke - dt * 3);
+    }
+    function drawHead() {
+      const G = CAT;
+      let yaw = st.yaw, sc = 2.8, y = -0.8, spin = 0;
+      if (st.leave >= 0 && !titleEl.classList.contains('leaving') && clock - st.leave > 0.6) { st.leave = -1; st.pop = clock; }
+      if (st.pop != null) sc *= smooth(clamp((clock - st.pop) / 0.35, 0, 1));
+      if (st.leave >= 0) {   // nach PRESS START: wegdrehen, schrumpfen, nach oben
+        const k = clamp((clock - st.leave) / 0.5, 0, 1);
+        if (k >= 1) return;
+        spin = smooth(k) * TAU * 1.5; sc *= 1 - smooth(k); y += k * 2;
+      }
+      const wob = st.poke * Math.sin(clock * 30) * 0.06;
+      const stretch = M4.from(st.sx * 1.1, y + st.sy * 1.1, 0, 0, 0, 0, 1 + Math.abs(st.sx) * 0.55 + wob, 1 + Math.abs(st.sy) * 0.55 - wob, 1);
+      const m = M4.mul(stretch, M4.from(0, 0, 0, yaw + spin, st.pitch, Math.sin(clock * 1.3) * 0.05, sc, sc, sc));
+      const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 };
+      draw(G.head, m, hOpt);
+      if (G.glow.head) draw(G.glow.head, m, { lit: 0 });
+      const bl = blinkAt(clock, 2);
+      if (G.lids && bl > 0.02) draw(G.lids, M4.mul(m, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), hOpt);
+    }
+    return { tick, draw: drawHead, leave() { st.leave = clock; }, reset() { st.leave = -1; st.sx = st.sy = st.vx = st.vy = 0; } };
+  })();
+
+  // Titel, Dateiauswahl und der Brief-Teil des Vorspanns: eigene kleine Szene statt Schloss
+  function renderMenu(w, h) {
+    gl.clearColor(0.05, 0.04, 0.18, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const proj = M4.persp(Math.max(0.8, fovFor(w / h) - 0.15), w / h, 0.5, 200);
+    const eye = [0, 0, 9];
+    gl.uniformMatrix4fv(U.uProj, false, proj);
+    gl.uniformMatrix4fv(U.uView, false, M4.lookAt(eye, [0, 0, 0], [0, 1, 0]));
+    gl.uniform3fv(U.uLight, v3.norm([-0.35, -0.5, -1]));
+    gl.uniform3fv(U.uFogCol, [0.05, 0.04, 0.18]);
+    gl.uniform3fv(U.uCam, eye);
+    gl.uniform1f(U.uDim, 1);
+    setTrip(0);
+    if (U.uTime) gl.uniform1f(U.uTime, clock % 1000);
+    gl.uniform2f(U.uFog, 1e5, 2e5);
+    // Kachelwand zieht ganz langsam schraeg vorbei (in der Dateiauswahl etwas dunkler)
+    const drift = (clock * 0.35) % MENU_TILE;
+    draw(MenuBg.mesh, M4.from(drift, drift * 0.5, -14), { tex: MenuBg.tex, lit: 0, tint: mode === 'files' ? [0.5, 0.5, 0.66, 1] : [0.72, 0.72, 0.85, 1] });
+    if (mode === 'title') TitleHead.draw();
+    Post.end(w, h);
+  }
+
+  const Intro = (() => {
+    const el = $('#introSky'), cv = $('#introSkyCv'), letter = $('#introLetter');
+    let A = null;   // { t, full, phase, done }
+    // Kamerafahrt: [Zeit, Kamera, Blickziel] - vom Himmel uebers Schloss, am Buntglasfenster vorbei, zum Start
+    const FLY = [
+      [0, [70, 64, 120], [30, 70, 20]],
+      [2.6, [40, 50, 20], [0, 38, -50]],
+      [5.2, [-18, 32, -26], [0, 24, -50]],
+      [7.6, [0, 13.4, -25], [0, 12.5, -38]],
+      [9.6, [0, 6.5, -12], [0, 3, -36]],
+      [11.8, [18, 5, 8], [0, 2, -24]],
+      [14.2, [9, 6, 56], [0, 2, 40]],
+    ];
+    const FLY_T = FLY[FLY.length - 1][0], ARRIVE = 4.8;
+    const SPOT = [0, 0, 41.5];   // Landeplatz: 1,5 m hinter dem Start, damit die Muenze am Weg nicht vors Gesicht kommt
+    const cr = (p0, p1, p2, p3, u) => p1.map((_, i) => {   // Catmull-Rom
+      const a = p0[i], b = p1[i], c2 = p2[i], d = p3[i];
+      return 0.5 * (2 * b + (-a + c2) * u + (2 * a - 5 * b + 4 * c2 - d) * u * u + (-a + 3 * b - 3 * c2 + d) * u * u * u);
+    });
+    function path(t, j) {
+      t = clamp(t, 0, FLY_T);
+      let i = 0;
+      while (i < FLY.length - 2 && FLY[i + 1][0] <= t) i++;
+      const u = (t - FLY[i][0]) / (FLY[i + 1][0] - FLY[i][0]);
+      const P = (k) => FLY[clamp(k, 0, FLY.length - 1)][j];
+      return cr(P(i - 1), P(i), P(i + 1), P(i + 2), smooth(u) * 0.35 + u * 0.65);
+    }
+    function paintSky() {   // Himmel + Meer (eigene Malerei): Verlauf, Sonne, Wolken, Inseln, Wellenlichter
+      const w = cv.width = Math.round(innerWidth * Math.min(1.5, devicePixelRatio || 1)), hh = cv.height = Math.round(innerHeight * Math.min(1.5, devicePixelRatio || 1));
+      const c = cv.getContext('2d'), hz = hh * 0.52;
+      let gr = c.createLinearGradient(0, 0, 0, hz);
+      gr.addColorStop(0, '#2c3cf0'); gr.addColorStop(1, '#5ca8ff');
+      c.fillStyle = gr; c.fillRect(0, 0, w, hz);
+      const sx = w * 0.52, sy = hh * 0.24, sun = c.createRadialGradient(sx, sy, 2, sx, sy, hh * 0.22);
+      sun.addColorStop(0, 'rgba(255,255,255,1)'); sun.addColorStop(0.12, 'rgba(255,255,240,.9)'); sun.addColorStop(1, 'rgba(255,255,255,0)');
+      c.fillStyle = sun; c.fillRect(0, 0, w, hz);
+      c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 2;
+      for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx + Math.cos(a) * hh * 0.09, sy + Math.sin(a) * hh * 0.09); c.stroke(); }
+      const cloud = (x, y, r) => {
+        c.fillStyle = '#ffffff';
+        for (let i = 0; i < 7; i++) { c.beginPath(); c.arc(x + (i - 3) * r * 0.55, y - Math.sin(i * 1.7) * r * 0.35, r * (0.55 + (i % 3) * 0.15), 0, TAU); c.fill(); }
+        c.fillStyle = 'rgba(160,190,255,.35)'; c.fillRect(x - r * 2, y + r * 0.2, r * 4, r * 0.25);
+      };
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 14; i++) cloud(rnd() * w, hh * 0.08 + rnd() * hz * 0.55, hh * (0.025 + rnd() * 0.025));
+      for (let x = -40; x < w + 40; x += hh * 0.1) cloud(x, hz - hh * 0.035, hh * 0.035);
+      c.fillStyle = '#3f9b7a';
+      for (let i = 0; i < 7; i++) { const x = rnd() * w, bw = hh * (0.05 + rnd() * 0.06); c.beginPath(); c.moveTo(x - bw, hz); c.lineTo(x, hz - bw * 0.3); c.lineTo(x + bw, hz); c.fill(); }
+      gr = c.createLinearGradient(0, hz, 0, hh);
+      gr.addColorStop(0, '#1c5fe0'); gr.addColorStop(1, '#0a47c8');
+      c.fillStyle = gr; c.fillRect(0, hz, w, hh - hz);
+      c.strokeStyle = 'rgba(190,230,255,.28)'; c.lineWidth = 1.5;
+      for (let i = 0; i < 260; i++) {
+        const y = hz + Math.pow(rnd(), 0.7) * (hh - hz), x = rnd() * w, l = 6 + (y - hz) / (hh - hz) * 26;
+        c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + l / 2, y - l * 0.25, x + l, y); c.stroke();
+      }
+    }
+    function setPhase(p) {
+      A.phase = p;
+      el.hidden = p !== 'letter';
+      if (p === 'letter') { paintSky(); el.classList.remove('out'); letter.classList.remove('show'); }
+    }
+    function run(full) {
+      mode = 'intro';
+      A = { t: 0, full, phase: '' };
+      Input.lock(); Snd.unlock();
+      document.body.classList.add('cine');
+      titleEl.hidden = true; FileMenu.close();
+      enterLevel('garden');
+      pl.pos = SPOT.slice(); pl.face = Math.PI; pl.vel = [0, 0, 0]; pl.speed = 0;
+      if (full) setPhase('letter');
+      else { A.t = 0; setPhase('arrive'); el.hidden = false; el.classList.add('flash'); }
+    }
+    function tick(dt) {
+      if (!A) return;
+      A.t += dt;
+      if (A.phase === 'letter') {
+        if (A.t > 1.1) letter.classList.add('show');
+        if (A.t > 7.2) el.classList.add('out');
+        if (A.t > 8) { A.t = 0; setPhase('fly'); if (state.music) Snd.music(true); }
+      } else if (A.phase === 'fly' && A.t >= FLY_T) { A.t = 0; setPhase('arrive'); }
+      else if (A.phase === 'arrive') {
+        if (el.classList.contains('flash')) { if (A.t > 0.1) el.classList.add('out'); if (A.t > 0.9) { el.hidden = true; el.classList.remove('flash', 'out'); } }
+        if (!A.beamed && A.t > 1.3) { A.beamed = true; pl.appearT = clock; Snd.whoosh(); }
+        if (A.t >= ARRIVE) finish();
+      }
+    }
+    function finish() {
+      if (!A) return;
+      A = null;
+      el.hidden = true; el.classList.remove('out', 'flash'); letter.classList.remove('show');
+      document.body.classList.remove('cine');
+      pl.pos = SPOT.slice(); pl.face = Math.PI; pl.vel = [0, 0, 0]; pl.grounded = true; pl.action = 'ground';
+      cam.yaw = 0; cam.pitch = 0.34; cam.dist = 12; cam.snap = true; cam.manual = 0;
+      mode = 'play';
+      if (state.music) Snd.music(true);
+      setTimeout(intro, 500); Net.autoJoin();
+    }
+    const beamY = () => (A && A.phase === 'arrive' ? A.t : 0);
+    function camera() {
+      if (!A) return;
+      let pos, look;
+      if (A.phase === 'letter' || A.phase === 'fly') { const t = A.phase === 'fly' ? A.t : 0; pos = path(t, 1); look = path(t, 2); }
+      else {
+        const t = A.t, z = SPOT[2], tgt = [0, 1.6, z];
+        if (t < 2.3) {                                   // UFO kommt, Strahl, Figur erscheint (Kamera mittig: Laternen stehen seitlich)
+          const k = smooth(clamp(t / 2.3, 0, 1));
+          pos = lerpv([0, 4.2, z - 14.5], [0, 2.6, z - 6.5], k); look = lerpv([0, 9.5, z], [0, 1.8, z], k);
+        } else if (t < 3.3) {                            // Nahaufnahme aufs Gesicht (ueber die Muenze am Weg hinweg)
+          const k = smooth((t - 2.3) / 1);
+          pos = lerpv([0, 2.6, z - 6.5], [0.8, 2.15, z - 2.8], k); look = [0, 1.8, z];
+        } else {                                         // Schwenk hinter die Figur (Bogen um sie herum)
+          const k = smooth(clamp((t - 3.3) / (ARRIVE - 3.3), 0, 1)), a = Math.PI * (1 - k) - 0.28 * (1 - k);
+          const r = lerp(2.9, 12 * Math.cos(0.34), k), y = lerp(2.15, 1.6 + 12 * Math.sin(0.34), k);
+          pos = [Math.sin(a) * r, y, z + Math.cos(a) * r]; look = lerpv([0, 1.8, z], tgt, k);
+        }
+      }
+      cam.pos = pos; cam.view = M4.lookAt(pos, look, [0, 1, 0]);
+    }
+    function drawScene() {
+      if (!A) return;
+      if (A.phase === 'fly' || A.phase === 'letter') {   // Wolki fliegt der Kamera voraus
+        const t = A.phase === 'fly' ? A.t : 0, p = path(t + 1.1, 1), q = path(t + 1.3, 1);
+        const wp = [p[0], p[1] - 0.8 + Math.sin(clock * 2.2) * 0.25, p[2]];
+        draw(MESH.wolki, M4.from(wp[0], wp[1], wp[2], Math.atan2(q[0] - p[0], q[2] - p[2]), 0, Math.sin(clock * 1.7) * 0.1, 1.1), { lit: 0.7, rim: 0.3 });
+      } else if (A.phase === 'arrive') {
+        const t = A.t, uy = t < 1.2 ? lerp(34, 9, smooth(t / 1.2)) : t < 2.5 ? 9 + Math.sin(clock * 3) * 0.15 : 9 + (t - 2.5) * (t - 2.5) * 16;
+        const um = M4.from(0, uy, SPOT[2], clock * 1.5);
+        draw(MESH.ufo, um, { shine: 0.5, rim: 0.2, lit: 0.9 });
+        draw(MESH.ufoGlow, um, { lit: 0 });
+        // Wolki schwebt schon am Start und filmt
+        draw(MESH.wolki, M4.from(-3.4, 3.4 + Math.sin(clock * 2.2) * 0.2, SPOT[2] - 4.5, 2.6, 0, 0, 0.9), { lit: 0.7, rim: 0.3 });
+      }
+    }
+    function drawAlpha() {
+      if (!A || A.phase !== 'arrive') return;
+      const t = A.t, on = t > 0.9 && t < 2.5 ? Math.min(1, (t - 0.9) / 0.3, (2.5 - t) / 0.3) : 0;
+      if (on > 0) draw(MESH.beam, M4.from(0, 0, SPOT[2], clock * 0.5, 0, 0, 1.8, 8.6, 1.8), { lit: 0, alpha: 0.28 * on, tint: [0.6, 1, 1, 1] });
+    }
+    // Spielfigur: erst sichtbar, wenn sie heruntergebeamt wird (sinkt im Strahl zu Boden)
+    function playerHidden() {
+      if (!A) return false;
+      if (A.phase !== 'arrive') return true;
+      if (A.t < 1.3) return true;
+      pl.pos[1] = Math.max(0, lerp(4.5, 0, smooth(clamp((A.t - 1.3) / 1, 0, 1))));
+      return false;
+    }
+    el.addEventListener('pointerdown', () => finish());
+    addEventListener('resize', () => { if (A && A.phase === 'letter') paintSky(); });
+    return { run, tick, camera, draw: drawScene, drawAlpha, playerHidden, skip: finish, get active() { return !!A; } };
+  })();
+
   /* ═══════════ Hauptschleife ═══════════ */
   const titleStarCv = $('#titleStar'), titleStarCtx = titleStarCv.getContext('2d');
   // Titelstern in Bildschirmaufloesung (scharf auch auf HiDPI)
@@ -13909,6 +14226,8 @@ void main() {
     }
     ambient(dt);
     updateCine(dt);
+    Intro.tick(dt);
+    if (mode === 'title') TitleHead.tick(dt);
     updateCamera(dt, inp);
     ArtGen.pump(64);
     Skybox.pump();
@@ -13916,7 +14235,7 @@ void main() {
     render();
     if (mode === 'pause') CatPick.tick(dt);
     updatePrompt(mode === 'play' && !Dialog.open ? interactable() : null);
-    if (!titleEl.hidden) { fitTitleStar(); StarGfx.draw(titleStarCtx, titleStarCv.width, titleStarCv.height, clock); }
+    document.body.classList.toggle('on-title', mode === 'title' || mode === 'files');
     StarFx.draw();
     if (manualDt == null) requestAnimationFrame(frame);
   }

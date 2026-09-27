@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=107`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
+  **kein root nötig**). Aktuell **JS `?v=114`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -160,6 +160,28 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   begrenzt (Luft zieht zurück). **Treppen-Trick** (Tag `stair`, A gehalten): Landung auf/Einflug in eine Stufe = sofort
   nächster BLJ (`bljAgain`, flach mit `BLJ_STAIR_VY` 3 m/s), über Treppen keine Luftbremse → Hallentreppe: 5 → 180 m/s in
   9 Stufen, Deckel `BLJ_MAX` 250. Bonk-Rückprall auf 12 m/s gedeckelt. Treppen: Halle (10 Stufen), Turm (og), Terrasse.
+
+### 1.12 PvP, Mitspieler-Liste, Vollbild, Titel + Vorspann (2026-09-27)
+- **PvP** (Gastgeber-Schalter `#mpPvp`, Vorgabe an): Angreifer erkennt Treffer an der gezeichneten Mitspieler-Position
+  (`Net.targets()`, `pvpHit`), schickt `{t:'hit', to, k:'w'|'s', d, x, z}`; Gastgeber prüft (`plausible`: PvP an, gleiche
+  Welt, < 8 m, Drossel) und reicht weiter; Opfer: `hitByPlayer` (zum Angreifer drehen, `hurtPlayer`, hart = auf den Rücken
+  landen `pl.knockHard` → `pl.knock` 0,6 s, danach 1,6 s unverwundbar). Treffer: Schlag 1, Tritt/Sprungtritt 2 (hart),
+  Beinfeger 1 (hart), Rutschtritt 2, Hechtsprung 2, Stampfer 3 (Umkreis 2,8 m), Draufspringen 1 + Abfedern.
+  Posen tragen `hp` mit. Getestet mit zwei Tabs (Schlag → 8→7, Rückstoß, Unverwundbarkeit; harter Treffer → Rückenlage).
+- **Mitspieler-Liste** `#mpHud` (Modul `Lobby`, oben links, glappa.de-Stil), Tab klappt ein (localStorage `glappa64-lobby`).
+- **Vollbild** `#btnFull`: Fullscreen-API + `navigator.keyboard.lock` (W/Q/A/S/D/E/R/T/N; Esc bewusst NICHT, sonst
+  bricht die Esc-Pausen-Logik) → Strg+W/Q gesperrt mit Hinweis; sonst `beforeunload`-Rückfrage im Vollbild (nicht bei
+  Links/Portalen: `leavingOnPurpose`).
+- **Titel** (Video 20260927-0153, SM64-Ablauf, alles eigen): `renderMenu` statt Schloss – Kachelwand `MenuBg` (eigenes
+  „SUPER GLAPPA 64“-Logo), großer Kopf der gewählten Figur `TitleHead` (folgt Zeiger, am Gesicht ziehen, federt),
+  PRESS START unten links, glappa.de-Glitzerspur (`body.on-title .sparkle`). PRESS START: Kopf dreht weg, Dateifenster
+  zoomt auf (`files-in`). Dateiauswahl ebenfalls vor der Kachelwand.
+- **Vorspann** `Intro`: neue Datei (`!state.intro`) = Weißblende → Himmel+Meer (Canvas-Malerei) mit Glappas Brief
+  (~8 s) → Kameraflug `FLY` (Catmull-Rom, 14 s: Himmel, Dach, Buntglasfenster, Tor, Garten), Wolki (`MESH.wolki`) fliegt
+  voraus → Ankunft 4,8 s: UFO (`MESH.ufo`/`ufoGlow`) + Strahl beamt die Figur auf `SPOT` [0,0,41,5] (Münze am Weg!),
+  Nahaufnahme, Schwenk hinter die Figur → Wolkis Begrüßung. Vorhandene Datei: nur Ankunft. Überspringen: A/Enter/Klick.
+  Portal-Rückkehr und `?gym` laufen wie vorher über die Iris.
+- Falle: innere Funktionen NICHT `draw` nennen (verdeckt die globale draw → Endlosrekursion, „Maximum call stack“).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
