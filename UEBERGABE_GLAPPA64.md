@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=121`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=122`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -245,6 +245,10 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Kopf dreht weit mit (±1 rad), Stupser (kurzer Klick) = Stauchfeder + Augen zukneifen + Quäken; nach 9 s ohne
   Eingabe döst er (Kopf sackt, Lider zu, Atmen, Z-Blasen `MESH.zee`), jede Bewegung weckt ihn mit Ruck
   (weite Augen, Ohren hoch, Streckung, `Snd.voice('hoi')` nur wenn `Snd.ready()`).
+- **Mund** (nur Titel): eigenes Mesh je Bild (`buildMouth`), liegt auf der Schnauze unter der Nase (Höhe aus einem
+  Oberflächenraster `surfaceGrid` der vordersten Kopfdreiecke, geht beim Ziehen mit). Formen `MOUTH` [halbe Breite,
+  Öffnung, Lächeln, Schiefe, rund]: Ruhe = Lächeln, Maus bewegt = Grinsen mit Zunge, angefasst = fragend-schief
+  (+ Kopf kippt, `st.tilt`), Stupser = „o“, nach weitem Ziehen = Lachen, Dösen = fast zu, Aufwachen = „O“.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

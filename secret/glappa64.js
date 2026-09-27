@@ -14684,7 +14684,7 @@ void main() {
      Alle Verformungen laufen je Bild auf der CPU (eigene DYNAMIC_DRAW-Puffer, Farben/UV vom normalen Mesh). */
   const TitleHead = (() => {
     const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, leave: -1, grab: null, lastIn: 0, doze: 0, startle: -9, poke: -9,
-      sq: 0, sqV: 0, look: [0, 0], lookT: [0, 0], nextLook: 0, zees: [], nextZ: 0 };
+      sq: 0, sqV: 0, look: [0, 0], lookT: [0, 0], nextLook: 0, zees: [], nextZ: 0, laugh: -9, tilt: 0 };
     const pulls = [], MAX_PULLS = 8, REACH2 = 0.2 * 0.2, MAX_D = 2.2, DOZE_AFTER = 9, CAM_Z = 9;
     let fovy = 1, aspect = 1, headM = I4;
     const ears = [{ t: -9, k: 0 }, { t: -9, k: 0 }], whisk = { t: -9 };
@@ -14721,7 +14721,39 @@ void main() {
       let chin = null;   // tiefster Punkt vorn in der Mitte
       for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.07 && P[i + 2] > 0.2 && (!chin || P[i + 1] < chin[1])) chin = [P[i], P[i + 1], P[i + 2]];
       F.chin = chin;
+      // Nase = vorderster Punkt nahe der Mitte; Mund knapp unter der Mitte zwischen Nase und Schnauzen-Unterkante
+      let nose = null, low = null;
+      for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.06 && P[i + 1] > -0.35 && P[i + 1] < 0.02 && (!nose || P[i + 2] > nose[2])) nose = [P[i], P[i + 1], P[i + 2]];
+      if (nose) for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.05 && P[i + 2] > nose[2] - 0.15 && (!low || P[i + 1] < low[1])) low = [P[i], P[i + 1], P[i + 2]];
+      F.nose = nose;
+      F.scale = F.eyes.length === 2 ? Math.abs(F.eyes[0][0] - F.eyes[1][0]) / 0.32 : 1;
+      F.mouthY = nose && low ? nose[1] - (nose[1] - low[1]) * 0.45 : -0.2;
       return F;
+    }
+    // Hoehe (z) der vordersten Kopfflaeche als Raster ueber dem Mundbereich - der Mund liegt darauf wie aufgemalt
+    function surfaceGrid(cpu, F) {
+      const NX = 17, NY = 13, sc = F.scale, x0 = -0.17 * sc, x1 = 0.17 * sc, y0 = F.mouthY - 0.13 * sc, y1 = F.mouthY + 0.1 * sc;
+      const Z = new Float32Array(NX * NY).fill(-9), P = cpu.P, gx = (x1 - x0) / (NX - 1), gy = (y1 - y0) / (NY - 1);
+      for (let t = 0; t < P.length; t += 9) {
+        const ax = P[t], ay = P[t + 1], bx = P[t + 3], by = P[t + 4], cx = P[t + 6], cy = P[t + 7];
+        const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+        if (Math.abs(den) < 1e-12) continue;
+        const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - x0) / gx)), i1 = Math.min(NX - 1, Math.floor((Math.max(ax, bx, cx) - x0) / gx));
+        const j0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) - y0) / gy)), j1 = Math.min(NY - 1, Math.floor((Math.max(ay, by, cy) - y0) / gy));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const x = x0 + i * gx, y = y0 + j * gy;
+          const l1 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den, l2 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den, l3 = 1 - l1 - l2;
+          if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+          const z = l1 * P[t + 2] + l2 * P[t + 5] + l3 * P[t + 8];
+          if (z > Z[j * NX + i]) Z[j * NX + i] = z;
+        }
+      }
+      const fb = F.nose ? F.nose[2] - 0.05 : 0.3;
+      return (x, y) => {
+        const fx = clamp((x - x0) / gx, 0, NX - 1.001), fy = clamp((y - y0) / gy, 0, NY - 1.001), i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
+        const at = (a, b) => { const z = Z[b * NX + a]; return z > -8 ? z : fb; };
+        return lerp(lerp(at(i, j), at(i + 1, j), u), lerp(at(i, j + 1), at(i + 1, j + 1), u), v);
+      };
     }
     // Einflussliste einer festen Stelle (Mitte + Radius) - einmal je Mesh vorberechnet
     function sparse(R, c, reach) {
@@ -14753,7 +14785,7 @@ void main() {
     function dynFor(G) {
       if (!dyn.has(G.id)) {
         const c = G.cpu || {}, F = c.head ? features(c.head, c.headGlow) : { eyes: [], ears: [], whiskers: [], chin: null };
-        dyn.set(G.id, { F, head: mkDyn(c.head, G.head, F), glow: mkDyn(c.headGlow, G.glow.head, F) });
+        dyn.set(G.id, { F, head: mkDyn(c.head, G.head, F), glow: mkDyn(c.headGlow, G.glow.head, F), zAt: c.head ? surfaceGrid(c.head, F) : null });
       }
       return dyn.get(G.id);
     }
@@ -14845,13 +14877,70 @@ void main() {
       if (far < 0.06 && clock - G2.t < 0.35) {   // Stupser: stauchen, Augen zukneifen, quaeken
         st.poke = clock; st.sqV -= 6; Snd.voice(Math.random() < 0.5 ? 'punch' : 'punch2');
         ears[Math.random() < 0.5 ? 0 : 1].t = clock;
-      } else if (!G2.pin && far > 0.25) Snd.boing();
+      } else if (!G2.pin && far > 0.25) { Snd.boing(); st.laugh = clock + 0.25; }   // nach dem Zurueckfedern lachen
     };
     titleEl.addEventListener('pointerup', release);
     titleEl.addEventListener('pointercancel', release);
     titleEl.addEventListener('contextmenu', (e) => { if (!(e.target.closest && e.target.closest('button, a'))) e.preventDefault(); });
     titleEl.addEventListener('dblclick', () => { for (const q of pulls) q.pinned = false; });
 
+    // ── Mund (nur im Titel): [halbe Breite, Oeffnung, Laecheln, Schiefe, rund] ──
+    const MOUTH = {
+      smile: [0.105, 0.04, 0.9, 0, 0], happy: [0.115, 0.07, 1, 0, 0], laugh: [0.12, 0.11, 1, 0, 0],
+      huh: [0.065, 0.028, -0.5, 0.9, 0.2], ouch: [0.055, 0.07, -0.2, 0, 1], O: [0.07, 0.12, 0, 0, 1], sleep: [0.07, 0.008, 0.35, 0, 0],
+    };
+    const mouth = MOUTH.smile.slice(), MSEG = 14, MV = MSEG * 12;
+    let mouthMesh = null;
+    function mouthFace() {
+      if (clock - st.startle < 0.7) return MOUTH.O;
+      if (st.grab) return MOUTH.huh;                        // angefasst: fragend-schief ("hm?")
+      if (clock - st.poke < 0.5) return MOUTH.ouch;
+      if (clock - st.laugh < 0.8) return MOUTH.laugh;
+      if (st.doze > 0.5) return MOUTH.sleep;
+      return clock - st.lastIn < 2.5 ? MOUTH.happy : MOUTH.smile;
+    }
+    const MCOL = [0.29, 0.05, 0.09], TCOL = [1, 0.44, 0.56];
+    function buildMouth(d) {
+      if (!mouthMesh) {
+        const b = (n) => { const x = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, x); gl.bufferData(gl.ARRAY_BUFFER, n * 4, gl.DYNAMIC_DRAW); return x; };
+        mouthMesh = { p: b(MV * 3), n: b(MV * 3), c: b(MV * 3), t: b(MV * 2), count: 0, P: new Float32Array(MV * 3), N: new Float32Array(MV * 3), C: new Float32Array(MV * 3) };
+        mouthMesh.N.fill(0); for (let i = 2; i < MV * 3; i += 3) mouthMesh.N[i] = 1;
+        gl.bindBuffer(gl.ARRAY_BUFFER, mouthMesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, mouthMesh.N);
+      }
+      const F = d.F, sc = F.scale, [w0, open, smile, asym, round] = mouth, w = w0 * sc, cy = F.mouthY;
+      const M = mouthMesh, Pm = M.P, Cm = M.C;
+      let n = 0;
+      // Verschiebung wie die Kopfhaut darunter (gezogene Stellen), damit der Mund beim Ziehen mitgeht
+      const put = (x, y, dz, col) => {
+        let z = d.zAt(x, y) + dz * sc, ox = 0, oy = 0, oz = 0;
+        for (const q of pulls) {
+          const ex = x - q.g[0], ey = y - q.g[1], ez = z - q.g[2], u = (ex * ex + ey * ey + ez * ez) / REACH2;
+          if (u < 1) { const k = (1 - u) * (1 - u); ox += q.D[0] * k; oy += q.D[1] * k; oz += q.D[2] * k; }
+        }
+        Pm[n * 3] = x + ox; Pm[n * 3 + 1] = y + oy; Pm[n * 3 + 2] = z + oz;
+        Cm[n * 3] = col[0]; Cm[n * 3 + 1] = col[1]; Cm[n * 3 + 2] = col[2]; n++;
+      };
+      const lip = (t) => {   // Oberlippe / Unterlippe bei t (-1..1)
+        const c = cy + smile * 0.035 * sc * t * t + asym * 0.03 * sc * t;
+        const h = (open * sc / 2) * Math.pow(Math.max(0, 1 - t * t), round > 0.5 ? 0.5 : 0.85) + 0.004 * sc;
+        return [c + h * lerp(0.25, 1, round), c - h * lerp(1.75, 1, round)];
+      };
+      for (let i = 0; i < MSEG; i++) {   // Mundhoehle
+        const ta = -1 + 2 * i / MSEG, tb = -1 + 2 * (i + 1) / MSEG, [ua, la] = lip(ta), [ub, lb] = lip(tb);
+        put(ta * w, ua, 0.007, MCOL); put(ta * w, la, 0.007, MCOL); put(tb * w, lb, 0.007, MCOL);
+        put(ta * w, ua, 0.007, MCOL); put(tb * w, lb, 0.007, MCOL); put(tb * w, ub, 0.007, MCOL);
+      }
+      for (let i = 0; i < MSEG; i++) {   // Zunge: unteres Stueck der Oeffnung, etwas davor
+        const ta = (-1 + 2 * i / MSEG) * 0.62, tb = (-1 + 2 * (i + 1) / MSEG) * 0.62, [ua, la] = lip(ta), [ub, lb] = lip(tb);
+        const ta2 = la + (ua - la) * 0.42, tb2 = lb + (ub - lb) * 0.42;
+        put(ta * w, ta2, 0.009, TCOL); put(ta * w, la, 0.009, TCOL); put(tb * w, lb, 0.009, TCOL);
+        put(ta * w, ta2, 0.009, TCOL); put(tb * w, lb, 0.009, TCOL); put(tb * w, tb2, 0.009, TCOL);
+      }
+      M.count = n;
+      gl.bindBuffer(gl.ARRAY_BUFFER, M.p); gl.bufferSubData(gl.ARRAY_BUFFER, 0, Pm);
+      gl.bindBuffer(gl.ARRAY_BUFFER, M.c); gl.bufferSubData(gl.ARRAY_BUFFER, 0, Cm);
+      return M;
+    }
     const twitch = (t0, dur) => { const k = (clock - t0) / dur; return k > 0 && k < 1 ? Math.sin(k * Math.PI) * Math.sin(k * Math.PI * 3) : 0; };
     function tick(dt) {
       const idle = clock - st.lastIn;
@@ -14885,6 +14974,9 @@ void main() {
         const q = pulls[i];
         if (!q.held && !q.pinned && Math.hypot(...q.D) < 0.002 && Math.hypot(...q.V) < 0.02) pulls.splice(i, 1);
       }
+      const mf = mouthFace(), km = Math.min(1, dt * 14);
+      for (let i = 0; i < 5; i++) mouth[i] += (mf[i] - mouth[i]) * km;
+      st.tilt += ((st.grab ? 0.17 : 0) - st.tilt) * Math.min(1, dt * 8);   // angefasst: Kopf fragend schief
       // Z-Blasen beim Doesen
       if (st.doze > 0.9 && clock > st.nextZ) { st.zees.push(clock); st.nextZ = clock + 1.1; }
       st.zees = st.zees.filter((t) => clock - t < 2.6);
@@ -14913,11 +15005,12 @@ void main() {
         spin = smooth(k) * TAU * 1.5; sc *= 1 - smooth(k); y += k * 2;
       }
       const dz = smooth(st.doze), breathe = Math.sin(clock * 1.7) * 0.02 * dz;
-      const roll = Math.sin(clock * 1.3) * 0.05 + Math.sin(clock * 0.7) * 0.1 * dz;
+      const roll = Math.sin(clock * 1.3) * 0.05 + Math.sin(clock * 0.7) * 0.1 * dz + st.tilt;
       headM = M4.from(0, y + st.sq * 0.25 - dz * 0.15, 0, st.yaw + spin, st.pitch, roll, sc * (1 - st.sq * 0.6), sc * (1 + st.sq + breathe), sc * (1 - st.sq * 0.3));
       const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 }, d = dynFor(G), mus = muscles(d.F);
       draw(d.head ? deform(d.head, mus) : G.head, headM, hOpt);
       if (G.glow.head) draw(d.glow ? deform(d.glow, mus) : G.glow.head, headM, { lit: 0 });
+      if (d.zAt) draw(buildMouth(d), headM, { lit: 0.55 });
       // Lider: blinzeln, beim Stupser zukneifen, beim Doesen zufallen; gepackt oder erschreckt weit offen
       const squint = clamp(1 - (clock - st.poke) / 0.35, 0, 1) * 0.75;
       let bl = Math.max(blinkAt(clock, 2), squint, dz * (0.85 + Math.sin(clock * 0.9) * 0.1 * (1 - dz)));
