@@ -3086,12 +3086,23 @@ vec3 art(vec2 p) {
      so laesst sich Stueck fuer Stueck umstellen. Die Blender-Teile muessen dieselben
      Gelenk-Urspruenge treffen wie rig — sonst bricht die Animation in drawPlayer(). */
   const CAT_PARTS = ['head', 'body', 'arm', 'leg', 'tail', 'lids'];
+  // Eckpunkte fuer den verformbaren Titelkopf (TitleHead): gleiche Daten wie im hochgeladenen Mesh
+  const cpuOf = (x) => (x ? { P: new Float32Array(x.pos || x.P), N: new Float32Array(x.nrm || x.N) } : null);
   const CATS = lowPoly(() => CAT_DEFS.filter((d) => !d.blenderOnly || CAT_PARTS.every((k) => MODELS[d.id + '.' + k])).map((d) => {
-    const c = { id: d.id, name: d.name, rig: d.rig, glow: {} };
-    for (const k of CAT_PARTS) if (d[k]) [c[k], c.glow[k]] = build2(d[k]);
+    const c = { id: d.id, name: d.name, rig: d.rig, glow: {}, cpu: {} };
+    for (const k of CAT_PARTS) {
+      if (!d[k]) continue;
+      if (k !== 'head') { [c[k], c.glow[k]] = build2(d[k]); continue; }
+      const g = new Geo(), gw = new Geo();
+      d.head(g, gw);
+      c.head = upload(g); c.glow.head = gw.pos.length ? upload(gw) : null;
+      c.cpu.head = cpuOf(g); c.cpu.headGlow = gw.pos.length ? cpuOf(gw) : null;
+    }
     for (const k of CAT_PARTS) {
       const m = MODELS[d.id + '.' + k];
-      if (m) { c[k] = m; c.glow[k] = MODELS[d.id + '.' + k + '.glow'] || null; }
+      if (!m) continue;
+      c[k] = m; c.glow[k] = MODELS[d.id + '.' + k + '.glow'] || null;
+      if (k === 'head') { c.cpu.head = cpuOf(MODEL_CPU[d.id + '.head']); c.cpu.headGlow = cpuOf(MODEL_CPU[d.id + '.head.glow']); }
     }
     return c;
   }));
@@ -14662,36 +14673,144 @@ void main() {
   });
 
   // ── Titel: Kopf, der dem Zeiger folgt und sich ziehen laesst ──
+  /* Titelkopf zum Verformen (nach dem Vorbild-Video 20260927-1043): eine Stelle packen und herausziehen - Nase,
+     Wange, Ohr, Muetze. Nur die Umgebung der gepackten Stelle folgt dem Zeiger (Glocke mit harter Grenze), beim
+     Loslassen federt sie mit Nachwippen zurueck. Rechte Maustaste: die Verformung bleibt stehen (wie im Vorbild),
+     Doppelklick laesst alles zurueckschnappen. Die Eckpunkte werden je Bild auf der CPU verschoben und in eigene
+     Puffer geschrieben; ohne Verformung wird das normale Mesh gezeichnet. */
   const TitleHead = (() => {
-    const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, drag: null, sx: 0, sy: 0, vx: 0, vy: 0, poke: 0, leave: -1 };
-    const inHead = (x, y) => Math.hypot((x - 0.5) * innerWidth / innerHeight, y - 0.5) < 0.24;
+    const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, poke: 0, leave: -1, grab: null };
+    const pulls = [], MAX_PULLS = 8, REACH2 = 0.2 * 0.2, MAX_D = 2.2;   // Einflussradius: etwa Nasenlaenge, Augen bleiben stehen
+    let fovy = 1, aspect = 1, headM = I4;
+    const CAM_Z = 9;
+    // Zeiger -> Bildschirmkoordinaten (-1..1) der Zeichenflaeche
+    function ndc(cx, cy) {
+      const r = gl.canvas.getBoundingClientRect();
+      return [((cx - r.left) / r.width) * 2 - 1, 1 - ((cy - r.top) / r.height) * 2];
+    }
+    const tanH = () => Math.tan(fovy / 2);
+    // Welt -> Bild (Kamera sitzt achsparallel bei z = 9 und schaut auf den Nullpunkt)
+    const toNdc = (p) => { const d = (CAM_Z - p[2]) * tanH(); return [p[0] / (d * aspect), p[1] / d]; };
+
+    // Verformbare Kopien je Figur: eigene Positions-/Normalen-Puffer, Farben und UV vom normalen Mesh
+    const dyn = new Map();
+    function mkDyn(cpu, mesh) {
+      if (!cpu || !mesh) return null;
+      const n = cpu.P.length / 3, P = new Float32Array(cpu.P), N = new Float32Array(cpu.N), fo = new Float32Array(n);
+      for (let t = 0; t < n * 3; t += 9) {   // Flaechennormalen in Ruhe (je Dreieck)
+        const ax = cpu.P[t + 3] - cpu.P[t], ay = cpu.P[t + 4] - cpu.P[t + 1], az = cpu.P[t + 5] - cpu.P[t + 2];
+        const bx = cpu.P[t + 6] - cpu.P[t], by = cpu.P[t + 7] - cpu.P[t + 1], bz = cpu.P[t + 8] - cpu.P[t + 2];
+        const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, l = Math.hypot(nx, ny, nz) || 1;
+        fo[t / 3] = nx / l; fo[t / 3 + 1] = ny / l; fo[t / 3 + 2] = nz / l;
+      }
+      const buf = (arr) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW); return b; };
+      return { R: cpu.P, N0: cpu.N, P, N, fo, mesh: { p: buf(P), n: buf(N), c: mesh.c, t: mesh.t, count: mesh.count } };
+    }
+    function dynFor(G) {
+      if (!dyn.has(G.id)) {
+        const c = G.cpu || {};
+        dyn.set(G.id, { head: mkDyn(c.head, G.head), glow: mkDyn(c.headGlow, G.glow.head) });
+      }
+      return dyn.get(G.id);
+    }
+    function deform(d) {
+      const { R, N0, P, N, fo } = d, n = R.length / 3;
+      for (let i = 0; i < n * 3; i += 3) {
+        const x = R[i], y = R[i + 1], z = R[i + 2];
+        let ox = 0, oy = 0, oz = 0;
+        for (const q of pulls) {
+          // Glocke mit harter Grenze: innen geht alles voll mit, ab REACH bewegt sich nichts mehr
+          const dx = x - q.g[0], dy = y - q.g[1], dz = z - q.g[2], u = (dx * dx + dy * dy + dz * dz) / REACH2;
+          if (u < 1) { const w = (1 - u) * (1 - u); ox += q.D[0] * w; oy += q.D[1] * w; oz += q.D[2] * w; }
+        }
+        P[i] = x + ox; P[i + 1] = y + oy; P[i + 2] = z + oz;
+      }
+      // Normalen: die Aenderung der Flaechennormale auf die weichen Eckpunkt-Normalen uebertragen
+      for (let t = 0; t < n * 3; t += 9) {
+        const ax = P[t + 3] - P[t], ay = P[t + 4] - P[t + 1], az = P[t + 5] - P[t + 2];
+        const bx = P[t + 6] - P[t], by = P[t + 7] - P[t + 1], bz = P[t + 8] - P[t + 2];
+        let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+        const l = Math.hypot(nx, ny, nz) || 1;
+        nx = nx / l - fo[t / 3]; ny = ny / l - fo[t / 3 + 1]; nz = nz / l - fo[t / 3 + 2];
+        for (let v = t; v < t + 9; v += 3) {
+          const mx = N0[v] + nx, my = N0[v + 1] + ny, mz = N0[v + 2] + nz, ml = Math.hypot(mx, my, mz) || 1;
+          N[v] = mx / ml; N[v + 1] = my / ml; N[v + 2] = mz / ml;
+        }
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, d.mesh.p); gl.bufferSubData(gl.ARRAY_BUFFER, 0, P);
+      gl.bindBuffer(gl.ARRAY_BUFFER, d.mesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, N);
+      return d.mesh;
+    }
+    // Stelle unter dem Zeiger: naechstliegender Eckpunkt im Bild, bei Ueberdeckung der vorderste
+    function pick(cx, cy) {
+      const G = CAT, d = dynFor(G).head;
+      if (!d || st.leave >= 0) return null;
+      const [px, py] = ndc(cx, cy), src = pulls.length ? d.P : d.R;
+      let best = null, bz = -Infinity;
+      for (let i = 0; i < src.length; i += 3) {
+        const w = M4.point(headM, [src[i], src[i + 1], src[i + 2]]), s = toNdc(w);
+        if (Math.hypot((s[0] - px) * aspect, s[1] - py) < 0.05 && w[2] > bz) { bz = w[2]; best = i; }
+      }
+      return best == null ? null : { g: [d.R[best], d.R[best + 1], d.R[best + 2]], zw: bz, p: [px, py] };
+    }
+    // Bildverschiebung (ndc) in der Tiefe zw -> Kopf-Koordinaten (Kopfmatrix = T * R * S, gleichmaessig skaliert)
+    function toLocal(dx, dy, zw) {
+      const k = (CAM_Z - zw) * tanH(), wx = dx * k * aspect, wy = dy * k, m = headM, s2 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
+      return [(m[0] * wx + m[1] * wy) / s2, (m[4] * wx + m[5] * wy) / s2, (m[8] * wx + m[9] * wy) / s2];
+    }
     titleEl.addEventListener('pointermove', (e) => {
       st.px = e.clientX / innerWidth; st.py = e.clientY / innerHeight;
-      if (st.drag) { st.sx = clamp((st.px - st.drag[0]) * 2.6, -0.85, 0.85); st.sy = clamp(-(st.py - st.drag[1]) * 2.6, -0.85, 0.85); }
+      const G2 = st.grab;
+      if (!G2) return;
+      const [px, py] = ndc(e.clientX, e.clientY), D = toLocal(px - G2.p[0], py - G2.p[1], G2.zw), l = Math.hypot(...D);
+      const k = l > MAX_D ? MAX_D / l : 1;
+      G2.q.D = [D[0] * k, D[1] * k, D[2] * k];
     });
     titleEl.addEventListener('pointerdown', (e) => {
       if (e.target.closest && e.target.closest('button, a')) return;
-      const x = e.clientX / innerWidth, y = e.clientY / innerHeight;
-      if (!inHead(x, y)) return;
-      st.drag = [x, y]; st.poke = 1; Snd.unlock(); Snd.blip();
+      const hit = pick(e.clientX, e.clientY);
+      if (!hit) return;
+      e.preventDefault();
+      if (pulls.length >= MAX_PULLS) pulls.splice(pulls.findIndex((q) => !q.held), 1);
+      const q = { g: hit.g, D: [0, 0, 0], V: [0, 0, 0], held: true, pinned: false };
+      pulls.push(q);
+      st.grab = { q, p: hit.p, zw: hit.zw, pin: e.button === 2 };
+      st.poke = 1; Snd.unlock(); Snd.blip();
       try { titleEl.setPointerCapture(e.pointerId); } catch (x2) { /* egal */ }
     });
-    const release = () => { if (!st.drag) return; st.drag = null; if (Math.abs(st.sx) + Math.abs(st.sy) > 0.25) Snd.boing(); };
+    const release = () => {
+      const G2 = st.grab;
+      if (!G2) return;
+      st.grab = null; G2.q.held = false; G2.q.pinned = G2.pin;
+      if (!G2.pin && Math.hypot(...G2.q.D) > 0.25) Snd.boing();
+    };
     titleEl.addEventListener('pointerup', release);
     titleEl.addEventListener('pointercancel', release);
+    titleEl.addEventListener('contextmenu', (e) => { if (!(e.target.closest && e.target.closest('button, a'))) e.preventDefault(); });
+    titleEl.addEventListener('dblclick', () => { for (const q of pulls) q.pinned = false; });
     function tick(dt) {
       const k = Math.min(1, dt * 6);
-      st.yaw += (clamp((st.px - 0.5) * 1.4, -0.7, 0.7) - st.yaw) * k;
-      st.pitch += (clamp((st.py - 0.5) * 0.9, -0.45, 0.45) - st.pitch) * k;
-      if (!st.drag) {   // zurueckfedern mit Nachwippen
-        st.vx += (-st.sx * 140 - st.vx * 9) * dt; st.vy += (-st.sy * 140 - st.vy * 9) * dt;
-        st.sx += st.vx * dt; st.sy += st.vy * dt;
+      if (!st.grab) {   // beim Ziehen bleibt der Kopf stehen, sonst schaut er dem Zeiger nach
+        st.yaw += (clamp((st.px - 0.5) * 1.4, -0.7, 0.7) - st.yaw) * k;
+        st.pitch += (clamp((st.py - 0.5) * 0.9, -0.45, 0.45) - st.pitch) * k;
+      }
+      // losgelassene Stellen federn zurueck (gedaempfte Feder, ~2,5 Schwingungen je Sekunde)
+      const h = Math.min(dt, 0.05) / 2;
+      for (let s = 0; s < 2; s++) {
+        for (const q of pulls) {
+          if (q.held || q.pinned) continue;
+          for (let j = 0; j < 3; j++) { q.V[j] += (-q.D[j] * 240 - q.V[j] * 11) * h; q.D[j] += q.V[j] * h; }
+        }
+      }
+      for (let i = pulls.length - 1; i >= 0; i--) {
+        const q = pulls[i];
+        if (!q.held && !q.pinned && Math.hypot(...q.D) < 0.002 && Math.hypot(...q.V) < 0.02) pulls.splice(i, 1);
       }
       st.poke = Math.max(0, st.poke - dt * 3);
     }
     function drawHead() {
       const G = CAT;
-      let yaw = st.yaw, sc = 2.8, y = -0.8, spin = 0;
+      let sc = 2.8, y = -0.8, spin = 0;
       if (st.leave >= 0 && !titleEl.classList.contains('leaving') && clock - st.leave > 0.6) { st.leave = -1; st.pop = clock; }
       if (st.pop != null) sc *= smooth(clamp((clock - st.pop) / 0.35, 0, 1));
       if (st.leave >= 0) {   // nach PRESS START: wegdrehen, schrumpfen, nach oben
@@ -14699,24 +14818,30 @@ void main() {
         if (k >= 1) return;
         spin = smooth(k) * TAU * 1.5; sc *= 1 - smooth(k); y += k * 2;
       }
-      const wob = st.poke * Math.sin(clock * 30) * 0.06;
-      const stretch = M4.from(st.sx * 1.1, y + st.sy * 1.1, 0, 0, 0, 0, 1 + Math.abs(st.sx) * 0.55 + wob, 1 + Math.abs(st.sy) * 0.55 - wob, 1);
-      const m = M4.mul(stretch, M4.from(0, 0, 0, yaw + spin, st.pitch, Math.sin(clock * 1.3) * 0.05, sc, sc, sc));
-      const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 };
-      draw(G.head, m, hOpt);
-      if (G.glow.head) draw(G.glow.head, m, { lit: 0 });
-      const bl = blinkAt(clock, 2);
-      if (G.lids && bl > 0.02) draw(G.lids, M4.mul(m, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), hOpt);
+      const wob = st.poke * Math.sin(clock * 30) * 0.05;
+      headM = M4.from(0, y, 0, st.yaw + spin, st.pitch, Math.sin(clock * 1.3) * 0.05, sc * (1 + wob), sc * (1 - wob), sc);
+      const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 }, d = pulls.length ? dynFor(G) : null;
+      draw(d && d.head ? deform(d.head) : G.head, headM, hOpt);
+      if (G.glow.head) draw(d && d.glow ? deform(d.glow) : G.glow.head, headM, { lit: 0 });
+      const bl = pulls.length ? 0 : blinkAt(clock, 2);   // gepackt: Augen weit auf
+      if (G.lids && bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), hOpt);
     }
-    return { tick, draw: drawHead, leave() { st.leave = clock; }, reset() { st.leave = -1; st.sx = st.sy = st.vx = st.vy = 0; } };
+    return {
+      tick, draw: drawHead, leave() { st.leave = clock; },
+      reset() { st.leave = -1; st.grab = null; pulls.length = 0; },
+      cam(f, a) { fovy = f; aspect = a; },
+      // Testhilfe (?debug): an Bildschirmposition packen, verschieben, loslassen
+      test: { pick, pulls, get grab() { return st.grab; } },
+    };
   })();
 
   // Titel, Dateiauswahl und der Brief-Teil des Vorspanns: eigene kleine Szene statt Schloss
   function renderMenu(w, h) {
     gl.clearColor(0.05, 0.04, 0.18, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const proj = M4.persp(Math.max(0.8, fovFor(w / h) - 0.15), w / h, 0.5, 200);
+    const fov = Math.max(0.8, fovFor(w / h) - 0.15), proj = M4.persp(fov, w / h, 0.5, 200);
     const eye = [0, 0, 9];
+    TitleHead.cam(fov, w / h);
     gl.uniformMatrix4fv(U.uProj, false, proj);
     gl.uniformMatrix4fv(U.uView, false, M4.lookAt(eye, [0, 0, 0], [0, 1, 0]));
     gl.uniform3fv(U.uLight, v3.norm([-0.35, -0.5, -1]));
@@ -15131,7 +15256,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
-      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby,
+      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby, TitleHead,
     };
   }
 })();

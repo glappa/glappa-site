@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=119`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=120`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -227,6 +227,17 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   und AM mit halber Frequenz, Nasal-Band 3,7 kHz, Klangregler. Bandenergien per ffmpeg-Bandpass gegen die Vorlage
   abgeglichen (alle Bänder ±3 dB). `VOICE` kennt Silbenlisten (`star` = „gnarp gnarp“). Test: `Snd.voiceOffline(name)`.
 - Testfalle: versteckter Browser-Pane drosselt Timer → Musik dort nicht in Echtzeit prüfbar, dafür `renderSong`.
+
+### 1.15 Titelkopf zum Verformen (2026-09-27, nach Video 20260927-1043)
+- `TitleHead`: Stelle packen (nächster Eckpunkt unter dem Zeiger, bei Überdeckung der vorderste) und ziehen – nur die
+  Umgebung folgt (Glocke mit harter Grenze, `REACH2` = 0,2², max. Zug `MAX_D` 2,2 Kopf-Einheiten). Loslassen = gedämpfte
+  Feder mit Nachwippen; mehrere Stellen gleichzeitig (`pulls`, max. 8). Rechte Maustaste = bleibt stehen, Doppelklick =
+  alles zurück. Beim Ziehen steht der Kopf still und die Augen bleiben offen.
+- Umsetzung: Eckpunkte je Bild auf der CPU verschoben (eigene DYNAMIC_DRAW-Puffer, Farben/UV vom normalen Mesh),
+  Normalen = Ruhe-Normale + Änderung der Flächennormale. Dafür behalten die Figuren `CAT.cpu.head/headGlow`
+  (prozedurale Köpfe über `Geo`, Blender-Köpfe aus `MODEL_CPU`). Umrechnung Zeiger ↔ Kopf ohne Matrix-Umkehrung,
+  weil die Titelkamera achsparallel bei z = 9 sitzt (`TitleHead.cam(fov, aspect)` aus `renderMenu`).
+- Test: `g64.TitleHead.test.pick(x, y)` + synthetische PointerEvents auf `#titleScreen`.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
