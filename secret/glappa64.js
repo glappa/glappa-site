@@ -932,6 +932,99 @@
       const c = ac();
       if (c) say(c, sfxBus, name, c.currentTime, VOICE_PITCH[CAT.id] || 1);
     });
+    /* ── Sprechende Alien-Katzen (Wunsch 2026-09-27): Text der NPC-Katzen wird vorgelesen ──
+       Sprachsynthese: eSpeak (meSpeak, GPL) in einem Web-Worker (vendor/mespeak-de-worker.js, ~1 MB gezippt, erst
+       geladen, wenn man einer Katze nahe kommt). Danach der Gnarp-Filter wie bei der Spielerstimme, per Bandvergleich
+       an die Vorlage angeglichen: obere Mitten runter, Nasal-Band hoch, Knarren (Lautstaerke-Schwankung ~55 Hz),
+       leichte Saettigung. Satzmelodie ueber die Abspielgeschwindigkeit: Frage steigt, Aussage faellt, dazwischen Bogen. */
+    function ttsChain(c, dest, t0, buf, o, text) {
+      const src = c.createBufferSource(), r = o.rate || 1, dur = buf.duration / r;
+      src.buffer = buf;
+      const pr = src.playbackRate, q = /\?\s*$/.test(text), ex = /!\s*$/.test(text);
+      pr.setValueAtTime(r * 1.04, t0);
+      pr.linearRampToValueAtTime(r * 1.12, t0 + dur * 0.18);
+      pr.linearRampToValueAtTime(r * 0.98, t0 + dur * 0.55);
+      pr.linearRampToValueAtTime(r * (q ? 1.02 : ex ? 1.1 : 1.0), t0 + dur * 0.75);
+      pr.linearRampToValueAtTime(r * (q ? 1.28 : ex ? 0.96 : 0.88), t0 + dur);
+      const hp = c.createBiquadFilter(), mid = c.createBiquadFilter(), nas = c.createBiquadFilter(), low = c.createBiquadFilter();
+      hp.type = 'highpass'; hp.frequency.value = 140;
+      low.type = 'lowshelf'; low.frequency.value = 280; low.gain.value = -5;
+      mid.type = 'peaking'; mid.frequency.value = 2100; mid.Q.value = 0.9; mid.gain.value = -12;
+      nas.type = 'peaking'; nas.frequency.value = 3700; nas.Q.value = 3; nas.gain.value = 5;
+      if (!shapeCurve) {
+        shapeCurve = new Float32Array(1024);
+        for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; shapeCurve[i] = Math.tanh(x * 1.8) / Math.tanh(1.8); }
+      }
+      const drive = c.createGain(), sh = c.createWaveShaper(), fry = c.createGain(), fo = c.createOscillator(), fg = c.createGain(), top = c.createBiquadFilter(), out = c.createGain();
+      drive.gain.value = 1.6; sh.curve = shapeCurve;
+      fry.gain.value = 0.72; fo.frequency.value = o.fry || 55; fg.gain.value = 0.28; fo.connect(fg); fg.connect(fry.gain);
+      top.type = 'lowpass'; top.frequency.value = 4500; top.Q.value = 0.6;
+      out.gain.value = o.vol ?? TTS_VOL;
+      src.connect(hp); hp.connect(low); low.connect(mid); mid.connect(nas); nas.connect(drive); drive.connect(sh);
+      sh.connect(fry); fry.connect(top); top.connect(out); out.connect(dest);
+      src.start(t0); fo.start(t0); fo.stop(t0 + dur + 0.1);
+      return src;
+    }
+    const TTS_VOL = 0.26;   // offline gemessen: etwas lauter als die Spieler-Rufe, klar ueber der Musik
+    const TTS = (() => {
+      let worker = null, ready = null, seq = 0, sayId = 0, cur = null, failed = false;
+      const pending = new Map();
+      function load() {
+        if (ready) return ready;
+        ready = new Promise((res, rej) => {
+          try { worker = new Worker('vendor/mespeak-de-worker.js?v=1'); } catch (e) { rej(e); return; }
+          worker.onmessage = (e) => {
+            const d = e.data || {};
+            if (d.ready) { res(); return; }
+            const p = pending.get(d.id);
+            if (p) { pending.delete(d.id); p(d); }
+          };
+          worker.onerror = (e) => rej(new Error(e.message || 'Worker-Fehler'));
+        });
+        ready.catch((e) => { failed = true; console.warn('[glappa64] Sprachausgabe nicht verfuegbar:', e.message); });
+        return ready;
+      }
+      function synth(text, o) {
+        return load().then(() => new Promise((res) => {
+          const id = ++seq;
+          pending.set(id, res);
+          worker.postMessage({ id, text, pitch: o.pitch ?? 60, speed: o.speed ?? 165, variant: o.variant || 'croak' });
+        }));
+      }
+      // Text fuer die Sprachausgabe: Symbole raus, Gedankenstriche/Auslassungen als Pausen
+      const clean = (t) => String(t).replace(/[\u2605\u2606\u2764\u{1F300}-\u{1FAFF}]/gu, ' ').replace(/[\u2013\u2014]/g, ', ').replace(/\u2026/g, ', ').replace(/\s+/g, ' ').trim();
+      function stop() { sayId++; if (cur) { try { cur.stop(); } catch (e) { /* schon aus */ } cur = null; } }
+      function say(text, o) {
+        stop();
+        const my = sayId, t = clean(text);
+        if (!t || !state.sfx) return;
+        synth(t, o).then((d) => {
+          const c = ctx;
+          if (my !== sayId || !d || !d.pcm || !c || c.state !== 'running' || !state.sfx) return;
+          const buf = c.createBuffer(1, d.pcm.length, d.sr);
+          buf.copyToChannel(d.pcm, 0);
+          cur = ttsChain(c, sfxBus, c.currentTime + 0.02, buf, o, t);
+          cur.onended = () => { if (cur && cur.buffer === buf) cur = null; };
+        }).catch(() => { /* ohne Sprachausgabe bleibt es bei den Tipp-Klaengen */ });
+      }
+      return { say, stop, load, synth, get failed() { return failed; }, get speaking() { return !!cur; } };
+    })();
+    api.say = (text, o) => TTS.say(text, o || {});
+    api.sayStop = () => TTS.stop();
+    let ttsAsked = false;
+    api.ttsPreload = () => { if (!ttsAsked) { ttsAsked = true; TTS.load().catch(() => {}); } };
+    api.ttsFailed = () => TTS.failed;
+    api.ttsSpeaking = () => TTS.speaking;
+    // Testhilfe: Satz synthetisieren und mit dem Filter offline rechnen
+    api.ttsOffline = async (text, o = {}, sr = 24000) => {
+      const d = await TTS.synth(text, o);
+      if (!d.pcm) throw new Error(d.error || 'keine Daten');
+      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, len = Math.ceil((d.pcm.length / d.sr) / (o.rate || 1) * 1.3 * sr) + sr;
+      const oc = new C(1, len, sr), buf = oc.createBuffer(1, d.pcm.length, d.sr);
+      buf.copyToChannel(d.pcm, 0);
+      ttsChain(oc, oc.destination, 0.02, buf, o, text);
+      return oc.startRendering();
+    };
     // Testhilfe: Stimme offline rechnen (fuer Lautstaerke- und Klangvergleich)
     api.voiceOffline = (name, k = 1, sr = 24000) => {
       const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, oc = new C(1, sr * 2, sr);
@@ -1242,18 +1335,29 @@
   })();
 
   /* ═══════════ Dialogbox ═══════════ */
+  // Sprecher, die Alien-Katzen sind (Bewohner via K.life.npc): Name -> Stimme (eSpeak-Tonhoehe/Tempo/Variante, Klang)
+  const CAT_VOICES = new Map();
+  function catVoice(name, catIdx) {
+    let h = 0;
+    for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    const VAR = ['croak', 'croak', 'm3', 'f2', 'm1', 'f4'];
+    return { pitch: 72 + (h % 22) + [5, -6, 0, 3, 0][catIdx % 5], speed: 158 + ((h >> 5) % 22), variant: VAR[(h >> 9) % VAR.length],
+      rate: 1 + ((h >> 13) % 9) / 100, fry: 48 + ((h >> 17) % 18) };
+  }
   const Dialog = (() => {
     const box = $('#dialog'), txt = $('#dlgText'), spk = $('#dlgSpeaker'), nxt = $('#dlgNext');
     let lines = [], idx = 0, typing = null, full = '', done = null, openedAt = 0;
+    let voice = null;   // sprechende Katze: Stimme statt Tipp-Klaengen
     function typeLine() {
       clearInterval(typing);
       full = lines[idx]; txt.textContent = ''; nxt.classList.add('wait');
+      if (voice) Snd.say(full, voice);
       if (reduceMotion) { txt.textContent = full; nxt.classList.remove('wait'); typing = null; return; }
       let pos = 0;
       typing = setInterval(() => {
         pos++;
         txt.textContent = full.slice(0, pos);
-        if (pos % 2 === 0 && full[pos - 1] !== ' ') Snd.blip();
+        if (pos % 2 === 0 && full[pos - 1] !== ' ' && (!voice || Snd.ttsFailed())) Snd.blip();
         if (pos >= full.length) { clearInterval(typing); typing = null; nxt.classList.remove('wait'); }
       }, 22);
     }
@@ -1261,10 +1365,12 @@
       if (done) { const cb = done; done = null; cb(); }
       lines = Array.isArray(list) ? list : [list]; idx = 0; done = onDone || null;
       spk.textContent = speaker || ''; box.hidden = false; openedAt = performance.now();
+      voice = CAT_VOICES.get(speaker) || null;
       typeLine();
     }
     function close() {
       clearInterval(typing); typing = null; box.hidden = true;
+      if (voice) { Snd.sayStop(); voice = null; }
       const cb = done; done = null; if (cb) cb();
     }
     function advance() {
@@ -5252,7 +5358,8 @@ vec3 art(vec2 p) {
         const c = add(L, { k: 'npc', pos: [x, o.y ?? 0, z], home: [x, o.y ?? 0, z], r: o.r ?? 7, cat: o.cat ?? 0,
           tint: o.tint ? [...hex(o.tint), o.mix ?? 0.5] : null, s: o.s ?? 1, sp: rr(1.4, 2.0) * (o.speed ?? 1),
           tgt: null, wait: rr(0, 2), face: o.face ?? 0, walk: 0, t: Math.random() * 10 });
-        L.talkers.push({ pos: c.pos, speaker, text });
+        L.talkers.push({ pos: c.pos, speaker, text, cat: true });
+        if (!CAT_VOICES.has(speaker)) CAT_VOICES.set(speaker, catVoice(speaker, o.cat ?? 0));
         return c;
       },
     });
@@ -12502,6 +12609,7 @@ void main() {
     if (L.door && dist2D(p, L.door.pos) < 3.2 && Math.abs(p[1] - L.door.pos[1]) < 1.5) return { label: L.door.label, act: () => useDoor() };
     for (const d of L.doors) if (dist2D(p, d.pos) < 3 && Math.abs(p[1] - d.pos[1]) < 1.5) return { label: d.label, act: () => useDoor(d) };
     for (const t of L.talkers) {
+      if (t.cat && dist2D(p, t.pos) < 9) Snd.ttsPreload();   // Sprachausgabe schon mal laden (einmalig, im Hintergrund)
       if (dist2D(p, t.pos) < 2.8 && Math.abs(p[1] - t.pos[1]) < 2) return { label: t.speaker === 'Schild' ? 'Lesen' : 'Reden', act: () => Dialog.show(t.speaker, t.text) };
     }
     if (L.starDoor && dist2D(p, L.starDoor.pos) < 4.5 && p[1] > 4) return { label: 'Sterntür', act: useStarDoor };

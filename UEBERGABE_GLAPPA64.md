@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=122`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=123`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -249,6 +249,19 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Oberflächenraster `surfaceGrid` der vordersten Kopfdreiecke, geht beim Ziehen mit). Formen `MOUTH` [halbe Breite,
   Öffnung, Lächeln, Schiefe, rund]: Ruhe = Lächeln, Maus bewegt = Grinsen mit Zunge, angefasst = fragend-schief
   (+ Kopf kippt, `st.tilt`), Stupser = „o“, nach weitem Ziehen = Lachen, Dösen = fast zu, Aufwachen = „O“.
+
+### 1.16 Sprechende Alien-Katzen (2026-09-27)
+- NPC-Katzen (`K.life.npc`) tragen sich in `CAT_VOICES` ein (Stimme aus dem Namen gewürfelt: eSpeak-Tonhöhe 66–99,
+  Tempo 158–180, Variante croak/m3/f2/m1/f4, Abspielrate, Knarr-Frequenz). `Dialog` liest deren Zeilen vor
+  (`Snd.say`) statt Tipp-Klänge; Schließen stoppt; andere Sprecher (Wolki, Schilder …) bleiben still.
+- Sprachsynthese: eSpeak/meSpeak 1.9.6 (GPL v3) als Web-Worker `secret/vendor/mespeak-de-worker.js` (5,5 MB, gezippt
+  ~1 MB), nur Deutsch; wird geladen, sobald man einer NPC-Katze auf 9 m nahe kommt (`Snd.ttsPreload`). Bauen:
+  `tools/tts/build_mespeak_worker.py` (npm-Paket `mespeak@2.0.2`), Lizenz-Hinweis daneben. Satz in 10–70 ms.
+- Filter `ttsChain` (Gnarp): Hochpass, Bass −5 dB, obere Mitten −12 dB (2,1 kHz), Nasal +5 dB (3,7 kHz), Sättigung,
+  Knarren (Lautstärke-Schwankung ~55 Hz), Tiefpass 4,5 kHz; Satzmelodie über `playbackRate` (Frage steigt, Aussage
+  fällt). Per Bandvergleich an die Gnarpy-Vorlage angeglichen (alle Bänder ±3 dB, Grundton im Mittel 198 vs. 183 Hz).
+  Test: `Snd.ttsOffline(text, stimme)`; `Snd.ttsSpeaking()`.
+- Falle: ohne Nutzerklick ist der AudioContext gesperrt – dann schweigt die Stimme (Tests: erst echt klicken).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
