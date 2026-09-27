@@ -79,7 +79,25 @@ def _ear(side):
     outer = B.lathe('eo', [(0.0, 0.13, 0.06), (0.14, 0.085, 0.042), (0.28, 0.0, 0.0)], segs=6, color=SK)
     inner = B.place(B.lathe('ei', [(0.02, 0.075, 0.018), (0.2, 0.0, 0.0)], segs=6, color=PINK), (0, -0.035, 0))
     ear = B.merge('ear', [outer, inner])
-    return B.place(ear, (side * 0.285, 0.03, 0.26), (0.12, side * 0.42, 0))
+    # steckt oben durch die Kappe (Ohrloecher) statt seitlich aus dem Rand wie ein Horn
+    return B.place(ear, (side * 0.265, 0.06, 0.30), (0.08, side * 0.34, 0))
+
+
+def _cap_back(dome):
+    """Kappe hinten tiefer ziehen, wie eine echte Schirmmuetze: vorn bleibt der Rand ueber den Augen,
+    hinten reicht er bis in den Nacken. Sonst schaut aus der Spielkamera (die meist hinter der Figur
+    haengt) ein kahler gruener Hinterkopf unter einem Kaeppchen hervor."""
+    me = dome.data
+    for v in me.vertices:
+        x, y, z = v.co
+        if z > 0.33:
+            continue
+        back = max(0.0, y / 0.40) ** 1.3          # 0 vorn/seitlich .. 1 ganz hinten (+Y)
+        w = min(1.0, (0.33 - z) / 0.23)            # unterster Ring voll, nach oben auslaufend
+        v.co.z = z - 0.2 * back * w
+        grow = 1 + 0.07 * back * w                 # tiefer hinten ist der Schaedel breiter -> Kappe mitwachsen
+        v.co.x, v.co.y = x * grow, y * grow
+    me.update()
 
 
 def head():
@@ -102,6 +120,7 @@ def head():
     dome = B.lathe('dome', [(0.10, 0.44, 0.40), (0.18, 0.43, 0.39), (0.26, 0.39, 0.355),
                             (0.33, 0.32, 0.29), (0.39, 0.22, 0.20), (0.43, 0.11, 0.10), (0.445, 0.0, 0.0)],
                    segs=12, color=CAP)
+    _cap_back(dome)
     brim = B.place(B.ellipsoid('brim', (0.33, 0.25, 0.03), 10, 4, CAP_D, smooth=False), (0, -0.32, 0.135))
     emblem = B.place(B.star('emblem', 0.095, 0.018, GOLD), (0, -0.362, 0.27), (-0.5, 0, 0))
     parts += [dome, brim, emblem]

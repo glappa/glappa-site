@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=114`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
+  **kein root nötig**). Aktuell **JS `?v=118`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -182,6 +182,31 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Nahaufnahme, Schwenk hinter die Figur → Wolkis Begrüßung. Vorhandene Datei: nur Ankunft. Überspringen: A/Enter/Klick.
   Portal-Rückkehr und `?gym` laufen wie vorher über die Iris.
 - Falle: innere Funktionen NICHT `draw` nennen (verdeckt die globale draw → Endlosrekursion, „Maximum call stack“).
+
+### 1.13 Schloss, Garten nach Vorbild-Karte, Weitsprung, PvP-Fix (2026-09-27)
+- **Schloss** ist jetzt ein Blender-Modell `castle.body` (`tools/blender/castle.py`, 4931 Dreiecke, eigener Entwurf; die
+  Rip-Dateien in `N:\Downloads\…Peach's Castle Exterior` dienten NUR als Vorlage für Aufbau/Proportionen, nichts davon
+  ist eingebaut). Hauptbau mit Sockel, Gurtgesims (y 8,2 – unter dem Buntglasfenster), Fensterreihen, Walmdach mit Gauben
+  und Stern-Giebel, Mittelturm mit Zinnen + Pyramidendach, 6 Rundtürme (2 davon neu hinten), Verbindungsmauern.
+  Einbau in `buildGarden`: `bakeModel(g, 'castle.body', M4.from(0, 0, -48))`; Kollision sind weiter die alten Quader
+  (Modell ist genau darauf gebaut); ohne Modelldatei die alte Quader-Fassung. Fahnen: `flagAt()` (4 Glieder, `K.anim`).
+  Buntglasfenster + Tor bleiben prozedural.
+- **Garten** nach der Vorbild-Karte: Burggraben in **U-Form** (`MOAT`, vorn x ±38, Arme x ±32..38 bis z −64,
+  Ufer entlang `RIM`), **Wasserfall hinten links** aus einer Felsstufe (x −41..−29, z −77..−64, oben 3 Münzen) in den
+  linken Arm, **Sandweg-Schleife** `LOOP` um die große Wiese (Ellipse um (0, 29), 27×22 m; Blumen/Gras meiden ihn über
+  `onLoop` – `avoid`-Listen von `K.flowers`/`K.tufts` nehmen jetzt auch Funktionen), ferne Hügel als runde Kuppen.
+- **Weitsprung** wie im Vorbild: beim Absprung `pl.longFast` (Tempo > 24 m/s) → flach gestreckt, Arme voraus; langsam /
+  rückwärts → schräg (~60°), Hände unter der Brust. Nach der Landung 0,28 s Hocke (`landLong`). Messwerte unverändert.
+- **PvP-Fix**: Wer im Pausenmenü steht, war unverwundbar und eingefroren – bei zwei Fenstern an einem Rechner ist das
+  Fenster ohne Fokus IMMER pausiert (Maus weg). Jetzt läuft die Welt im Mehrspieler auch im Pausenmenü weiter (ohne
+  Eingaben, `live()` in `frame`), `hitByPlayer` wirkt auch dort. Getestet mit zwei Tabs, beide Richtungen.
+- **Mitspieler sind fest**: `Net.bodies()` (auch ohne PvP) → man schiebt sich aus dem anderen heraus (Radius 2·R·0,95)
+  und federt auf seinem Kopf ab. Hintergrund: Im Nutzer-Video stand die Astro-Katze genau hinter Kappi → sah aus wie
+  „Kappi mit vier Ohren“.
+- **Kappi**: Kappe hinten bis in den Nacken gezogen (`_cap_back`, vorher kahler grüner Hinterkopf aus der Spielkamera),
+  Ohren stecken oben durch die Kappe statt seitlich wie Hörner.
+- Falle beim Testen: Der Browser cached `glappa64.html` selbst → nach Änderungen mit `&nc=<Zeit>` laden, sonst läuft
+  heimlich die alte `?v=`-Fassung. Vor Figuren/Schildern ist B „reden“, nicht „schlagen“ (Wolki steht bei (5, 30)).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

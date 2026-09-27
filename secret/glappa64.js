@@ -2911,6 +2911,22 @@ vec3 art(vec2 p) {
 
   /* ═══════════ Level 1: Schlossgarten ═══════════ */
   const DOOR_BLOCKS = [];
+  MESH.flagSeg = build((g) => {
+    // ein Glied (0,55 x 0,95 m), Drehpunkt an der linken Kante; zweiseitig
+    const a = [0, -0.475, 0], b = [0.55, -0.475, 0], c2 = [0.55, 0.475, 0], d = [0, 0.475, 0], w = hex('#ffffff');
+    g.quad(a, b, c2, d, w); g.quad(b, a, d, c2, w);
+  });
+  function flagAt(K, x, y, z, col, ph) {
+    for (let i = 0; i < 4; i++) {
+      K.anim(MESH.flagSeg, (t) => {
+        let m = M4.from(x, y, z, 0.35);   // weht grob nach +x (leicht schraeg)
+        for (let j = 0; j <= i; j++) {
+          m = M4.mul(m, M4.from(j ? 0.55 : 0.08, 0, 0, Math.sin(t * 5.5 + ph - j * 0.9) * (0.18 + j * 0.1), 0, 0, 1, 1 - j * 0.12, 1));
+        }
+        return m;
+      }, { tint: [col[0], col[1], col[2], 1], lit: 0.8 });
+    }
+  }
   function buildGarden() {
     const L = new Level({
       name: 'Schlossgarten', spawn: [0, 0, 40], spawnFace: Math.PI, spawnYaw: 0,
@@ -2930,16 +2946,22 @@ vec3 art(vec2 p) {
         }
       }
     };
-    [[-104, -16, 104, 96], [-64, -28, 104, -16], [-104, -40, -80, -16], [-64, -40, -30, -28], [-104, -100, -30, -40], [30, -100, 104, -28], [-30, -100, 30, -34]]
+    [[-104, -16, 104, 96], [-64, -28, 104, -16], [-104, -40, -80, -16], [-64, -40, -38, -28], [-104, -100, -38, -40], [-38, -100, -32, -64],
+      [38, -100, 104, -28], [32, -100, 38, -64], [-32, -100, 32, -34]]
       .forEach(([x0, z0, x1, z1]) => field(x0, z0, x1, z1));
-    // Burggraben + Wasser
-    L.solid(-30, -6, -34, 30, -1.6, -28, 'moatbed');
-    L.checker(-30, -34, 30, -28, -1.6, 2, C.moatBed, shade(C.moatBed, .85));
-    g.quad([-30, -1.6, -28], [30, -1.6, -28], [30, 0, -28], [-30, 0, -28], C.dirtDark);
-    g.quad([30, -1.6, -34], [-30, -1.6, -34], [-30, 0, -34], [30, 0, -34], C.dirtDark);
-    g.quad([-30, -1.6, -34], [-30, -1.6, -28], [-30, 0, -28], [-30, 0, -34], C.dirtDark);
-    g.quad([30, -1.6, -28], [30, -1.6, -34], [30, 0, -34], [30, 0, -28], C.dirtDark);
-    L.waters.push({ x0: -30, x1: 30, z0: -34, z1: -28, y: -0.45, tint: [0.14, 0.45, 0.9, 0.7] });
+    // Burggraben in U-Form: vorn quer, dazu zwei Arme an den Seiten bis hinter das Schloss
+    const MOAT = [[-38, -34, 38, -28], [-38, -64, -32, -34], [32, -64, 38, -34]];
+    for (const [x0, z0, x1, z1] of MOAT) {
+      L.solid(x0, -6, z0, x1, -1.6, z1, 'moatbed');
+      L.checker(x0, z0, x1, z1, -1.6, 2, C.moatBed, shade(C.moatBed, .85));
+      L.waters.push({ x0, x1, z0, z1, y: -0.45, tint: [0.14, 0.45, 0.9, 0.7] });
+    }
+    // Erdufer entlang des U-Umrisses (Reihenfolge so, dass jede Wand zum Wasser zeigt)
+    const RIM = [[-38, -28], [38, -28], [38, -64], [32, -64], [32, -34], [-32, -34], [-32, -64], [-38, -64]];
+    RIM.forEach(([ax, az], i) => {
+      const [bx, bz] = RIM[(i + 1) % RIM.length];
+      g.quad([ax, -1.6, az], [bx, -1.6, bz], [bx, 0, bz], [ax, 0, az], C.dirtDark);
+    });
     // Bruecke
     L.block(0, 0.05, -31, 6, 0.5, 7.4, { top: C.wood, side: C.woodDark }, 'bridge');
     for (let z = -34; z <= -28; z += 1.2) box(g, M4.from(0, 0.31, z), 6, 0.02, 0.08, C.woodDark);
@@ -2947,32 +2969,42 @@ vec3 art(vec2 p) {
     L.block(3.1, 0.8, -31, 0.3, 1.1, 7.4, C.woodDark, 'rail');
 
     // ── Schloss ──
+    // Aussehen: Blender-Modell castle.body (tools/blender/castle.py, eigener Entwurf nach dem Aufbau eines
+    // 64er-Schlosses). Ohne Modelldatei die alte Quader-Fassung. Die Kollision ist in beiden Faellen dieselbe -
+    // die Grundflaechen im Modell sind genau auf diese Quader gebaut.
     const wall = { top: C.wallShade, side: C.wall };
-    L.block(0, 9, -48, 26, 18, 20, wall, 'keep');
-    // Walmdach
-    const r0 = [-13.6, 18, -37.4], r1 = [13.6, 18, -37.4], r2 = [13.6, 18, -58.6], r3 = [-13.6, 18, -58.6], apexA = [-5, 25, -48], apexB = [5, 25, -48];
-    g.quad(r0, r1, apexB, apexA, C.roof); g.quad(r2, r3, apexA, apexB, C.roofDark);
-    g.tri(r3, r0, apexA, C.roofDark); g.tri(r1, r2, apexB, C.roof);
-    // Mittelturm
-    L.block(0, 24, -50, 8, 14, 8, wall, 'keep');
-    cyl(g, M4.from(0, 31, -50, Math.PI / 8), 6.4, 0, 9, 8, C.roof);
-    cyl(g, M4.from(0, 40, -50), 0.12, 0.12, 4, 4, C.stoneDark);
-    g.tri([0, 44, -50], [0, 42.4, -50], [2.6, 43.2, -50], C.gold);
-    g.tri([0, 42.4, -50], [0, 44, -50], [2.6, 43.2, -50], C.gold);
-    // runde Tuerme
-    [[-17, -44, 4.5, 22, 8], [17, -44, 4.5, 22, 8], [-27, -40, 3.5, 15, 6], [27, -40, 3.5, 15, 6]].forEach(([x, z, r, h, rh]) => {
-      cyl(g, M4.from(x, 0, z), r, r, h, 12, C.wall, C.wallShade);
-      cyl(g, M4.from(x, h, z), r + 1, 0, rh, 12, C.roof);
-      L.solid(x - r * .9, 0, z - r * .9, x + r * .9, h, z + r * .9, 'tower');
-      for (const a of [0.6, 2.2]) box(g, M4.from(x + Math.sin(a) * r, h * .62, z + Math.cos(a) * r, a), 0.9, 1.8, 0.3, hex('#3a2a1a'));
-    });
-    // Verbindungsmauern mit Zinnen
-    [[-20, 1], [20, -1]].forEach(([x]) => {
-      L.block(x, 5.5, -42, 14, 11, 4, wall, 'wall');
-      for (let i = -6; i <= 6; i += 2.4) box(g, M4.from(x + i, 11.6, -40.5), 1.2, 1.2, 1, C.wall);
-    });
-    // Fenster am Hauptbau
-    [[-8, 7], [8, 7], [-8, 13], [8, 13]].forEach(([x, y]) => box(g, M4.from(x, y, -37.9), 1.4, 2.4, 0.2, hex('#3a2a1a')));
+    const castleModel = bakeModel(g, 'castle.body', M4.from(0, 0, -48));
+    const TOWERS = [[-17, -44, 4.5, 22, 8], [17, -44, 4.5, 22, 8], [-27, -40, 3.5, 15, 6], [27, -40, 3.5, 15, 6]];
+    if (castleModel) TOWERS.push([-12.5, -57.5, 2.6, 24, 7], [12.5, -57.5, 2.6, 24, 7]);
+    L.solid(-13, 0, -58, 13, 18, -38, 'keep');
+    L.solid(-4, 17, -54, 4, 31, -46, 'keep');
+    for (const [x, z, r, h] of TOWERS) L.solid(x - r * .9, 0, z - r * .9, x + r * .9, h, z + r * .9, 'tower');
+    for (const x of [-20, 20]) L.solid(x - 7, 0, -44, x + 7, 11, -40, 'wall');
+    if (castleModel) {
+      // wehende Fahnen auf allen Turmspitzen (die Masten stecken im Modell)
+      [[0, 46.3, -50, hex('#ffd23a')], [-17, 34.1, -44], [17, 34.1, -44], [-27, 25.1, -40], [27, 25.1, -40], [-12.5, 34.6, -57.5], [12.5, 34.6, -57.5]]
+        .forEach(([x, y, z, col], i) => flagAt(K, x, y, z, col || hex('#e8203a'), i * 1.7));
+    } else {
+      box(g, M4.from(0, 9, -48), 26, 18, 20, wall);
+      const r0 = [-13.6, 18, -37.4], r1 = [13.6, 18, -37.4], r2 = [13.6, 18, -58.6], r3 = [-13.6, 18, -58.6], apexA = [-5, 25, -48], apexB = [5, 25, -48];
+      g.quad(r0, r1, apexB, apexA, C.roof); g.quad(r2, r3, apexA, apexB, C.roofDark);
+      g.tri(r3, r0, apexA, C.roofDark); g.tri(r1, r2, apexB, C.roof);
+      box(g, M4.from(0, 24, -50), 8, 14, 8, wall);
+      cyl(g, M4.from(0, 31, -50, Math.PI / 8), 6.4, 0, 9, 8, C.roof);
+      cyl(g, M4.from(0, 40, -50), 0.12, 0.12, 4, 4, C.stoneDark);
+      g.tri([0, 44, -50], [0, 42.4, -50], [2.6, 43.2, -50], C.gold);
+      g.tri([0, 42.4, -50], [0, 44, -50], [2.6, 43.2, -50], C.gold);
+      for (const [x, z, r, h, rh] of TOWERS) {
+        cyl(g, M4.from(x, 0, z), r, r, h, 12, C.wall, C.wallShade);
+        cyl(g, M4.from(x, h, z), r + 1, 0, rh, 12, C.roof);
+        for (const a of [0.6, 2.2]) box(g, M4.from(x + Math.sin(a) * r, h * .62, z + Math.cos(a) * r, a), 0.9, 1.8, 0.3, hex('#3a2a1a'));
+      }
+      for (const x of [-20, 20]) {
+        box(g, M4.from(x, 5.5, -42), 14, 11, 4, wall);
+        for (let i = -6; i <= 6; i += 2.4) box(g, M4.from(x + i, 11.6, -40.5), 1.2, 1.2, 1, C.wall);
+      }
+      [[-8, 7], [8, 7], [-8, 13], [8, 13]].forEach(([x, y]) => box(g, M4.from(x, y, -37.9), 1.4, 2.4, 0.2, hex('#3a2a1a')));
+    }
     // Buntglasfenster mit Stern
     const win = M4.from(0, 12.5, -37.85);
     cyl(g, M4.mul(win, M4.from(0, 0, -0.05, 0, Math.PI / 2)), 3.6, 3.6, 0.12, 20, C.gold);
@@ -3023,9 +3055,11 @@ vec3 art(vec2 p) {
     const [bx0, bx1, bz0, bz1] = L.bounds;
     L.solid(bx0 - 5, -5, bz0 - 5, bx0, 40, bz1 + 5, 'bound'); L.solid(bx1, -5, bz0 - 5, bx1 + 5, 40, bz1 + 5, 'bound');
     L.solid(bx0 - 5, -5, bz0 - 5, bx1 + 5, 40, bz0, 'bound'); L.solid(bx0 - 5, -5, bz1, bx1 + 5, 40, bz1 + 5, 'bound');
+    // runde Kuppen wie die Huegel im Vorbild; jede dritte etwas hoeher, damit der Horizont nicht wie ein Lineal aussieht
     for (let i = 0; i < 28; i++) {
-      const a = i / 28 * TAU, r = 150 + (i % 3) * 12;
-      cyl(g, M4.from(Math.cos(a) * r, -2, Math.sin(a) * r, a), 28 + (i % 4) * 7, 0, 22 + (i % 5) * 7, 7, (i % 2) ? hex('#5cbf4e') : hex('#4aa83e'));
+      const a = i / 28 * TAU, r = 150 + (i % 3) * 12, R = 30 + (i % 4) * 7, H = 20 + (i % 5) * 6 + (i % 3 === 0 ? 12 : 0);
+      const col = (i % 2) ? hex('#5cbf4e') : hex('#4aa83e');
+      sphere(g, M4.from(Math.cos(a) * r, -2, Math.sin(a) * r, a), R, H, R, 12, 5, (u, v) => shade(col, 1.06 - v * 0.05 + ((u * 3 + i) % 4) * 0.02), true, 0, Math.PI / 2);
     }
     g.quad([-260, -1.7, 260], [260, -1.7, 260], [260, -1.7, -260], [-260, -1.7, -260], C.grassB);   // unter Graben + Teich
 
@@ -3055,16 +3089,48 @@ vec3 art(vec2 p) {
     for (let i = 0; i < 28; i++) { const a = i / 28 * TAU; box(g, M4.from(Math.cos(a) * 9.9, 0.08, 4 + Math.sin(a) * 9.9, -a), 0.5, 0.16, 2.2, C.stoneDark); }
     for (const z of [22, 36, 50, 64, 78, -12, -22]) for (const sx of [-1, 1]) K.lamp(sx * 4.2, z);
 
+    // ── Sandweg: Schleife um die grosse Wiese, beginnt und endet am runden Platz ──
+    const LOOP = { cx: 0, cz: 29, rx: 27, rz: 22, w: 2.4 };
+    const onLoop = (x, z) => {
+      const q = Math.hypot(x / LOOP.rx, (z - LOOP.cz) / LOOP.rz);
+      return Math.abs(q - 1) * Math.min(LOOP.rx, LOOP.rz) < LOOP.w * 0.75;
+    };
+    {
+      const SAND = hex('#dcc893'), SAND2 = hex('#cdb77f'), N = 96;
+      const pt = (a, k) => [Math.cos(a) * (LOOP.rx + k), 0.035, LOOP.cz + Math.sin(a) * (LOOP.rz + k)];
+      for (let i = 0; i < N; i++) {
+        const a0 = i / N * TAU, a1 = (i + 1) / N * TAU, am = (a0 + a1) / 2;
+        const mx = Math.cos(am) * LOOP.rx, mz = LOOP.cz + Math.sin(am) * LOOP.rz;
+        if (Math.hypot(mx, mz - 4) < 10.4) continue;              // im runden Platz: dort liegen schon Steine
+        const hw = LOOP.w / 2, c = shade(i % 3 ? SAND : SAND2, 0.96 + ((i * 7) % 5) * 0.02);
+        g.quad(pt(a0, -hw), pt(a1, -hw), pt(a1, hw), pt(a0, hw), c);
+        g.quad(pt(a0, hw), pt(a1, hw), pt(a1, -hw), pt(a0, -hw), c);   // beidseitig, egal wie herum gewickelt
+      }
+    }
+
     // ── Beete, Buesche, Grasbueschel ──
     for (const sx of [-1, 1]) {
       for (const x of [12, 20, 28]) K.bush(sx * x, -21);
       K.flowers(sx > 0 ? 9 : -31, -19.4, sx > 0 ? 31 : -9, -16, 50);
-      K.flowers(sx > 0 ? 11 : -19, -2, sx > 0 ? 19 : -11, 10, 26);
+      K.flowers(sx > 0 ? 11 : -19, -2, sx > 0 ? 19 : -11, 10, 26, 0, undefined, [onLoop]);
     }
     K.flowers(-40, 56, -20, 66, 40); K.flowers(20, 56, 40, 66, 40);
     const PATH = [-7, -40, 7, 96], PLAZA = [-11, -7, 11, 15];
-    K.tufts(-100, -16, 100, 90, 320, 0, hex('#3f9a32'), [PATH, PLAZA, [-52, 14, -32, 34], [-106, 6, -76, 16]]);
-    K.tufts(-104, -98, 104, -40, 120, 0, hex('#3f9a32'), [[-16, -98, 16, -60], [-30, -60, 30, -34]]);
+    K.tufts(-100, -16, 100, 90, 320, 0, hex('#3f9a32'), [PATH, PLAZA, [-52, 14, -32, 34], [-106, 6, -76, 16], onLoop]);
+    K.tufts(-104, -98, 104, -40, 120, 0, hex('#3f9a32'), [[-16, -98, 16, -60], [-30, -60, 30, -34], [-39, -77, -29, -33], [31, -65, 39, -33]]);
+
+    // ── Hinten links: Felsstufe mit Wasserfall in den Grabenarm (wie im Vorbild speist er den Graben) ──
+    {
+      const ROCK = { top: C.grassA, side: hex('#8e877a') };
+      L.block(-35, 4.5, -70.5, 12, 9, 13, ROCK, 'cliff');
+      L.block(-42.5, 3, -71, 3, 6, 10, ROCK, 'cliff');
+      box(g, M4.from(-35, 9.03, -70.5), 5.2, 0.05, 13, C.water);
+      K.fall(-35, -63.75, 9, -0.45, 5, 'x', { speed: 11 });
+      for (const [x, z, sc] of [[-40.4, -62.6, 1.4], [-30.2, -62.8, 1.2], [-44.5, -65, 1.1]]) K.rock(x, 0, z, sc, hex('#8a8478'));
+      K.rock(35, 0, -66.2, 1.5, hex('#8a8478')); K.rock(39.8, 0, -63, 1.1, hex('#8a8478'));
+      K.pine(-38, -74, 9, 5); K.pine(-31, -75, 9, 4);
+      K.coinLine([-35, 10.1, -74], [-35, 10.1, -66], 3);
+    }
 
     // ── Westklippe mit Wasserfall, Nische dahinter, Teich davor ──
     const CLIFF = { top: C.grassA, side: hex('#8e877a') };
@@ -3329,7 +3395,7 @@ vec3 art(vec2 p) {
     // ── Gegner ──
     for (let i = 0; i < 5; i++) L.coin('yellow', 0, 1.1, 30 + i * 9);
     L.enemies.push(makeGrummel(-10, 20), makeGrummel(16, 2), makeGrummel(-30, -12), makeGrummel(34, 26));
-    L.enemies.push(makeGrummel(60, 10), makeGrummel(-62, 62), makeGrummel(40, -70), makeGrummel(-50, -70), makeGrummel(-92, -12, 12));
+    L.enemies.push(makeGrummel(60, 10), makeGrummel(-62, 62), makeGrummel(50, -76), makeGrummel(-50, -70), makeGrummel(-92, -12, 12));
     L.enemies.push(makeBomb(8, 32), makeBomb(-54, 42), makeBomb(-92, -40, 12), makeBomb(70, 82));
     L.enemies.push(makeSpiky(62, 56, 3, '#3f8a3a'), makeSpiky(90, 44, 3, '#3f8a3a'));
     L.enemies.push(makeHopper(68, 50, 3), makeHopper(-10, -80, 5));
@@ -4901,7 +4967,7 @@ vec3 art(vec2 p) {
         const r = K.rnd, stem = hex('#2f8a2f');
         for (let i = 0; i < n; i++) {
           const x = lerp(x0, x1, r()), z = lerp(z0, z1, r()), h = 0.25 + r() * 0.3, c = hex(cols[Math.floor(r() * cols.length)]);
-          if (avoid.some(([a, b, c2, d]) => x > a && x < c2 && z > b && z < d)) continue;
+          if (avoid.some((q) => (typeof q === 'function' ? q(x, z) : x > q[0] && x < q[2] && z > q[1] && z < q[3]))) continue;
           box(g, M4.from(x, y + h / 2, z), 0.05, h, 0.05, stem);
           for (let k = 0; k < 4; k++) box(g, M4.from(x, y + h, z, k * Math.PI / 2 + r()), 0.12, 0.05, 0.3, c);
           box(g, M4.from(x, y + h + 0.03, z), 0.1, 0.06, 0.1, hex('#ffd21f'));
@@ -4912,7 +4978,7 @@ vec3 art(vec2 p) {
         const r = K.rnd;
         for (let i = 0; i < n; i++) {
           const x = lerp(x0, x1, r()), z = lerp(z0, z1, r()), a = r() * TAU, h = 0.35 + r() * 0.35;
-          if (avoid.some(([a2, b, c2, d]) => x > a2 && x < c2 && z > b && z < d)) continue;
+          if (avoid.some((q) => (typeof q === 'function' ? q(x, z) : x > q[0] && x < q[2] && z > q[1] && z < q[3]))) continue;
           for (let k = 0; k < 3; k++) {
             const m = M4.from(x, y, z, a + k * 1.05, (r() - 0.5) * 0.4);
             g.tri(P(m, -0.12, 0, 0), P(m, 0.12, 0, 0), P(m, 0, h, 0), shade(col, 0.9 + r() * 0.25));
@@ -10234,6 +10300,8 @@ void main() {
   }
   function airborne(action, vy, speed) {
     if (action !== 'dive') pl.fallTop = pl.pos[1];   // jeder neue Absprung beginnt eine neue Fallhoehe
+    // Weitsprung: wie im Vorbild beim Absprung festgelegt - aus dem Lauf die flache, sonst (auch rueckwaerts) die schraege Pose
+    if (action === 'long') pl.longFast = speed > 16 * UF * 1.5;
     pl.action = action; pl.vel[1] = vy; pl.speed = speed; pl.side = 0; pl.flip = 0;
     pl.grounded = false; pl.coyote = 0; pl.skid = false; pl.crouch = false; pl.jumpBuf = 0; pl.waterJump = false; pl.brakeT = 0;
   }
@@ -10627,6 +10695,14 @@ void main() {
     const kd = Math.pow(0.02, dt); pl.push[0] *= kd; pl.push[2] *= kd;
     p[0] += vx * dt; p[2] += vz * dt; p[1] += pl.vel[1] * dt;
     pl.h = pl.grounded && (pl.crouch || pl.action === 'slide' || pl.action === 'kickslide') ? CROUCH_H : PH;
+    // Mitspieler sind fest: niemand steht im anderen (sonst sieht es aus wie EINE Figur mit vier Ohren).
+    // Jeder schiebt nur sich selbst weg - die Gegenseite macht dasselbe; danach raeumt pushOut die Waende.
+    for (const o of Net.bodies()) {
+      const dx = p[0] - o.pos[0], dz = p[2] - o.pos[2], d = Math.hypot(dx, dz), dy = p[1] - o.pos[1];
+      if (d >= 2 * R * 0.95 || dy > 1.7 || dy < -1.7) continue;
+      const k = (2 * R * 0.95 - d) / (d || 1);
+      if (d < 1e-3) { p[0] += Math.sin(pl.face + Math.PI) * 0.05; p[2] += Math.cos(pl.face + Math.PI) * 0.05; } else { p[0] += dx * k; p[2] += dz * k; }
+    }
     let hit = pushOut(L, p, R, pl.h, Math.max(prevY, p[1]) + (pl.grounded ? STEP_UP : 0.15));
     // BLJ-Treppen-Trick: rueckwaerts im Weitsprung mit gehaltenem A gegen eine Stufenkante -> sofort der naechste Weitsprung
     if (bljOn) {
@@ -10746,10 +10822,12 @@ void main() {
     const flipRate = { triple: 9, backflip: 8, sideflip: 9, rollout: 11 }[pl.action];
     // PvP: Hechtsprung rammt einmal, Draufspringen federt ab
     if (pl.action === 'dive' && !pl.diveHit && pvpHit(1.4, 's', 2)) pl.diveHit = true;
+    // Auf einem Mitspieler-Kopf landen: immer abfedern (wie im Koop), mit PvP tut es ihm auch weh
     if (!pl.grounded && pl.vel[1] < -1 && pl.action !== 'pound') {
-      for (const t of Net.targets()) {
+      for (const t of Net.bodies()) {
         const top = pl.pos[1] - t.pos[1];
-        if (Math.hypot(t.pos[0] - pl.pos[0], t.pos[2] - pl.pos[2]) < 0.85 && top > 1.2 && top < 2.6 && Net.hit(t.id, 'w', 1)) {
+        if (Math.hypot(t.pos[0] - pl.pos[0], t.pos[2] - pl.pos[2]) < 0.85 && top > 1.2 && top < 2.6) {
+          Net.hit(t.id, 'w', 1);   // ohne PvP oder in der Treffer-Pause: nur abfedern
           bounceOff(); Snd.stomp(); break;
         }
       }
@@ -10891,7 +10969,8 @@ void main() {
   /* PvP-Treffer von einem Mitspieler, wie im Vorbild: zum Angreifer drehen, rueckwaerts weggeschleudert, bei harten
      Treffern (Tritt, Hechtsprung, Rutschtritt, Stampfer) landet man auf dem Ruecken; danach blinkend unverwundbar. */
   function hitByPlayer(from, dmg, strong, byName) {
-    if (mode !== 'play' || Dialog.open || pl.invuln > 0 || pl.dead || Cine.active || pl.entering) return;
+    // auch im Pausenmenue (dort laeuft im Mehrspieler die Welt weiter, siehe frame)
+    if (!(mode === 'play' || mode === 'pause') || Dialog.open || pl.invuln > 0 || pl.dead || Cine.active || pl.entering) return;
     const p = pl.pos;
     pl.face = Math.atan2(from[0] - p[0], from[2] - p[2]);
     hurtPlayer(dmg, [from[0], p[1], from[2]], strong);
@@ -12676,6 +12755,13 @@ void main() {
       } else return false;
       return true;
     }
+    // Mitspieler-Koerper in dieser Welt (fuer Schubsen/Abfedern - auch ohne PvP)
+    function bodies() {
+      const out = [];
+      if (status !== 'drin') return out;
+      for (const [id, o] of others) if (o.head && o.pos) out.push({ id, pos: o.pos });
+      return out;
+    }
     // Mitspieler, die gerade in dieser Welt gezeichnet werden (Position = was man sieht)
     function targets() {
       const out = [];
@@ -12799,7 +12885,7 @@ void main() {
     return {
       // 'NEW' = Raum erstellen (dieser Browser wird Gastgeber), sonst Code = beitreten
       connect(code) { remember(''); if (code === 'NEW') host(); else join(code); },
-      leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star,
+      leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star, bodies,
       onChange(f) { listeners.add(f); },
       get name() { return name; }, get room() { return room; }, get status() { return status; }, get msg() { return msg; },
       get role() { return role; }, get pvp() { return pvp; }, get myId() { return myId; },
@@ -12935,7 +13021,7 @@ void main() {
     if (a === 'triple') rx = pl.flip;
     else if (a === 'backflip') rx = -pl.flip;
     else if (a === 'sideflip') rz = pl.flip;
-    else if (a === 'long') rx = 0.62;   // Weitsprung wie im Vorbild: schraeg vorgebeugt, nicht flach wie ein Hechtsprung
+    else if (a === 'long') rx = pl.longFast ? 1.32 : 1.02;   // schnell: fast waagrecht; langsam/rueckwaerts: ~60 Grad vorgebeugt
     else if (a === 'dive') rx = 1.45;
     else if (a === 'slide') { rx = 1.52; dy = -0.78; }
     else if (a === 'slidekick' || a === 'kickslide') {
@@ -12997,7 +13083,9 @@ void main() {
        Die Beine sind aus einem Stueck: gewinkelt + verkuerzt wirken sie wie gebeugte Knie. */
     const cdt = clamp(clock - crouchLast, 0, 0.05);
     crouchLast = clock;
-    const crouchTo = pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' && a !== 'kickslide' ? 1 : 0;
+    // nach einem Weitsprung kurz in die Hocke abfedern (wie im Vorbild)
+    const landLong = pl.grounded && pl.landFrom === 'long' && time - (pl.landT ?? -9) < 0.28 && !lying;
+    const crouchTo = (pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' && a !== 'kickslide') || landLong ? 1 : 0;
     for (let i = 0; i < 3; i++) { crouchV += ((crouchTo - crouchK) * 900 - crouchV * 36) * cdt / 3; crouchK += crouchV * cdt / 3; }
     if (!pl.grounded || swim || lying || cine) { crouchK = 0; crouchV = 0; }   // Absprung aus der Hocke: Luftpose uebernimmt sofort
     const ck = clamp(crouchK, 0, 1.12) * (1 - sweepE), cUp = clamp(-crouchK, 0, 0.3);
@@ -13088,9 +13176,12 @@ void main() {
     } else if (a === 'pound') {
       legL = legR = -1.2; armL = armR = -0.4; armOut = 1.1;
     } else if (a === 'long') {
-      // Weitsprung (auch rueckwaerts) wie im Vorbild: Arme seitlich weit ausgebreitet und leicht vor, Knie angezogen,
-      // Unterschenkel nach hinten, Kopf hoch
-      legL = 0.55; legR = 0.75; legSYL = legSYR = 0.78; armL = armR = -0.75; armOut = 1.0; headTilt = -0.5; tailRx = -2.6;
+      // Weitsprung wie im Vorbild (Winkel in Weltlage minus Rumpfneigung rx):
+      // schnell = gestreckt wie im Flug, Arme voraus, Beine lang nach hinten; langsam = Haende vorn unter der Brust,
+      // Beine gestreckt nach hinten. Kopf jeweils hoch, Blick nach vorn.
+      if (pl.longFast) { armL = armR = -1.5 - 1.32; armOut = 0.2; legL = 1.5 - 1.32; legR = 1.38 - 1.32; headTilt = -1.05; }
+      else { armL = armR = -0.35 - 1.02; armOut = 0.38; legL = 1.35 - 1.02; legR = 1.2 - 1.02; legSYR = 0.9; headTilt = -0.85; }
+      tailRx = -2.9;
     } else if (a === 'slidekick' || a === 'kickslide') {
       // Rutschtritt: vorderes Bein gestreckt nach vorn, das andere angewinkelt, Arme zum Abstuetzen/Balancieren
       // seitlich nach hinten, Kopf schaut nach vorn ueber die Fuesse
@@ -14208,15 +14299,19 @@ void main() {
     uiCool = Math.max(0, uiCool - dt);
     handleUI(inp);
     if (uiCool > 0) EDGES.forEach((k) => { inp[k] = false; });
-    if (mode === 'play' && !Dialog.open) {
+    // Mehrspieler: die Welt laeuft im Pausenmenue weiter (ohne Eingaben) - sonst waere man dort unverwundbar und
+    // eingefroren. Wichtig auch fuer zwei Fenster an einem Rechner: das Fenster ohne Fokus verliert die Maus und pausiert.
+    const live = () => (mode === 'play' || (mode === 'pause' && Net.status === 'drin')) && !Dialog.open;
+    if (live()) {
+      const sIn = mode === 'pause' ? Object.assign({}, NO_INPUT) : inp;
       // Tastendruecke festhalten, bis ein Physikschritt sie verarbeitet hat:
       // bei Bildschirmen ueber 120 Hz gibt es Frames ohne Schritt, dort ging
       // der Sprung frueher einfach verloren.
-      EDGES.forEach((k) => { pend[k] = pend[k] || inp[k]; });
+      EDGES.forEach((k) => { pend[k] = pend[k] || sIn[k]; });
       acc += dt;
-      while (acc >= STEP_DT && mode === 'play' && !Dialog.open) {
-        EDGES.forEach((k) => { inp[k] = pend[k]; pend[k] = false; });
-        step(STEP_DT, inp);
+      while (acc >= STEP_DT && live()) {
+        EDGES.forEach((k) => { sIn[k] = pend[k]; pend[k] = false; });
+        step(STEP_DT, sIn);
         acc -= STEP_DT;
       }
       EDGES.forEach((k) => { inp[k] = false; });

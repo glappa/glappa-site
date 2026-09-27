@@ -23,6 +23,7 @@ import g64_export              # noqa: E402
 import cats                    # noqa: E402
 import kappi                   # noqa: E402
 import props                   # noqa: E402
+import castle                  # noqa: E402
 
 OUT = os.path.join(ROOT, 'secret', 'glappa64-models.g64m')
 HTML = os.path.join(ROOT, 'secret', 'glappa64.html')
@@ -48,7 +49,7 @@ def patch_html(size):
 
 def main():
     B.clear()
-    objs = cats.build_all() + kappi.build_all() + props.build_all()
+    objs = cats.build_all() + kappi.build_all() + props.build_all() + castle.build_all()
     print(f'{len(objs)} Teile gebaut:')
     parts, size = g64_export.export(OUT, objs)
     patch_html(size)
