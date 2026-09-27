@@ -10003,7 +10003,8 @@ void main() {
       const l = Math.hypot(dx, dy);
       if (l > 1) { dx /= l; dy /= l; }
       touch.mx = dx; touch.my = dy;
-      knob.style.transform = `translate(${dx * 38}px, ${dy * 38}px)`;
+      const travel = r.width / 2 - 28;
+      knob.style.transform = `translate(${dx * travel}px, ${dy * travel}px)`;
     };
     stick.addEventListener('pointerdown', (e) => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); moveStick(e); });
     stick.addEventListener('pointermove', (e) => { if (e.pointerId === stickId) moveStick(e); });
@@ -11835,6 +11836,10 @@ void main() {
     const look = [cam.tgt[0], cam.tgt[1] + cam.look * 4, cam.tgt[2]];
     cam.view = M4.lookAt(pos, look, [0, 1, 0]);
   }
+  // Senkrechter Blickwinkel: im Querformat fest 0,95 rad. Im Hochformat (Handy) wuerde das seitlich nur einen
+  // schmalen Streifen zeigen -> so weit aufziehen, dass waagrecht mind. H_FOV_MIN bleibt (gedeckelt, sonst Fischauge).
+  const H_FOV_MIN = 0.9;
+  const fovFor = (aspect) => clamp(2 * Math.atan(Math.tan(H_FOV_MIN / 2) / aspect), 0.95, 1.5);
   function toScreen(p) {
     const v = M4.point(cam.view, p);
     if (v[2] > -0.1) return null;
@@ -12219,23 +12224,34 @@ void main() {
   /* ═══════════ Mehrspieler (Koop, Peer-to-Peer) ═══════════
      KEIN eigener Server: wer einen Raum erstellt, dessen Browser IST der Raum (Gastgeber). Die anderen verbinden sich per
      WebRTC direkt mit ihm. Nur zum Finden laeuft der Verbindungsaufbau ueber den oeffentlichen PeerJS-Vermittler
-     (0.peerjs.com); klappt keine direkte Verbindung, springt dessen TURN-Relais ein. Die Bibliothek liegt im Repo
-     (secret/vendor/peerjs-1.5.5.min.js, MIT) und wird erst beim ersten Mehrspieler-Klick geladen.
+     (0.peerjs.com). Die Bibliothek liegt im Repo (secret/vendor/peerjs-1.5.5.min.js, MIT) und wird erst beim ersten
+     Mehrspieler-Klick geladen. ACHTUNG: Die TURN-Relais, die PeerJS mitbringt (eu-0/us-0.turn.peerjs.com), gibt es nicht
+     mehr (Namen ohne Adresse, 2026-09-27 geprueft). Ohne Relais klappt nur, was sich per STUN direkt durchstechen laesst;
+     hinter Mobilfunk-/Firmen-NAT oder manchen VPNs scheitert es -> dann ehrliche Meldung statt "Raum gibt es nicht".
+     Ein Relais laesst sich spaeter in ICE_SERVERS eintragen (TURN-Zugang), sonst aendert sich nichts.
      Raum-Code = Peer-ID des Gastgebers (PREFIX + Code). Der Gastgeber verteilt Posen und Sterne und prueft alles wie
      ein Server (Namen, Sterne, Posen, Drossel, max. 8 Spieler); gemeinsamer Fortschritt = Vereinigung aller Sterne.
-     Laedt der Gastgeber neu, uebernimmt er denselben Code wieder (sessionStorage), die Gaeste verbinden sich neu.
+     Sitzung in sessionStorage (SESSION_KEY): Neuladen oder Ausflug durch ein Webseiten-Bild -> danach automatisch
+     wieder rein (der Gastgeber uebernimmt denselben Code), Gaeste fassen bis ~2,5 min lang nach.
      Datenschutz: Mitspieler und der Vermittler sehen die IP-Adresse - steht als Hinweis im Pausenmenue.
      Jeder rechnet seine Physik selbst und schickt ~15x/s seine fertige Pose (POSE_KEYS); Mitspieler werden mit
      drawPose gezeichnet, DELAY ms verzoegert und dazwischen weich gemischt. Nicht synchron (v1): Gegner, Muenzen,
      Schalter, Kisten. */
   const Net = (() => {
-    const SEND_HZ = 15, DELAY = 110, NAME_KEY = 'glappa64-name', HOST_KEY = 'glappa64-mp-host';
+    const SEND_HZ = 15, DELAY = 110, NAME_KEY = 'glappa64-name', SESSION_KEY = 'glappa64-mp';
     const CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/, CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const PREFIX = 'glappa64-', LIB = 'vendor/peerjs-1.5.5.min.js', MAX_PLAYERS = 8, RATE = 40, MAX_STARS = 200;
     const STAR_RE = /^[A-Za-z0-9_-]{1,32}$/, CAT_RE = /^[a-z]{1,12}$/, LEVEL_RE = /^[a-z0-9_]{1,24}$/;
+    // STUN reicht fuer die meisten Heimnetze. Hier kaeme ein TURN-Relais dazu ({ urls, username, credential }).
+    const ICE_SERVERS = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] }];
+    const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } };
+    // Nachfassen, wenn der Gastgeber weg ist (Neuladen, Ausflug durch ein Webseiten-Bild): Wartezeiten in s, ~2,5 min
+    const RETRY_WAIT = [2, 3, 4, 5, 6, 8, 10, 12, 15, 15, 15, 15, 15, 15, 15];
+    const NO_DIRECT = 'Keine Direktverbindung zum Gastgeber möglich – eure Netze lassen sie nicht durch (oft Mobilfunk, VPN oder Firmen-WLAN). Im selben WLAN oder über einen anderen Anschluss probieren.';
+    const NO_RTC = 'Dein Browser hat WebRTC abgeschaltet (z. B. Tor-/Mullvad-Browser, LibreWolf, strenger Datenschutz-Modus) – damit geht der Mehrspieler nicht.';
     const ANGLE = POSE_KEYS.map((k) => k === 'yaw');
     let peer = null, role = '', hostConn = null, myId = null, room = '', status = 'aus', msg = '', sendT = 0;
-    let retry = 0, retryT = 0, retryCode = '', gen = 0, lastSt = null;
+    let retry = 0, retryTimer = 0, gen = 0, lastSt = null, lastIce = '';
     const others = new Map();                      // Anzeige: id -> { name, cat, buf: [{ t, lv, c, p }], head, pos }
     const guests = new Map();                      // nur Gastgeber: id -> { id, conn, name, cat, st, bucket, bucketT }
     let roomStars = new Set(), nextId = 2;         // nur Gastgeber (selbst id 1)
@@ -12249,7 +12265,13 @@ void main() {
     function setUrlRoom(code) {
       try { const u = new URL(location.href); if (code) u.searchParams.set('raum', code); else u.searchParams.delete('raum'); history.replaceState(history.state, '', u); } catch (e) { /* egal */ }
     }
-    function remember(code) { try { if (code) sessionStorage.setItem(HOST_KEY, code); else sessionStorage.removeItem(HOST_KEY); } catch (e) { /* egal */ } }
+    // Sitzung dieses Tabs merken: { code, role } - fuer Neuladen und Rueckkehr aus einem Webseiten-Bild
+    function remember(code, r) { try { if (code) sessionStorage.setItem(SESSION_KEY, JSON.stringify({ code, role: r })); else sessionStorage.removeItem(SESSION_KEY); } catch (e) { /* egal */ } }
+    function remembered() {
+      try { const q = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); if (q && CODE_RE.test(q.code)) return q; } catch (e) { /* egal */ }
+      return null;
+    }
+    const rtcOk = () => typeof window.RTCPeerConnection === 'function';
     // ── Pruefregeln wie im frueheren Raumserver: nie ungeprueft weiterreichen ──
     const cleanName = (n) => String(n || '').replace(/[^\w äöüÄÖÜß.\-]/g, '').slice(0, 16).trim() || 'Gast';
     const cleanStars = (ids) => (Array.isArray(ids) ? ids.slice(0, MAX_STARS).filter((x) => typeof x === 'string' && STAR_RE.test(x)) : []);
@@ -12281,7 +12303,7 @@ void main() {
     function openPeer(id) {
       return new Promise((resolve) => {
         let p;
-        try { p = id ? new window.Peer(id, { debug: 0 }) : new window.Peer({ debug: 0 }); } catch (e) { resolve('error'); return; }
+        try { p = id ? new window.Peer(id, PEER_OPTS) : new window.Peer(PEER_OPTS); } catch (e) { resolve('error'); return; }
         const done = (r) => { clearTimeout(t); p.off('open', onOpen); p.off('error', onErr); if (typeof r !== 'object') try { p.destroy(); } catch (x) { /* egal */ } resolve(r); };
         const onOpen = () => done(p);
         const onErr = (e) => done(e && e.type === 'unavailable-id' ? 'taken' : (e && e.type) || 'error');
@@ -12297,15 +12319,18 @@ void main() {
       if (hostConn) try { hostConn.close(); } catch (e) { /* egal */ }
       hostConn = null;
       if (peer) try { peer.destroy(); } catch (e) { /* egal */ }
-      peer = null; role = ''; myId = null; retryT = 0;
+      peer = null; role = ''; myId = null;
+      clearTimeout(retryTimer); retryTimer = 0;
     }
+    // endgueltig raus (mit Meldung): auch die gemerkte Sitzung vergessen
     function fail(text) {
-      teardown(); status = 'aus'; msg = text; room = ''; setUrlRoom(''); emit();
+      teardown(); remember(''); retry = 0; status = 'aus'; msg = text; room = ''; setUrlRoom(''); emit();
     }
     // ── Gastgeber ──
     async function host(prefer) {
-      teardown(); retry = 0; status = 'verbinde'; msg = ''; emit();
+      teardown(); retry = 0; status = 'verbinde'; msg = ''; room = prefer || ''; emit();
       const my = gen;
+      if (!rtcOk()) { fail(NO_RTC); return; }
       try { await loadLib(); } catch (e) { if (my === gen) fail('Mehrspieler-Bibliothek nicht ladbar.'); return; }
       // prefer = eigener Code nach Neuladen: der Vermittler gibt die alte Anmeldung evtl. erst nach ein paar Sekunden
       // frei -> kurz nachfassen. Bleibt er belegt, ist dort schon ein Gastgeber (z. B. duplizierter Tab) -> beitreten.
@@ -12316,16 +12341,17 @@ void main() {
         if (p === 'taken') {
           if (!prefer) continue;
           if (tries < 3) { await wait(2000); continue; }
-          remember(''); join(prefer); return;
+          join(prefer); return;
         }
-        if (typeof p !== 'object') { fail('Vermittlung (PeerJS) nicht erreichbar – Internet/Firewall prüfen.'); return; }
+        if (p === 'browser-incompatible') { fail(NO_RTC); return; }
+        if (typeof p !== 'object') { fail('Vermittlung (0.peerjs.com) nicht erreichbar – Internet, Werbeblocker oder Firewall prüfen.'); return; }
         peer = p; role = 'host'; myId = 1; room = code; status = 'drin'; msg = '';
         roomStars = new Set(myStars()); nextId = 2;
         peer.on('connection', onGuest);
         peer.on('disconnected', () => { if (peer === p && !p.destroyed) try { p.reconnect(); } catch (e) { /* egal */ } });
         peer.on('error', () => { /* einzelne Verbindungsfehler: der Raum laeuft weiter */ });
-        remember(code); setUrlRoom(code); emit();
-        toast(`\u{1F465} Raum ${code} – Code oder Link weitergeben zum Mitspielen`);
+        remember(code, 'host'); setUrlRoom(code); emit();
+        toast(prefer ? `\u{1F465} Raum ${code} wieder offen` : `\u{1F465} Raum ${code} – Code oder Link weitergeben zum Mitspielen`);
         return;
       }
       if (my === gen) fail('Kein freier Raum-Code gefunden – bitte nochmal.');
@@ -12382,17 +12408,22 @@ void main() {
     // ── Gast ──
     async function join(code, auto) {
       teardown(); if (!auto) retry = 0;
-      status = 'verbinde'; msg = ''; emit();
+      status = auto ? 'weg' : 'verbinde'; room = code; if (!auto) msg = ''; emit();
       const my = gen;
+      if (!rtcOk()) { fail(NO_RTC); return; }
       try { await loadLib(); } catch (e) { if (my === gen) fail('Mehrspieler-Bibliothek nicht ladbar.'); return; }
       const p = await openPeer(null);
       if (my !== gen) { if (typeof p === 'object') p.destroy(); return; }
-      if (typeof p !== 'object') { fail('Vermittlung (PeerJS) nicht erreichbar – Internet/Firewall prüfen.'); return; }
-      peer = p;
+      if (p === 'browser-incompatible') { fail(NO_RTC); return; }
+      if (typeof p !== 'object') { lost(code, false, 'Vermittlung (0.peerjs.com) nicht erreichbar – Internet, Werbeblocker oder Firewall prüfen.'); return; }
+      peer = p; lastIce = '';
       let opened = false, welcomed = false;
       const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
       hostConn = conn;
-      const giveUp = setTimeout(() => { if (my === gen && !opened) lost(code, false, 'Keine Verbindung zum Gastgeber – Netz oder Firewall blockiert die Direktverbindung.'); }, 12000);
+      // Gastgeber gefunden, aber keine Leitung: ICE scheitert (NAT) -> nicht "Raum gibt es nicht" melden
+      const giveUp = setTimeout(() => { if (my === gen && !opened) lost(code, false, NO_DIRECT); }, 15000);
+      const pc = conn.peerConnection;
+      if (pc) pc.addEventListener('iceconnectionstatechange', () => { lastIce = pc.iceConnectionState; });
       peer.on('error', (e) => { if (my === gen && e && e.type === 'peer-unavailable') { clearTimeout(giveUp); lost(code, false); } });
       peer.on('disconnected', () => { if (peer === p && !p.destroyed) try { p.reconnect(); } catch (e) { /* egal */ } });
       conn.on('open', () => {
@@ -12405,25 +12436,28 @@ void main() {
         if (m.t === 'welcome') welcomed = true;
         onMsg(m);
       });
-      conn.on('close', () => { if (my === gen && status !== 'aus') lost(code, welcomed); });
+      conn.on('error', () => { if (my === gen && !opened) { clearTimeout(giveUp); lost(code, false, NO_DIRECT); } });
+      conn.on('close', () => { if (my === gen) { clearTimeout(giveUp); lost(code, welcomed, opened ? '' : NO_DIRECT); } });
     }
     // Verbindung zum Gastgeber weg: ein paar Mal nachfassen (Gastgeber laedt vielleicht nur neu), dann aufgeben
     function lost(code, wasIn, why) {
       const tries = retry;
       teardown();
-      if ((wasIn || tries > 0) && tries < 4) {
-        retry = tries + 1; retryCode = code; retryT = 2 * retry; status = 'weg'; room = code;
-        msg = 'Verbindung zum Gastgeber weg – versuche es erneut …';
-      } else {
-        status = 'aus'; room = ''; setUrlRoom('');
-        msg = wasIn || tries > 0 ? 'Der Gastgeber hat den Raum verlassen.' : why || 'Diesen Raum gibt es nicht (mehr) – Code prüfen.';
+      if ((wasIn || tries > 0) && tries < RETRY_WAIT.length) {
+        retry = tries + 1; status = 'weg'; room = code;
+        const w = RETRY_WAIT[tries], my = gen;
+        msg = `Verbindung zum Gastgeber weg – neuer Versuch in ${w} s (${retry}/${RETRY_WAIT.length}). Ist er nur kurz in einem Webseiten-Bild, geht es gleich weiter.`;
+        retryTimer = setTimeout(() => { if (my === gen && status === 'weg') join(code, true); }, w * 1000);
+        emit();
+        return;
       }
-      emit();
+      fail(wasIn || tries > 0 ? 'Der Gastgeber ist nicht zurückgekommen – Raum beendet.' : why || 'Diesen Raum gibt es nicht (mehr) – Code prüfen.');
     }
     // ── gemeinsame Nachrichtenverarbeitung (Gast bekommt sie vom Gastgeber, Gastgeber erzeugt sie selbst) ──
     function onMsg(m) {
       if (m.t === 'welcome') {
         myId = m.id; room = m.room; status = 'drin'; msg = ''; retry = 0;
+        remember(room, 'guest');
         let n = 0;
         for (const id of m.stars || []) if (markStar(id)) n++;
         if (n) { save(); renderHud('stars'); }
@@ -12451,14 +12485,17 @@ void main() {
         for (const id of m.ids || []) if (markStar(id)) n++;
         if (n) { save(); renderHud('stars'); toast(`⭐ ${cleanName(m.by)} hat ${n === 1 ? 'einen Stern' : n + ' Sterne'} geholt – zählt für alle!`); }
       } else if (m.t === 'error' || m.t === 'end') {
-        remember('');
         fail(m.t === 'end' ? 'Der Gastgeber hat den Raum beendet.' : String(m.msg || 'Fehler').slice(0, 80));
         return;
       }
       emit();
     }
+    let brokerT = 0;
     function tick(dt) {
-      if (retryT > 0 && !peer) { retryT -= dt; if (retryT <= 0) join(retryCode, true); }
+      if (role === 'host' && peer && peer.disconnected && !peer.destroyed && (brokerT -= dt) <= 0) {
+        brokerT = 5;                               // ohne Vermittler findet kein neuer Gast den Raum
+        try { peer.reconnect(); } catch (e) { /* naechster Versuch */ }
+      }
       if (status !== 'drin' || !pl.netPose || !cur) return;
       if ((sendT -= dt) > 0) return;
       sendT = 1 / SEND_HZ;
@@ -12529,14 +12566,15 @@ void main() {
         drawSign(MESH.nameTag, M4.from(x, y, z, Math.atan2(cam.pos[0] - x, cam.pos[2] - z)), { tex: tag(o.name), lit: 0 });
       }
     }
-    // Link ?raum=CODE: beitreten - oder, wenn DIESER Tab der Gastgeber war (Neuladen), den Raum wieder uebernehmen
+    // Nach dem Start: Link ?raum=CODE -> beitreten. War DIESER Tab schon im Raum (Neuladen, Rueckkehr aus einem
+    // Webseiten-Bild), geht es mit derselben Rolle weiter - der Gastgeber uebernimmt seinen Code wieder.
     function autoJoin() {
       if (peer || status !== 'aus') return;
       const c = (new URLSearchParams(location.search).get('raum') || '').toUpperCase();
-      if (!CODE_RE.test(c)) return;
-      let hosted = '';
-      try { hosted = sessionStorage.getItem(HOST_KEY) || ''; } catch (e) { /* egal */ }
-      if (hosted === c) host(c); else join(c);
+      const q = remembered();
+      const code = CODE_RE.test(c) ? c : q ? q.code : '';
+      if (!code) return;
+      if (q && q.code === code && q.role === 'host') host(code); else join(code);
     }
     function leave() {
       // Gaeste sofort Bescheid geben statt sie nachfassen zu lassen; Verbindungen erst kurz danach schliessen,
@@ -12547,6 +12585,7 @@ void main() {
       peer = null;
       remember(''); retry = 0;
       teardown(); status = 'aus'; msg = ''; room = ''; setUrlRoom(''); emit();
+      if (!p) return;
       setTimeout(() => {
         for (const c of later) try { c.close(); } catch (e) { /* egal */ }
         if (p) try { p.destroy(); } catch (e) { /* egal */ }
@@ -12562,8 +12601,8 @@ void main() {
     // Kommt die Seite aus dem Zurueck-Cache wieder, den Raum wieder aufnehmen.
     let parked = null;
     addEventListener('pagehide', () => {
-      if (!peer) return;
-      parked = status === 'drin' ? { role, room } : null;
+      if (!peer && !retryTimer) return;
+      parked = status === 'drin' || status === 'weg' ? { role: role || 'guest', room } : null;
       teardown(); status = 'aus';
     });
     addEventListener('pageshow', (e) => {
@@ -12574,14 +12613,15 @@ void main() {
     });
     return {
       // 'NEW' = Raum erstellen (dieser Browser wird Gastgeber), sonst Code = beitreten
-      connect(code) { if (code === 'NEW') { remember(''); host(); } else { remember(''); join(code); } },
+      connect(code) { remember(''); if (code === 'NEW') host(); else join(code); },
       leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star,
       onChange(f) { listeners.add(f); },
       get name() { return name; }, get room() { return room; }, get status() { return status; }, get msg() { return msg; },
       get role() { return role; },
       get players() { return [...others.values()].map((o) => ({ name: o.name, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : '' })); },
       // Testhilfe (?debug)
-      debug: () => ({ role, room, status, msg, myId, peer: peer && peer.id, guests: guests.size,
+      debug: () => ({ role, room, status, msg, myId, peer: peer && peer.id, guests: guests.size, retry, ice: lastIce,
+        session: remembered(), rtc: rtcOk(),
         others: [...others].map(([id, o]) => ({ id, name: o.name, n: o.buf.length, lv: o.buf.length ? o.buf[o.buf.length - 1].lv : null })) }),
     };
   })();
@@ -12607,11 +12647,13 @@ void main() {
     });
     const where = (lv) => (levels[lv] && levels[lv].name) || (lv ? lv : '…');
     function sync() {
-      const on = Net.status === 'drin';
-      $('#mpOff').hidden = on || Net.status === 'verbinde' || Net.status === 'weg';
-      $('#mpOn').hidden = !on;
-      nameIn.disabled = on;
-      $('#mpRoom').textContent = Net.room;
+      const on = Net.status === 'drin', busy = Net.status === 'verbinde' || Net.status === 'weg';
+      $('#mpOff').hidden = on || busy;
+      $('#mpOn').hidden = !on && !busy;
+      $('#mpCopy').hidden = !on;
+      $('#mpLeave').textContent = on ? 'Verlassen' : 'Abbrechen';
+      nameIn.disabled = on || busy;
+      $('#mpRoom').textContent = Net.room || '…';
       const ps = Net.players;
       st.textContent = Net.status === 'verbinde' ? 'Verbinde …'
         : Net.status === 'weg' ? Net.msg
@@ -13399,7 +13441,7 @@ void main() {
     }
     gl.clearColor(fogCol[0], fogCol[1], fogCol[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    cam.proj = M4.persp(0.95, w / h, 0.5, 900);
+    cam.proj = M4.persp(fovFor(w / h), w / h, 0.5, 900);
     gl.uniformMatrix4fv(U.uProj, false, cam.proj);
     gl.uniformMatrix4fv(U.uView, false, cam.view);
     gl.uniform3fv(U.uLight, L.light);

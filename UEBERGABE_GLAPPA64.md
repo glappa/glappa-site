@@ -1,6 +1,6 @@
 # SUPER GLAPPA 64 – Übergabe für die nächste Sitzung
 
-> Stand: 2026-09-26 spätabends. Diese Datei zuerst lesen, dann `LEVEL_DESIGN_TODO.md`.
+> Stand: 2026-09-27. Diese Datei zuerst lesen, dann `LEVEL_DESIGN_TODO.md`.
 > Spiel: `secret/glappa64.html` + `secret/glappa64.js` (eigene WebGL-Engine, eine JS-Datei).
 
 ## 0. Stand: alles committet und live
@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=98`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
+  **kein root nötig**). Aktuell **JS `?v=99`**, Modelle `?v=9` (`MODEL_BYTES = 85100`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -99,15 +99,23 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - **Wie:** Wer „Raum erstellen“ drückt, dessen Browser **ist** der Raum (Gastgeber, Spieler-ID 1). Gäste verbinden sich per
   WebRTC-DataChannel direkt mit ihm (Stern-Topologie, der Gastgeber reicht Posen/Sterne weiter). Bibliothek: **PeerJS 1.5.5**,
   unverändert im Repo `secret/vendor/peerjs-1.5.5.min.js` (+ `LICENSE.txt`, MIT; sha512 gegen npm geprüft), wird erst beim
-  ersten Mehrspieler-Klick nachgeladen. Zum Finden dient der **öffentliche PeerJS-Vermittler** `0.peerjs.com`; STUN Google,
-  TURN-Ausweich `eu-0/us-0.turn.peerjs.com` (PeerJS-Vorgaben). Raum-Code = Peer-ID `glappa64-<CODE>`.
+  ersten Mehrspieler-Klick nachgeladen. Zum Finden dient der **öffentliche PeerJS-Vermittler** `0.peerjs.com`; STUN Google
+  (`ICE_SERVERS` im Net-Modul). Raum-Code = Peer-ID `glappa64-<CODE>`.
+- **KEIN TURN-Relais (Stand 2026-09-27):** Die PeerJS-Relais `eu-0/us-0.turn.peerjs.com` haben keine Adresse mehr (DNS ohne
+  A-Eintrag), `openrelay.metered.ca` und `freestun.net` antworten auch nicht. Folge: Es klappt nur, was sich per STUN direkt
+  durchstechen lässt (meist Heimnetz↔Heimnetz). Mobilfunk-/Firmen-NAT, manche VPNs, WLANs ohne mDNS/Hairpin → keine Verbindung.
+  Das Spiel sagt das jetzt ehrlich (`NO_DIRECT`) statt „Raum gibt es nicht“. **Offen: User entscheidet über ein Relais**
+  (siehe 2.0). Ein TURN-Zugang wäre nur ein Eintrag in `ICE_SERVERS`.
 - **Gastgeber prüft wie früher der Server:** Namen säubern, Stern-IDs `^[A-Za-z0-9_-]{1,32}$`, Posen (Level/Figur per Regex,
   genau `POSE_KEYS.length` endliche Zahlen), Drossel 40 Nachrichten/s je Gast, max. 8 Spieler, gemeinsame Sterne = Vereinigung.
   Gäste prüfen eingehende Posen/Sterne ebenfalls (der Gastgeber ist auch nur ein Browser).
-- **Lebensdauer:** Der Raum lebt, solange der Gastgeber-Tab offen ist. Lädt der Gastgeber neu, übernimmt er denselben Code
-  wieder (`sessionStorage` `glappa64-mp-host`; Vermittler gibt die ID evtl. erst nach Sekunden frei → 4 Versuche à 2 s, danach
-  als Gast beitreten), Gäste fassen bis 4× nach. „Verlassen“ als Gastgeber schickt `end` → Gäste sehen sofort
-  „Der Gastgeber hat den Raum beendet.“ Unbekannter Code → „Diesen Raum gibt es nicht (mehr)“ (nach ~0,5 s).
+- **Lebensdauer:** Der Raum lebt, solange der Gastgeber-Tab offen ist. Sitzung je Tab in `sessionStorage` `glappa64-mp`
+  (`{code, role}`): Neuladen **und Rückkehr aus einem Webseiten-Bild** (Portal verlässt die Seite!) → nach dem Start geht es mit
+  derselben Rolle weiter, der Gastgeber übernimmt seinen Code wieder (Vermittler gibt die ID evtl. erst nach Sekunden frei →
+  4 Versuche à 2 s, danach als Gast beitreten). Gäste fassen per `setTimeout` (läuft auch im Hintergrund-Tab) bis ~2,5 min nach
+  (`RETRY_WAIT`), im Menü mit „Abbrechen“. „Verlassen“ als Gastgeber schickt `end` → Gäste sehen es sofort.
+  Meldungen: unbekannter Code → „Diesen Raum gibt es nicht (mehr)“ (~0,5 s); Gastgeber gefunden, aber ICE scheitert →
+  `NO_DIRECT` (nach 15 s oder sofort bei `negotiation-failed`); Browser ohne `RTCPeerConnection` → `NO_RTC`.
 - **Datenschutz:** Mitspieler (und der Vermittler) sehen die IP-Adresse – steht als Hinweis im Pausenmenü (`.mp-note`).
 - **Protokoll (JSON über DataChannel):** Gast→Gastgeber `join{name,cat,stars}`, `st{lv,c,p}`, `star{id}`;
   Gastgeber→Gast `welcome{id,room,stars,players}`, `join{id,name,cat}`, `leave{id}`, `st{id,lv,c,p}`, `stars{ids,by}`,
@@ -119,15 +127,27 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Adresszeile bekommt `?raum=CODE`; wer den Link öffnet, tritt nach dem Start automatisch bei.
 - **v1 bewusst NICHT synchron:** Gegner, Münzen, Schalter, Kisten, Spieler-Kollision, Chat. Gastgeber-Wechsel (Raum
   überlebt das Weggehen des Gastgebers) gibt es nicht.
-- Debug: `g64.Net.debug()` → `role` (host/guest), `room`, `status`, `peer`, `guests`, `others`.
+- Debug: `g64.Net.debug()` → `role` (host/guest), `room`, `status`, `peer`, `guests`, `retry`, `ice`, `session`, `rtc`, `others`.
+
+### 1.9 Handy: Hoch- und Querformat (2026-09-27)
+- Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
+  (bei `toScreen`): waagrecht mind. `H_FOV_MIN` 0,9 rad, senkrecht gedeckelt auf 1,5 rad → Hochformat 86°/47°, Querformat
+  unverändert 54°/96°.
+- Touch-Knöpfe: bei ≤ 600 px Breite kleinerer Knüppel + Knöpfe rechts gestapelt (vorher lag Z über dem Knüppel), Dialog und
+  Hinweise über den Knopf-Block geschoben. Knüppel-Weg aus der echten Größe (`travel`).
+- Geprüft per `resize_window` 375×812 (mit Touch-Emulation) und 812×375: keine Überlappung, Titel/Dateiwahl/Pause passen.
 
 ---
 
 ## 2. Offene Aufgaben (Reihenfolge = Vorschlag)
 
-### 2.0 Mehrspieler: ggf. nachschärfen
-- Hinter strengen Firmen-/Schul-Firewalls (nur TCP 443) kann auch das PeerJS-TURN scheitern → dann bleibt es bei
-  „Verbinde …“ und nach 12 s „Keine Verbindung zum Gastgeber …“. Abhilfe wäre ein eigener TURN (coturn, bräuchte wieder den VPS).
+### 2.0 Mehrspieler: Relais fehlt (Entscheidung des Users offen)
+Ohne Relais bleibt die Verbindung zwischen verschiedenen Netzen Glückssache. Optionen:
+1. **TURN-Zugang bei einem Anbieter** (User legt Konto an, Zugangsdaten in `ICE_SERVERS`; stehen dann im Seitenquelltext).
+2. **Öffentliches Nachrichten-Relais** (z. B. öffentlicher MQTT-Broker per WebSocket) als Rückfall, verschlüsselt mit dem
+   Raum-Code – nichts auf dem VPS. Mein Test der Broker wurde am 27.09. von der Sicherheitsprüfung blockiert → nur mit
+   ausdrücklichem OK des Users angehen.
+3. **coturn auf dem VPS** (widerspricht „nichts auf dem Server“, braucht root + UDP-Ports).
 - Hintergrund-Tabs senden keine Posen (kein requestAnimationFrame) – im Browser normal, Gastgeber sollte im Vordergrund spielen.
 
 ### 2.x ERLEDIGT 2026-09-26: Hocke-Moves und Mehrspieler – siehe 1.7/1.8.
@@ -164,7 +184,10 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 
 ### 3.2b Mehrspieler lokal testen
 - Kein eigener Server nötig: `glappa-static` reicht, die Verbindung läuft auch lokal über den öffentlichen PeerJS-Vermittler
-  (Internet nötig). Zwei Spieler = zwei Browser-Tabs: Tab A `g64.Net.connect('NEW')`, Tab B `…?debug&raum=<CODE>` oder
+  (Internet nötig). **Zwei Tabs im selben Browser beweisen nichts über NAT** (Verbindung über lokale Kandidaten).
+- NAT-Ausfall nachstellen: im Gast-Tab VOR dem Start `window.RTCPeerConnection = class extends Orig { constructor(c, ...r)
+  { super({ ...(c || {}), iceServers: [], iceTransportPolicy: 'relay' }, ...r); } }` → muss nach 15 s `NO_DIRECT` zeigen.
+  Browser ohne WebRTC: `window.RTCPeerConnection = undefined` → `NO_RTC`. Zwei Spieler = zwei Browser-Tabs: Tab A `g64.Net.connect('NEW')`, Tab B `…?debug&raum=<CODE>` oder
   `g64.Net.connect('<CODE>')`.
 - **Beide Tabs teilen `localStorage`** (Name + Spielstand!) → Namen per `g64.Net.setName(…)` direkt vor dem Verbinden setzen.
   Hintergrund-Tabs haben `innerWidth 0` → vor Bildaufnahmen `tabs_select`/`resize_window`.
