@@ -167,6 +167,7 @@
 
     const api = {
       unlock: () => { ac(); },
+      ready: () => !!ctx && ctx.state === 'running',   // Ton freigeschaltet (erst nach einer Nutzeraktion)
       coin:  fx(() => { tone(1175, 0, .06, { type: 'triangle', vol: .25 }); tone(1760, .05, .3, { type: 'triangle', vol: .22 }); tone(2349, .1, .2, { vol: .04 }); }),
       red:   fx((n) => {
         const f = N(['C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'B5', 'C6'][Math.min(7, n - 1)]);
@@ -3087,7 +3088,7 @@ vec3 art(vec2 p) {
      Gelenk-Urspruenge treffen wie rig — sonst bricht die Animation in drawPlayer(). */
   const CAT_PARTS = ['head', 'body', 'arm', 'leg', 'tail', 'lids'];
   // Eckpunkte fuer den verformbaren Titelkopf (TitleHead): gleiche Daten wie im hochgeladenen Mesh
-  const cpuOf = (x) => (x ? { P: new Float32Array(x.pos || x.P), N: new Float32Array(x.nrm || x.N) } : null);
+  const cpuOf = (x) => (x ? { P: new Float32Array(x.pos || x.P), N: new Float32Array(x.nrm || x.N), C: new Float32Array(x.col || x.C) } : null);
   const CATS = lowPoly(() => CAT_DEFS.filter((d) => !d.blenderOnly || CAT_PARTS.every((k) => MODELS[d.id + '.' + k])).map((d) => {
     const c = { id: d.id, name: d.name, rig: d.rig, glow: {}, cpu: {} };
     for (const k of CAT_PARTS) {
@@ -14673,60 +14674,110 @@ void main() {
   });
 
   // ── Titel: Kopf, der dem Zeiger folgt und sich ziehen laesst ──
-  /* Titelkopf zum Verformen (nach dem Vorbild-Video 20260927-1043): eine Stelle packen und herausziehen - Nase,
-     Wange, Ohr, Muetze. Nur die Umgebung der gepackten Stelle folgt dem Zeiger (Glocke mit harter Grenze), beim
-     Loslassen federt sie mit Nachwippen zurueck. Rechte Maustaste: die Verformung bleibt stehen (wie im Vorbild),
-     Doppelklick laesst alles zurueckschnappen. Die Eckpunkte werden je Bild auf der CPU verschoben und in eigene
-     Puffer geschrieben; ohne Verformung wird das normale Mesh gezeichnet. */
+  /* Titelkopf (nach den Vorbild-Videos 20260927-1043 und -1053): lebhaft und zum Verformen.
+     - Ziehen: eine Stelle packen (Nase, Wange, Ohr, Muetze) - nur die Umgebung folgt, beim Loslassen federt sie mit
+       Nachwippen zurueck. Rechte Maustaste = bleibt stehen, Doppelklick = alles zurueck. Kurzer Klick = Stupser
+       (Kopf staucht sich, Augen kneifen zu, "gnarp").
+     - Gesicht: Pupillen schauen dem Zeiger nach, Ohren zucken, Schnurrhaare wackeln, Kinn faellt beim Erschrecken.
+       Die Teile findet der Kopf selbst in seinen Eckpunkten (Farbe + Lage), darum geht das fuer alle Figuren.
+     - Doesen: ohne Bewegung sackt der Kopf ab, die Augen fallen zu, Z-Blasen steigen - die Maus weckt ihn mit einem Ruck.
+     Alle Verformungen laufen je Bild auf der CPU (eigene DYNAMIC_DRAW-Puffer, Farben/UV vom normalen Mesh). */
   const TitleHead = (() => {
-    const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, poke: 0, leave: -1, grab: null };
-    const pulls = [], MAX_PULLS = 8, REACH2 = 0.2 * 0.2, MAX_D = 2.2;   // Einflussradius: etwa Nasenlaenge, Augen bleiben stehen
+    const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, leave: -1, grab: null, lastIn: 0, doze: 0, startle: -9, poke: -9,
+      sq: 0, sqV: 0, look: [0, 0], lookT: [0, 0], nextLook: 0, zees: [], nextZ: 0 };
+    const pulls = [], MAX_PULLS = 8, REACH2 = 0.2 * 0.2, MAX_D = 2.2, DOZE_AFTER = 9, CAM_Z = 9;
     let fovy = 1, aspect = 1, headM = I4;
-    const CAM_Z = 9;
-    // Zeiger -> Bildschirmkoordinaten (-1..1) der Zeichenflaeche
+    const ears = [{ t: -9, k: 0 }, { t: -9, k: 0 }], whisk = { t: -9 };
     function ndc(cx, cy) {
       const r = gl.canvas.getBoundingClientRect();
       return [((cx - r.left) / r.width) * 2 - 1, 1 - ((cy - r.top) / r.height) * 2];
     }
     const tanH = () => Math.tan(fovy / 2);
-    // Welt -> Bild (Kamera sitzt achsparallel bei z = 9 und schaut auf den Nullpunkt)
     const toNdc = (p) => { const d = (CAM_Z - p[2]) * tanH(); return [p[0] / (d * aspect), p[1] / d]; };
 
-    // Verformbare Kopien je Figur: eigene Positions-/Normalen-Puffer, Farben und UV vom normalen Mesh
+    // ── Gesichtsteile in den Eckpunkten finden (Kopf schaut nach +z, Augenhoehe y = 0) ──
+    function features(cpu, glowCpu) {
+      const { P, C } = cpu, n = P.length / 3, F = { eyes: [], ears: [], whiskers: [], chin: null };
+      let maxY = -9;
+      for (let i = 0; i < n * 3; i += 3) maxY = Math.max(maxY, P[i + 1]);
+      for (const s of [-1, 1]) {
+        let ex = 0, ey = 0, ez = 0, en = 0, tip = null, wt = null;
+        for (let i = 0; i < n * 3; i += 3) {
+          const x = P[i], y = P[i + 1], z = P[i + 2];
+          if (x * s <= 0.03) continue;
+          const lum = C ? C[i] * 0.3 + C[i + 1] * 0.59 + C[i + 2] * 0.11 : 1;
+          if (lum < 0.09 && z > 0.12 && y > -0.2) { ex += x; ey += y; ez += z; en++; }   // Pupille
+          if (x * s > 0.08 && y > maxY - 0.2 && (!tip || y > tip[1])) tip = [x, y, z];      // Ohrspitze
+          if (z > 0.22 && y < -0.02 && y > -0.35 && x * s > 0.28 && (!wt || x * s > wt[0] * s)) wt = [x, y, z];   // Schnurrhaar: aeusserster Punkt vorn unten
+        }
+        if (en < 6 && glowCpu) {   // keine dunkle Pupille (Neon): die leuchtenden Augaepfel im Leucht-Teil nehmen
+          const G2 = glowCpu.P;
+          for (let i = 0; i < G2.length; i += 3) if (G2[i] * s > 0.03 && G2[i + 2] > 0.12 && G2[i + 1] > -0.2 && G2[i + 1] < 0.25) { ex += G2[i]; ey += G2[i + 1]; ez += G2[i + 2]; en++; }
+        }
+        if (en >= 6) F.eyes.push([ex / en, ey / en, ez / en]);
+        if (tip) F.ears.push(tip);
+        if (wt) F.whiskers.push(wt);
+      }
+      let chin = null;   // tiefster Punkt vorn in der Mitte
+      for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.07 && P[i + 2] > 0.2 && (!chin || P[i + 1] < chin[1])) chin = [P[i], P[i + 1], P[i + 2]];
+      F.chin = chin;
+      return F;
+    }
+    // Einflussliste einer festen Stelle (Mitte + Radius) - einmal je Mesh vorberechnet
+    function sparse(R, c, reach) {
+      const idx = [], w = [], r2 = reach * reach;
+      for (let i = 0; i < R.length; i += 3) {
+        const dx = R[i] - c[0], dy = R[i + 1] - c[1], dz = R[i + 2] - c[2], u = (dx * dx + dy * dy + dz * dz) / r2;
+        if (u < 1) { idx.push(i); w.push((1 - u) * (1 - u)); }
+      }
+      return { idx: Int32Array.from(idx), w: Float32Array.from(w) };
+    }
+
     const dyn = new Map();
-    function mkDyn(cpu, mesh) {
+    function mkDyn(cpu, mesh, F) {
       if (!cpu || !mesh) return null;
       const n = cpu.P.length / 3, P = new Float32Array(cpu.P), N = new Float32Array(cpu.N), fo = new Float32Array(n);
-      for (let t = 0; t < n * 3; t += 9) {   // Flaechennormalen in Ruhe (je Dreieck)
+      for (let t = 0; t < n * 3; t += 9) {
         const ax = cpu.P[t + 3] - cpu.P[t], ay = cpu.P[t + 4] - cpu.P[t + 1], az = cpu.P[t + 5] - cpu.P[t + 2];
         const bx = cpu.P[t + 6] - cpu.P[t], by = cpu.P[t + 7] - cpu.P[t + 1], bz = cpu.P[t + 8] - cpu.P[t + 2];
         const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, l = Math.hypot(nx, ny, nz) || 1;
         fo[t / 3] = nx / l; fo[t / 3 + 1] = ny / l; fo[t / 3 + 2] = nz / l;
       }
       const buf = (arr) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.DYNAMIC_DRAW); return b; };
-      return { R: cpu.P, N0: cpu.N, P, N, fo, mesh: { p: buf(P), n: buf(N), c: mesh.c, t: mesh.t, count: mesh.count } };
+      const R = cpu.P, S = {
+        eyes: F.eyes.map((c) => sparse(R, c, 0.085)), ears: F.ears.map((c) => sparse(R, c, 0.2)),
+        whiskers: F.whiskers.map((c) => sparse(R, c, 0.2)), chin: F.chin ? sparse(R, F.chin, 0.14) : null,
+      };
+      return { R, N0: cpu.N, P, N, fo, S, mesh: { p: buf(P), n: buf(N), c: mesh.c, t: mesh.t, count: mesh.count } };
     }
     function dynFor(G) {
       if (!dyn.has(G.id)) {
-        const c = G.cpu || {};
-        dyn.set(G.id, { head: mkDyn(c.head, G.head), glow: mkDyn(c.headGlow, G.glow.head) });
+        const c = G.cpu || {}, F = c.head ? features(c.head, c.headGlow) : { eyes: [], ears: [], whiskers: [], chin: null };
+        dyn.set(G.id, { F, head: mkDyn(c.head, G.head, F), glow: mkDyn(c.headGlow, G.glow.head, F) });
       }
       return dyn.get(G.id);
     }
-    function deform(d) {
-      const { R, N0, P, N, fo } = d, n = R.length / 3;
+    // Verschiebungen: gezogene Stellen (weich, grosser Radius) + Gesichtsmuskeln (feste Stellen, kleine Wege)
+    function deform(d, mus) {
+      const { R, N0, P, N, fo, S } = d, n = R.length / 3;
       for (let i = 0; i < n * 3; i += 3) {
         const x = R[i], y = R[i + 1], z = R[i + 2];
         let ox = 0, oy = 0, oz = 0;
         for (const q of pulls) {
-          // Glocke mit harter Grenze: innen geht alles voll mit, ab REACH bewegt sich nichts mehr
           const dx = x - q.g[0], dy = y - q.g[1], dz = z - q.g[2], u = (dx * dx + dy * dy + dz * dz) / REACH2;
           if (u < 1) { const w = (1 - u) * (1 - u); ox += q.D[0] * w; oy += q.D[1] * w; oz += q.D[2] * w; }
         }
         P[i] = x + ox; P[i + 1] = y + oy; P[i + 2] = z + oz;
       }
-      // Normalen: die Aenderung der Flaechennormale auf die weichen Eckpunkt-Normalen uebertragen
-      for (let t = 0; t < n * 3; t += 9) {
+      const add = (sp, D) => {
+        if (!sp || !D) return;
+        for (let k = 0; k < sp.idx.length; k++) { const i = sp.idx[k], w = sp.w[k]; P[i] += D[0] * w; P[i + 1] += D[1] * w; P[i + 2] += D[2] * w; }
+      };
+      S.eyes.forEach((sp) => add(sp, mus.eye));
+      S.ears.forEach((sp, j) => add(sp, mus.ears[j]));
+      S.whiskers.forEach((sp, j) => add(sp, mus.whiskers[j]));
+      add(S.chin, mus.chin);
+      for (let t = 0; t < n * 3; t += 9) {   // Normalen: Aenderung der Flaechennormale auf die weichen Normalen uebertragen
         const ax = P[t + 3] - P[t], ay = P[t + 4] - P[t + 1], az = P[t + 5] - P[t + 2];
         const bx = P[t + 6] - P[t], by = P[t + 7] - P[t + 1], bz = P[t + 8] - P[t + 2];
         let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
@@ -14741,25 +14792,32 @@ void main() {
       gl.bindBuffer(gl.ARRAY_BUFFER, d.mesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, N);
       return d.mesh;
     }
-    // Stelle unter dem Zeiger: naechstliegender Eckpunkt im Bild, bei Ueberdeckung der vorderste
     function pick(cx, cy) {
-      const G = CAT, d = dynFor(G).head;
+      const d = dynFor(CAT).head;
       if (!d || st.leave >= 0) return null;
-      const [px, py] = ndc(cx, cy), src = pulls.length ? d.P : d.R;
+      const [px, py] = ndc(cx, cy);
       let best = null, bz = -Infinity;
-      for (let i = 0; i < src.length; i += 3) {
-        const w = M4.point(headM, [src[i], src[i + 1], src[i + 2]]), s = toNdc(w);
+      for (let i = 0; i < d.P.length; i += 3) {
+        const w = M4.point(headM, [d.P[i], d.P[i + 1], d.P[i + 2]]), s = toNdc(w);
         if (Math.hypot((s[0] - px) * aspect, s[1] - py) < 0.05 && w[2] > bz) { bz = w[2]; best = i; }
       }
       return best == null ? null : { g: [d.R[best], d.R[best + 1], d.R[best + 2]], zw: bz, p: [px, py] };
     }
-    // Bildverschiebung (ndc) in der Tiefe zw -> Kopf-Koordinaten (Kopfmatrix = T * R * S, gleichmaessig skaliert)
     function toLocal(dx, dy, zw) {
       const k = (CAM_Z - zw) * tanH(), wx = dx * k * aspect, wy = dy * k, m = headM, s2 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
       return [(m[0] * wx + m[1] * wy) / s2, (m[4] * wx + m[5] * wy) / s2, (m[8] * wx + m[9] * wy) / s2];
     }
+    // jede Eingabe: wach werden (aus dem Doesen mit einem Ruck)
+    function wake() {
+      if (st.doze > 0.35) {
+        st.startle = clock; st.sqV += 5; st.doze = 0; st.zees.length = 0;   // Z-Blasen zerplatzen
+        ears[0].t = ears[1].t = clock; if (Snd.ready()) Snd.voice('hoi');
+      }
+      st.lastIn = clock;
+    }
     titleEl.addEventListener('pointermove', (e) => {
       st.px = e.clientX / innerWidth; st.py = e.clientY / innerHeight;
+      wake();
       const G2 = st.grab;
       if (!G2) return;
       const [px, py] = ndc(e.clientX, e.clientY), D = toLocal(px - G2.p[0], py - G2.p[1], G2.zw), l = Math.hypot(...D);
@@ -14768,35 +14826,56 @@ void main() {
     });
     titleEl.addEventListener('pointerdown', (e) => {
       if (e.target.closest && e.target.closest('button, a')) return;
+      wake();
       const hit = pick(e.clientX, e.clientY);
       if (!hit) return;
       e.preventDefault();
       if (pulls.length >= MAX_PULLS) pulls.splice(pulls.findIndex((q) => !q.held), 1);
       const q = { g: hit.g, D: [0, 0, 0], V: [0, 0, 0], held: true, pinned: false };
       pulls.push(q);
-      st.grab = { q, p: hit.p, zw: hit.zw, pin: e.button === 2 };
-      st.poke = 1; Snd.unlock(); Snd.blip();
+      st.grab = { q, p: hit.p, zw: hit.zw, pin: e.button === 2, t: clock };
+      Snd.unlock(); Snd.blip();
       try { titleEl.setPointerCapture(e.pointerId); } catch (x2) { /* egal */ }
     });
     const release = () => {
       const G2 = st.grab;
       if (!G2) return;
       st.grab = null; G2.q.held = false; G2.q.pinned = G2.pin;
-      if (!G2.pin && Math.hypot(...G2.q.D) > 0.25) Snd.boing();
+      const far = Math.hypot(...G2.q.D);
+      if (far < 0.06 && clock - G2.t < 0.35) {   // Stupser: stauchen, Augen zukneifen, quaeken
+        st.poke = clock; st.sqV -= 6; Snd.voice(Math.random() < 0.5 ? 'punch' : 'punch2');
+        ears[Math.random() < 0.5 ? 0 : 1].t = clock;
+      } else if (!G2.pin && far > 0.25) Snd.boing();
     };
     titleEl.addEventListener('pointerup', release);
     titleEl.addEventListener('pointercancel', release);
     titleEl.addEventListener('contextmenu', (e) => { if (!(e.target.closest && e.target.closest('button, a'))) e.preventDefault(); });
     titleEl.addEventListener('dblclick', () => { for (const q of pulls) q.pinned = false; });
+
+    const twitch = (t0, dur) => { const k = (clock - t0) / dur; return k > 0 && k < 1 ? Math.sin(k * Math.PI) * Math.sin(k * Math.PI * 3) : 0; };
     function tick(dt) {
-      const k = Math.min(1, dt * 6);
-      if (!st.grab) {   // beim Ziehen bleibt der Kopf stehen, sonst schaut er dem Zeiger nach
-        st.yaw += (clamp((st.px - 0.5) * 1.4, -0.7, 0.7) - st.yaw) * k;
-        st.pitch += (clamp((st.py - 0.5) * 0.9, -0.45, 0.45) - st.pitch) * k;
+      const idle = clock - st.lastIn;
+      // Doesen: nach DOZE_AFTER s ohne Eingabe langsam einnicken
+      st.doze = st.grab ? 0 : clamp(st.doze + (idle > DOZE_AFTER ? dt * 0.5 : -dt * 4), 0, 1);
+      // Blick: dem Zeiger nach; ruht die Maus ein paar Sekunden, schaut er selbst umher
+      if (idle > 2.5 && clock > st.nextLook) {
+        st.lookT = [(Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.9]; st.nextLook = clock + 1 + Math.random() * 1.8;
+        if (Math.random() < 0.45) ears[Math.random() < 0.5 ? 0 : 1].t = clock;
+        if (Math.random() < 0.25) whisk.t = clock;
+      } else if (idle <= 2.5) st.lookT = [clamp((st.px - 0.5) * 2.6, -1, 1), clamp(-(st.py - 0.5) * 2.2, -1, 1)];
+      const kl = Math.min(1, dt * 14);
+      st.look[0] += (st.lookT[0] - st.look[0]) * kl; st.look[1] += (st.lookT[1] - st.look[1]) * kl;
+      if (!st.grab) {   // Kopf dreht weit mit (fast bis ins Profil), beim Doesen sackt er nach vorn
+        const k = Math.min(1, dt * 7), dz = smooth(st.doze);
+        const ty = idle > 2.5 ? st.look[0] * 0.35 : clamp((st.px - 0.5) * 2.1, -1.05, 1.05);
+        const tp = idle > 2.5 ? -st.look[1] * 0.2 : clamp((st.py - 0.5) * 1.2, -0.55, 0.55);
+        st.yaw += (lerp(ty, 0, dz) - st.yaw) * k;
+        st.pitch += (lerp(tp, 0.55, dz) - st.pitch) * k;
       }
-      // losgelassene Stellen federn zurueck (gedaempfte Feder, ~2,5 Schwingungen je Sekunde)
+      // Stauch-Feder (Stupser drueckt, Aufwachen streckt)
       const h = Math.min(dt, 0.05) / 2;
       for (let s = 0; s < 2; s++) {
+        st.sqV += (-st.sq * 260 - st.sqV * 10) * h; st.sq += st.sqV * h;
         for (const q of pulls) {
           if (q.held || q.pinned) continue;
           for (let j = 0; j < 3; j++) { q.V[j] += (-q.D[j] * 240 - q.V[j] * 11) * h; q.D[j] += q.V[j] * h; }
@@ -14806,32 +14885,55 @@ void main() {
         const q = pulls[i];
         if (!q.held && !q.pinned && Math.hypot(...q.D) < 0.002 && Math.hypot(...q.V) < 0.02) pulls.splice(i, 1);
       }
-      st.poke = Math.max(0, st.poke - dt * 3);
+      // Z-Blasen beim Doesen
+      if (st.doze > 0.9 && clock > st.nextZ) { st.zees.push(clock); st.nextZ = clock + 1.1; }
+      st.zees = st.zees.filter((t) => clock - t < 2.6);
+    }
+    function muscles(F) {
+      const s = CAT.id === 'kappi' ? 1 : 0.9, dz = smooth(st.doze), wide = clock - st.startle < 0.7;
+      const eye = wide ? [0, 0.004, 0] : [st.look[0] * 0.032 * s, st.look[1] * 0.024 * s, 0];
+      const earUp = (wide ? 0.06 : 0) + (st.grab ? 0.04 : 0) - dz * 0.07;
+      const earsD = F.ears.map((c, j) => {
+        const sx = Math.sign(c[0]) || 1, tw = twitch(ears[j].t, 0.32);
+        return [sx * (0.05 * tw + dz * 0.05), earUp + 0.025 * tw, -0.04 * tw];
+      });
+      const wig = twitch(whisk.t, 0.5) * 0.035 + (wide ? Math.sin(clock * 40) * 0.015 : 0);
+      const whD = F.whiskers.map((c, j) => [0, wig * (j ? -1 : 1), 0]);
+      const chin = wide ? [0, -0.05 * (1 - (clock - st.startle) / 0.7), 0.01] : (st.grab ? [0, -0.025, 0] : null);
+      return { eye, ears: earsD, whiskers: whD, chin };
     }
     function drawHead() {
       const G = CAT;
       let sc = 2.8, y = -0.8, spin = 0;
       if (st.leave >= 0 && !titleEl.classList.contains('leaving') && clock - st.leave > 0.6) { st.leave = -1; st.pop = clock; }
       if (st.pop != null) sc *= smooth(clamp((clock - st.pop) / 0.35, 0, 1));
-      if (st.leave >= 0) {   // nach PRESS START: wegdrehen, schrumpfen, nach oben
+      if (st.leave >= 0) {
         const k = clamp((clock - st.leave) / 0.5, 0, 1);
         if (k >= 1) return;
         spin = smooth(k) * TAU * 1.5; sc *= 1 - smooth(k); y += k * 2;
       }
-      const wob = st.poke * Math.sin(clock * 30) * 0.05;
-      headM = M4.from(0, y, 0, st.yaw + spin, st.pitch, Math.sin(clock * 1.3) * 0.05, sc * (1 + wob), sc * (1 - wob), sc);
-      const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 }, d = pulls.length ? dynFor(G) : null;
-      draw(d && d.head ? deform(d.head) : G.head, headM, hOpt);
-      if (G.glow.head) draw(d && d.glow ? deform(d.glow) : G.glow.head, headM, { lit: 0 });
-      const bl = pulls.length ? 0 : blinkAt(clock, 2);   // gepackt: Augen weit auf
+      const dz = smooth(st.doze), breathe = Math.sin(clock * 1.7) * 0.02 * dz;
+      const roll = Math.sin(clock * 1.3) * 0.05 + Math.sin(clock * 0.7) * 0.1 * dz;
+      headM = M4.from(0, y + st.sq * 0.25 - dz * 0.15, 0, st.yaw + spin, st.pitch, roll, sc * (1 - st.sq * 0.6), sc * (1 + st.sq + breathe), sc * (1 - st.sq * 0.3));
+      const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 }, d = dynFor(G), mus = muscles(d.F);
+      draw(d.head ? deform(d.head, mus) : G.head, headM, hOpt);
+      if (G.glow.head) draw(d.glow ? deform(d.glow, mus) : G.glow.head, headM, { lit: 0 });
+      // Lider: blinzeln, beim Stupser zukneifen, beim Doesen zufallen; gepackt oder erschreckt weit offen
+      const squint = clamp(1 - (clock - st.poke) / 0.35, 0, 1) * 0.75;
+      let bl = Math.max(blinkAt(clock, 2), squint, dz * (0.85 + Math.sin(clock * 0.9) * 0.1 * (1 - dz)));
+      if (pulls.length || clock - st.startle < 0.7) bl = 0;
       if (G.lids && bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), hOpt);
+      for (const t of st.zees) {   // Z-Blasen steigen schraeg nach oben rechts
+        const a = (clock - t) / 2.6, k = sc / 2.8;
+        draw(MESH.zee, M4.from((0.9 + a * 1.6) * k, y + (1.2 + a * 2.2) * k, 0.5, 0, 0, Math.sin(a * 8) * 0.25, (0.25 + a * 0.35) * k),
+          { lit: 0, tint: [0.85, 0.9, 1, 1], alpha: Math.min(1, (1 - a) * 3) });
+      }
     }
     return {
       tick, draw: drawHead, leave() { st.leave = clock; },
       reset() { st.leave = -1; st.grab = null; pulls.length = 0; },
       cam(f, a) { fovy = f; aspect = a; },
-      // Testhilfe (?debug): an Bildschirmposition packen, verschieben, loslassen
-      test: { pick, pulls, get grab() { return st.grab; } },
+      test: { pick, pulls, st, features: () => dynFor(CAT).F, get grab() { return st.grab; } },
     };
   })();
 
