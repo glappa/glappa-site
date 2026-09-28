@@ -28,6 +28,7 @@ import math
 
 import g64_build as B
 from cats import _arm, _leg, _tail_path, _tip, _band
+from whiskers import all_whiskers
 
 # Masse im Spiel (m), abgeleitet aus dem Referenzskelett mit k = 2,05 / 154
 # Dicken nach Front-/Seitenansicht der Vorlage (2026-09-25): Bauch 0,31 H breit / 0,25 H tief, Aermel 0,095 H,
@@ -46,27 +47,11 @@ SHIRT = B.hexc('#ff8a2a')
 PANTS = B.hexc('#2e3a58')
 GLOVE = B.hexc('#f6f6fb')
 BOOT = B.hexc('#7a3222')
-WHITE = B.hexc('#ffffff')
-IRIS = B.hexc('#1aa8a0')
-INK = B.hexc('#0b0e14')
 
 EYE_X, EYE_Y = 0.155, -0.338  # Augenmitte (Kopf-lokal); Augenhoehe ist z = 0
-
-
-def _eye(side):
-    """Grosses Auge wie bei den 64er-Figuren: Augapfel + Iris + Pupille + Glanzpunkt.
-
-    Iris, Pupille und Glanz sind flache Scheiben statt Kugeln - das spart zwei Drittel
-    der Dreiecke und sieht aus der Spielkamera genauso aus.
-    """
-    parts = [
-        B.ellipsoid('w', (0.118, 0.05, 0.148), 10, 5, WHITE),
-        B.place(B.disc('i', 0.074, 0.094, 10, IRIS), (-side * 0.006, -0.047, -0.012)),
-        B.place(B.disc('p', 0.036, 0.058, 8, INK), (-side * 0.008, -0.049, -0.014)),
-        B.place(B.disc('h', 0.02, 0.022, 6, WHITE), (side * 0.022, -0.051, 0.032)),
-    ]
-    eye = B.merge('eye', parts)
-    return B.place(eye, (side * EYE_X, EYE_Y, 0.0), (0, 0, side * 0.32))
+# Die Augen selbst sind KEINE Geometrie mehr: wie bei den 64er-Figuren malt das Spiel sie flach auf den Kopf
+# (Textur, Blinzeln = anderes Bild; siehe FaceDecal in glappa64.js). Die Lider bleiben als Teil erhalten, weil
+# das Spiel eine Figur nur mit allen Teilen anbietet.
 
 
 def _lid(side):
@@ -106,11 +91,9 @@ def head():
     ]
     for s in (-1, 1):
         parts.append(B.place(B.ellipsoid('cheek', (0.2, 0.17, 0.155), 8, 5, SK), (s * 0.235, -0.17, -0.235)))
-        parts.append(_eye(s))
         parts.append(_ear(s))
-        for k, (dz, ang) in enumerate(((0.0, 0.1), (-0.035, -0.12))):     # zwei Barthaare je Seite
-            w = B.cuboid('whisker', (0.26, 0.012, 0.012), WHITE)
-            parts.append(B.place(w, (s * 0.3, -0.39, -0.245 + dz), (0, s * ang, s * 0.18)))
+    wv, wf, wc = all_whiskers()      # drei kraeftige, spitze Schnurrhaare je Seite (whiskers.py)
+    parts.append(B.mesh_from('whiskers', wv, wf, wc, [False] * len(wf)))
     parts.append(B.place(B.ellipsoid('muzzle', (0.2, 0.13, 0.12), 10, 5, HI), (0, -0.325, -0.245)))
     parts.append(B.place(B.ellipsoid('nose', (0.052, 0.036, 0.036), 6, 4, PINK), (0, -0.452, -0.175)))
 
@@ -144,8 +127,8 @@ def body():
             return SK                                          # Hals
         if z < -0.02:
             return PANTS                                       # Hose
-        if n[1] < -0.3 and abs(x) < 0.17 and z < 0.17:
-            return PANTS                                       # Latz vorn
+        if n[1] < -0.3 and z < 0.17:
+            return PANTS                                       # Latz vorn: ganze Vorderseite unter der Brust
         if 0.12 < abs(x) < 0.2:
             return PANTS                                       # Traeger vorn und hinten
         return SHIRT

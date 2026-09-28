@@ -939,10 +939,18 @@
       for (const syl of Array.isArray(v[0]) ? v : [v]) t = gnarp(c, dest, syl, t, k, vol) + 0.035;
       return t;
     }
+    let mouthA = 0, mouthB = 0;   // wann die Figur gerade ruft (performance.now) - fuer den Mund
     api.voice = fx((name) => {
       const c = ac();
-      if (c) say(c, sfxBus, name, c.currentTime, VOICE_PITCH[CAT.id] || 1);
+      if (!c) return;
+      const end = say(c, sfxBus, name, c.currentTime, VOICE_PITCH[CAT.id] || 1), now = performance.now();
+      mouthA = now; mouthB = now + (end - c.currentTime) * 1000;
     });
+    // Mund-Oeffnung 0..1: schnell auf, leicht flatternd, zum Ende der Silbe wieder zu
+    api.mouth = () => {
+      const n = performance.now();
+      return n >= mouthB ? 0 : Math.min(1, (n - mouthA) / 40, (mouthB - n) / 70) * (0.8 + 0.2 * Math.sin(n / 45));
+    };
     /* ── Alien-Katzen "sprechen" in Zip-Lauten (Wunsch 2026-09-28; ersetzt die fruehere Sprachausgabe) ──
        Auf Wunsch die ECHTEN Silben aus der mp3 des Users ("Alien Speaking Meme", N:\Downloads): 20 Silben der ersten
        Alien-Stimme (0,4-8,3 s) ausgeschnitten, die Hintergrundmusik je Silbe aus den Pausen davor/danach gemessen und
@@ -3353,7 +3361,8 @@ vec3 art(vec2 p) {
   // 5) Kappi: nach den Proportionen einer N64-Figur gebaut (riesiger Kopf, kurzer Koerper), komplett aus
   //    Blender (tools/blender/kappi.py). Ohne geladene Modelldatei gibt es Kappi nicht - siehe CATS.
   CAT_DEFS.push({
-    id: 'kappi', name: 'Kappi', blenderOnly: true,
+    id: 'kappi', name: 'Kappi', blenderOnly: true, eyes2d: true,
+    mouth: [0, -0.285, 0.438, 0.075, 0.05],   // Kopf-lokal: Mitte x y z, halbe Breite, halbe Hoehe (auf der Schnauze)
     rig: { legX: 0.155, legY: 0.672, bodyY: 0.887, armX: 0.32, armY: 1.078, headY: 1.63, headZ: 0.03, tailY: 0.66, tailZ: -0.24 },
   });
   /* Figuren im 64er-Look: grob unterteilt (lowPoly).
@@ -3365,7 +3374,7 @@ vec3 art(vec2 p) {
   // Eckpunkte fuer den verformbaren Titelkopf (TitleHead): gleiche Daten wie im hochgeladenen Mesh
   const cpuOf = (x) => (x ? { P: new Float32Array(x.pos || x.P), N: new Float32Array(x.nrm || x.N), C: new Float32Array(x.col || x.C) } : null);
   const CATS = lowPoly(() => CAT_DEFS.filter((d) => !d.blenderOnly || CAT_PARTS.every((k) => MODELS[d.id + '.' + k])).map((d) => {
-    const c = { id: d.id, name: d.name, rig: d.rig, glow: {}, cpu: {} };
+    const c = { id: d.id, name: d.name, rig: d.rig, glow: {}, cpu: {}, eyes2d: !!d.eyes2d, mouth: d.mouth || null };
     for (const k of CAT_PARTS) {
       if (!d[k]) continue;
       if (k !== 'head') { [c[k], c.glow[k]] = build2(d[k]); continue; }
@@ -3383,6 +3392,84 @@ vec3 art(vec2 p) {
     return c;
   }));
   const buildLP = (fn) => lowPoly(() => build(fn));
+  /* Augen wie bei den 64er-Figuren (Kappi, eyes2d): flach auf den Kopf gemalt statt Augaepfeln. Eine Flaeche folgt der
+     Kopfform (vorderste Fell-Dreiecke, einmal je Figur abgetastet) und traegt eine Textur mit Fell-Hintergrund; Blinzeln
+     tauscht das Bild (offen, halb, zu). Figuren ohne eyes2d blinzeln weiter mit ihren Lidern. */
+  const FaceDecal = (() => {
+    const X0 = -0.34, X1 = 0.34, Y0 = -0.19, Y1 = 0.2, NX = 26, NY = 16, SKIN = [126, 211, 106];
+    const made = new Map();
+    let texs = null;   // erst beim ersten Zeichnen bauen (signTexture braucht die spaeter angelegten Textur-Helfer)
+    const makeTexs = () => [0, 1, 2].map((st) => signTexture((c) => {
+      const px = (x) => (x - X0) * 1000, py = (y) => (Y1 - y) * 1000;
+      c.fillStyle = `rgb(${SKIN})`; c.fillRect(0, 0, 680, 390);
+      c.lineJoin = 'round'; c.lineCap = 'round';
+      for (const s of [-1, 1]) {
+        c.save(); c.translate(px(s * 0.152), py(0)); c.rotate(-s * 0.1);
+        const eye = () => { c.beginPath(); c.ellipse(0, 0, 108, 142, 0, 0, TAU); };
+        if (st < 2) {
+          eye(); c.fillStyle = '#fff'; c.fill();
+          c.save(); eye(); c.clip();
+          c.fillStyle = '#1aa8a0'; c.beginPath(); c.ellipse(s * -12, 12, 68, 92, 0, 0, TAU); c.fill();
+          c.strokeStyle = '#0d6f6a'; c.lineWidth = 10; c.stroke();
+          c.fillStyle = '#0b0e14'; c.beginPath(); c.ellipse(s * -14, 14, 34, 58, 0, 0, TAU); c.fill();
+          c.fillStyle = '#fff'; c.beginPath(); c.ellipse(s * 10, -28, 20, 24, 0, 0, TAU); c.fill();
+          if (st === 1) {   // halb zu: Lid (Fell) von oben
+            c.fillStyle = `rgb(${SKIN})`; c.fillRect(-130, -160, 260, 160);
+            c.strokeStyle = '#0b0e14'; c.lineWidth = 12; c.beginPath(); c.moveTo(-110, 0); c.lineTo(110, 0); c.stroke();
+          }
+          c.restore();
+          eye(); c.strokeStyle = '#0b0e14'; c.lineWidth = 12; c.stroke();
+        } else {            // zu: nur ein Strich, leicht nach unten gebogen
+          c.strokeStyle = '#0b0e14'; c.lineWidth = 16;
+          c.beginPath(); c.moveTo(-100, -6); c.quadraticCurveTo(0, 46, 100, -6); c.stroke();
+        }
+        c.restore();
+      }
+    }, 680, 390, 512, 256));
+    // Flaeche: fuer jeden Rasterpunkt die vorderste Fell-Flaeche des Kopfes (x/y fest, z gesucht), knapp davor
+    function build_(G) {
+      const P = G.cpu.head.P, C = G.cpu.head.C, gx = (X1 - X0) / NX, gy = (Y1 - Y0) / NY, Z = new Float32Array((NX + 1) * (NY + 1)).fill(-9);
+      for (let t = 0; t < P.length; t += 9) {
+        if (C && (Math.abs(C[t] * 255 - SKIN[0]) > 3 || Math.abs(C[t + 1] * 255 - SKIN[1]) > 3 || Math.abs(C[t + 2] * 255 - SKIN[2]) > 3)) continue;
+        const ax = P[t], ay = P[t + 1], bx = P[t + 3], by = P[t + 4], cx = P[t + 6], cy = P[t + 7];
+        const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+        if (Math.abs(den) < 1e-12) continue;
+        const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - X0) / gx)), i1 = Math.min(NX, Math.floor((Math.max(ax, bx, cx) - X0) / gx));
+        const j0 = Math.max(0, Math.ceil((Math.min(ay, by, cy) - Y0) / gy)), j1 = Math.min(NY, Math.floor((Math.max(ay, by, cy) - Y0) / gy));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const x = X0 + i * gx, y = Y0 + j * gy;
+          const l1 = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / den, l2 = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / den, l3 = 1 - l1 - l2;
+          if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+          const z = l1 * P[t + 2] + l2 * P[t + 5] + l3 * P[t + 8];
+          if (z > Z[j * (NX + 1) + i]) Z[j * (NX + 1) + i] = z;
+        }
+      }
+      // Normale wie der runde Schaedel (glatt schattiert, damit die Flaeche im Fell verschwindet)
+      const pt = (i, j) => { const x = X0 + i * gx, y = Y0 + j * gy, z = Z[j * (NX + 1) + i]; return z < -8 ? null : [x, y, z + 0.006]; };
+      const nr = (p) => v3.norm([p[0] / 0.2, (p[1] + 0.085) / 0.18, p[2] / 0.16]);
+      const uv = (p) => [(p[0] - X0) / (X1 - X0), (Y1 - p[1]) / (Y1 - Y0)];
+      return build((g) => {
+        for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+          const a = pt(i, j), b = pt(i + 1, j), c = pt(i + 1, j + 1), d = pt(i, j + 1);
+          if (!a || !b || !c || !d) continue;
+          g.tri(a, b, c, C_WHITE, [uv(a), uv(b), uv(c)], [nr(a), nr(b), nr(c)]);
+          g.tri(a, c, d, C_WHITE, [uv(a), uv(c), uv(d)], [nr(a), nr(c), nr(d)]);
+        }
+      });
+    }
+    return {
+      draw(G, hm, bl, o) {
+        if (!made.has(G)) made.set(G, build_(G));
+        if (!texs) texs = makeTexs();
+        draw(made.get(G), hm, { ...o, tex: texs[bl > 0.75 ? 2 : bl > 0.3 ? 1 : 0] });
+      },
+    };
+  })();
+  const C_WHITE = [1, 1, 1];
+  function drawEyes(G, hm, bl, o) {
+    if (G.eyes2d) { FaceDecal.draw(G, hm, bl, o); return; }
+    if (G.lids && bl > 0.02) draw(G.lids, M4.mul(hm, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), o);
+  }
   // "Z" fuer die Schlafblasen (zeigt nach +z)
   MESH.zee = build((g) => {
     box(g, M4.from(0, 0.26, 0), 0.52, 0.12, 0.06, C.white);
@@ -5728,7 +5815,7 @@ vec3 art(vec2 p) {
       const hOpt = { shine: 0.14, rim: 0.16, lit: 0.78, tint };
       const hm = part('head', 0, RG.headY, RG.headZ, 0, Math.sin(t * 1.3) * 0.05, hOpt);
       const bl = blinkAt(t, 2);
-      if (G.lids && bl > 0.02) draw(G.lids, M4.mul(hm, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), hOpt);
+      drawEyes(G, hm, bl, hOpt);
     }
     function drawOpaque(L) {
       for (const c of L.life) {
@@ -14669,7 +14756,7 @@ void main() {
     part('arm', RG.armX * cyw, RG.armY + P.sink * 0.7, -RG.armX * syw, P.armR, P.outR, FIG, P.bodyYaw);
     const headOpt = { shine: 0.14, rim: FIG.rim, lit: 0.78, tint: FIG.tint };
     const headM = part('head', 0, RG.headY + P.sink, RG.headZ, P.headTilt, P.headRoll, headOpt, P.headYaw);
-    if (G.lids && P.bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, P.bl, 1)), headOpt);
+    drawEyes(G, headM, P.bl, headOpt);
     return headM;
   }
 
@@ -15617,6 +15704,9 @@ void main() {
       headTilt, headRoll: Math.sin(clock * 1.3) * 0.05 + twitch, headYaw, bl,
     };
     const headM = drawPose(CAT, P, FIG);
+    // Mund (Kappi): schwarzes Loch auf der Schnauze, geht auf, solange die Figur ruft oder schreit
+    const mo = CAT.mouth ? Snd.mouth() : 0;
+    if (mo > 0.02) { const [mx, my, mz, mw, mh] = CAT.mouth; draw(MESH.ball, M4.mul(headM, M4.from(mx, my, mz, 0, 0.3, 0, mw, mh * mo, 0.03)), { tint: [0.03, 0.02, 0.03, 1], lit: 0 }); }
     // Schlaf-Zs steigen aus dem Kopf auf
     if (sleeping && env > 0.6 && clock - zzzT > 1.3) { zzzT = clock; zzz.push({ t0: clock, p: M4.point(headM, [0.2, 0.35, 0]) }); }
     for (let i = zzz.length - 1; i >= 0; i--) {
@@ -15659,7 +15749,7 @@ void main() {
     const hOpt = { shine: 0.14, rim: 0.16, lit: 0.78 };
     const hm = part('head', 0, RG.headY, RG.headZ, 0, Math.sin(t * 1.3) * 0.05 + wave * 0.2, hOpt);
     const bl2 = blinkAt(t, 1);
-    if (G.lids && bl2 > 0.02) draw(G.lids, M4.mul(hm, M4.from(0, 0, 0, 0, 0, 0, 1, bl2, 1)), hOpt);
+    drawEyes(G, hm, bl2, hOpt);
   }
   /* ═══════════ Figurenwahl im Pausenmenue ═══════════
      Vier Karten mit echter 3D-Vorschau: gerendert in einen eigenen Bildpuffer und von dort
@@ -16355,7 +16445,7 @@ void main() {
   const TitleHead = (() => {
     const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, leave: -1, grab: null, lastIn: 0, doze: 0, startle: -9, poke: -9,
       sq: 0, sqV: 0, look: [0, 0], lookT: [0, 0], nextLook: 0, zees: [], nextZ: 0, laugh: -9, tilt: 0 };
-    const pulls = [], MAX_PULLS = 8, REACH2 = 0.2 * 0.2, MAX_D = 2.2, DOZE_AFTER = 9, CAM_Z = 9;
+    const pulls = [], MAX_PULLS = 8, MAX_D = 1.8, DOZE_AFTER = 9, CAM_Z = 9, PICK_R = 0.13;
     let fovy = 1, aspect = 1, headM = I4;
     const ears = [{ t: -9, k: 0 }, { t: -9, k: 0 }], whisk = { t: -9 };
     function ndc(cx, cy) {
@@ -16455,7 +16545,8 @@ void main() {
     function dynFor(G) {
       if (!dyn.has(G.id)) {
         const c = G.cpu || {}, F = c.head ? features(c.head, c.headGlow) : { eyes: [], ears: [], whiskers: [], chin: null };
-        dyn.set(G.id, { F, head: mkDyn(c.head, G.head, F), glow: mkDyn(c.headGlow, G.glow.head, F), zAt: c.head ? surfaceGrid(c.head, F) : null });
+        const zAt = c.head ? surfaceGrid(c.head, F) : null;
+        dyn.set(G.id, { F, head: mkDyn(c.head, G.head, F), glow: mkDyn(c.headGlow, G.glow.head, F), zAt, H: c.head ? handles(c.head, F, zAt) : [] });
       }
       return dyn.get(G.id);
     }
@@ -16466,8 +16557,8 @@ void main() {
         const x = R[i], y = R[i + 1], z = R[i + 2];
         let ox = 0, oy = 0, oz = 0;
         for (const q of pulls) {
-          const dx = x - q.g[0], dy = y - q.g[1], dz = z - q.g[2], u = (dx * dx + dy * dy + dz * dz) / REACH2;
-          if (u < 1) { const w = (1 - u) * (1 - u); ox += q.D[0] * w; oy += q.D[1] * w; oz += q.D[2] * w; }
+          const w = pullW(q, x, y, z);
+          if (w) { ox += q.D[0] * w; oy += q.D[1] * w; oz += q.D[2] * w; }
         }
         P[i] = x + ox; P[i + 1] = y + oy; P[i + 2] = z + oz;
       }
@@ -16494,16 +16585,32 @@ void main() {
       gl.bindBuffer(gl.ARRAY_BUFFER, d.mesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, N);
       return d.mesh;
     }
+    /* Anfassen nur an festen Stellen wie im Vorbild (Wunsch 2026-09-28): Kappe (bzw. Oberkopf), linkes und rechtes Ohr,
+       Mund. Jede Stelle hat ihren eigenen, weichen Einflussbereich - so reisst beim Ziehen nichts auseinander. */
+    function pullW(q, x, y, z) {
+      const dx = x - q.g[0], dy = y - q.g[1], dz = z - q.g[2], u = (dx * dx + dy * dy + dz * dz) / q.r2;
+      if (u >= 1) return 0;
+      return (1 - u) * (1 - u) * (q.y0 == null ? 1 : smooth((y - q.y0) / 0.13));
+    }
+    function handles(cpu, F, zAt) {
+      const P = cpu.P, H = [];
+      let top = null;
+      for (let i = 0; i < P.length; i += 3) if (Math.abs(P[i]) < 0.12 && (!top || P[i + 1] > top[1])) top = [P[i], P[i + 1], P[i + 2]];
+      if (top) H.push({ g: [0, top[1] - 0.04, top[2]], r: 0.6, y0: 0.12 });            // Kappe / Oberkopf: nur ueber dem Schirm
+      for (const e of F.ears) H.push({ g: e, r: 0.26 });                                   // Ohren
+      if (F.nose && zAt) H.push({ g: [0, F.mouthY, zAt(0, F.mouthY)], r: 0.24 });          // Mund
+      return H;
+    }
     function pick(cx, cy) {
-      const d = dynFor(CAT).head;
-      if (!d || st.leave >= 0) return null;
+      const d = dynFor(CAT);
+      if (!d.head || st.leave >= 0) return null;
       const [px, py] = ndc(cx, cy);
-      let best = null, bz = -Infinity;
-      for (let i = 0; i < d.P.length; i += 3) {
-        const w = M4.point(headM, [d.P[i], d.P[i + 1], d.P[i + 2]]), s = toNdc(w);
-        if (Math.hypot((s[0] - px) * aspect, s[1] - py) < 0.05 && w[2] > bz) { bz = w[2]; best = i; }
+      let best = null, bd = PICK_R;
+      for (const h of d.H) {
+        const w = M4.point(headM, h.g), sc = toNdc(w), dist = Math.hypot((sc[0] - px) * aspect, sc[1] - py);
+        if (dist < bd) { bd = dist; best = { g: h.g, r2: h.r * h.r, y0: h.y0, zw: w[2], p: [px, py] }; }
       }
-      return best == null ? null : { g: [d.R[best], d.R[best + 1], d.R[best + 2]], zw: bz, p: [px, py] };
+      return best;
     }
     function toLocal(dx, dy, zw) {
       const k = (CAM_Z - zw) * tanH(), wx = dx * k * aspect, wy = dy * k, m = headM, s2 = m[0] * m[0] + m[1] * m[1] + m[2] * m[2];
@@ -16521,7 +16628,7 @@ void main() {
       st.px = e.clientX / innerWidth; st.py = e.clientY / innerHeight;
       wake();
       const G2 = st.grab;
-      if (!G2) return;
+      if (!G2) { titleEl.style.cursor = mode === 'title' && pick(e.clientX, e.clientY) ? 'grab' : ''; return; }
       const [px, py] = ndc(e.clientX, e.clientY), D = toLocal(px - G2.p[0], py - G2.p[1], G2.zw), l = Math.hypot(...D);
       const k = l > MAX_D ? MAX_D / l : 1;
       G2.q.D = [D[0] * k, D[1] * k, D[2] * k];
@@ -16533,7 +16640,8 @@ void main() {
       if (!hit) return;
       e.preventDefault();
       if (pulls.length >= MAX_PULLS) pulls.splice(pulls.findIndex((q) => !q.held), 1);
-      const q = { g: hit.g, D: [0, 0, 0], V: [0, 0, 0], held: true, pinned: false };
+      const q = { g: hit.g, r2: hit.r2, y0: hit.y0, D: [0, 0, 0], V: [0, 0, 0], held: true, pinned: false };
+      titleEl.style.cursor = 'grabbing';
       pulls.push(q);
       st.grab = { q, p: hit.p, zw: hit.zw, pin: e.button === 2, t: clock };
       Snd.unlock(); Snd.blip();
@@ -16542,7 +16650,7 @@ void main() {
     const release = () => {
       const G2 = st.grab;
       if (!G2) return;
-      st.grab = null; G2.q.held = false; G2.q.pinned = G2.pin;
+      st.grab = null; G2.q.held = false; G2.q.pinned = G2.pin; titleEl.style.cursor = '';
       const far = Math.hypot(...G2.q.D);
       if (far < 0.06 && clock - G2.t < 0.35) {   // Stupser: stauchen, Augen zukneifen, quaeken
         st.poke = clock; st.sqV -= 6; Snd.voice(Math.random() < 0.5 ? 'punch' : 'punch2');
@@ -16584,8 +16692,8 @@ void main() {
       const put = (x, y, dz, col) => {
         let z = d.zAt(x, y) + dz * sc, ox = 0, oy = 0, oz = 0;
         for (const q of pulls) {
-          const ex = x - q.g[0], ey = y - q.g[1], ez = z - q.g[2], u = (ex * ex + ey * ey + ez * ez) / REACH2;
-          if (u < 1) { const k = (1 - u) * (1 - u); ox += q.D[0] * k; oy += q.D[1] * k; oz += q.D[2] * k; }
+          const k = pullW(q, x, y, z);
+          if (k) { ox += q.D[0] * k; oy += q.D[1] * k; oz += q.D[2] * k; }
         }
         Pm[n * 3] = x + ox; Pm[n * 3 + 1] = y + oy; Pm[n * 3 + 2] = z + oz;
         Cm[n * 3] = col[0]; Cm[n * 3 + 1] = col[1]; Cm[n * 3 + 2] = col[2]; n++;
@@ -16685,7 +16793,7 @@ void main() {
       const squint = clamp(1 - (clock - st.poke) / 0.35, 0, 1) * 0.75;
       let bl = Math.max(blinkAt(clock, 2), squint, dz * (0.85 + Math.sin(clock * 0.9) * 0.1 * (1 - dz)));
       if (pulls.length || clock - st.startle < 0.7) bl = 0;
-      if (G.lids && bl > 0.02) draw(G.lids, M4.mul(headM, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), hOpt);
+      drawEyes(G, headM, bl, hOpt);
       for (const t of st.zees) {   // Z-Blasen steigen schraeg nach oben rechts
         const a = (clock - t) / 2.6, k = sc / 2.8;
         draw(MESH.zee, M4.from((0.9 + a * 1.6) * k, y + (1.2 + a * 2.2) * k, 0.5, 0, 0, Math.sin(a * 8) * 0.25, (0.25 + a * 0.35) * k),
@@ -16696,7 +16804,8 @@ void main() {
       tick, draw: drawHead, leave() { st.leave = clock; },
       reset() { st.leave = -1; st.grab = null; pulls.length = 0; },
       cam(f, a) { fovy = f; aspect = a; },
-      test: { pick, pulls, st, features: () => dynFor(CAT).F, get grab() { return st.grab; } },
+      test: { pick, pulls, st, features: () => dynFor(CAT).F, get grab() { return st.grab; },
+        handles: () => dynFor(CAT).H.map((h) => { const s = toNdc(M4.point(headM, h.g)), r = gl.canvas.getBoundingClientRect(); return [r.left + (s[0] + 1) / 2 * r.width, r.top + (1 - s[1]) / 2 * r.height]; }) },
     };
   })();
 

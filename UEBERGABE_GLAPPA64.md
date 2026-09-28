@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=142`** (2026-09-28), Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=143`** (2026-09-28), Modelle `?v=13` (`MODEL_BYTES = 225112`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -337,6 +337,22 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   `syncFull`) und „Steuerung“ (`#btnCtrl`), das die Steuerungs-Tabelle `#controls` auf- und zuklappt; beim Öffnen der
   Pause ist sie immer zu (`showControls(false)` in `openPause`).
 
+### 1.22 Kappi überarbeitet, Titelkopf mit festen Griffpunkten (2026-09-28)
+- **Modell ohne Blender geändert** (Cloud-Sitzung): `secret/glappa64-models.g64m` direkt gepatcht (Lesen/Schreiben über
+  `tools/blender/g64m.py`, bitgenau geprüft). `kappi.py` ist angepasst, ein neuer Blender-Build liefert dasselbe:
+  Latz färbt jetzt die ganze Vorderseite unter der Brust (vorher orange Flecken neben den Trägern); Augen sind keine
+  Geometrie mehr; Schnurrhaare aus `tools/blender/whiskers.py` (reine Geometrie, ohne bpy nutzbar): je Seite drei
+  kräftige, spitze, leicht hängende Haare im Fächer, unten dunkler (72 Dreiecke). Kopf 952 → 768 Dreiecke.
+- **Augen wie bei Mario 64** (`eyes2d` in `CAT_DEFS`): `FaceDecal` tastet einmal die vordersten Fell-Dreiecke des Kopfes ab,
+  legt eine Fläche knapp davor (Normalen wie der runde Schädel) und malt die Augen als Textur mit Fell-Hintergrund
+  (offen / halb / zu = Blinzeln). `drawEyes(G, hm, bl, o)` ersetzt die vier Lider-Aufrufe (Figur, Mitspieler, Figurenwahl,
+  Titel). Die Lider bleiben im Modell (sonst bietet das Spiel Kappi nicht an), werden bei `eyes2d` aber nicht gezeichnet.
+- **Mund** (`mouth` in `CAT_DEFS`): schwarzes Loch auf der Schnauze, geht auf, solange die eigene Figur ruft
+  (`Snd.mouth()` aus der Dauer der letzten `Snd.voice`-Silbe, leicht flatternd). Nur die eigene Figur.
+- **Titelkopf**: greifen nur an festen Stellen wie im Vorbild – Kappe/Oberkopf (Radius 0,6, wirkt nur über dem Schirm,
+  damit die aufgemalten Augen stehen bleiben), linkes/rechtes Ohr (0,26), Mund (0,24) (`handles`, `pullW`). Über einem
+  Griffpunkt zeigt der Zeiger eine Hand. Test: `g64.TitleHead.test.handles()` liefert die Bildschirmpunkte.
+
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
   (bei `toScreen`): waagrecht mind. `H_FOV_MIN` 0,9 rad, senkrecht gedeckelt auf 1,5 rad → Hochformat 86°/47°, Querformat
@@ -362,7 +378,7 @@ Ohne Relais bleibt die Verbindung zwischen verschiedenen Netzen Glückssache. Op
 
 ### 2.3 Kleinere Punkte
 - Köpfe + Körper der 4 Katzen nach Blender (Körper hat sichtbare Naht zwischen Brust- und Hüft-Ellipsoid).
-- Kappis Kopf-Budget senken (952 Dreiecke).
+- Kappis Kopf-Budget weiter senken (jetzt 768 Dreiecke).
 - Wandsprung-Schacht im Gym neu messen (Kommentar bei `MAX_KICKS` ist als veraltet markiert).
 - Donald-Duck-Mod wurde abgelehnt (s. 4); angeboten: eine **eigene** Enten-Figur über die Pipeline.
 
