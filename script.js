@@ -1,6 +1,6 @@
 // ---------- Sounds ----------
-const welcomeSound = new Audio('mp3/welcome.mp3');
-const mailSound = new Audio('mp3/yougotmail.mp3');
+const welcomeSound = new Audio('/mp3/welcome.mp3');
+const mailSound = new Audio('/mp3/yougotmail.mp3');
 
 function bindSound(el, sound) {
   if (!el) return;
