@@ -287,6 +287,7 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 
 (Claude Code trägt hier nach jeder Phase ein, was erledigt ist.)
 
+- 2026-09-28 (Cloud, 2): Türen mit schwarzem Durchgang, links/rechts, ohne Kamera-Einrasten; Sternwahl mit Kursbild und besser lesbar, Ducken bleibt im Menü; Alien-Katzen „ZIP ZIP ZIP“ pro Satz; Schrei bei langem Fallen.
 - 2026-09-28 (Cloud): **Sterben wie im Vorbild** (umkippen, Kamera näher, Katzenfratzen-Blende, im Kurs fliegt die Figur aus dem Bild und landet bäuchlings), **aus dem Bild hüpfen** (Kurs verlassen, nach dem Stern), **Sternwahl im Video-Stil** für alle Gemälde-Welten.
 - 2026-09-28: **Bounce-Berg als erster echter Kurs** (Vorzeigelevel für Phase 7): Gelände als Höhenraster (`HField`, `L.surface`) statt Quader – Schneeinsel über einem Wolkenmeer (Rand = Absturz), runder Kegelberg mit Spiralweg, Rodelbahn aus der Gipfelhütte (Stelzen, dünne Kollisionsfläche), Wolkeninsel, Eissee, Gletscherspalte. 6 Missionen + 100 Münzen: Frostkönig (Boss), Wettlauf mit Flitz, Rodelbahn, Eisbeißer an der Kette, Kanone zur Wolkeninsel, 8 rote Münzen. Sternwahl, Kameraflug, nach dem Stern zurück vors Bild. Außerdem: Türen mit Animation wie im Vorbild (`DoorSeq`), Katzen sprechen in Zip-Lauten (Sprachausgabe entfernt).
 

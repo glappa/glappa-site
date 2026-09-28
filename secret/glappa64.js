@@ -845,7 +845,8 @@
        Schreck, steigt bei Freude bis ~330 Hz), sehr starke naeselnde Resonanz um 3,6 kHz und Knarren ueber einen
        Unterton auf der halben Frequenz - daher das "gnarp". Saegezahn + Unterton -> Formant-Bandpaesse + Nasal-Band
        -> leichte Saettigung. Laute: a e i o u, n = Nasal-Anlaut, r = "rp"-Ende (dort knarrt es staerker).
-       Eintrag: [Laute, Tonhoehen-Verlauf (Hz), Dauer (s), Hauch, Knarren 0..1]; mehrere Silben = Liste davon. */
+       Eintrag: [Laute, Tonhoehen-Verlauf (Hz), Dauer (s), Hauch, Knarren 0..1, volle Lautstaerke bis (Anteil, Vorgabe 0,65)];
+       mehrere Silben = Liste davon. */
     const FORMANT = { a: [760, 1250, 2600], e: [480, 1900, 2600], i: [320, 2250, 3000], o: [520, 900, 2450], u: [350, 800, 2300],
       n: [260, 1750, 2600], r: [500, 1300, 1700] };
     const VOICE = {
@@ -856,6 +857,9 @@
       pound: ['nur', [130, 104], 0.13, 0, 0.6], climb: ['ne', [150, 175], 0.1, 1, 0.3], throw: ['niar', [165, 205, 160], 0.14, 1, 0.4],
       hurt: ['niaur', [262, 205, 118], 0.34, 0, 0.7], oof: ['nour', [152, 100], 0.2, 0, 0.75], gasp: ['a', [140, 162], 0.2, 1, 0.1],
       die: ['niaaur', [232, 250, 170, 88], 0.95, 0, 0.8],
+      // Schrei bei langem Fallen (Wunsch 2026-09-28): Verlauf aus der Vorlage des Users nur VERMESSEN (2,75 s, in 0,2 s
+      // hoch auf den Gipfel, halten mit Beben, langsam sinken) und auf die Katzenstimme umgerechnet (Faktor ~0,47)
+      fall: ['uaaaaaaaa', [211, 330, 280, 262, 258, 266, 262, 246, 232, 212], 2.7, 0, 0.3, 0.9],
       star: [['nar', [175, 205, 135], 0.22, 0, 0.55], ['nar', [190, 250, 175], 0.28, 0, 0.55]],   // "gnarp gnarp!"
     };
     const VOICE_PITCH = { knuddel: 1.12, sphinx: 0.9, neon: 1.06, kappi: 0.95 };   // je Figur etwas hoeher oder tiefer
@@ -863,7 +867,7 @@
     let shapeCurve = null, voiceNoise = null;
     // eine Silbe in Kontext c nach dest (Kontext frei waehlbar: so laesst sie sich auch offline messen)
     function gnarp(c, dest, syl, t0, k, vol) {
-      const [vow, f0, dur, breath, fry] = syl, t1 = t0 + dur + 0.06, rp = vow.endsWith('r');
+      const [vow, f0, dur, breath, fry, hold = 0.65] = syl, t1 = t0 + dur + 0.06, rp = vow.endsWith('r');   // hold: bis dahin volle Lautstaerke
       const src = c.createOscillator(), sub = c.createOscillator(), amO = c.createOscillator();
       const subG = c.createGain(), am = c.createGain(), amG = c.createGain(), sum = c.createGain(), env = c.createGain();
       src.type = 'sawtooth'; sub.type = 'square';
@@ -912,7 +916,7 @@
       mid.type = 'peaking'; mid.frequency.value = 950; mid.Q.value = 0.9; mid.gain.value = 5;
       sum.connect(sh); sh.connect(top); top.connect(low); low.connect(mid); mid.connect(env);
       env.gain.setValueAtTime(0.0001, t0); env.gain.exponentialRampToValueAtTime(vol, t0 + 0.025);
-      env.gain.setValueAtTime(vol, t0 + dur * 0.65); env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      env.gain.setValueAtTime(vol, t0 + dur * hold); env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       env.connect(dest);
       for (const o of [src, sub, amO]) { o.start(t0); o.stop(t1); }
       if (breath) {   // Hauch am Anfang
@@ -965,15 +969,18 @@
         .catch((e) => { console.warn('[glappa64] Zip-Laute nicht geladen:', e && e.message); zipLoad = null; });
       return zipLoad;
     }
-    function zipPlay(c, dest, t0, rate, vol) {
-      if (!zipBuf || !zipClips.length) return;
-      let k = Math.floor(Math.random() * zipClips.length);
-      if (k === zipLast) k = (k + 1) % zipClips.length;
+    let zipSrcs = [], zipEnd = 0;
+    // eine Silbe (k = welche, sonst zufaellig); liefert ihre Dauer in s
+    function zipPlay(c, dest, t0, rate, vol, k) {
+      if (!zipBuf || !zipClips.length) return 0;
+      if (k == null) { k = Math.floor(Math.random() * zipClips.length); if (k === zipLast) k = (k + 1) % zipClips.length; }
       zipLast = k;
       const [st, du] = zipClips[k], src = c.createBufferSource(), g = c.createGain();
       src.buffer = zipBuf; src.playbackRate.value = rate; g.gain.value = vol;
       src.connect(g); g.connect(dest);
       src.start(t0, Math.max(0, st - 0.004), du + 0.012);
+      if (c === ctx) { zipSrcs.push(src); src.onended = () => { zipSrcs = zipSrcs.filter((q) => q !== src); }; }
+      return (du + 0.012) / rate;
     }
     // eine Silbe jetzt: v = Stimme ({ hz }), Vokal wird nicht mehr gebraucht (die Silben bringen ihre eigenen mit)
     api.zip = fx((v) => {
@@ -982,6 +989,18 @@
       if (!zipBuf) { loadZip(c); return; }
       zipPlay(c, sfxBus, c.currentTime + 0.005, clamp((v.hz || 300) / 300, 0.45, 1.5) * (0.96 + Math.random() * 0.08), ZIP_VOL);
     });
+    // "ZIP ZIP ZIP" (Wunsch 2026-09-28): ein Satz einer Alien-Katze = drei Silben dicht hintereinander, in ihrer
+    // Reihenfolge aus der Aufnahme; ein weiterer Satz reiht sich dahinter ein
+    api.zips = fx((v, n = 3) => {
+      const c = ac();
+      if (!c) return;
+      if (!zipBuf) { loadZip(c); return; }
+      const rate = clamp((v.hz || 300) / 300, 0.45, 1.5), k0 = Math.floor(Math.random() * zipClips.length);
+      let t = Math.max(c.currentTime + 0.005, zipEnd + 0.14);
+      for (let i = 0; i < n; i++) t += zipPlay(c, sfxBus, t, rate * (0.97 + Math.random() * 0.06), ZIP_VOL, (k0 + i) % zipClips.length) + 0.05;
+      zipEnd = t;
+    });
+    api.zipStop = () => { for (const q of zipSrcs) { try { q.stop(); } catch (e) { /* schon aus */ } } zipSrcs = []; zipEnd = 0; };
     api.zipPreload = () => { const c = ac(); if (c) loadZip(c); };
     // Testhilfe: n Silben offline rechnen (Lautstaerke/Klang pruefen)
     api.zipOffline = async (n = 6, v = { hz: 300 }, sr = 44100) => {
@@ -992,7 +1011,7 @@
     };
     // Testhilfe: Stimme offline rechnen (fuer Lautstaerke- und Klangvergleich)
     api.voiceOffline = (name, k = 1, sr = 24000) => {
-      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, oc = new C(1, sr * 2, sr);
+      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, oc = new C(1, sr * 3, sr);
       say(oc, oc.destination, name, 0.02, k);
       return oc.startRendering();
     };
@@ -1334,10 +1353,16 @@
     for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
     return { hz: 262 + (h % 70) + [10, -15, 0, 8, 0][catIdx % 5], dur: 0.12 + ((h >> 7) % 5) / 100, rate: 3.6 + ((h >> 11) % 8) / 10 };
   }
-  // naechster Vokal im Text ab Stelle i (fuer die Zip-Silben): a e i o u, Umlaute zaehlen mit
-  function vowelAt(t, i) {
-    const m = String(t).slice(i, i + 5).toLowerCase().match(/[aeiouäöüy]/);
-    return m ? ({ ä: 'e', ö: 'o', ü: 'u', y: 'i' })[m[0]] || m[0] : 'i';
+  // Stellen im Text, an denen ein Satz beginnt (erster Buchstabe; danach nach . ! ? … mit Leerzeichen oder Zeilenumbruch)
+  function sentenceStarts(t) {
+    const out = new Set();
+    let want = true;
+    for (let i = 0; i < t.length; i++) {
+      const ch = t[i];
+      if (want && /[\p{L}\d]/u.test(ch)) { out.add(i); want = false; }
+      else if (ch === '\n' || (/[.!?…]/.test(ch) && (i + 1 >= t.length || /\s/.test(t[i + 1])))) want = true;
+    }
+    return out;
   }
   const Dialog = (() => {
     const box = $('#dialog'), txt = $('#dlgText'), spk = $('#dlgSpeaker'), nxt = $('#dlgNext');
@@ -1346,24 +1371,21 @@
     function typeLine() {
       clearInterval(typing);
       full = lines[idx]; txt.textContent = ''; nxt.classList.add('wait');
+      // Alien-Katze: pro Satz einmal "ZIP ZIP ZIP", sobald der Satz zu tippen beginnt
+      const starts = voice ? sentenceStarts(full) : null;
+      if (voice) Snd.zipStop();
       if (reduceMotion) {
         txt.textContent = full; nxt.classList.remove('wait'); typing = null;
-        if (voice) for (let i = 0; i < 3; i++) setTimeout(() => Snd.zip(voice, vowelAt(full, i * 9)), i * 260);
+        if (voice) for (let i = 0; i < starts.size; i++) Snd.zips(voice);
         return;
       }
-      let pos = 0, lastZip = -1e9, gap = false;
+      let pos = 0;
       typing = setInterval(() => {
         pos++;
         txt.textContent = full.slice(0, pos);
         const ch = full[pos - 1];
-        if (voice) {
-          // Katze: Zip-Silben im Takt der Stimme; nach Leer- und Satzzeichen eine kleine Pause
-          if (!/[\p{L}\d]/u.test(ch)) gap = true;
-          else {
-            const now = performance.now(), need = 1000 / voice.rate + (gap ? 110 : 0);
-            if (now - lastZip >= need) { lastZip = now; gap = false; Snd.zip(voice, vowelAt(full, pos - 1)); }
-          }
-        } else if (pos % 2 === 0 && ch !== ' ') Snd.blip();
+        if (voice) { if (starts.has(pos - 1)) Snd.zips(voice); }
+        else if (pos % 2 === 0 && ch !== ' ') Snd.blip();
         if (pos >= full.length) { clearInterval(typing); typing = null; nxt.classList.remove('wait'); }
       }, 22);
     }
@@ -1476,7 +1498,7 @@
 
   /* ═══════════ WebGL-Grundgeruest ═══════════ */
   const canvas = $('#gl');
-  const gl = canvas.getContext('webgl', { antialias: true, alpha: false }) || canvas.getContext('experimental-webgl');
+  const gl = canvas.getContext('webgl', { antialias: true, alpha: false, stencil: true }) || canvas.getContext('experimental-webgl');
   if (!gl) {
     $('#nogl').hidden = false;
     $('#titleScreen').hidden = true;
@@ -3656,8 +3678,25 @@ vec3 art(vec2 p) {
     }
     return fx;
   }
+  /* Offene Tuer wie im Vorbild: dahinter nur Schwarz statt der Wand, an der die Tuer haengt. Mit der Schablone (Stencil):
+     1) Oeffnung schwarz malen, wo sie sichtbar ist, 2) genau dort die Tiefe auf "ganz hinten" setzen - so bleiben der
+     aufschwingende Fluegel und die Figur, die hindurchgeht, davor sichtbar, 3) Schablone wieder loeschen. */
+  function drawDoorHole(f) {
+    const m = M4.mul(f.M, M4.from(0, f.h / 2, 0.03, 0, 0, 0, f.half * 2, f.h, 0.002));
+    gl.enable(gl.STENCIL_TEST);
+    gl.stencilFunc(gl.ALWAYS, 1, 0xff); gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
+    draw(MESH.cube, m, { lit: 0, tint: [0, 0, 0, 1] });
+    gl.stencilFunc(gl.EQUAL, 1, 0xff); gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+    gl.colorMask(false, false, false, false); gl.depthFunc(gl.ALWAYS); gl.depthRange(1, 1);
+    draw(MESH.cube, m, { lit: 0 });
+    gl.depthRange(0, 1); gl.depthMask(false);
+    gl.stencilFunc(gl.ALWAYS, 0, 0xff); gl.stencilOp(gl.REPLACE, gl.REPLACE, gl.REPLACE);
+    draw(MESH.cube, m, { lit: 0 });
+    gl.depthMask(true); gl.depthFunc(gl.LESS); gl.colorMask(true, true, true, true); gl.disable(gl.STENCIL_TEST);
+  }
   // Fluegel zeichnen: open[0] = linker, open[1] = rechter Fluegel (von vorn gesehen); Winkel > 0 schwingt nach hinten (-z)
   function drawDoorFx(f) {
+    if (f.open[0] || f.open[1]) drawDoorHole(f);
     for (let k = 0; k < 2; k++) {
       const s = k ? 1 : -1, a = f.open[k];
       draw(f.mesh, M4.mul(f.M, M4.mul(M4.from(s * f.half, 0, 0.12, s < 0 ? a : -a), M4.from(0, 0, 0, 0, 0, 0, -s, 1, 1))));
@@ -11861,6 +11900,7 @@ void main() {
   // Fallschaden erst ab dieser Fallhoehe (m, vom Gipfel bis zur Landung): 2 bzw. 4 Segmente.
   // Ein Dreifachsprung (MOVES.triple.h) auf gleiche Hoehe tut also nie weh.
   const FALL_HURT = 15, FALL_HURT_BIG = 30;
+  const FALL_SCREAM = 8;   // ab so viel m freiem Fall unter dem Gipfel schreit die Figur (einmal je Sturz), wie im Vorbild
   const pl = {
     pos: [0, 0, 0], vel: [0, 0, 0], push: [0, 0, 0], face: 0, speed: 0, side: 0, grounded: true, coyote: 0,
     action: 'ground', landFrom: '', landT: -9, jumpBuf: 0, holdGrace: 0, skid: false, crouch: false, hold: null,
@@ -12461,6 +12501,11 @@ void main() {
     }
     if (flipRate) pl.flip = Math.min(TAU, pl.flip + dt * flipRate);
     if (!pl.grounded) pl.fallTop = Math.max(pl.fallTop ?? p[1], p[1]);
+    // langer Sturz: einmal schreien (nicht beim Stampfer, Hechtsprung oder Kanonenflug)
+    if (pl.grounded || pl.inWater) pl.screamed = false;
+    else if (!pl.screamed && !pl.dead && pl.vel[1] < -6 && pl.fallTop - p[1] > FALL_SCREAM && !['pound', 'dive', 'shot'].includes(pl.action)) {
+      pl.screamed = true; Snd.voice('fall');
+    }
   }
 
   /* ═══════════ Kanone ═══════════
@@ -13408,8 +13453,6 @@ void main() {
     const lerp3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
     // Geometrie einer Tuer von der Seite n aus (n = Einheitsvektor von der Tuer zu dieser Seite)
     function sideOf(f, p) { return Math.sign((p[0] - f.pos[0]) * f.fwd[0] + (p[2] - f.pos[2]) * f.fwd[1]) || 1; }
-    // Fluegel rechts vom Betrachter, der von Seite side auf die Tuer zugeht; Winkel so, dass er von ihm weg schwingt
-    const wingFor = (side) => (side > 0 ? 1 : 0);
     const lateral = (f, wing, k) => { const sg = wing ? 1 : -1, c = Math.cos(f.ry), sn = Math.sin(f.ry); return [sg * k * c, -sg * k * sn]; };
     // Ankunftstuer = die Tuer mit Fluegeln, die der Ankunftsstelle am naechsten ist (kommt man vor einem Bild an: keine)
     function arrivalFx(L) {
@@ -13420,9 +13463,13 @@ void main() {
       }
       return best;
     }
+    let C = null;   // Fluegel, der nach dem Hereinkommen noch zufaellt (die Figur laeuft da schon)
     function start(d) {
       if (S) return;
-      const f = d.fx, side = sideOf(f, pl.pos), n = [f.fwd[0] * side, f.fwd[1] * side], wing = wingFor(side);
+      if (C && C.f === d.fx) { C.f.open[C.wing] = 0; C = null; }
+      // der Fluegel auf der Seite, auf der die Figur steht (links oder rechts), schwingt von ihr weg auf
+      const f = d.fx, side = sideOf(f, pl.pos), n = [f.fwd[0] * side, f.fwd[1] * side];
+      const wing = (pl.pos[0] - f.pos[0]) * Math.cos(f.ry) - (pl.pos[2] - f.pos[2]) * Math.sin(f.ry) >= 0 ? 1 : 0;
       if (pl.hold) dropHold(true);
       const lat = lateral(f, wing, Math.min(1.1, f.half * 0.5)), y = f.pos[1];
       const A = [f.pos[0] + n[0] * 1.15 + lat[0], y, f.pos[2] + n[1] * 1.15 + lat[1]];
@@ -13441,7 +13488,7 @@ void main() {
       const f = arrivalFx(cur);
       S.t = 0; S.phase = 'in'; S.f2 = f;
       if (f) {
-        const P1 = pl.pos.slice(), side = sideOf(f, P1), n = [f.fwd[0] * side, f.fwd[1] * side], wing = 1 - wingFor(side);
+        const P1 = pl.pos.slice(), side = sideOf(f, P1), n = [f.fwd[0] * side, f.fwd[1] * side], wing = 1 - S.wing;   // derselbe Fluegel, von der anderen Seite
         const lat = lateral(f, wing, Math.min(1.1, f.half * 0.5)), y = f.pos[1];
         const face = Math.atan2(n[0], n[1]), perp = [n[1], -n[0]];
         Object.assign(S, { P1, n, wing, face,
@@ -13454,6 +13501,12 @@ void main() {
       Iris.open(null, null, 600);
     }
     function tick(dt) {
+      if (C) {   // Fluegel faellt hinter der Figur zu
+        C.t += dt;
+        C.f.open[C.wing] = C.a0 * (1 - E(C.t, 0, 0.38));
+        if (C.t > 0.35 && !C.clack) { C.clack = true; Snd.stomp(); rumble(0.25, 80); }
+        if (C.t >= 0.4) { C.f.open[C.wing] = 0; C = null; }
+      }
       if (!S) return;
       S.t += dt;
       const t = S.t;
@@ -13476,24 +13529,27 @@ void main() {
         return;
       }
       if (!S.f2) { if (t > 0.65) finish(); return; }
-      // Herein: 0,1-1,0 s Schritte in den Raum, 0,95-1,35 Fluegel faellt zu, 1,35-2,0 Kamera schwenkt hinter die Figur
+      // Herein: 0,1-1,0 s Schritte in den Raum, dann gleich weiterspielen - der Fluegel faellt dabei zu (C), die Kamera
+      // bleibt, wo sie ist (kein Schwenk hinter die Figur)
       const k = E(t, 0.1, 1.0);
       pl.pos = lerp3(S.P0, S.P1, k);
       const v = t > 0.1 && t < 1.0 ? Math.hypot(S.P1[0] - S.P0[0], S.P1[2] - S.P0[2]) / 0.9 : 0;
       pl.speed = v; pl.walk += dt * v * 1.1; pl.gait = v > 0.2 ? 'walk' : 'stand'; pl.doorReach = 0;
       pl.face = S.face;
-      const w = S.f2.open[S.wing] !== 0 ? Math.sign(S.f2.open[S.wing]) : 0;
-      if (t > 0.95) S.f2.open[S.wing] = w * 1.5 * (1 - E(t, 0.95, 1.33));
-      if (t > 1.3 && !S.clack) { S.clack = true; Snd.stomp(); rumble(0.25, 80); }
-      if (t >= 2.0) finish();
+      if (t >= 1.0) finish();
     }
     function finish() {
-      if (S && S.f2) S.f2.open = [0, 0];
       const f = S && S.f2;
+      if (f) C = { f, wing: S.wing, a0: f.open[S.wing], t: 0 };
       S = null;
       pl.doorReach = 0; pl.speed = 0;
-      if (f) { cam.yaw = pl.face + Math.PI; cam.pitch = 0.34; }
-      cam.snap = true; cam.manual = 0;
+      if (f) {
+        // normale Kamera uebernimmt genau die jetzige Lage (Abstand, Hoehe, Richtung) - nichts rastet ein
+        const tg = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], v = v3.sub(cam.pos, tg), d = v3.len(v) || 1;
+        cam.yaw = Math.atan2(v[0], v[2]); cam.pitch = clamp(Math.asin(clamp(v[1] / d, -1, 1)), -0.15, 1.2); cam.dist = clamp(d, 5, 22);
+        cam.tgt = tg; cam.snap = false;
+      } else cam.snap = true;
+      cam.manual = 0;
       mode = 'play';
     }
     // Kamera: hinaus = ruhig hinter der Figur (schaut auf die Tuer), herein = im Raum auf die Tuer, dann hinter die Figur
@@ -13507,12 +13563,9 @@ void main() {
         const yaw = pl.face + Math.PI;
         pos = [pl.pos[0] + Math.sin(yaw) * 11, pl.pos[1] + 5.6, pl.pos[2] + Math.cos(yaw) * 11]; look = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
       } else {
-        const yaw = S.face + Math.PI, cp = Math.cos(0.34), tg = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
-        const dir = [Math.sin(yaw) * cp, Math.sin(0.34), Math.cos(yaw) * cp], dd = camReach(tg, dir, 12);   // wie die normale Kamera
-        const follow = [tg[0] + dir[0] * dd, tg[1] + dir[1] * dd, tg[2] + dir[2] * dd];
-        const k = E(t, 1.35, 2.0);
-        pos = lerp3(S.cam2, follow, k);
-        look = lerp3(lerp3(S.look2, [pl.pos[0], pl.pos[1] + 1.4, pl.pos[2]], E(t, 0.2, 1.0) * 0.7), [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], k);
+        // im Raum auf die Tuer, der Blick wandert zur Figur (am Ende genau wie die normale Kamera, s. finish)
+        pos = S.cam2;
+        look = lerp3(S.look2, [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], E(t, 0.15, 1.0));
       }
       cam.pos = pos; cam.tgt = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
       cam.view = M4.lookAt(pos, look, [0, 1, 0]);
@@ -13631,7 +13684,7 @@ void main() {
           return;
         }
         if (COURSES[pt.level]) enterCourse(pt.level, m); else arriveIn(pt.level, c.tint);
-      });
+      }, pt);
       if (!picked) arriveIn(pt.level, c.tint);
     }
   }
@@ -14128,9 +14181,11 @@ void main() {
   }
   const CourseSel = (() => {
     const el = $('#courseSel'), nums = $('#csNums'), nameEl = $('#csName'), hintEl = $('#csHint'), extraEl = $('#csExtra');
-    const ROW = 0.56;   // Sternreihe: so weit ueber der Bildmitte (Anteil der halben Hoehe)
+    const ROW = 0.5;    // Sternreihe: so weit ueber der Bildmitte (Anteil der halben Hoehe)
     let S = null;       // { key, ids, hints, vis, sel, t, go, nav, cb }
-    function open(key, cb) {
+    let bg = null;      // Gemaelde, aus dem man kommt: sein Bild liegt blass im Hintergrund
+    function open(key, cb, pt) {
+      bg = pt || null;
       const C = COURSES[key], ids = C ? C.missions.map((m) => m.id) : courseStars(key);
       if (!ids.length) return false;
       const got = ids.map((id) => !!state.stars[id]), n = got.filter(Boolean).length;
@@ -14198,14 +14253,14 @@ void main() {
       if (d && d !== S.nav && S.go < 0) step(d);
       S.nav = d;
       if (inp.jumpP || inp.actionP || inp.startP) go();
-      else if (inp.zP || inp.pauseP) cancel();
+      else if (inp.pauseP) cancel();   // nur Esc/Pause - Ducken (Z/Shift) bleibt im Menue
     }
     el.addEventListener('click', () => go());
     function render(w, h) {
       gl.clearColor(1, 1, 1, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       if (!S) { Post.end(w, h); return; }
-      const fov = fovFor(w / h), proj = M4.persp(fov, w / h, 0.5, 100), eye = [0, 0, 9];
+      const fov = 0.8, proj = M4.persp(fov, w / h, 0.5, 100), eye = [0, 0, 9];
       gl.uniformMatrix4fv(U.uProj, false, proj);
       gl.uniformMatrix4fv(U.uView, false, M4.lookAt(eye, [0, 0, 0], [0, 1, 0]));
       gl.uniform3fv(U.uLight, v3.norm([-0.3, -0.55, -1]));
@@ -14216,7 +14271,21 @@ void main() {
       if (U.uTime) gl.uniform1f(U.uTime, clock % 1000);
       gl.uniform2f(U.uFog, 1e5, 2e5);
       const n = S.ids.length, hh = Math.tan(fov / 2) * 9, hw = hh * w / h;
-      const gap = Math.min(2.8, hw * 1.7 / n), sz = Math.min(1, gap / 2.4), y = ROW * hh;
+      // Hintergrund: das Bild des Kurses, bildfuellend, langsam treibend, unter einem weissen Schleier (hell wie im Vorbild)
+      if (bg && bg.tex) {
+        // etwas groesser und nach unten versetzt, damit der Namensstreifen unten im Bild aus dem Schirm faellt
+        const far = 15, zb = -6, sc = Math.max(2 * hw / 9 * far / 5.2, 2 * hh / 9 * far / 4.55) * 1.4;
+        gl.depthMask(false);
+        draw(MESH.painting, M4.from(Math.sin(clock * 0.13) * 0.4, Math.cos(clock * 0.11) * 0.3 - 0.13 * 4.55 * sc, zb, 0, 0, 0, sc), { tex: bg.tex, lit: 0, art: bg.art ? clock + 1 : 0 });
+        gl.enable(gl.BLEND);
+        draw(MESH.cube, M4.from(0, 0, zb + 0.5, 0, 0, 0, 5.2 * sc, 4.55 * sc, 0.01), { lit: 0, tint: [1, 1, 1, 1], alpha: 0.62 });
+        gl.disable(gl.BLEND);
+        gl.depthMask(true);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+      }
+      // Sterngroesse aus der Bildschirmgroesse: normale Sterne ~16 % der Hoehe, alle passen in die Breite
+      const pxU = h / 2 / hh, starPx = Math.min(h * 0.17, w * 0.8 / n), sz = starPx / pxU / 1.65;
+      const gap = Math.min(hw * 1.8 / n, sz * 3.2), y = ROW * hh;
       const kids = nums.children;
       for (let i = 0; i < n; i++) {
         const x = (i - (n - 1) / 2) * gap, on = i === S.sel, got = !!state.stars[S.ids[i]], vis = S.vis[i];
@@ -17057,7 +17126,7 @@ void main() {
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
       measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby, TitleHead,
       enterCourse, CourseSel, Flyby, COURSES, bbCache, get BB_CACHE() { return BB_CACHE; }, BB, bbPath, HField, render, exitCourse, dropLevel,
-      PaintOut, courseOf, leaveCourse, loseLife, collectStar, Iris,
+      PaintOut, courseOf, leaveCourse, loseLife, collectStar, Iris, DoorSeq, useDoor,
     };
   }
 })();

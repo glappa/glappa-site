@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=139`** (2026-09-28), Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=140`** (2026-09-28), Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -316,6 +316,20 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - Test-Haken: `g64.PaintOut.start(kurs, 'fly'|'hop')`, `g64.CourseSel.open(kurs, cb)`, `g64.loseLife()`, `g64.leaveCourse()`,
   `g64.Iris`. Headless-Chromium läuft ~5× langsamer als Echtzeit → Bilder per `advance` + `toDataURL` im selben Aufruf.
 - Bekannt: Im Rechnerraum läuft ein Käfer (-7, -20) nah am Landeplatz und kann die gelandete Figur treffen.
+
+### 1.20 Türen, Sternwahl, ZIP-Sätze, Fallschrei (2026-09-28, nach Videos des Users)
+- **Türen:** hinter offenen Flügeln nur Schwarz wie im Vorbild (`drawDoorHole`: Stencil – Öffnung schwarz malen, dort Tiefe
+  auf ganz hinten, Stencil löschen; Kontext jetzt mit `stencil: true`). Es öffnet der Flügel auf der Seite, auf der die
+  Figur steht (links ODER rechts); bei der Ankunft derselbe Flügel von der anderen Seite. Nach dem Hereinkommen (1,0 s)
+  sofort weiterspielen: kein Schwenk hinter die Figur, die normale Kamera übernimmt genau die Lage der Szenen-Kamera
+  (`finish` rechnet yaw/pitch/dist daraus), der Flügel fällt im Hintergrund zu (`C` in `DoorSeq`).
+- **Sternwahl:** Ducken (Z/Shift) verlässt sie nicht mehr, nur Esc/Pause. Hintergrund = Bild des Kurses (blass unter
+  weißem Schleier, treibt langsam), Name/Hinweis auf dunkler Tafel, Sterngröße aus der Bildschirmgröße.
+- **Alien-Katzen:** pro Satz einmal „ZIP ZIP ZIP“ (`Snd.zips`: drei Silben aus `glappa64-zip.mp3` in Aufnahme-Reihenfolge,
+  reiht sich hinter die vorige ein; `Snd.zipStop` bei neuer Zeile), ausgelöst beim Tippen am Satzanfang (`sentenceStarts`).
+- **Fallschrei:** `VOICE.fall` (Katzenstimme), ab `FALL_SCREAM` 8 m freiem Fall einmal je Sturz (nicht Stampfer/Hecht/
+  Kanone). Die Mario-Aufnahme des Users wurde nur VERMESSEN (2,75 s, 440→710→~560→470 Hz), nicht eingebaut – rechtliche
+  Linie (Abschnitt 4). Silben-Eintrag hat jetzt optional ein 6. Feld „volle Lautstärke bis“ (Vorgabe 0,65).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
