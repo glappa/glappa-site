@@ -1,6 +1,6 @@
 # SUPER GLAPPA 64 – Übergabe für die nächste Sitzung
 
-> Stand: 2026-09-27. Diese Datei zuerst lesen, dann `LEVEL_DESIGN_TODO.md`.
+> Stand: 2026-09-28. Diese Datei zuerst lesen, dann `LEVEL_DESIGN_TODO.md`.
 > Spiel: `secret/glappa64.html` + `secret/glappa64.js` (eigene WebGL-Engine, eine JS-Datei).
 
 ## 0. Stand: alles committet und live
@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=123`**, Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=137`** (2026-09-28, noch NICHT committet), Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -250,18 +250,52 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Öffnung, Lächeln, Schiefe, rund]: Ruhe = Lächeln, Maus bewegt = Grinsen mit Zunge, angefasst = fragend-schief
   (+ Kopf kippt, `st.tilt`), Stupser = „o“, nach weitem Ziehen = Lachen, Dösen = fast zu, Aufwachen = „O“.
 
-### 1.16 Sprechende Alien-Katzen (2026-09-27)
-- NPC-Katzen (`K.life.npc`) tragen sich in `CAT_VOICES` ein (Stimme aus dem Namen gewürfelt: eSpeak-Tonhöhe 66–99,
-  Tempo 158–180, Variante croak/m3/f2/m1/f4, Abspielrate, Knarr-Frequenz). `Dialog` liest deren Zeilen vor
-  (`Snd.say`) statt Tipp-Klänge; Schließen stoppt; andere Sprecher (Wolki, Schilder …) bleiben still.
-- Sprachsynthese: eSpeak/meSpeak 1.9.6 (GPL v3) als Web-Worker `secret/vendor/mespeak-de-worker.js` (5,5 MB, gezippt
-  ~1 MB), nur Deutsch; wird geladen, sobald man einer NPC-Katze auf 9 m nahe kommt (`Snd.ttsPreload`). Bauen:
-  `tools/tts/build_mespeak_worker.py` (npm-Paket `mespeak@2.0.2`), Lizenz-Hinweis daneben. Satz in 10–70 ms.
-- Filter `ttsChain` (Gnarp): Hochpass, Bass −5 dB, obere Mitten −12 dB (2,1 kHz), Nasal +5 dB (3,7 kHz), Sättigung,
-  Knarren (Lautstärke-Schwankung ~55 Hz), Tiefpass 4,5 kHz; Satzmelodie über `playbackRate` (Frage steigt, Aussage
-  fällt). Per Bandvergleich an die Gnarpy-Vorlage angeglichen (alle Bänder ±3 dB, Grundton im Mittel 198 vs. 183 Hz).
-  Test: `Snd.ttsOffline(text, stimme)`; `Snd.ttsSpeaking()`.
-- Falle: ohne Nutzerklick ist der AudioContext gesperrt – dann schweigt die Stimme (Tests: erst echt klicken).
+### 1.16 Alien-Katzen sprechen in Zip-Lauten (2026-09-28, ersetzt die Sprachausgabe)
+- Die eSpeak-Sprachausgabe ist auf Wunsch des Users **komplett entfernt** (Worker `secret/vendor/mespeak-de-worker.js`,
+  Lizenzdatei und `tools/tts/` gelöscht, `Snd.say/ttsPreload/ttsOffline` weg). Zwischenstand vorher: Vocoder-Roboterstimme.
+- Jetzt: NPC-Katzen (`CAT_VOICES`, Stimme aus dem Namen: `catVoice` → `{ hz, dur, rate }`) machen beim Tippen der
+  Zeile kurze Zip-Silben (`Snd.zip(stimme)`). Auf ausdrücklichen Wunsch sind es die **echten Silben aus der mp3 des
+  Users** („Alien Speaking Meme“, N:\Downloads; eine erste synthetische Nachbildung war ihm zu künstlich): 20 Silben der
+  ersten Alien-Stimme (0,4–8,3 s), Hintergrundmusik je Silbe aus den Pausen davor/danach gemessen und spektral
+  abgezogen, Pegel angeglichen → `secret/glappa64-zip.mp3` (50 KB, 60 ms Stille zwischen den Silben; Grenzen sucht
+  `zipScan` nach dem Dekodieren). Lädt bei der ersten Nutzeraktion (`Snd.unlock`). Tonlage je Katze = Abspielrate
+  `hz/300`, Silbe zufällig (nie zweimal dieselbe). `ZIP_VOL` 0,22 ≈ 3 dB über dem Ruf `yay`.
+  Test: `await Snd.zipOffline(6, { hz: 300 })` → `{ buf, clips: 20 }`. Andere Sprecher (Wolki, Schilder) = Tipp-Blips.
+  Hinweis: Das ist fremdes Meme-Audio im öffentlichen Spiel (User wollte es so; kein Nintendo-/Disney-Material).
+  Werkzeuge zum Neuschneiden lagen nur im Scratchpad (Spektral-Abzug + Schnitt in Node) – bei Bedarf neu schreiben.
+- Eigene Stimmen gesetzt: Frostkönig tief (`hz` 150), Schneehase hoch (380).
+
+### 1.17 Bounce-Berg als Kurs + Gelände-Engine (2026-09-28)
+- **Gelände-Raster** `HField` (bei `topAt`): Zellen in zwei Dreiecke geteilt, Bild = Kollision; `L.surface(S, tag)` trägt
+  es als einen Pseudo-Quader mit `b.hf` ein. Angepasst: `groundAt`, `pushOut` (→ `hfPush`: Proben am Rand, Wand ab
+  `stepTop + HF_LIP`), Decke nur bei `overlay`-Flächen (Unterkante `thick`), Kantengriff ignoriert Gelände,
+  `steepDown` → `hfSteep` (≥ 44° oder Material `chute` = rutschen), `gtagOf` = Material unter dem Spieler (Schritte
+  `snow`/`ice`), Kamera `camReach` + `hfRay`, Schatten liegt schräg auf dem Hang. Textur dreiseitig projiziert
+  (`draw(..., { tri })`, Shader `uTri`), Inselrand fürs Bild auf eine glatte Linie gezogen (`mesh(..., warp)`).
+- **Kurs-System** (`COURSES`): Sprung ins Bild → `CourseSel` (#courseSel) → `enterCourse(key, m)` baut die Welt für
+  Mission m neu (`courseMission`, `dropLevel` gibt Puffer frei) → `Flyby` (Kameraflug + Titelkarte; der Flug nur beim ersten Betreten je Datei, `state.flags.flyby_<kurs>`,
+  danach nur die Titelkarte) → Spiel. Nach jedem
+  Stern `exitCourse` → vors Bild (`backSpot`). Rote Münzen je Besuch (`L.redStar`, `L.redN`), 100 Münzen je Besuch
+  (`L.coins100`, `L.coinN`), Pause zeigt beides. `state.flags` (neu, wird gespeichert) für geöffnete Kanone.
+- **Bounce-Berg** (`buildBounce`, Bauplan `BB`, feste Teile einmal in `bbCache()`): Schneeinsel über Wolkenmeer
+  (`voidY` −22), Kegelberg (Mitte (0, −30), Gipfel 40 m) mit Spiralweg (`bbPath(t)`), Lücke im Süden = Rodelbahn
+  (`SLIDE`, `bbSlide`: Höhen per Mindest-/Höchstgefälle, am Berg Schneegrat, draußen Stelzen, Ende auf dem Eissee),
+  Wolkeninsel (dünne Fläche), Gletscherspalte mit Sims, Eisbeißer-Pferch, Iglu, Kanonengrube. Himmel `cloudsea` (neu).
+  M1 Frostkönig (von hinten packen, Wurf auf den Gipfel = Treffer, 3×) · M2 Flitz (27,4 s; mit sauberem Laufen ~24 s) ·
+  M3 Rodelbahn (~11 s, Stick vor = schneller, <9,9 s = 1-Up) · M4 Pfahl 3× stampfen → Eisbeißer zertrümmert das Gitter ·
+  M5 Kanone (trifft bei 1,0–1,2 rad) · M6 8 rote Münzen · 100 Münzen (153 im Level). Neue Sterne: `eisbeisser`,
+  `wolkeninsel`, `bounceRot`, `bounce100` (alte IDs `bounce`/`rodel`/`rennen` bleiben).
+- Geprüft mit echter Physik: Weg hinauf, Rodelbahn bis auf den See, Boss 3 Treffer → Stern → zurück vors Bild,
+  Wettlauf gewonnen/verloren, Kanone auf der Insel gelandet, Eisbeißer befreit, alle Missionen bauen fehlerfrei.
+
+### 1.18 Türen wie im Vorbild (2026-09-28, nach Video des Users)
+- `castleDoor` backt nur noch Rahmen/Bogen; die Flügel sind beweglich (`doorWingMesh`, `L.doorFx`, `drawDoorFx`) und
+  `castleDoor` liefert das Tür-Objekt, das als `.fx` an Tür-Daten hängt (Hub-Türen, Zimmer-Rückwege, Halle ↔ Garten,
+  Sternwarte, Welt-Ausgänge `K.exit`, Wüstenstadt). Option `bare` = nur Flügel (Gartentor, Welt-Tore).
+- `DoorSeq` (mode `'door'`): vor die Tür, Hand an den Knauf (`pl.doorReach`), rechter Flügel schwingt vom Spieler weg,
+  hindurch, Sternblende auf die Figur; im neuen Raum schaut die Kamera auf die Ankunftstür (nächste `doorFx` zur
+  Ankunftsstelle), Figur tritt heraus, Flügel fällt zu, Kamera schwenkt hinter sie. Ohne Ankunftstür (vor einem Bild):
+  nur Blende. Die Sterntür (Obergeschoss) und die Finaltür haben ihren eigenen Ablauf behalten.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
@@ -315,6 +349,15 @@ Ohne Relais bleibt die Verbindung zwischen verschiedenen Netzen Glückssache. Op
   **ohne** `advance` direkt `renderOnce()` – Kamera vorher per `advance` einschwingen lassen.
 - Nach JS-Änderungen: `SRC ?v=` hochzählen **und** `RAW_BYTES` (Bytegröße der JS) setzen.
 - Heredocs mit Umlauten/Sonderzeichen scheitern in Git-Bash öfter → Patch-Skripte als Datei schreiben.
+
+### 3.2a Kurs und Türen testen (2026-09-28)
+- `g64.enterCourse('bounce', m)` (m = 0…5), `g64.Flyby.skip()`; Figuren unter `g64.cur.king/chomp/racer/cannon`.
+  Freie Kamera für Bilder: `cur.flyby = [[0, pos, look], [100, pos, look]]; Flyby.start(cur, '', '')`, ein Frame, Bild.
+- Fallen: Nach `start()` kommt der Wolki-Dialog **zeitversetzt** (setTimeout) und frisst die nächste B-Taste; nach einem
+  Sturz ins Wolkenmeer ebenso („Autsch!“). Vor Eingaben `while (g64.Dialog.open) g64.Dialog.close()`.
+  Blende (Iris) läuft über echte Zeit (Türen, Kurs verlassen): nach dem Auslösen ~1 s echt warten.
+- Hintergrund-Tab hat `innerWidth 0` → vor Bildern `resize_window 1280x720`. Bilder/Audio aus dem Browser: kleiner
+  POST-Empfänger (node, Port 8097, CORS `*`), `canvas.toDataURL` im selben Aufruf wie `renderOnce()`.
 
 ### 3.2b Mehrspieler lokal testen
 - Kein eigener Server nötig: `glappa-static` reicht, die Verbindung läuft auch lokal über den öffentlichen PeerJS-Vermittler

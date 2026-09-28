@@ -23,12 +23,14 @@
   const slotKey = (s) => (s === 'a' ? 'glappa64' : 'glappa64-' + s);
   const OPTS_KEY = 'glappa64-opts';
   const readJSON = (k) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } };
-  const freshProgress = () => ({ stars: {}, doorOpen: false, intro: false });
+  // flags: dauerhafte Kleinigkeiten je Datei (z. B. eine geoeffnete Kanone, wie im Vorbild)
+  const freshProgress = () => ({ stars: {}, doorOpen: false, intro: false, flags: {} });
   function readSlot(s) {
     const d = readJSON(slotKey(s));
     if (!d) return null;
     const p = freshProgress();
     if (d.stars && typeof d.stars === 'object') p.stars = d.stars;
+    if (d.flags && typeof d.flags === 'object') p.flags = d.flags;
     p.doorOpen = !!d.doorOpen; p.intro = !!d.intro;
     return p;
   }
@@ -44,7 +46,7 @@
   const save = () => {
     try {
       localStorage.setItem(OPTS_KEY, JSON.stringify({ sfx: state.sfx, music: state.music, filter: state.filter, mv: 2 }));
-      if (slot) localStorage.setItem(slotKey(slot), JSON.stringify({ stars: state.stars, doorOpen: state.doorOpen, intro: state.intro }));
+      if (slot) localStorage.setItem(slotKey(slot), JSON.stringify({ stars: state.stars, doorOpen: state.doorOpen, intro: state.intro, flags: state.flags }));
     } catch (e) {}
   };
   function useSlot(s) {
@@ -60,7 +62,7 @@
     tower:  { name: 'Der Wachturm der Wüstenstadt', where: 'Wüstenstadt' },
     terminal: { name: 'Kennwort: GLAPPA',        where: 'Terminal-Tal' },
     video:    { name: 'Das Licht des Leuchtturms', where: 'Video-Bucht' },
-    bounce:   { name: 'Ganz oben am Bounce-Berg', where: 'Bounce-Berg' },
+    bounce:   { name: 'Der Frostkönig vom Gipfel', where: 'Bounce-Berg' },
     spuk:     { name: 'Die Wand, die lügt',       where: 'Spuk-Home' },
     uhrwerk:  { name: 'Drei verlegte Lupen',      where: 'Such-Uhrwerk' },
     fraktal:  { name: 'Im Herzen des Fraktals',   where: 'Mandelbrot-Regenbogen' },
@@ -68,7 +70,7 @@
     neon:     { name: 'Tanz der vier Ecken',      where: 'Neon-Garten' },
     serverberg: { name: 'Gipfel des Serverbergs',  where: 'Terminal-Tal' },
     wrack:      { name: 'Das Wrack in der Senke',  where: 'Video-Bucht' },
-    rodel:      { name: 'Die Rodelbahn',           where: 'Bounce-Berg' },
+    rodel:      { name: 'Die große Rodelbahn',     where: 'Bounce-Berg' },
     geister:    { name: 'Geisterjagd im Herrenhaus', where: 'Spuk-Home' },
     uhrspitze:  { name: 'Die Spitze des Uhrwerks',  where: 'Such-Uhrwerk' },
     teppich:    { name: 'Der Teppich-Express',     where: 'Mandelbrot-Regenbogen' },
@@ -85,7 +87,11 @@
     skarab:     { name: 'Die goldenen Skarabäen',  where: 'Wüstenstadt' },
     disketten:  { name: 'Drei verlorene Disketten', where: 'Terminal-Tal' },
     strandgut:  { name: 'Strandgut der Bucht',     where: 'Video-Bucht' },
-    rennen:     { name: 'Wettlauf um den Berg',    where: 'Bounce-Berg' },
+    rennen:     { name: 'Wettlauf mit Flitz',      where: 'Bounce-Berg' },
+    eisbeisser: { name: 'Befreie den Eisbeißer',   where: 'Bounce-Berg' },
+    wolkeninsel: { name: 'Mit der Kanone zur Wolkeninsel', where: 'Bounce-Berg' },
+    bounceRot:  { name: 'Acht rote Münzen am Berg', where: 'Bounce-Berg' },
+    bounce100:  { name: '100 Münzen am Bounce-Berg', where: 'Bounce-Berg' },
     kuerbis:    { name: 'Fünf Kürbislichter',      where: 'Spuk-Home' },
     leuchtpilz: { name: 'Fünf Leuchtpilze',        where: 'Pilzwald' },
     hof:        { name: 'Die Geister vom Brunnen', where: 'Schloss: Schlosshof' },
@@ -166,7 +172,7 @@
     const fx = (fn) => (...a) => { if (state.sfx) fn(...a); };
 
     const api = {
-      unlock: () => { ac(); },
+      unlock: () => { const c = ac(); if (c) loadZip(c); },
       ready: () => !!ctx && ctx.state === 'running',   // Ton freigeschaltet (erst nach einer Nutzeraktion)
       coin:  fx(() => { tone(1175, 0, .06, { type: 'triangle', vol: .25 }); tone(1760, .05, .3, { type: 'triangle', vol: .22 }); tone(2349, .1, .2, { vol: .04 }); }),
       red:   fx((n) => {
@@ -218,6 +224,7 @@
         if (kind === 'water') noise(0, 0.12, { filter: 'bandpass', f: 1300, fTo: 500, q: 1, vol: loud ? 0.1 : 0.06 });
         else if (kind === 'ice') { noise(0, 0.04, { filter: 'highpass', f: 3200, vol: loud ? 0.06 : 0.04 }); tone(1500, 0, 0.03, { type: 'sine', vol: 0.02 }); }
         else if (kind === 'soft') noise(0, 0.08, { filter: 'bandpass', f: 900, q: 0.7, vol: 0.035 });
+        else if (kind === 'snow') { noise(0, 0.06, { filter: 'bandpass', f: 1700, fTo: 900, q: 0.9, vol: loud ? 0.09 : 0.06 }); noise(0.03, 0.05, { filter: 'bandpass', f: 1200, q: 1.2, vol: 0.04 }); }
         else { noise(0, 0.05, { f: 650, vol: loud ? 0.11 : 0.07 }); tone(95, 0, 0.05, { type: 'sine', vol: loud ? 0.07 : 0.045 }); }
       }),
       land: fx((k) => { noise(0, 0.09, { f: 500, vol: 0.08 + k * 0.14 }); tone(110, 0, 0.1, { type: 'sine', vol: 0.06 + k * 0.12, slide: 0.6 }); }),
@@ -932,98 +939,56 @@
       const c = ac();
       if (c) say(c, sfxBus, name, c.currentTime, VOICE_PITCH[CAT.id] || 1);
     });
-    /* ── Sprechende Alien-Katzen (Wunsch 2026-09-27): Text der NPC-Katzen wird vorgelesen ──
-       Sprachsynthese: eSpeak (meSpeak, GPL) in einem Web-Worker (vendor/mespeak-de-worker.js, ~1 MB gezippt, erst
-       geladen, wenn man einer Katze nahe kommt). Danach der Gnarp-Filter wie bei der Spielerstimme, per Bandvergleich
-       an die Vorlage angeglichen: obere Mitten runter, Nasal-Band hoch, Knarren (Lautstaerke-Schwankung ~55 Hz),
-       leichte Saettigung. Satzmelodie ueber die Abspielgeschwindigkeit: Frage steigt, Aussage faellt, dazwischen Bogen. */
-    function ttsChain(c, dest, t0, buf, o, text) {
-      const src = c.createBufferSource(), r = o.rate || 1, dur = buf.duration / r;
-      src.buffer = buf;
-      const pr = src.playbackRate, q = /\?\s*$/.test(text), ex = /!\s*$/.test(text);
-      pr.setValueAtTime(r * 1.04, t0);
-      pr.linearRampToValueAtTime(r * 1.12, t0 + dur * 0.18);
-      pr.linearRampToValueAtTime(r * 0.98, t0 + dur * 0.55);
-      pr.linearRampToValueAtTime(r * (q ? 1.02 : ex ? 1.1 : 1.0), t0 + dur * 0.75);
-      pr.linearRampToValueAtTime(r * (q ? 1.28 : ex ? 0.96 : 0.88), t0 + dur);
-      const hp = c.createBiquadFilter(), mid = c.createBiquadFilter(), nas = c.createBiquadFilter(), low = c.createBiquadFilter();
-      hp.type = 'highpass'; hp.frequency.value = 140;
-      low.type = 'lowshelf'; low.frequency.value = 280; low.gain.value = -5;
-      mid.type = 'peaking'; mid.frequency.value = 2100; mid.Q.value = 0.9; mid.gain.value = -12;
-      nas.type = 'peaking'; nas.frequency.value = 3700; nas.Q.value = 3; nas.gain.value = 5;
-      if (!shapeCurve) {
-        shapeCurve = new Float32Array(1024);
-        for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; shapeCurve[i] = Math.tanh(x * 1.8) / Math.tanh(1.8); }
+    /* ── Alien-Katzen "sprechen" in Zip-Lauten (Wunsch 2026-09-28; ersetzt die fruehere Sprachausgabe) ──
+       Auf Wunsch die ECHTEN Silben aus der mp3 des Users ("Alien Speaking Meme", N:\Downloads): 20 Silben der ersten
+       Alien-Stimme (0,4-8,3 s) ausgeschnitten, die Hintergrundmusik je Silbe aus den Pausen davor/danach gemessen und
+       abgezogen, Pegel angeglichen -> secret/glappa64-zip.mp3 (Silben mit 60 ms Stille dazwischen). Die Grenzen werden
+       nach dem Dekodieren aus den Stillen gesucht (mp3-Decoder verschieben den Anfang um ein paar ms). Jede Katze bekommt
+       ihre Tonlage ueber die Abspielrate (catVoice hz / 300); welche Silbe kommt, ist Zufall (nie zweimal dieselbe). */
+    const ZIP_URL = 'glappa64-zip.mp3?v=1', ZIP_VOL = 0.22;   // offline gemessen: ~3 dB ueber dem Spieler-Ruf 'yay'
+    let zipBuf = null, zipClips = [], zipLoad = null, zipLast = -1;
+    function zipScan(buf) {
+      const d = buf.getChannelData(0), sr = buf.sampleRate, quiet = Math.round(sr * 0.03), out = [];
+      let st = -1, lastLoud = -1e9;
+      for (let i = 0; i < d.length; i++) {
+        if (Math.abs(d[i]) > 0.003) { if (st < 0) st = i; lastLoud = i; }
+        else if (st >= 0 && i - lastLoud > quiet) { if (lastLoud - st > sr * 0.05) out.push([st / sr, (lastLoud - st) / sr]); st = -1; }
       }
-      const drive = c.createGain(), sh = c.createWaveShaper(), fry = c.createGain(), fo = c.createOscillator(), fg = c.createGain(), top = c.createBiquadFilter(), out = c.createGain();
-      drive.gain.value = 1.6; sh.curve = shapeCurve;
-      fry.gain.value = 0.72; fo.frequency.value = o.fry || 55; fg.gain.value = 0.28; fo.connect(fg); fg.connect(fry.gain);
-      top.type = 'lowpass'; top.frequency.value = 4500; top.Q.value = 0.6;
-      out.gain.value = o.vol ?? TTS_VOL;
-      src.connect(hp); hp.connect(low); low.connect(mid); mid.connect(nas); nas.connect(drive); drive.connect(sh);
-      sh.connect(fry); fry.connect(top); top.connect(out); out.connect(dest);
-      src.start(t0); fo.start(t0); fo.stop(t0 + dur + 0.1);
-      return src;
+      if (st >= 0 && lastLoud - st > sr * 0.05) out.push([st / sr, (lastLoud - st) / sr]);
+      return out;
     }
-    const TTS_VOL = 0.26;   // offline gemessen: etwas lauter als die Spieler-Rufe, klar ueber der Musik
-    const TTS = (() => {
-      let worker = null, ready = null, seq = 0, sayId = 0, cur = null, failed = false;
-      const pending = new Map();
-      function load() {
-        if (ready) return ready;
-        ready = new Promise((res, rej) => {
-          try { worker = new Worker('vendor/mespeak-de-worker.js?v=1'); } catch (e) { rej(e); return; }
-          worker.onmessage = (e) => {
-            const d = e.data || {};
-            if (d.ready) { res(); return; }
-            const p = pending.get(d.id);
-            if (p) { pending.delete(d.id); p(d); }
-          };
-          worker.onerror = (e) => rej(new Error(e.message || 'Worker-Fehler'));
-        });
-        ready.catch((e) => { failed = true; console.warn('[glappa64] Sprachausgabe nicht verfuegbar:', e.message); });
-        return ready;
-      }
-      function synth(text, o) {
-        return load().then(() => new Promise((res) => {
-          const id = ++seq;
-          pending.set(id, res);
-          worker.postMessage({ id, text, pitch: o.pitch ?? 60, speed: o.speed ?? 165, variant: o.variant || 'croak' });
-        }));
-      }
-      // Text fuer die Sprachausgabe: Symbole raus, Gedankenstriche/Auslassungen als Pausen
-      const clean = (t) => String(t).replace(/[\u2605\u2606\u2764\u{1F300}-\u{1FAFF}]/gu, ' ').replace(/[\u2013\u2014]/g, ', ').replace(/\u2026/g, ', ').replace(/\s+/g, ' ').trim();
-      function stop() { sayId++; if (cur) { try { cur.stop(); } catch (e) { /* schon aus */ } cur = null; } }
-      function say(text, o) {
-        stop();
-        const my = sayId, t = clean(text);
-        if (!t || !state.sfx) return;
-        synth(t, o).then((d) => {
-          const c = ctx;
-          if (my !== sayId || !d || !d.pcm || !c || c.state !== 'running' || !state.sfx) return;
-          const buf = c.createBuffer(1, d.pcm.length, d.sr);
-          buf.copyToChannel(d.pcm, 0);
-          cur = ttsChain(c, sfxBus, c.currentTime + 0.02, buf, o, t);
-          cur.onended = () => { if (cur && cur.buffer === buf) cur = null; };
-        }).catch(() => { /* ohne Sprachausgabe bleibt es bei den Tipp-Klaengen */ });
-      }
-      return { say, stop, load, synth, get failed() { return failed; }, get speaking() { return !!cur; } };
-    })();
-    api.say = (text, o) => TTS.say(text, o || {});
-    api.sayStop = () => TTS.stop();
-    let ttsAsked = false;
-    api.ttsPreload = () => { if (!ttsAsked) { ttsAsked = true; TTS.load().catch(() => {}); } };
-    api.ttsFailed = () => TTS.failed;
-    api.ttsSpeaking = () => TTS.speaking;
-    // Testhilfe: Satz synthetisieren und mit dem Filter offline rechnen
-    api.ttsOffline = async (text, o = {}, sr = 24000) => {
-      const d = await TTS.synth(text, o);
-      if (!d.pcm) throw new Error(d.error || 'keine Daten');
-      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, len = Math.ceil((d.pcm.length / d.sr) / (o.rate || 1) * 1.3 * sr) + sr;
-      const oc = new C(1, len, sr), buf = oc.createBuffer(1, d.pcm.length, d.sr);
-      buf.copyToChannel(d.pcm, 0);
-      ttsChain(oc, oc.destination, 0.02, buf, o, text);
-      return oc.startRendering();
+    function loadZip(c) {
+      if (zipLoad || !c) return zipLoad;
+      zipLoad = fetch(ZIP_URL).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+        .then((ab) => new Promise((res, rej) => c.decodeAudioData(ab, res, rej)))
+        .then((bf) => { zipBuf = bf; zipClips = zipScan(bf); return bf; })
+        .catch((e) => { console.warn('[glappa64] Zip-Laute nicht geladen:', e && e.message); zipLoad = null; });
+      return zipLoad;
+    }
+    function zipPlay(c, dest, t0, rate, vol) {
+      if (!zipBuf || !zipClips.length) return;
+      let k = Math.floor(Math.random() * zipClips.length);
+      if (k === zipLast) k = (k + 1) % zipClips.length;
+      zipLast = k;
+      const [st, du] = zipClips[k], src = c.createBufferSource(), g = c.createGain();
+      src.buffer = zipBuf; src.playbackRate.value = rate; g.gain.value = vol;
+      src.connect(g); g.connect(dest);
+      src.start(t0, Math.max(0, st - 0.004), du + 0.012);
+    }
+    // eine Silbe jetzt: v = Stimme ({ hz }), Vokal wird nicht mehr gebraucht (die Silben bringen ihre eigenen mit)
+    api.zip = fx((v) => {
+      const c = ac();
+      if (!c) return;
+      if (!zipBuf) { loadZip(c); return; }
+      zipPlay(c, sfxBus, c.currentTime + 0.005, clamp((v.hz || 300) / 300, 0.45, 1.5) * (0.96 + Math.random() * 0.08), ZIP_VOL);
+    });
+    api.zipPreload = () => { const c = ac(); if (c) loadZip(c); };
+    // Testhilfe: n Silben offline rechnen (Lautstaerke/Klang pruefen)
+    api.zipOffline = async (n = 6, v = { hz: 300 }, sr = 44100) => {
+      const C = window.OfflineAudioContext || window.webkitOfflineAudioContext, oc = new C(1, sr * 2, sr);
+      if (!zipBuf) { const ab = await (await fetch(ZIP_URL)).arrayBuffer(); zipBuf = await new Promise((res, rej) => oc.decodeAudioData(ab, res, rej)); zipClips = zipScan(zipBuf); }
+      for (let i = 0; i < n; i++) zipPlay(oc, oc.destination, 0.05 + i * 0.26, (v.hz || 300) / 300, ZIP_VOL);
+      return { buf: await oc.startRendering(), clips: zipClips.length };
     };
     // Testhilfe: Stimme offline rechnen (fuer Lautstaerke- und Klangvergleich)
     api.voiceOffline = (name, k = 1, sr = 24000) => {
@@ -1335,14 +1300,17 @@
   })();
 
   /* ═══════════ Dialogbox ═══════════ */
-  // Sprecher, die Alien-Katzen sind (Bewohner via K.life.npc): Name -> Stimme (eSpeak-Tonhoehe/Tempo/Variante, Klang)
+  // Sprecher, die Alien-Katzen sind (Bewohner via K.life.npc): Name -> Zip-Stimme (Tonlage hz, Silbenlaenge dur, Silben/s)
   const CAT_VOICES = new Map();
   function catVoice(name, catIdx) {
     let h = 0;
     for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
-    const VAR = ['croak', 'croak', 'm3', 'f2', 'm1', 'f4'];
-    return { pitch: 72 + (h % 22) + [5, -6, 0, 3, 0][catIdx % 5], speed: 158 + ((h >> 5) % 22), variant: VAR[(h >> 9) % VAR.length],
-      rate: 1 + ((h >> 13) % 9) / 100, fry: 48 + ((h >> 17) % 18) };
+    return { hz: 262 + (h % 70) + [10, -15, 0, 8, 0][catIdx % 5], dur: 0.12 + ((h >> 7) % 5) / 100, rate: 3.6 + ((h >> 11) % 8) / 10 };
+  }
+  // naechster Vokal im Text ab Stelle i (fuer die Zip-Silben): a e i o u, Umlaute zaehlen mit
+  function vowelAt(t, i) {
+    const m = String(t).slice(i, i + 5).toLowerCase().match(/[aeiouäöüy]/);
+    return m ? ({ ä: 'e', ö: 'o', ü: 'u', y: 'i' })[m[0]] || m[0] : 'i';
   }
   const Dialog = (() => {
     const box = $('#dialog'), txt = $('#dlgText'), spk = $('#dlgSpeaker'), nxt = $('#dlgNext');
@@ -1351,13 +1319,24 @@
     function typeLine() {
       clearInterval(typing);
       full = lines[idx]; txt.textContent = ''; nxt.classList.add('wait');
-      if (voice) Snd.say(full, voice);
-      if (reduceMotion) { txt.textContent = full; nxt.classList.remove('wait'); typing = null; return; }
-      let pos = 0;
+      if (reduceMotion) {
+        txt.textContent = full; nxt.classList.remove('wait'); typing = null;
+        if (voice) for (let i = 0; i < 3; i++) setTimeout(() => Snd.zip(voice, vowelAt(full, i * 9)), i * 260);
+        return;
+      }
+      let pos = 0, lastZip = -1e9, gap = false;
       typing = setInterval(() => {
         pos++;
         txt.textContent = full.slice(0, pos);
-        if (pos % 2 === 0 && full[pos - 1] !== ' ' && (!voice || Snd.ttsFailed())) Snd.blip();
+        const ch = full[pos - 1];
+        if (voice) {
+          // Katze: Zip-Silben im Takt der Stimme; nach Leer- und Satzzeichen eine kleine Pause
+          if (!/[\p{L}\d]/u.test(ch)) gap = true;
+          else {
+            const now = performance.now(), need = 1000 / voice.rate + (gap ? 110 : 0);
+            if (now - lastZip >= need) { lastZip = now; gap = false; Snd.zip(voice, vowelAt(full, pos - 1)); }
+          }
+        } else if (pos % 2 === 0 && ch !== ' ') Snd.blip();
         if (pos >= full.length) { clearInterval(typing); typing = null; nxt.classList.remove('wait'); }
       }, 22);
     }
@@ -1370,7 +1349,7 @@
     }
     function close() {
       clearInterval(typing); typing = null; box.hidden = true;
-      if (voice) { Snd.sayStop(); voice = null; }
+      voice = null;
       const cb = done; done = null; if (cb) cb();
     }
     function advance() {
@@ -1514,7 +1493,7 @@
     uniform vec3 uLight; uniform vec3 uFogCol; uniform vec2 uFog; uniform vec4 uTint;
     uniform float uLit; uniform float uAlpha; uniform sampler2D uTex; uniform float uUseTex;
     uniform vec3 uCam; uniform float uShine; uniform float uRim; uniform float uDim;
-    uniform float uArt; uniform float uSwirl; uniform float uDetail; uniform float uTrip; uniform float uTime;
+    uniform float uArt; uniform float uSwirl; uniform float uDetail; uniform float uTrip; uniform float uTime; uniform float uTri;
     // Farbton drehen (fuer den Trip)
     vec3 hue(vec3 c, float a) {
       const vec3 k = vec3(0.57735);
@@ -1545,7 +1524,13 @@
         uv += vec2(sin(vUV.y * 23.0 + uArt * 0.8), cos(vUV.x * 19.0 - uArt * 0.6)) * (0.0022 + uSwirl * 0.006);
         uv = clamp(uv, vec2(0.002), vec2(0.998, 0.852));
       }
-      if (uUseTex > 0.5) base *= texture2D(uTex, uv).rgb;
+      if (uUseTex > 0.5) {
+        if (uTri > 0.0) {
+          // Gelaende: Textur aus drei Richtungen, nach der Flaechenneigung gemischt (keine Streifen an steilen Haengen)
+          vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
+          base *= texture2D(uTex, vWPos.zy * uTri).rgb * w.x + texture2D(uTex, vWPos.xz * uTri).rgb * w.y + texture2D(uTex, vWPos.xy * uTri).rgb * w.z;
+        } else base *= texture2D(uTex, uv).rgb;
+      }
       if (uArt > 0.0) base *= 1.0 + uSwirl * 0.45;
       if (uDetail > 0.0) {
         // Boeden: Sprenkel wie Gras/Sand; Waende: waagrecht gestreckt wie Steinlagen
@@ -1589,7 +1574,7 @@
   gl.useProgram(prog);
   const A = {}, U = {};
   ['aPos', 'aNrm', 'aCol', 'aUV'].forEach((n) => { A[n] = gl.getAttribLocation(prog, n); gl.enableVertexAttribArray(A[n]); });
-  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime']
+  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri']
     .forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
   gl.enable(gl.DEPTH_TEST);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1817,6 +1802,7 @@
     gl.uniform1f(U.uArt, o.art || 0);
     gl.uniform1f(U.uSwirl, o.swirl || 0);
     gl.uniform1f(U.uDetail, o.detail || 0);
+    gl.uniform1f(U.uTri, o.tri || 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, o.tex || whiteTex);
     gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
@@ -1842,6 +1828,7 @@
       this.life = []; this.anims = []; this.scatterPts = [];
       this.doors = []; this.decals = [];
       this.fixedStars = []; this.paintings = null;
+      this.doorFx = [];   // Tueren mit beweglichen Fluegeln (castleDoor), siehe DoorSeq
     }
     // Bewegliche Plattform: fn(t) liefert den Versatz [dx, dy, dz] zur Grundposition
     mover(cx, cy, cz, sx, sy, sz, col, fn, tag = 'mover') {
@@ -1916,6 +1903,14 @@
       }
       return b;
     }
+    // Gelaende-Raster als festen Koerper eintragen (ein Pseudo-Quader um die ganze Flaeche, siehe HField)
+    surface(S, tag = 'terrain') {
+      let lo = Infinity, hi = -Infinity;
+      for (const t of S.hs) if (t === t) { if (t < lo) lo = t; if (t > hi) hi = t; }
+      const b = this.solid(S.x0, S.overlay ? lo - S.thick : lo - 40, S.z0, S.x0 + S.nx * S.cell, hi, S.z0 + S.nz * S.cell, tag);
+      b.hf = S;
+      return b;
+    }
     coin(kind, x, y, z) { this.coins.push({ kind, pos: [x, y, z], taken: false, spin: Math.random() * TAU, hidden: kind === 'blue' }); }
     finish() {
       this.mesh = upload(this.geo); this.geo = null;
@@ -1954,12 +1949,137 @@
     if (i < 0 || k < 0 || i >= g.nx || k >= g.nz) return g.dyn;
     return g.cells[k * g.nx + i];
   }
-  // Oberkante eines Quaders an der Stelle (x, z): bei Rampen schraeg, sonst flach
+  // Oberkante eines Quaders an der Stelle (x, z): bei Rampen schraeg, bei Gelaende aus dem Hoehenraster, sonst flach
   function topAt(b, x, z) {
+    if (b.hf) return b.hf.h(x, z);
     const s = b.slope;
     if (!s) return b.max[1];
     const k = clamp(((s.axis === 0 ? x : z) - s.c0) / (s.c1 - s.c0), 0, 1);
     return s.y0 + (s.y1 - s.y0) * k;
+  }
+
+  /* ═══════════ Gelaende: Hoehenraster statt Quader ═══════════
+     Runde Berge, Mulden und Wege: ein Raster gleich grosser Zellen, jede in zwei Dreiecke geteilt - genau so wird es
+     auch gezeichnet, Bild und Kollision stimmen ueberein. NaN = hier ist keine Flaeche. Im Level steckt ein Raster als
+     EIN grosser Pseudo-Quader mit b.hf (L.surface); topAt/groundAt/pushOut fragen dann das Raster statt der Box.
+     overlay = duenne Flaeche (Rodelbahn, schwebende Insel): Unterkante liegt thick unter der Oberflaeche, man kann
+     darunter durchlaufen. Material je Rasterpunkt (Schnee, Eis, Rutsche ...) steuert Rutschen, Schritte und Eis. */
+  class HField {
+    constructor(x0, z0, x1, z1, cell) {
+      this.x0 = x0; this.z0 = z0; this.cell = cell;
+      this.nx = Math.ceil((x1 - x0) / cell); this.nz = Math.ceil((z1 - z0) / cell);
+      this.hs = new Float32Array((this.nx + 1) * (this.nz + 1)).fill(NaN);
+      this.ms = new Uint8Array((this.nx + 1) * (this.nz + 1));
+      this.mats = [''];
+      this.thick = Infinity; this.overlay = false;
+    }
+    // Rasterpunkte mit fn(x, z) -> Hoehe (NaN = leer) und mat(x, z) -> Materialname fuellen
+    fill(fn, mat) {
+      const W = this.nx + 1;
+      for (let k = 0; k <= this.nz; k++) for (let i = 0; i <= this.nx; i++) {
+        const x = this.x0 + i * this.cell, z = this.z0 + k * this.cell;
+        this.hs[k * W + i] = fn(x, z);
+        if (mat) this.setMat(k * W + i, mat(x, z));
+      }
+      return this;
+    }
+    setMat(o, name) {
+      let m = this.mats.indexOf(name || '');
+      if (m < 0) { m = this.mats.length; this.mats.push(name); }
+      this.ms[o] = m;
+    }
+    // Hoehe im Dreieck unter (x, z); -Infinity ausserhalb
+    h(x, z) {
+      const u = (x - this.x0) / this.cell, v = (z - this.z0) / this.cell, i = Math.floor(u), k = Math.floor(v);
+      if (i < 0 || k < 0 || i >= this.nx || k >= this.nz) return -Infinity;
+      const fx = u - i, fz = v - k, W = this.nx + 1, o = k * W + i, H = this.hs;
+      let t;
+      if (fx + fz <= 1) t = H[o] + (H[o + 1] - H[o]) * fx + (H[o + W] - H[o]) * fz;
+      else t = H[o + W + 1] + (H[o + W] - H[o + W + 1]) * (1 - fx) + (H[o + 1] - H[o + W + 1]) * (1 - fz);
+      return t === t ? t : -Infinity;
+    }
+    // Gefaelle [dh/dx, dh/dz] des Dreiecks unter (x, z)
+    grad(x, z) {
+      const u = (x - this.x0) / this.cell, v = (z - this.z0) / this.cell, i = Math.floor(u), k = Math.floor(v);
+      if (i < 0 || k < 0 || i >= this.nx || k >= this.nz) return [0, 0];
+      const fx = u - i, fz = v - k, W = this.nx + 1, o = k * W + i, H = this.hs, c = this.cell;
+      const g = fx + fz <= 1 ? [(H[o + 1] - H[o]) / c, (H[o + W] - H[o]) / c]
+        : [(H[o + W + 1] - H[o + W]) / c, (H[o + W + 1] - H[o + 1]) / c];
+      return g[0] === g[0] && g[1] === g[1] ? g : [0, 0];
+    }
+    mat(x, z) {
+      const i = clamp(Math.round((x - this.x0) / this.cell), 0, this.nx), k = clamp(Math.round((z - this.z0) / this.cell), 0, this.nz);
+      return this.mats[this.ms[k * (this.nx + 1) + i]];
+    }
+    at(i, k) { return this.hs[k * (this.nx + 1) + i]; }
+    // Zeichnen: Dreiecke wie in h(), weiche Normalen aus den Nachbarn; col(x, y, z, n, mat) -> Farbe; uv = Welt-xz / uvS.
+    // warp(i, k, [x, y, z]) darf Punkte nur fuers Bild verschieben (z. B. Abbruchkanten auf eine glatte Linie ziehen)
+    mesh(g, col, uvS = 4, warp = null) {
+      const W = this.nx + 1, c = this.cell, H = this.hs;
+      const N = new Float32Array(W * (this.nz + 1) * 3), Cs = new Float32Array(W * (this.nz + 1) * 3);
+      const hAt = (i, k, d) => { const t = i < 0 || k < 0 || i > this.nx || k > this.nz ? NaN : H[k * W + i]; return t === t ? t : d; };
+      for (let k = 0; k <= this.nz; k++) for (let i = 0; i <= this.nx; i++) {
+        const o = k * W + i, y = H[o];
+        if (y !== y) continue;
+        const dx = (hAt(i + 1, k, y) - hAt(i - 1, k, y)) / (2 * c), dz = (hAt(i, k + 1, y) - hAt(i, k - 1, y)) / (2 * c);
+        const n = v3.norm([-dx, 1, -dz]);
+        N[o * 3] = n[0]; N[o * 3 + 1] = n[1]; N[o * 3 + 2] = n[2];
+        const cc = col(this.x0 + i * c, y, this.z0 + k * c, n, this.mats[this.ms[o]]);
+        Cs[o * 3] = cc[0]; Cs[o * 3 + 1] = cc[1]; Cs[o * 3 + 2] = cc[2];
+      }
+      const P = (o) => { const i = o % W, k = Math.floor(o / W), p = [this.x0 + i * c, H[o], this.z0 + k * c]; return warp ? warp(i, k, p) : p; };
+      const tri = (a, b, d) => {
+        if (H[a] !== H[a] || H[b] !== H[b] || H[d] !== H[d]) return;
+        const vs = [P(a), P(b), P(d)];
+        g.tri(vs[0], vs[1], vs[2], [a, b, d].map((o) => [Cs[o * 3], Cs[o * 3 + 1], Cs[o * 3 + 2]]),
+          vs.map((p) => [p[0] / uvS, p[2] / uvS]), [a, b, d].map((o) => [N[o * 3], N[o * 3 + 1], N[o * 3 + 2]]));
+      };
+      for (let k = 0; k < this.nz; k++) for (let i = 0; i < this.nx; i++) {
+        const o = k * W + i;
+        tri(o, o + 1, o + W);
+        tri(o + W + 1, o + W, o + 1);
+      }
+    }
+  }
+  // Wand-Schwelle fuer Gelaende: erst was so viel ueber der Stufenhoehe liegt, haelt einen auf (sonst laeuft/rutscht man)
+  const HF_LIP = 0.62;
+  const HF_DIRS = Array.from({ length: 8 }, (_, i) => [Math.cos(i * Math.PI / 4), Math.sin(i * Math.PI / 4)]);
+  // Kreis aus dem Gelaende schieben: Proben am Rand; Hoehe ueber stepTop + HF_LIP (und Unterkante unter dem Kopf) = Wand
+  function hfPush(b, p, r, h, stepTop) {
+    const S = b.hf, lim = stepTop + HF_LIP;
+    const solid = (x, z, lip) => { const t = S.h(x, z); return t > stepTop + lip && t - S.thick < p[1] + h; };
+    let hit = null;
+    for (let it = 0; it < 14; it++) {
+      let nx = 0, nz = 0, any = false;
+      for (const [cx, cz] of HF_DIRS) if (solid(p[0] + cx * r, p[2] + cz * r, HF_LIP)) { nx -= cx; nz -= cz; any = true; }
+      const inside = solid(p[0], p[2], 0);
+      if (!any && !inside) break;
+      let d = Math.hypot(nx, nz);
+      if (d < 1e-6) {   // eingeklemmt oder mittendrin: bergab raus
+        const gr = S.grad(p[0], p[2]); nx = -gr[0]; nz = -gr[1]; d = Math.hypot(nx, nz);
+        if (d < 1e-6) break;
+      }
+      nx /= d; nz /= d;
+      p[0] += nx * 0.05; p[2] += nz * 0.05;
+      hit = { n: [nx, 0, nz], b };
+    }
+    return hit;
+  }
+  // Bergab-Richtung auf Gelaende: zu steil (oder Rutschen-Material) = rutschen, sonst null
+  function hfSteep(b, p) {
+    const S = b.hf, g = S.grad(p[0], p[2]), m = Math.hypot(g[0], g[1]), chute = S.mat(p[0], p[2]) === 'chute';
+    if (!chute && m < STEEP) return null;
+    return m < 1e-4 ? null : [-g[0] / m, -g[1] / m];
+  }
+  // Untergrund-Art unter dem Spieler (Gelaende: Material am Punkt, sonst das Quader-Tag)
+  const gtagOf = (b, p = pl.pos) => (!b ? '' : b.hf ? b.hf.mat(p[0], p[2]) : b.tag);
+  // Strahl gegen Gelaende (Kamera): Abstand bis kurz vor dem Hang, sonst maxT
+  function hfRay(b, o, d, maxT) {
+    for (let t = 1.2; t < maxT; t += 0.45) {
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, g = b.hf.h(x, z);
+      if (g > y - 0.55 && g - b.hf.thick < y + 0.3) return Math.max(1.2, t - 0.6);
+    }
+    return maxT;
   }
 
   /* ═══════════ Gemaelde-Texturen (Canvas) ═══════════ */
@@ -3444,25 +3564,42 @@ vec3 art(vec2 p) {
 
   /* ═══════════ Schloss-Tueren: Steinrahmen, Rundbogen, Doppelfluegel, Beschlaege ═══════════
      Lokal steht die Tuer bei x = 0 auf y = 0 in der Ebene z = 0, die Vorderseite zeigt nach +z.
-     arch: Rundbogen oben (sonst gerader Sturz), plaque: Textur fuers Schild darueber. */
+     arch: Rundbogen oben (sonst gerader Sturz), plaque: Textur fuers Schild darueber, bare: nur Fluegel (fuer Tore,
+     deren Rahmen schon da ist). Die Fluegel sind beweglich (L.doorFx, gezeichnet von drawDoorFx, bewegt von DoorSeq);
+     castleDoor liefert das Tuer-Objekt zurueck - wer die Tuer benutzt, haengt es als .fx an seine Tuer-Daten. */
+  const DOOR_WINGS = {};
+  // Ein Fluegel: Scharnier bei x = 0, freie Kante bei x = half, Mitte der Dicke bei z = 0; Beschlaege auf beiden Seiten
+  function doorWingMesh(half, h, wood) {
+    const key = [half.toFixed(2), h.toFixed(2), ...wood.map((v) => v.toFixed(3))].join('/');
+    if (DOOR_WINGS[key]) return DOOR_WINGS[key];
+    return (DOOR_WINGS[key] = build((g) => {
+      const DK = shade(wood, 0.6), IRON = hex('#2a2a32'), BRASS = hex('#d8aa4a');
+      box(g, M4.from(half / 2, h / 2, 0), half - 0.03, h, 0.24, wood);
+      for (const zs of [1, -1]) {
+        for (let k = 1; k < 3; k++) box(g, M4.from(half * k / 3, h / 2, zs * 0.14), 0.06, h - 0.2, 0.06, DK);
+        for (const yy of [0.2, 0.78]) {
+          box(g, M4.from(half / 2, h * yy, zs * 0.15), half - 0.25, 0.18, 0.06, IRON);
+          for (let k = 0; k < 4; k++) sphere(g, M4.from(half / 2 + (k - 1.5) * (half - 0.5) / 3, h * yy, zs * 0.19), 0.05, 0.05, 0.04, 5, 3, hex('#6a6a74'), true);
+        }
+        const hx = half - Math.min(0.4, half * 0.25), hy = h * 0.48;
+        sphere(g, M4.from(hx, hy, zs * 0.18), 0.1, 0.1, 0.06, 6, 4, BRASS, true);
+        for (let k = 0; k < 10; k++) { const a = k / 10 * TAU; box(g, M4.from(hx + Math.sin(a) * 0.17, hy - 0.2 - Math.cos(a) * 0.17, zs * 0.21, 0, 0, -a), 0.05, 0.11, 0.04, BRASS); }
+      }
+      box(g, M4.from(half - 0.02, h / 2, 0), 0.04, h, 0.26, DK);   // Anschlagleiste = Mittelfuge bei geschlossener Tuer
+    }));
+  }
   function castleDoor(L, x, y, z, ry, o = {}) {
     const g = L.geo, gw = L.glowGeo, M = M4.from(x, y, z, ry), T = (m) => M4.mul(M, m);
     const w = o.w || 3.6, h = o.h || 4.4, arch = o.arch !== false, half = w / 2;
-    const WOOD = o.wood || hex('#6a3a14'), DK = shade(WOOD, 0.6), IRON = hex('#2a2a32'), BRASS = hex('#d8aa4a');
+    const WOOD = o.wood || hex('#6a3a14'), DK = shade(WOOD, 0.6), IRON = hex('#2a2a32');
     const ST = o.stone || { top: hex('#d8d0c0'), side: hex('#b8ae9c') }, KEY = { top: shade(ST.top, 1.05), side: shade(ST.side, 1.08) };
-    for (const s of [-1, 1]) {
-      const cx = s * half / 2;
-      box(g, T(M4.from(cx, h / 2, 0.12)), half - 0.03, h, 0.24, WOOD);
-      for (let k = 1; k < 3; k++) box(g, T(M4.from(s * half * k / 3, h / 2, 0.26)), 0.06, h - 0.2, 0.06, DK);
-      for (const yy of [0.2, 0.78]) {
-        box(g, T(M4.from(cx, h * yy, 0.27)), half - 0.25, 0.18, 0.06, IRON);
-        for (let k = 0; k < 4; k++) sphere(g, T(M4.from(cx + (k - 1.5) * (half - 0.5) / 3, h * yy, 0.31)), 0.05, 0.05, 0.04, 5, 3, hex('#6a6a74'), true);
-      }
-      const hx = s * Math.min(0.4, half * 0.25), hy = h * 0.48;
-      sphere(g, T(M4.from(hx, hy, 0.3)), 0.1, 0.1, 0.06, 6, 4, BRASS, true);
-      for (let k = 0; k < 10; k++) { const a = k / 10 * TAU; box(g, T(M4.from(hx + Math.sin(a) * 0.17, hy - 0.2 - Math.cos(a) * 0.17, 0.33, 0, 0, -a)), 0.05, 0.11, 0.04, BRASS); }
+    const fx = { M, pos: [x, y, z], ry, fwd: [Math.sin(ry), Math.cos(ry)], half, h, mesh: doorWingMesh(half, h, WOOD), open: [0, 0] };
+    L.doorFx.push(fx);
+    if (o.bare) {
+      if (arch) { disc(g, T(M4.from(0, h, 0.24)), half, 18, WOOD, 0, Math.PI); disc(g, T(M4.from(0, h, 0.005)), half, 18, WOOD, 0, Math.PI); }
+      return fx;
     }
-    box(g, T(M4.from(0, h / 2, 0.25)), 0.08, h, 0.04, DK);                                 // Mittelfuge
+    box(g, T(M4.from(0, h / 2, -0.02)), w, h, 0.04, hex('#0c0806'));   // dunkle Leibung dahinter (sieht man durch den offenen Fluegel)
     if (arch) {
       disc(g, T(M4.from(0, h, 0.24)), half, 18, WOOD, 0, Math.PI);
       disc(g, T(M4.from(0, h, 0.005)), half, 18, WOOD, 0, Math.PI);
@@ -3489,6 +3626,14 @@ vec3 art(vec2 p) {
       box(g, M4.mul(m, M4.from(0, -0.2, 0)), 0.22, 0.5, 0.36, IRON);
       cyl(g, M4.mul(m, M4.from(0, 0.05, 0.08)), 0.1, 0.16, 0.3, 6, hex('#3a3a44'));
       cyl(gw, M4.mul(m, M4.from(0, 0.35, 0.08)), 0.14, 0, 0.5, 6, hex('#ffb13f'));
+    }
+    return fx;
+  }
+  // Fluegel zeichnen: open[0] = linker, open[1] = rechter Fluegel (von vorn gesehen); Winkel > 0 schwingt nach hinten (-z)
+  function drawDoorFx(f) {
+    for (let k = 0; k < 2; k++) {
+      const s = k ? 1 : -1, a = f.open[k];
+      draw(f.mesh, M4.mul(f.M, M4.mul(M4.from(s * f.half, 0, 0.12, s < 0 ? a : -a), M4.from(0, 0, 0, 0, 0, 0, -s, 1, 1))));
     }
   }
   // Schild ueber einer Tuer: Holztafel mit Goldrand, Symbol und Name
@@ -3628,8 +3773,8 @@ vec3 art(vec2 p) {
   const DOOR_DIRS = { e: [1, 0], w: [-1, 0], s: [0, 1], n: [0, -1] };
   function hubDoor(L, x, y, z, dir, to, name, icon, col, o = {}) {
     const [fx, fz] = DOOR_DIRS[dir], ry = Math.atan2(fx, fz);
-    castleDoor(L, x, y, z, ry, { w: 3.6, h: 4.4, plaque: plaqueTex(name, icon, col), torches: true, ...o });
-    const d = { to, label: 'Eintreten: ' + name, pos: [x + fx * 1.4, y, z + fz * 1.4], ret: [x + fx * 3.2, y, z + fz * 3.2], retFace: ry };
+    const dfx = castleDoor(L, x, y, z, ry, { w: 3.6, h: 4.4, plaque: plaqueTex(name, icon, col), torches: true, ...o });
+    const d = { to, label: 'Eintreten: ' + name, pos: [x + fx * 1.4, y, z + fz * 1.4], ret: [x + fx * 3.2, y, z + fz * 3.2], retFace: ry, fx: dfx };
     L.doors.push(d);
     const hw = (o.w || 3.6) / 2, hh = o.h || 4.4;
     const b = fx ? L.solid(Math.min(x, x + fx * 0.5), y, z - hw, Math.max(x, x + fx * 0.5), y + hh, z + hw, 'door')
@@ -3740,10 +3885,9 @@ vec3 art(vec2 p) {
     disc(g, M4.mul(win, M4.from(0, 0, 0.1)), 3.2, 16, [hex('#ff5fa2'), hex('#ffe14a'), hex('#6fd3ff'), hex('#7cff7a')]);
     starGeo(g, M4.mul(win, M4.from(0, 0, 0.2)), 1.3, 0.12, C.white);
     // Tor
-    box(g, M4.from(0, 2.6, -37.9), 4.6, 5.2, 0.3, hex('#5a3414'));
-    cyl(g, M4.from(0, 5.2, -37.9, 0, Math.PI / 2), 2.3, 2.3, 0.3, 12, hex('#5a3414'));
-    box(g, M4.from(0, 2.9, -37.7), 0.14, 5.4, 0.1, hex('#3a2008'));
-    L.door = { pos: [0, 0, -38.2], to: 'hall', label: 'Eintreten', spawn: [0, 0, 13], face: Math.PI, yaw: 0 };
+    box(g, M4.from(0, 2.6, -38.05), 4.6, 5.2, 0.04, hex('#0c0806'));   // dunkel dahinter
+    const gateFx = castleDoor(L, 0, 0, -37.98, 0, { w: 4.6, h: 5.2, bare: true, wood: hex('#5a3414') });
+    L.door = { pos: [0, 0, -38.2], to: 'hall', label: 'Eintreten', spawn: [0, 0, 13], face: Math.PI, yaw: 0, fx: gateFx };
 
     // ── Garten-Deko und Parcours ──
     const tree = (x, z, s = 1) => {
@@ -4195,12 +4339,12 @@ vec3 art(vec2 p) {
       box(g, M4.from(x, 9.5, (ZN + ZS) / 2), 0.15, 0.5, ZS - ZN, C.gold);
     });
     // Eingangstuer: fuellt die 8 m breite Oeffnung ganz aus, darueber ein Bogenfeld mit Stern
-    castleDoor(L, 0, 0, ZS, Math.PI, { w: 8, h: 6, arch: false, torches: true, wood: hex('#5a3010') });
+    const mainFx = castleDoor(L, 0, 0, ZS, Math.PI, { w: 8, h: 6, arch: false, torches: true, wood: hex('#5a3010') });
     const TY = M4.from(0, 6.9, ZS - 0.12, Math.PI);
     disc(g, TY, 3.2, 20, hex('#b08a3a'), 0, Math.PI);
     disc(g, M4.mul(TY, M4.from(0, 0, 0.04)), 2.8, 20, hex('#5a3a8a'), 0, Math.PI);
     starGeo(g, M4.mul(TY, M4.from(0, 1.3, 0.1)), 1, 0.08, C.gold);
-    L.door = { pos: [0, 0, ZS - 0.4], to: 'garden', label: 'Hinausgehen', spawn: [0, 0, -35.6], face: 0, yaw: 0 };
+    L.door = { pos: [0, 0, ZS - 0.4], to: 'garden', label: 'Hinausgehen', spawn: [0, 0, -35.6], face: 0, yaw: 0, fx: mainFx };
     // ── Tueren: unten je Seite drei (vier Bilderzimmer + Bibliothek + Musikzimmer), oben auf der Galerie zwei.
     //    Unter der Galerie geht es in den Keller und in den Schlosshof, hinter der Sterntuer ins Obergeschoss. ──
     const ROOMS = [
@@ -4373,10 +4517,7 @@ vec3 art(vec2 p) {
     L.block(-32.5, 7, Z1 + 1, 59, 14, 2, STONE, 'citywall');
     L.block(32.5, 7, Z1 + 1, 59, 14, 2, STONE, 'citywall');
     L.block(0, 9.75, Z1 + 1, 6, 8.5, 2, STONE, 'citywall');
-    box(g, M4.from(0, 2.75, Z1 - 0.05), 5.6, 5.5, 0.1, hex('#5a3414'));
-    box(g, M4.from(0, 2.9, Z1 - 0.12), 0.12, 5.2, 0.05, hex('#3a2008'));
-    L.solid(-3, 0, Z1 - 0.1, 3, 5.5, Z1 + 2, 'exitdoor');
-    L.door = { pos: [0, 0, Z1 - 0.4], to: 'hall', label: 'Zurück ins Schloss', back: true };
+    L.block(0, 2.75, Z1 + 1, 6, 5.5, 2, STONE, 'citywall');   // frueher Ausgangstor - verlassen jetzt ueber das Pausenmenue
     for (let x = X0; x <= X1; x += 6) { box(g, M4.from(x, 14.6, Z0 - 1), 2.4, 1.2, 2, TRIM); box(g, M4.from(x, 14.6, Z1 + 1), 2.4, 1.2, 2, TRIM); }
     for (let z = Z0; z <= Z1; z += 6) { box(g, M4.from(X0 - 1, 14.6, z), 2, 1.2, 2.4, TRIM); box(g, M4.from(X1 + 1, 14.6, z), 2, 1.2, 2.4, TRIM); }
 
@@ -4534,7 +4675,7 @@ vec3 art(vec2 p) {
       'Der Weg nach oben: über die Kisten aufs Westdach, über die Planke zum Turm und dann die Simse hinauf.',
       'Die bunten MARKISEN sind übrigens erstaunlich federnd …',
       'Hinter dem OSTTOR (durch den Tunnel) liegt die offene Wüste mit einer großen Pyramide – dort wartet der zweite Stern.',
-      'Zurück ins Schloss geht es durchs Tor hinter dir.',
+      'Zurück ins Schloss geht es über das Pausenmenü: „Kurs verlassen“.',
     ] };
 
     // ── Muenzen ──
@@ -5276,6 +5417,19 @@ vec3 art(vec2 p) {
         box(g, M4.from(0.12, 0.42, 0, 0, 0, -0.5), 0.2, 0.05, 0.04, C.white);
       },
       leaf: (g) => { g.tri([-0.12, 0, 0], [0.12, 0, 0.04], [0, 0, 0.22], C.white); g.tri([-0.12, 0, 0], [0, 0, 0.22], [0.12, 0, 0.04], C.white); },
+      penguin: (g) => {
+        const B = hex('#222a38'), W = hex('#f4f6fa'), O = hex('#f0a020');
+        sphere(g, M4.from(0, 0.36, 0), 0.25, 0.34, 0.23, 8, 6, B, true);
+        sphere(g, M4.from(0, 0.33, 0.07), 0.19, 0.27, 0.17, 8, 6, W, true);
+        sphere(g, M4.from(0, 0.74, 0.02), 0.17, 0.16, 0.16, 8, 6, B, true);
+        for (const s of [-1, 1]) {
+          sphere(g, M4.from(s * 0.07, 0.78, 0.14), 0.045, 0.05, 0.02, 5, 4, W, true);
+          sphere(g, M4.from(s * 0.07, 0.78, 0.158), 0.02, 0.026, 0.01, 4, 3, BLACK, true);
+          box(g, M4.from(s * 0.26, 0.42, 0, 0, 0, s * 0.35), 0.06, 0.34, 0.14, B);
+          box(g, M4.from(s * 0.09, 0.02, 0.07), 0.11, 0.04, 0.17, O);
+        }
+        cyl(g, M4.from(0, 0.72, 0.13, 0, Math.PI / 2), 0.05, 0, 0.13, 5, O);
+      },
     };
     const get = (k) => mesh(k, SHAPES[k]);
     const rr = (a, b) => a + Math.random() * (b - a);
@@ -5604,18 +5758,6 @@ vec3 art(vec2 p) {
           L.solid(x - 0.2, y, z - 0.2, x + 0.2, y + 2.4, z + 0.2, 'sign');
         }
         L.talkers.push({ pos: [x, y, z], speaker, text });
-      },
-      // Ausgangstor zurueck in die Schlosshalle (reinlaufen oder B)
-      exit(x, z, y = 0) {
-        const fr = { top: hex('#a8a8b8'), side: hex('#8a8a9a') };
-        L.block(x - 2.3, y + 3, z, 0.8, 6, 1.2, fr, 'gate');
-        L.block(x + 2.3, y + 3, z, 0.8, 6, 1.2, fr, 'gate');
-        L.block(x, y + 6.4, z, 5.4, 0.8, 1.2, fr, 'gate');
-        box(g, M4.from(x, y + 2.9, z), 3.8, 5.8, 0.5, hex('#5a3414'));
-        box(g, M4.from(x, y + 2.9, z + 0.27), 0.1, 5.4, 0.05, hex('#3a2008'));
-        L.solid(x - 1.9, y, z - 0.3, x + 1.9, y + 5.8, z + 0.3, 'exitdoor');
-        starGeo(glow, M4.from(x, y + 6.4, z + 0.66), 0.55, 0.12, hex('#ffd21f'));
-        L.door = { pos: [x, y, z + 1.2], to: 'hall', label: 'Zurück ins Schloss', back: true };
       },
       // Rahmen, der auf die echte Glappa-Seite fuehrt (reinspringen)
       portal(x, y, z, idx, o = {}) {
@@ -6072,7 +6214,6 @@ vec3 art(vec2 p) {
       'Wer in den Bildschirm springt, landet im echten Terminal. Hinter dem Rechner führen CDs aufs Monitordach.',
       'Manche Wege sind nur was für Leute, die sich klein machen.',
     ]);
-    K.exit(0, 57);
     // Computer-Plagen: Software-Bugs, Viren, Wuermer, Pop-ups und Spam-Mails
     L.enemies.push(makeBug(-12, 26), makeBug(20, 8), makeBug(-20, -4), makeGrummel(42, 22), makeBug(58, 36),
       makeGrummel(45, -40), makeBug(-40, 30), makeGrummel(62, -84));
@@ -6367,7 +6508,6 @@ vec3 art(vec2 p) {
       'Die Säulen im Westen führen zum Sprungbrett – von dort geht es kopfüber in die Senke.',
       'Und die Ostklippe? Unter Wasser hat sie ein Loch …',
     ]);
-    K.exit(0, 40, 0.6);
     L.enemies.push(makeGrummel(-4, -8), makeGrummel(10, 26), makeGrummel(-10, 36), makeGrummel(49, 30, 3));
     // Seeigel (Stachis) am Strand und am Grund, Flatterlinge an Leuchtturm und Sprungfelsen, Quallen-Hopsis
     L.enemies.push(makeSpiky(8, 26, 3, '#3a2a4a'), makeSpiky(-9, 21, 3, '#3a2a4a'), makeSpiky(3, -7, 5, '#3a2a4a'), makeSpiky(-20, -42, -5, '#3a2a4a'),
@@ -6409,11 +6549,14 @@ vec3 art(vec2 p) {
     return L;
   }
 
-  /* ─────────── Welt 3: Bounce-Berg ───────────
-     Verschneiter Terrassenberg (Idee: Schneeberg mit Huette und Rutschbahn, eigenes Layout).
-     Gimmicks: Seerosen-Trampoline, Serpentinenweg mit rollenden Schneebaellen, Eissee (rutschig),
-     Schneefall, Berghuette mit Rodelbahn (Zeitmessung, Stern am Ziel).
-     Geheim: der Hut des Schneemanns, das Iglu. */
+  /* ─────────── Welt 3: Bounce-Berg (Kurs mit 6 Missionen + 100-Muenzen-Stern, siehe COURSES) ───────────
+     Schneeinsel ueber einem Wolkenmeer (Idee: Berg-mit-Boss-Welt + Schneeberg-Welt, eigenes Layout). Das Gelaende ist
+     ein Hoehenraster (HField): runder Kegelberg, um den sich ein Weg einmal hinaufwindet; an der Suedseite kommt die
+     Rodelbahn aus der Gipfelhuette ueber einen Schneegrat und laeuft auf Stelzen um den Berg bis auf den Eissee.
+     Am Rand geht es ins Nichts (voidY). Wahrzeichen: Gipfel mit Huette und Fahne - vom Start aus zu sehen.
+     M1 Frostkoenig (von hinten packen, auf dem Gipfel werfen, 3x) · M2 Wettlauf mit Flitz zur Gipfelfahne ·
+     M3 Rodelbahn · M4 Eisbeisser an der Kette (Pfahl 3x stampfen) · M5 Kanone zur Wolkeninsel · M6 acht rote Muenzen.
+     Geheim: der Hut des Schneemanns, das Iglu (krabbeln), der Sims in der Gletscherspalte. */
   MESH.bunny = buildLP((g) => {
     const W = hex('#f8f8ff'), P = hex('#ffb0c8');
     sphere(g, M4.from(0, 0.55, 0), 0.5, 0.55, 0.45, 12, 8, W, true);
@@ -6429,300 +6572,1001 @@ vec3 art(vec2 p) {
     box(g, M4.from(0, 1.02, 0.18), 0.5, 0.12, 0.3, hex('#d8342b'));              // Schal
     box(g, M4.from(0.18, 0.8, 0.3, 0, 0.3), 0.12, 0.4, 0.06, hex('#d8342b'));
   });
-  function buildBounce() {
-    const L = new Level({ name: 'Bounce-Berg', spawn: [0, 0, 40], spawnFace: Math.PI, spawnYaw: 0,
-      fog: hex('#e6eef8'), fogNear: 100, fogFar: 320, light: v3.norm([-0.3, -0.85, -0.45]), sky: 'snow' });
-    const K = kit(L), g = K.g, gw = K.glow, r = K.rnd;
-    K.ground(-110, -135, 110, 50, hex('#f6f9ff'), hex('#e4ecf6'));
-    K.bounds(-108, -133, 108, 48);
-    K.hills(170, 22, hex('#f2f6fc'), hex('#d8e2ee'), -2, 1.9);
-    g.quad([-500, -2.05, 500], [500, -2.05, 500], [500, -2.05, -500], [-500, -2.05, -500], hex('#e8eef6'));
-    const TER = { top: hex('#f8fbff'), side: hex('#7a8494') }, ROCKC = hex('#8a93a3');
-    // ── Vier Terrassen (Vorderkante, halbe Breite, Hoehe), alle reichen bis z = -100 ──
-    const TERR = [[-10, 36, 6], [-24, 28, 13], [-36, 20, 20], [-48, 12, 27]];
-    TERR.forEach(([zf, hw, top]) => {
-      L.block(0, top / 2 - 0.5, (zf - 100) / 2, hw * 2, top + 1, 100 + zf, TER, 'terrace');
-      box(g, M4.from(0, top - 0.15, zf + 0.1), hw * 2 + 0.4, 0.3, 0.6, hex('#ffffff'));
-      for (let y = top - 2; y > top - 6.5 && y > 0.5; y -= 2.2) box(g, M4.from(0, y, zf + 0.03), hw * 2, 0.3, 0.1, shade(TER.side, 0.85));
-      for (let i = 0; i < 5; i++) K.rock(-hw + 3 + i * (hw * 2 - 6) / 4, top - 0.4, zf - 1.5 - (i % 2) * 2, 1.1, ROCKC, false);
-    });
-    // Seerosen-Trampoline: vom Fuss jeder Terrasse auf die naechste
-    const pad = (x, y, z) => {
-      cyl(g, M4.from(x, y, z), 1.9, 1.9, 0.32, 14, hex('#2f9a3a'), hex('#4cc85a'));
-      sphere(g, M4.from(x + 0.6, y + 0.4, z - 0.4), 0.35, 0.25, 0.35, 8, 4, hex('#ffb0d8'));
-      const b = L.solid(x - 1.6, y, z - 1.6, x + 1.6, y + 0.32, z + 1.6, 'bouncy'); b.bounce = 82;
-    };
-    pad(0, 0, -5); pad(14, 6, -19); pad(-6, 13, -31); pad(6, 20, -43);
-    K.coinLine([0, 3, -6], [0, 8, -9], 3); K.coinLine([14, 9, -20], [14, 15, -22], 3); K.coinLine([-6, 16, -32], [-6, 22, -34], 3); K.coinLine([6, 23, -44], [6, 29, -46], 3);
-    K.star('bounce', [0, 28.6, -52]);
-    // ── Serpentinenweg an der Ostflanke (vier Rampen nach Norden) ──
-    const PATH = { top: hex('#dfe8f4'), side: hex('#7a8494') }, CURB = { top: hex('#ffffff'), side: hex('#8a93a3') };
-    const eramp = (x0, x1, zLo, zHi, yLo, yHi) => {
-      K.ramp(x0, zHi, x1, zLo, yLo, yHi, 'z-', PATH);
-      L.block((x0 + x1) / 2, (yLo + yHi + 1.8) / 2 - 0.5, zHi - 0.3, x1 - x0, yHi - yLo + 1.9, 0.6, CURB, 'curb');
-    };
-    eramp(36, 42, -10, -46, 0, 6);        // Boden -> Terrasse 1
-    eramp(28, 33.5, -24, -58, 6, 13);     // Terrasse 1 -> 2
-    eramp(20, 25.5, -36, -70, 13, 20);    // Terrasse 2 -> 3
-    eramp(12, 17.5, -48, -82, 20, 27);    // Terrasse 3 -> 4
-    K.coinLine([39, 1.6, -14], [39, 6.5, -42], 5); K.coinLine([30.75, 8, -28], [30.75, 13.5, -54], 4);
-    K.coinLine([22.75, 15, -40], [22.75, 20.5, -66], 4); K.coinLine([14.75, 22, -52], [14.75, 27.5, -78], 4);
-    // Frosch-Statue und Portal auf der zweiten Terrasse
-    sphere(g, M4.from(-16, 14.4, -30), 2, 1.5, 1.8, 12, 8, hex('#4caf50'), true);
-    for (const s of [-1, 1]) {
-      sphere(g, M4.from(-16 + s * 1.1, 16, -29), 0.6, 0.6, 0.6, 10, 8, hex('#4caf50'), true);
-      sphere(g, M4.from(-16 + s * 1.1, 16.1, -28.5), 0.3, 0.35, 0.2, 8, 6, C.black, true);
+  /* Bauplan (Meter, Welt-Koordinaten; -z = Norden). Berg-Mitte C, Gipfelplateau Radius RS auf TOP. Der Weg windet sich
+     gegen den Uhrzeigersinn (von oben gesehen) einmal hinauf: Start bei Winkel T0 (Sued-Suedwest), Radius R0 -> R1,
+     Hoehe 0 -> TOP, Breite W. Die Luecke der Spirale liegt genau im Sueden - dort kommt die Rodelbahn herunter. */
+  const BB = {
+    CX: 0, CZ: -30, TOP: 40, RS: 13, W: 6, R0: 49.33, R1: 16, SO: 1.7, T0: 2.046, SPAN: TAU - 0.95,
+    IC: [0, -15], LAKE: [44, -76, 13], PEN: [-66, -6], CAGE: [-79, -6], IGLU: [-55, -72], PIT: [-26, 48], FI: [-72, 32, 50],
+    CREV: [[-30, -92], [8, -97]], PAD_W: [-51.5, -42.4], PAD_S: [-18, 30], MARK: [14, 36], FLAG: [-6.5, -37],
+    TRAIL: [[0, 58], [-7, 45], [-14, 31], [-20, 19], [-22.5, 14]],
+    HILLS: [[-55, -72, 15, 5.5], [74, 18, 12, 3.2], [-44, 60, 11, 2.6], [-82, -40, 10, 2.8], [26, -98, 9, 2.4]],
+    FLAT: [[0, 64, 12], [-66, -6, 14], [-26, 48, 5], [14, 36, 4], [-18, 30, 3]],
+  };
+  const bbHash = (i, k) => {
+    let n = (Math.imul(i, 374761393) + Math.imul(k, 668265263)) | 0;
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+  };
+  function vnoise(x, z) {
+    const i = Math.floor(x), k = Math.floor(z), fx = x - i, fz = z - k, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+    return lerp(lerp(bbHash(i, k), bbHash(i + 1, k), u), lerp(bbHash(i, k + 1), bbHash(i + 1, k + 1), u), v);
+  }
+  const fbm = (x, z) => vnoise(x, z) * 0.6 + vnoise(x * 2.1 + 17, z * 2.1 - 5) * 0.3 + vnoise(x * 4.3 - 9, z * 4.3 + 3) * 0.1;
+  const mixc = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+  const segDist = (x, z, a, b) => {
+    const vx = b[0] - a[0], vz = b[1] - a[1], k = clamp(((x - a[0]) * vx + (z - a[1]) * vz) / (vx * vx + vz * vz), 0, 1);
+    return Math.hypot(x - a[0] - vx * k, z - a[1] - vz * k);
+  };
+  const polyDist = (x, z, pts) => { let d = Infinity; for (let i = 0; i < pts.length - 1; i++) d = Math.min(d, segDist(x, z, pts[i], pts[i + 1])); return d; };
+  // Punkt auf dem Bergweg bei t (0 = unten, 1 = oben)
+  const bbPath = (t) => {
+    const a = BB.T0 + BB.SPAN * t, r = BB.R0 + (BB.R1 - BB.R0) * t;
+    return { x: BB.CX + Math.cos(a) * r, z: BB.CZ + Math.sin(a) * r, h: BB.TOP * t, r, a };
+  };
+  // Querschnitt eines Hangs: Plateau -> steiler Bergleib -> Weg (aussen ein Schneewulst) -> Abbruch nach aussen
+  function bbProfile(r, hp, rp, lip) {
+    const ri = rp - BB.W / 2, ro = rp + BB.W / 2;
+    if (r <= BB.RS) return BB.TOP;
+    if (r < ri) { const s = (ri - r) / (ri - BB.RS); return hp + (BB.TOP - hp) * (1 - Math.pow(1 - s, 1.6)); }
+    if (r <= ro) { const k = (r - (ro - 1.1)) / 1.1; return hp + (k > 0 ? lip * Math.sin(k * Math.PI * 0.5) : 0); }
+    return hp + lip - (r - ro) * BB.SO;
+  }
+  // Berg allein: Hoehe, Weg-Anteil (t) und wie "felsig" (Rauschen erlaubt) die Stelle ist
+  function bbMountain(x, z) {
+    const dx = x - BB.CX, dz = z - BB.CZ, r = Math.hypot(dx, dz);
+    if (r > 75) return null;
+    let u = Math.atan2(dz, dx) - BB.T0; u = ((u % TAU) + TAU) % TAU;
+    if (u <= BB.SPAN) {
+      const t = u / BB.SPAN, p = bbPath(t), lip = 0.45 * clamp(p.h / 3, 0, 1) * clamp((1 - t) / 0.05, 0, 1);
+      const ri = p.r - BB.W / 2, ro = p.r + BB.W / 2;
+      const rough = r < ri ? smooth((ri - r) / 2.5) * smooth((r - BB.RS - 1) / 3) : r > ro ? smooth((r - ro - 0.3) / 2) : 0;
+      return { h: bbProfile(r, p.h, p.r, lip), t, path: Math.abs(r - p.r) <= BB.W / 2 - 0.35 && t > 0.004, rough };
     }
-    L.solid(-18, 13, -32, -14, 16.6, -28, 'statue');
-    K.portal(22, 13, -30, 2, { scale: 0.9 });
+    const g = smooth((u - BB.SPAN) / (TAU - BB.SPAN));
+    return { h: lerp(bbProfile(r, BB.TOP, BB.R1, 0), bbProfile(r, 0, BB.R0, 0), g), t: -1, path: false, rough: smooth((r - 20) / 3) };
+  }
+  function bbEdge(x, z) {
+    const dx = x - BB.IC[0], dz = z - BB.IC[1], a = Math.atan2(dz, dx);
+    return { d: Math.hypot(dx, dz), R: 100 + 6 * Math.sin(3 * a + 0.6) + 4 * Math.sin(5 * a + 2.1) + 2.5 * Math.sin(9 * a + 0.4) };
+  }
+  // Gelaende ohne Rodelbahn-Einfluss: [Hoehe (NaN = nichts), Material]
+  function bbTerrain(x, z) {
+    const E = bbEdge(x, z);
+    if (E.d > E.R + 2.2) return [NaN, ''];
+    if (E.d > E.R + 0.3) return [-70, 'rock'];
+    let h = 0.35 * Math.sin(x * 0.071 + 1.3) * Math.sin(z * 0.063 - 0.4) + (fbm(x / 23, z / 23) - 0.5) * 1.6;
+    for (const [hx, hz, hr, hh] of BB.HILLS) { const d2 = ((x - hx) ** 2 + (z - hz) ** 2) / (hr * hr); if (d2 < 4) h += hh * Math.exp(-d2 * 1.6); }
+    for (const [fx, fz, fr] of BB.FLAT) { const d = Math.hypot(x - fx, z - fz); if (d < fr + 6) h *= smooth((d - fr) / 6); }
+    let mat = 'snow';
+    const m = bbMountain(x, z);
+    // Fels: kleine Buckel + grosse Rippen, damit der Berg nicht wie ein gedrechselter Kegel aussieht
+    if (m && m.h > h) { h = m.h + ((fbm(x / 6, z / 6) - 0.5) * 2.4 + (fbm(x / 15 + 7, z / 15 - 3) - 0.5) * 5) * m.rough; if (m.path) mat = 'path'; }
+    if (polyDist(x, z, BB.TRAIL) < 1.7) mat = 'path';
+    // Eissee: flache Mulde
+    const dl = Math.hypot(x - BB.LAKE[0], z - BB.LAKE[1]);
+    if (dl < BB.LAKE[2] + 5) {
+      const k = smooth((dl - BB.LAKE[2]) / 5);
+      h = lerp(-1, h, k);
+      if (dl < BB.LAKE[2]) mat = 'ice';
+    }
+    // Gletscherspalte: geht bis ins Nichts
+    if (segDist(x, z, BB.CREV[0], BB.CREV[1]) < 2.25) { h = -70; mat = 'rock'; }
+    // Kanonengrube
+    const dp = Math.hypot(x - BB.PIT[0], z - BB.PIT[1]);
+    if (dp < 2) h = dp < 1.45 ? -1.5 : lerp(-1.5, h, (dp - 1.45) / 0.55);
+    // Inselrand: sanft abgerundet
+    h -= 0.7 * smooth((E.d - (E.R - 5)) / 5);
+    return [h, mat];
+  }
 
-    // ── Berghuette auf dem Gipfelplateau (Tuer vorn und hinten) ──
-    const LOG = { top: hex('#8a5a2a'), side: hex('#9c6a36') }, HY = 27;
-    L.block(-3.1, HY + 2, -76, 3.8, 4, 0.6, LOG, 'cabin'); L.block(3.1, HY + 2, -76, 3.8, 4, 0.6, LOG, 'cabin');
-    L.block(0, HY + 3.3, -76, 2.4, 1.4, 0.6, LOG, 'cabin');
-    L.block(-3.1, HY + 2, -86, 3.8, 4, 0.6, LOG, 'cabin'); L.block(3.1, HY + 2, -86, 3.8, 4, 0.6, LOG, 'cabin');
-    L.block(0, HY + 3.3, -86, 2.4, 1.4, 0.6, LOG, 'cabin');
-    L.block(-5, HY + 2, -81, 0.6, 4, 10.6, LOG, 'cabin'); L.block(5, HY + 2, -81, 0.6, 4, 10.6, LOG, 'cabin');
-    for (let y = HY + 0.5; y < HY + 4; y += 0.7) for (const x of [-5.32, 5.32]) box(g, M4.from(x, y, -81), 0.1, 0.12, 10.6, hex('#6a4218'));
-    L.solid(-5.5, HY + 4, -86.5, 5.5, HY + 4.4, -75.5, 'cabin');
-    const RF = hex('#6a3a1a'), SNW = hex('#fafcff');
-    g.quad([-6.2, HY + 4, -74.8], [6.2, HY + 4, -74.8], [6.2, HY + 7, -81], [-6.2, HY + 7, -81], RF);
-    g.quad([6.2, HY + 4, -87.2], [-6.2, HY + 4, -87.2], [-6.2, HY + 7, -81], [6.2, HY + 7, -81], RF);
-    g.quad([-6.2, HY + 4.12, -74.8], [6.2, HY + 4.12, -74.8], [6.2, HY + 7.12, -81], [-6.2, HY + 7.12, -81], SNW);
-    g.quad([6.2, HY + 4.12, -87.2], [-6.2, HY + 4.12, -87.2], [-6.2, HY + 7.12, -81], [6.2, HY + 7.12, -81], SNW);
-    for (const x of [-5, 5]) g.tri([x, HY + 4, -75.7], [x, HY + 4, -86.3], [x, HY + 7, -81], LOG.side);
-    L.block(3, HY + 6.5, -83.5, 1.2, 3, 1.2, { top: hex('#5a5a5a'), side: hex('#7a6a6a') }, 'chimney');
-    // drinnen: Kamin, Tisch, Schneehase
-    L.block(4.2, HY + 1.1, -81, 1, 2.2, 2.6, { top: hex('#6a6a6a'), side: hex('#8a8a8a') }, 'fireplace');
-    box(gw, M4.from(3.68, HY + 0.6, -81), 0.1, 0.8, 1.6, hex('#ff8a2a'));
-    box(gw, M4.from(3.72, HY + 0.45, -81), 0.1, 0.4, 1.0, hex('#ffe060'));
-    L.block(-2, HY + 0.45, -81, 2.4, 0.9, 1.6, { top: hex('#b8864a'), side: hex('#8a5a2a') }, 'table');
-    box(gw, M4.from(-2, HY + 1.05, -81), 0.14, 0.3, 0.14, hex('#fff2a8'));
-    box(gw, M4.from(-4.72, HY + 2.4, -79), 0.06, 1, 1.2, hex('#ffd878'));
-    box(gw, M4.from(4.72, HY + 2.4, -78), 0.06, 1, 1.2, hex('#ffd878'));
-    const hare = { pos: [-3.2, HY, -83.6] };
-    K.talker(hare.pos[0], HY, hare.pos[2], 'Schneehase', [
-      'Brrr! Na, auch Lust auf eine Abfahrt?',
-      'Hinter der Hütte beginnt die RODELBAHN. Einfach reinlaufen – dann geht es auf dem Bauch bergab. Mit dem Stick lenkst du.',
-      'Unten im Ziel wartet ein Stern. Und wer schnell ist, bekommt von mir einen Applaus!',
-    ], false);
-    L.solid(-3.7, HY, -84.1, -2.7, HY + 1.9, -83.1, 'npc');
-
-    // ── Rodelbahn: fuenf Abschnitte mit Kurven an der Westflanke ──
-    const ICE = { top: hex('#cfe8ff'), side: hex('#8ab0d8') }, RAIL = { top: hex('#fafcff'), side: hex('#b8c8dc') };
-    const seg = (x0, z0, x1, z1, yLo, yHi, rise) => {
-      const b = K.ramp(x0, z0, x1, z1, yLo, yHi, rise, ICE, { tag: 'chute', chute: true });
-      // Banden: schraege Leisten 1 m ueber der Bahn
-      if (rise[0] === 'x') { K.ramp(x0, z0 - 0.5, x1, z0, yLo + 1, yHi + 1, rise, RAIL, { tag: 'rail' }); K.ramp(x0, z1, x1, z1 + 0.5, yLo + 1, yHi + 1, rise, RAIL, { tag: 'rail' }); }
-      else { K.ramp(x0 - 0.5, z0, x0, z1, yLo + 1, yHi + 1, rise, RAIL, { tag: 'rail' }); K.ramp(x1, z0, x1 + 0.5, z1, yLo + 1, yHi + 1, rise, RAIL, { tag: 'rail' }); }
-      return b;
-    };
-    const corner = (x0, z0, x1, z1, y, dir, walls) => {
-      const b = L.block((x0 + x1) / 2, y - 0.5, (z0 + z1) / 2, x1 - x0, 1, z1 - z0, ICE, 'chute');
-      b.chute = dir;
-      for (const w of walls) {
-        if (w === '-x') L.block(x0 - 0.25, y + 0.5, (z0 + z1) / 2, 0.5, 2, z1 - z0 + 1, RAIL, 'rail');
-        if (w === '+x') L.block(x1 + 0.25, y + 0.5, (z0 + z1) / 2, 0.5, 2, z1 - z0 + 1, RAIL, 'rail');
-        if (w === '-z') L.block((x0 + x1) / 2, y + 0.5, z0 - 0.25, x1 - x0 + 1, 2, 0.5, RAIL, 'rail');
-        if (w === '+z') L.block((x0 + x1) / 2, y + 0.5, z1 + 0.25, x1 - x0 + 1, 2, 0.5, RAIL, 'rail');
+  /* Rodelbahn: Stuetzpunkte (x, z); Hoehen rechnet bbSlide selbst: in der Huette flach, am Berg dicht ueber dem Hang
+     (darunter ein Schneegrat), draussen auf Stelzen (~3,5 m, man laeuft drunter durch), am Ende flach auf den Eissee. */
+  const SLIDE = {
+    HW: 2.4, RAIL: 0.4, DEPTH: 1.3, TOPR: 1.45, THICK: 0.5,
+    CP: [[0, -26], [0, -21], [0, -16], [0.3, -6], [1, 6], [2.5, 16], [7, 24], [16, 30.5], [29, 31], [42, 25], [53, 12],
+      [59, -4], [59.5, -22], [55.5, -40], [48.5, -54], [44, -66]],
+  };
+  const crPt = (p0, p1, p2, p3, u) => [0, 1].map((i) => 0.5 * (2 * p1[i] + (-p0[i] + p2[i]) * u + (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * u * u + (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * u * u * u));
+  function bbSlide() {
+    const cp = SLIDE.CP, dense = [];
+    for (let i = 0; i < cp.length - 1; i++) {
+      const p0 = cp[Math.max(0, i - 1)], p3 = cp[Math.min(cp.length - 1, i + 2)];
+      for (let k = 0; k < 24; k++) dense.push(crPt(p0, cp[i], cp[i + 1], p3, k / 24));
+    }
+    dense.push(cp[cp.length - 1].slice());
+    // gleichmaessig alle 0,5 m
+    const ds = 0.5, P = [dense[0]];
+    let need = ds;
+    for (let i = 1; i < dense.length; i++) {
+      let a = dense[i - 1];
+      const b = dense[i];
+      let seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      while (seg >= need) {
+        const k = need / seg;
+        a = [lerp(a[0], b[0], k), lerp(a[1], b[1], k)];
+        P.push(a); seg -= need; need = ds;
       }
-      return b;
+      need -= seg;
+    }
+    const n = P.length, T = [], N = [];
+    for (let i = 0; i < n; i++) {
+      const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      T.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]); N.push([-(b[1] - a[1]) / l, (b[0] - a[0]) / l]);
+    }
+    // Hoehen: Untergrenze LB, dann rueckwaerts Mindestgefaelle, vorwaerts hoechstens 45 Grad, dann glaetten
+    const FLAT_N = 10, ground = P.map(([x, z]) => bbTerrain(x, z)[0]);
+    const rC = (i) => Math.hypot(P[i][0] - BB.CX, P[i][1] - BB.CZ);
+    const LB = P.map((_, i) => {
+      if (i < FLAT_N) return BB.TOP + 0.35;
+      const left = (n - 1 - i) * ds, t = ground[i];
+      if (rC(i) < 52) return t + 0.35;
+      return t + (left < 26 ? lerp(0.3, 3.5, left / 26) : 3.5);
+    });
+    const h = LB.slice();
+    for (let i = n - 2; i >= 0; i--) h[i] = Math.max(LB[i], h[i + 1] + (i < FLAT_N ? 0 : 0.03 * ds));
+    for (let i = 1; i < n; i++) h[i] = Math.max(h[i], h[i - 1] - 1.0 * ds);
+    for (let it = 0; it < 4; it++) {
+      const c = h.slice();
+      for (let i = FLAT_N + 2; i < n - 3; i++) h[i] = (c[i - 2] + c[i - 1] * 2 + c[i] * 2 + c[i + 1] * 2 + c[i + 2]) / 8;
+    }
+    for (let i = 1; i < n; i++) if (i >= FLAT_N) h[i] = Math.min(h[i], h[i - 1] - 0.002);
+    return { P, T, N, h, n, ds, FLAT_N };
+  }
+  // Querprofil der Bahn (Hoehe ueber der Mittellinie) bei seitlichem Abstand lat; NaN = ausserhalb
+  const slideLat = (lat) => { const a = Math.abs(lat); return a <= SLIDE.HW ? SLIDE.DEPTH * (a / SLIDE.HW) ** 4 : a <= SLIDE.HW + SLIDE.RAIL ? SLIDE.TOPR : NaN; };
+  // Zu jedem Rasterpunkt die naechste Stuetzstelle (Raster-Suche im Umkreis rad)
+  function nearestSamples(S, sl, rad, step = 1) {
+    const W = S.nx + 1, best = new Float32Array(W * (S.nz + 1)).fill(Infinity), idx = new Int32Array(W * (S.nz + 1)).fill(-1);
+    for (let i = 0; i < sl.n; i += step) {
+      const [px, pz] = sl.P[i];
+      const i0 = Math.max(0, Math.floor((px - rad - S.x0) / S.cell)), i1 = Math.min(S.nx, Math.ceil((px + rad - S.x0) / S.cell));
+      const k0 = Math.max(0, Math.floor((pz - rad - S.z0) / S.cell)), k1 = Math.min(S.nz, Math.ceil((pz + rad - S.z0) / S.cell));
+      for (let k = k0; k <= k1; k++) for (let j = i0; j <= i1; j++) {
+        const x = S.x0 + j * S.cell, z = S.z0 + k * S.cell, d = (x - px) ** 2 + (z - pz) ** 2, o = k * W + j;
+        if (d < best[o] && d <= rad * rad) { best[o] = d; idx[o] = i; }
+      }
+    }
+    return idx;
+  }
+
+  /* Alles, was nicht von der Mission abhaengt, wird nur einmal gerechnet und bleibt zwischen den Besuchen liegen:
+     Gelaende-Raster + Netz, Rodelbahn (Kollision + Netz + Stelzen), Wolkeninsel, Wolkenmeer, Texturen. */
+  let BB_CACHE = null;
+  function bbCache() {
+    if (BB_CACHE) return BB_CACHE;
+    const sl = bbSlide();
+    // ── Gelaende (1 m-Raster) mit Graben/Grat fuer die Rodelbahn ──
+    const T = new HField(-115, -130, 115, 101, 1);
+    const near = nearestSamples(T, sl, 15, 2), W = T.nx + 1;
+    for (let k = 0; k <= T.nz; k++) for (let i = 0; i <= T.nx; i++) {
+      const x = T.x0 + i, z = T.z0 + k, o = k * W + i;
+      let [h, mat] = bbTerrain(x, z);
+      const si = near[o];
+      if (si >= 0 && h === h) {
+        const [px, pz] = sl.P[si], lat = Math.abs((x - px) * sl.N[si][0] + (z - pz) * sl.N[si][1]), hc = sl.h[si];
+        const cut = hc - 0.6 + Math.max(0, lat - SLIDE.HW - SLIDE.RAIL - 0.3) * 1.25;
+        if (h > cut) h = cut;
+        const w = smooth((56 - Math.hypot(px - BB.CX, pz - BB.CZ)) / 6);
+        const berm = hc - 0.6 - Math.max(0, lat - SLIDE.HW - SLIDE.RAIL) * 1.15;
+        if (w > 0 && berm > h) { h = lerp(h, berm, w); if (w > 0.5 && mat !== 'ice') mat = 'berm'; }
+      }
+      T.hs[o] = h; T.setMat(o, mat);
+    }
+    // steile Stellen sind Fels (Schritte klingen anders)
+    for (let k = 1; k < T.nz; k++) for (let i = 1; i < T.nx; i++) {
+      const o = k * W + i;
+      if (T.mats[T.ms[o]] !== 'snow') continue;
+      const gx = (T.hs[o + 1] - T.hs[o - 1]) / 2, gz = (T.hs[o + W] - T.hs[o - W]) / 2;
+      if (gx * gx + gz * gz > 1.2) T.setMat(o, 'rock');
+    }
+    // Inselrand: die oberste Reihe Randpunkte auf die glatte Umrisslinie, die unterste etwas nach innen (Unterschnitt)
+    const crev = (x, z) => segDist(x, z, BB.CREV[0], BB.CREV[1]) < 3.2;
+    const outside = (q) => T.hs[q] < -60 && !crev(T.x0 + q % W, T.z0 + Math.floor(q / W));
+    const rimWarp = (i, k, p) => {
+      if (i < 1 || k < 1 || i >= T.nx || k >= T.nz || crev(p[0], p[2])) return p;
+      const o = k * W + i, nb = [o - 1, o + 1, o - W, o + W], out = outside(o);
+      if (out ? !nb.some((q) => T.hs[q] > -60) : !nb.some(outside)) return p;
+      const E = bbEdge(p[0], p[2]), rr = out ? E.R - 0.9 : E.R, dx = p[0] - BB.IC[0], dz = p[2] - BB.IC[1], dd = Math.hypot(dx, dz) || 1;
+      return [BB.IC[0] + dx / dd * rr, p[1], BB.IC[1] + dz / dd * rr];
     };
-    const segA = seg(-44, -98, -12, -90, 22, 27, 'x+');
-    corner(-52, -98, -44, -90, 22, [0, 1], ['-x', '-z']);
-    seg(-52, -90, -44, -50, 15, 22, 'z-');
-    corner(-52, -50, -44, -42, 15, [-1, 0], ['+x', '+z']);
-    seg(-90, -50, -52, -42, 9, 15, 'x+');
-    corner(-98, -50, -90, -42, 9, [0, 1], ['-x', '-z']);
-    seg(-98, -42, -90, 0, 2.5, 9, 'z-');
-    corner(-98, 0, -90, 8, 2.5, [1, 0], ['-x', '+z']);
-    seg(-90, 0, -62, 8, 0.4, 2.5, 'x-');
-    // Stuetzen unter der Bahn
-    const post = (x, z, top) => { if (top > 1.2) cyl(g, M4.from(x, 0, z), 0.35, 0.35, top - 1, 6, hex('#8a6a4a')); };
-    for (let x = -40; x >= -52; x -= 8) { post(x, -97.5, lerp(22, 27, (x + 44) / 32) - 0.2); post(x, -90.5, 21); }
-    for (let z = -86; z <= -54; z += 8) { post(-51.5, z, lerp(22, 15, (z + 90) / 40)); post(-44.5, z, lerp(22, 15, (z + 90) / 40)); }
-    for (let x = -56; x >= -96; x -= 8) { post(x, -49.5, lerp(15, 9, (-52 - x) / 38)); post(x, -42.5, lerp(15, 9, (-52 - x) / 38)); }
-    for (let z = -38; z <= 4; z += 8) { post(-97.5, z, lerp(9, 2.5, (z + 42) / 42)); post(-90.5, z, lerp(9, 2.5, (z + 42) / 42)); }
-    // Start-Tor und Ziel-Bogen
-    for (const z of [-98.6, -89.4]) cyl(g, M4.from(-12.5, HY, z), 0.25, 0.25, 4.6, 6, hex('#d8342b'));
-    box(g, M4.from(-12.5, HY + 4.6, -94), 0.4, 0.8, 9.6, hex('#ffffff'));
-    const bannerTex = labelTexture((c, w, h) => {
-      c.fillStyle = '#d8342b'; c.fillRect(0, 0, w, h);
-      c.fillStyle = '#fff'; c.font = '900 120px Arial Black, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('ZIEL', w / 2, h / 2 + 6);
-    }, 512, 192);
-    for (const z of [-2.5, 10.5]) cyl(g, M4.from(-58, 0, z), 0.25, 0.25, 4.6, 6, hex('#d8342b'));
-    box(g, M4.from(-58, 4.6, 4), 0.4, 0.8, 13.4, hex('#ffffff'));
-    const bannerMesh = build((gg) => gg.quad([0, -0.9, -4], [0, -0.9, 4], [0, 0.9, 4], [0, 0.9, -4], C.white, [[0, 1], [1, 1], [1, 0], [0, 0]]));
-    K.coinLine([-16, 27.2, -94], [-42, 22.8, -94], 6);
-    K.coinLine([-48, 22, -84], [-48, 17, -56], 5);
-    K.coinLine([-58, 15, -46], [-86, 10.6, -46], 5);
-    K.coinLine([-94, 9, -36], [-94, 4.4, -6], 5);
-    // Zeitmessung
-    let raceT = -1, racing = false;
-    const best = () => (state.rodel || 0);
+    const SNOW = hex('#f4f8fd'), SNOW2 = hex('#e1eaf6'), ROCK = hex('#a0a9b9'), ROCK2 = hex('#7b8496'), PATH = hex('#dfcba2'), PATH2 = hex('#c8b089');
+    const ICE = hex('#bfe2fb'), CLIFF = hex('#5f6676'), BERM = hex('#eef4fc');
+    const tg = new Geo();
+    T.mesh(tg, (x, y, z, n, mat) => {
+      if (mat === 'ice') return shade(ICE, 0.95 + vnoise(x * 0.4, z * 0.4) * 0.1);
+      if (y < -2.2) return shade(CLIFF, 0.8 + 0.2 * (0.5 + 0.5 * Math.sin(y * 0.8 + vnoise(x * 0.2, z * 0.2) * 3)));
+      let c = mat === 'path' ? mixc(PATH, PATH2, vnoise(x * 0.8, z * 0.8)) : mat === 'berm' ? BERM : mixc(SNOW, SNOW2, vnoise(x * 0.13, z * 0.13) * 0.9);
+      const steep = mat === 'berm' ? 0.15 * smooth((0.8 - n[1]) / 0.2) : smooth((0.8 - n[1]) / 0.2);
+      if (steep > 0) c = mixc(c, mixc(ROCK, ROCK2, 0.5 + 0.5 * Math.sin(y * 1.5 + vnoise(x * 0.3, z * 0.3) * 4)), steep);
+      return c;
+    }, 4, rimWarp);
+    const snowTex = repeatTexture((c, w, h) => {
+      c.fillStyle = '#ffffff'; c.fillRect(0, 0, w, h);
+      const r = seeded(31);
+      for (let i = 0; i < 70; i++) { c.fillStyle = `rgba(150,172,205,${0.06 + r() * 0.1})`; c.fillRect(Math.floor(r() * w), Math.floor(r() * h), 2 + Math.floor(r() * 5), 2 + Math.floor(r() * 4)); }
+      for (let i = 0; i < 26; i++) { c.fillStyle = 'rgba(210,228,255,0.9)'; c.fillRect(Math.floor(r() * w), Math.floor(r() * h), 1, 1); }
+    }, 64, 64);
+
+    // ── Rodelbahn: Kollision (0,5 m-Raster, duenn) ──
+    let bx0 = Infinity, bz0 = Infinity, bx1 = -Infinity, bz1 = -Infinity;
+    for (const [x, z] of sl.P) { bx0 = Math.min(bx0, x); bz0 = Math.min(bz0, z); bx1 = Math.max(bx1, x); bz1 = Math.max(bz1, z); }
+    const S = new HField(bx0 - 4, bz0 - 4, bx1 + 4, bz1 + 4, 0.5);
+    S.overlay = true; S.thick = SLIDE.THICK;
+    const nearS = nearestSamples(S, sl, SLIDE.HW + SLIDE.RAIL + 0.35), SW = S.nx + 1;
+    for (let k = 0; k <= S.nz; k++) for (let i = 0; i <= S.nx; i++) {
+      const o = k * SW + i, si = nearS[o];
+      if (si < 0) continue;
+      const x = S.x0 + i * S.cell, z = S.z0 + k * S.cell, [px, pz] = sl.P[si];
+      const along = (x - px) * sl.T[si][0] + (z - pz) * sl.T[si][1];
+      if ((si === 0 && along < -0.05) || (si === sl.n - 1 && along > 0.05)) continue;
+      const y = slideLat((x - px) * sl.N[si][0] + (z - pz) * sl.N[si][1]);
+      if (y === y) { S.hs[o] = sl.h[si] + y; S.setMat(o, 'chute'); }
+    }
+    // ── Rodelbahn: Bild (Querschnitt entlang der Bahn gezogen) + Stelzen ──
+    const sg = new Geo();
+    const PROF = [[-SLIDE.HW - SLIDE.RAIL, -SLIDE.THICK], [-SLIDE.HW - SLIDE.RAIL, SLIDE.TOPR], [-SLIDE.HW, SLIDE.TOPR]];
+    for (let k = 0; k <= 12; k++) { const lat = -SLIDE.HW + 2 * SLIDE.HW * k / 12; PROF.push([lat, SLIDE.DEPTH * (Math.abs(lat) / SLIDE.HW) ** 4]); }
+    PROF.push([SLIDE.HW, SLIDE.TOPR], [SLIDE.HW + SLIDE.RAIL, SLIDE.TOPR], [SLIDE.HW + SLIDE.RAIL, -SLIDE.THICK]);
+    const WOOD = hex('#9a6a3a'), WOOD2 = hex('#825629'), ICE1 = hex('#dcf1ff'), ICE2 = hex('#c2e2fa'), RED = hex('#e2404a'), WHITE = hex('#ffffff'), DARK = hex('#5a3e22');
+    const at = (i, lat, y) => [sl.P[i][0] + sl.N[i][0] * lat, sl.h[i] + y, sl.P[i][1] + sl.N[i][1] * lat];
+    const STEP = 2;
+    for (let i = 0; i + STEP < sl.n || i < sl.n - 1; i += STEP) {
+      const j = Math.min(sl.n - 1, i + STEP), seg = Math.floor(i / 4);
+      for (let q = 0; q < PROF.length - 1; q++) {
+        const a = PROF[q], b = PROF[q + 1];
+        let col;
+        if (q === 0 || q === PROF.length - 2) col = seg % 2 ? WOOD : WOOD2;                         // Aussenwaende
+        else if (q === 1 || q === PROF.length - 3) col = (Math.floor(i / 3) % 2) ? RED : WHITE;   // Bandenkappe
+        else if (q === 2 || q === PROF.length - 4) col = ICE2;                                   // Innenkante
+        else col = (Math.floor(i / 4) % 2) ? ICE1 : shade(ICE1, 0.94);                          // Eisrinne
+        sg.quad(at(i, a[0], a[1]), at(j, a[0], a[1]), at(j, b[0], b[1]), at(i, b[0], b[1]), col);
+      }
+      sg.quad(at(i, SLIDE.HW + SLIDE.RAIL, -SLIDE.THICK), at(j, SLIDE.HW + SLIDE.RAIL, -SLIDE.THICK), at(j, -SLIDE.HW - SLIDE.RAIL, -SLIDE.THICK), at(i, -SLIDE.HW - SLIDE.RAIL, -SLIDE.THICK), DARK);
+      if (j === sl.n - 1) break;
+    }
+    // Stirnseiten (Start in der Huette, Ende am See) zu
+    for (const i of [0, sl.n - 1]) for (let q = 1; q < PROF.length - 2; q++) sg.quad(at(i, PROF[q][0], PROF[q][1]), at(i, PROF[q + 1][0], PROF[q + 1][1]), at(i, PROF[q + 1][0], -SLIDE.THICK), at(i, PROF[q][0], -SLIDE.THICK), WOOD2);
+    // Stelzen, wo Luft unter der Bahn ist (vorher schon den Grat eingerechnet)
+    for (let i = sl.FLAT_N + 4; i < sl.n - 2; i += 8) {
+      const under = sl.h[i] - SLIDE.THICK;
+      for (const s of [-1, 1]) {
+        const lat = s * (SLIDE.HW + SLIDE.RAIL * 0.5), [x, , z] = at(i, lat, 0), g0 = T.h(x, z);
+        if (!(under - g0 > 0.5)) continue;
+        cyl(sg, M4.from(x, g0 - 0.3, z), 0.2, 0.17, under - g0 + 0.3, 7, WOOD2);
+      }
+      const [xl, , zl] = at(i, -SLIDE.HW - 0.2, 0), [xr, , zr] = at(i, SLIDE.HW + 0.2, 0), gm = Math.max(T.h(xl, zl), T.h(xr, zr));
+      if (under - gm > 2.2) {
+        const my = gm + (under - gm) * 0.45, len = Math.hypot(xr - xl, zr - zl);
+        box(sg, M4.from((xl + xr) / 2, my, (zl + zr) / 2, Math.atan2(xr - xl, zr - zl)), 0.14, 0.2, len, WOOD);
+      }
+    }
+
+    // ── Wolkeninsel (duenne Flaeche) + Felszapfen darunter ──
+    const [fx, fy, fz] = BB.FI, FR = (a) => 9 + 1.2 * Math.sin(3 * a + 0.4) + 0.6 * Math.sin(5 * a + 1);
+    const F = new HField(fx - 12, fz - 12, fx + 12, fz + 12, 0.5);
+    F.overlay = true; F.thick = 3;
+    F.fill((x, z) => {
+      const r = Math.hypot(x - fx, z - fz), R = FR(Math.atan2(z - fz, x - fx));
+      if (r > R) return NaN;
+      return fy + 0.55 * (1 - (r / R) ** 2) + (fbm(x / 3, z / 3) - 0.5) * 0.35 - Math.max(0, r - (R - 0.9)) * 0.9;
+    }, () => 'snow');
+    const fg = new Geo();
+    F.mesh(fg, (x, y, z, n) => mixc(hex('#f2f7ff'), hex('#dfe9f6'), vnoise(x * 0.5, z * 0.5)), 4);
+    const ROCKF = hex('#7d8697');
+    for (let s = 0; s < 36; s++) {
+      const a0 = s / 36 * TAU, a1 = (s + 1) / 36 * TAU, ring = (a, k, y) => [fx + Math.cos(a) * FR(a) * k, y, fz + Math.sin(a) * FR(a) * k];
+      const lv = [[1.02, fy - 0.35], [0.82, fy - 4], [0.55, fy - 8.5], [0.25, fy - 13], [0, fy - 17]];
+      for (let q = 0; q < lv.length - 1; q++) {
+        const c = shade(ROCKF, 0.82 + ((s + q) % 3) * 0.08);
+        fg.quad(ring(a0, lv[q][0], lv[q][1]), ring(a1, lv[q][0], lv[q][1]), ring(a1, lv[q + 1][0], lv[q + 1][1]), ring(a0, lv[q + 1][0], lv[q + 1][1]), c);
+      }
+    }
+    // ── Wolkenmeer ──
+    const cloudTex = repeatTexture((c, w, h) => {
+      c.fillStyle = '#a9bfdf'; c.fillRect(0, 0, w, h);
+      const r = seeded(7);
+      for (let i = 0; i < 110; i++) {
+        const x = r() * w, y = r() * h, rad = 10 + r() * 36;
+        for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) {
+          const gr = c.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, rad);
+          gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+          c.fillStyle = gr; c.fillRect(x + ox - rad, y + oy - rad, rad * 2, rad * 2);
+        }
+      }
+    }, 256, 256);
+    const cloudMesh = build((g) => g.quad([-760, 0, 760], [760, 0, 760], [760, 0, -760], [-760, 0, -760], C.white, [[-6.3, 6.3], [6.3, 6.3], [6.3, -6.3], [-6.3, -6.3]]));
+    BB_CACHE = { sl, T, terrainMesh: upload(tg), snowTex, S, slideMesh: upload(sg), F, fiMesh: upload(fg), cloudTex, cloudMesh };
+    return BB_CACHE;
+  }
+  /* ── Figuren des Bounce-Bergs (alle eigene Entwuerfe) ──
+     Frostkoenig: runder Schneekoenig mit Eiszapfen-Nase, Schnurrbart, Krone und Umhang (~4,6 m).
+     Eisbeisser: dunkelblaue Eiskugel mit Zahnreihen, an einer Kette an einem Holzpfahl. */
+  const BBM = {};
+  function bbMeshes() {
+    if (BBM.king) return BBM;
+    const SN = hex('#eef6ff'), SN2 = hex('#d4e6fa'), GOLD = hex('#f2c230'), GOLD2 = hex('#c8961a'), BROW = hex('#2a3a6a');
+    BBM.king = build((g) => {
+      sphere(g, M4.from(0, 2.05, 0), 1.9, 1.85, 1.8, 22, 14, (i, j) => (j > 9 ? SN2 : SN), true);
+      sphere(g, M4.from(0, 1.55, 0.72), 1.25, 1.15, 1.15, 18, 10, hex('#cfe4fb'), true);                 // Bauch
+      for (const s of [-1, 1]) {
+        sphere(g, M4.from(s * 0.52, 2.78, 1.52), 0.36, 0.42, 0.24, 12, 8, WHITE, true);                   // Augen
+        sphere(g, M4.from(s * 0.47, 2.72, 1.72), 0.15, 0.18, 0.08, 8, 6, INK, true);
+        box(g, M4.from(s * 0.56, 3.26, 1.56, 0, -0.25, s * 0.38), 0.72, 0.15, 0.16, BROW);                // boese Brauen
+        sphere(g, M4.from(s * 0.52, 2.02, 1.66, s * 0.25, 0, -s * 0.28), 0.6, 0.2, 0.24, 10, 6, WHITE, true);   // Schnurrbart
+        sphere(g, M4.from(s * 1.02, 2.2, 1.46), 0.2, 0.2, 0.2, 8, 6, WHITE, true);
+      }
+      cyl(g, M4.from(0, 2.4, 1.62, 0, Math.PI / 2), 0.2, 0, 0.62, 8, hex('#8fd0ff'));                       // Eiszapfen-Nase
+      box(g, M4.from(0, 1.6, 1.74, 0, -0.2), 0.62, 0.14, 0.1, hex('#3a1a2a'));                                // Mund
+      cyl(g, M4.from(0, 3.55, 0), 0.92, 1.02, 0.55, 18, GOLD, GOLD2);                                         // Krone
+      for (let k = 0; k < 6; k++) {
+        const a = k / 6 * TAU + Math.PI / 2;
+        cyl(g, M4.from(Math.cos(a) * 0.9, 4.08, Math.sin(a) * 0.9), 0.2, 0, 0.6, 6, GOLD);
+        sphere(g, M4.from(Math.cos(a) * 1.02, 3.82, Math.sin(a) * 1.02), 0.12, 0.12, 0.08, 6, 4, k % 2 ? hex('#e03040') : hex('#3070ff'), true);
+      }
+      // Umhang: blaue Bahn mit Hermelinsaum hinten
+      const CAPE = hex('#2c4cb4'), CAPE2 = hex('#22409c');
+      for (let k = 0; k < 10; k++) {
+        const a0 = Math.PI * (1.15 + k * 0.07), a1 = Math.PI * (1.15 + (k + 1) * 0.07), p = (a, r, y) => [Math.cos(a) * r, y, Math.sin(a) * r];
+        g.quad(p(a0, 1.72, 3.3), p(a1, 1.72, 3.3), p(a1, 2.25, 0.55), p(a0, 2.25, 0.55), k % 2 ? CAPE : CAPE2);
+        g.quad(p(a0, 2.26, 0.56), p(a1, 2.26, 0.56), p(a1, 2.3, 0.25), p(a0, 2.3, 0.25), WHITE);
+      }
+    });
+    BBM.kingArm = build((g) => {
+      sphere(g, M4.from(0, -0.3, 0), 0.34, 0.5, 0.34, 10, 6, SN, true);
+      sphere(g, M4.from(0, -0.85, 0.05), 0.44, 0.44, 0.44, 12, 8, hex('#d8342b'), true);
+      sphere(g, M4.from(0.25, -0.7, 0.28), 0.18, 0.2, 0.18, 6, 5, hex('#d8342b'), true);
+    });
+    BBM.kingFoot = build((g) => sphere(g, M4.from(0, 0.26, 0.15), 0.56, 0.34, 0.72, 12, 8, hex('#2a3f7a'), true));
+    const CH = hex('#27488f'), CH2 = hex('#1d3670');
+    const half = (top) => build((g) => {
+      sphere(g, M4.from(0, 0, 0), 1.25, 1.2, 1.25, 20, 10, (i, j) => ((i + j) % 5 ? CH : CH2), true, top ? 0 : Math.PI / 2, top ? Math.PI / 2 : Math.PI);
+      disc(g, M4.from(0, top ? -0.01 : 0.01, 0, 0, top ? Math.PI / 2 : -Math.PI / 2), 1.2, 20, hex('#6a1020'));   // Rachen
+      for (let k = -4; k <= 4; k++) {                                                                                    // Zaehne
+        const a = Math.PI / 2 + k * 0.17, x = Math.cos(a) * 1.08, z = Math.sin(a) * 1.08;
+        cyl(g, M4.from(x, 0, z, 0, top ? Math.PI : 0), 0.13, 0, 0.3, 5, WHITE);
+      }
+      if (top) for (const s of [-1, 1]) {
+        sphere(g, M4.from(s * 0.46, 0.62, 0.92), 0.28, 0.32, 0.18, 10, 6, WHITE, true);
+        sphere(g, M4.from(s * 0.44, 0.6, 1.06), 0.11, 0.14, 0.06, 6, 5, INK, true);
+      }
+    });
+    BBM.chompTop = half(true); BBM.chompBot = half(false);
+    BBM.stake = build((g) => {
+      cyl(g, M4.from(0, 0, 0), 0.34, 0.3, 1.4, 9, hex('#8a5a2a'), hex('#b8864a'));
+      cyl(g, M4.from(0, 0.9, 0), 0.37, 0.37, 0.18, 9, hex('#6a6e78'));
+    });
+    BBM.link = build((g) => { for (const s of [-1, 1]) box(g, M4.from(0, 0, s * 0.13), 0.1, 0.28, 0.07, hex('#3a3e48')); box(g, M4.from(0, 0.13, 0), 0.1, 0.07, 0.3, hex('#4a4e58')); box(g, M4.from(0, -0.13, 0), 0.1, 0.07, 0.3, hex('#4a4e58')); });
+    BBM.barrel = build((g) => {
+      cyl(g, M4.from(0, -0.4, 0), 0.62, 0.56, 3.0, 14, hex('#2c313c'), hex('#101216'));
+      cyl(g, M4.from(0, 2.3, 0), 0.66, 0.66, 0.25, 14, GOLD);
+      cyl(g, M4.from(0, 0.6, 0), 0.66, 0.66, 0.18, 14, GOLD2);
+    });
+    BBM.lid = build((g) => {
+      cyl(g, M4.from(0, 0, 0), 1.75, 1.75, 0.16, 16, hex('#8a5a2a'), hex('#a8743e'));
+      for (let k = -2; k <= 2; k++) box(g, M4.from(k * 0.62, 0.17, 0), 0.08, 0.04, 3.2 - Math.abs(k) * 0.5, hex('#6a4218'));
+    });
+    BBM.oneup = build((g) => {
+      const G1 = hex('#36d65a'), G2 = hex('#1fa844');
+      for (const s of [-1, 1]) sphere(g, M4.from(s * 0.26, 0.2, 0), 0.34, 0.34, 0.24, 12, 8, G1, true);
+      cyl(g, M4.from(0, 0.12, 0, 0, Math.PI), 0.56, 0, 0.62, 12, G2);
+      sphere(g, M4.from(-0.3, 0.35, 0.2), 0.08, 0.08, 0.04, 6, 4, WHITE, true);
+    });
+    BBM.bar = build((g) => cyl(g, M4.from(0, 0, 0), 0.16, 0.16, 3.4, 7, hex('#bfe6ff'), hex('#e8f6ff')));
+    return BBM;
+  }
+  // Extraleben: gruenes Herz, drei aufsteigende Toene
+  function oneUp(K, pos) {
+    K.item(bbMeshes().oneup, pos, () => {
+      run.lives++; renderHud('lives');
+      [3, 7, 10, 14].forEach((n, i) => setTimeout(() => Snd.chime(n), i * 90));
+      toast('\u{1F49A} 1-UP!');
+    }, 1.5);
+  }
+
+  function buildBounce() {
+    const M = courseMission, BC = bbCache(), MS = bbMeshes(), clear = M !== 0;
+    const L = new Level({ name: 'Bounce-Berg', spawn: [0, 0, 64], spawnFace: Math.PI, spawnYaw: 0,
+      fog: hex(clear ? '#d3e8fb' : '#dde6f0'), fogNear: clear ? 120 : 60, fogFar: clear ? 420 : 230,
+      light: v3.norm([-0.35, -0.8, -0.45]), sky: clear ? 'cloudsea' : 'snow', voidY: -22 });
+    L.course = 'bounce'; L.mission = M; L.coins100 = 'bounce100';
+    L.redStar = { id: 'bounceRot', pos: [BB.MARK[0], 2.4, BB.MARK[1]] };
+    L.marker = [BB.MARK[0], 0.04, BB.MARK[1]];
+    const K = kit(L), g = K.g, gw = K.glow, r = K.rnd;
+    L.terrain = L.surface(BC.T);
+    const slideB = L.surface(BC.S, 'chute');
+    L.surface(BC.F, 'isle');
+    const H = (x, z) => BC.T.h(x, z), sl = BC.sl;
+    const onT = (x, z, dy = 0) => [x, H(x, z) + dy, z];
+
+    // ── Gipfelhuette (Tuer im Norden, im Sueden beginnt die Rodelbahn) ──
+    const LOG = { top: hex('#8a5a2a'), side: hex('#9c6a36') }, Y = BB.TOP, HZ0 = -27, HZ1 = -19;
+    L.block(-3.5, Y + 1.6, (HZ0 + HZ1) / 2, 0.5, 3.2, 8, LOG, 'cabin'); L.block(3.5, Y + 1.6, (HZ0 + HZ1) / 2, 0.5, 3.2, 8, LOG, 'cabin');
+    L.block(-2.4, Y + 1.6, HZ0, 2.2, 3.2, 0.5, LOG, 'cabin'); L.block(2.4, Y + 1.6, HZ0, 2.2, 3.2, 0.5, LOG, 'cabin');
+    L.block(0, Y + 2.85, HZ0, 2.6, 0.7, 0.5, LOG, 'cabin');
+    L.block(-3.2, Y + 1.6, HZ1, 0.6, 3.2, 0.5, LOG, 'cabin'); L.block(3.2, Y + 1.6, HZ1, 0.6, 3.2, 0.5, LOG, 'cabin');
+    L.block(0, Y + 2.95, HZ1, 6.4, 0.5, 0.5, LOG, 'cabin');
+    for (let y = Y + 0.35; y < Y + 3.1; y += 0.55) for (const x of [-3.78, 3.78]) box(g, M4.from(x, y, (HZ0 + HZ1) / 2), 0.1, 0.12, 8.2, hex('#6a4218'));
+    L.solid(-4.2, Y + 3.2, HZ0 - 0.6, 4.2, Y + 3.5, HZ1 + 0.6, 'cabin');
+    const RF = hex('#7a3a1e'), SNW = hex('#fafcff'), RY = Y + 3.2;
+    const roof = (dy, col) => {
+      g.quad([-4.4, RY + dy, HZ0 - 0.8], [0, RY + 2 + dy, HZ0 - 0.8], [0, RY + 2 + dy, HZ1 + 0.8], [-4.4, RY + dy, HZ1 + 0.8], col);
+      g.quad([4.4, RY + dy, HZ1 + 0.8], [0, RY + 2 + dy, HZ1 + 0.8], [0, RY + 2 + dy, HZ0 - 0.8], [4.4, RY + dy, HZ0 - 0.8], col);
+    };
+    roof(0, RF); roof(0.14, SNW);
+    for (const z of [HZ0, HZ1]) g.tri([-3.75, RY, z], [3.75, RY, z], [0, RY + 1.9, z], LOG.side);
+    for (let k = 0; k < 7; k++) cyl(g, M4.from(-4 + k * 1.33, RY - 0.05, HZ1 + 0.82), 0.07, 0, 0.5 + (k % 3) * 0.18, 5, hex('#dff2ff'));   // Eiszapfen
+    L.block(2.4, RY + 1.5, -24.5, 0.9, 2.2, 0.9, { top: hex('#5a5a5a'), side: hex('#7a6a6a') }, 'chimney');
+    K.life.smoke(2.4, RY + 2.7, -24.5, 6, { s: 0.9, rise: 4 });
+    box(gw, M4.from(-3.2, Y + 2.3, -23), 0.08, 0.5, 0.5, hex('#ffd878'));
+    box(gw, M4.from(3.2, Y + 2.3, -23), 0.08, 0.5, 0.5, hex('#ffd878'));
+    const RODEL_BANNER = labelTexture((c, w, h) => {
+      c.fillStyle = '#d8342b'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff';
+      c.font = '900 70px Arial Black, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('RODELBAHN', w / 2, h / 2 + 4);
+    }, 512, 128);
+    L.ownTex = [RODEL_BANNER];
+    const bannerMesh = build((gg) => gg.quad([-2.6, -0.33, 0], [2.6, -0.33, 0], [2.6, 0.33, 0], [-2.6, 0.33, 0], C.white, [[0, 1], [1, 1], [1, 0], [0, 0]]));
+    L.ownMeshes = [bannerMesh];
+    // Schneehase an der Huettentuer erklaert die Rodelbahn
+    const hare = [-2.6, Y, HZ0 - 1.6];
+    K.talker(hare[0], Y, hare[2], 'Schneehase', [
+      'Brrr! Na, auch Lust auf eine Abfahrt?',
+      'Durch die Hütte geht es auf die RODELBAHN: einmal um den halben Berg, auf Stelzen über die Wiese und bis auf den Eissee.',
+      'Einfach reinlaufen – auf dem Bauch geht es von allein. Mit dem Stick lenkst du, mit A springst du ab.',
+      'Stick nach vorn macht schneller! Wer unten in unter 10 Sekunden ankommt, bekommt von mir etwas Grünes.',
+    ], false);
+    L.solid(hare[0] - 0.5, Y, hare[2] - 0.5, hare[0] + 0.5, Y + 1.9, hare[2] + 0.5, 'npc');
+    CAT_VOICES.set('Schneehase', { hz: 380, dur: 0.1, rate: 4.6 });
+
+    // ── Gipfelfahne (Ziel des Wettlaufs) ──
+    const FP = onT(BB.FLAG[0], BB.FLAG[1]);
+    cyl(g, M4.from(FP[0], FP[1], FP[2]), 0.14, 0.11, 6.4, 8, hex('#c8ccd6'));
+    sphere(g, M4.from(FP[0], FP[1] + 6.5, FP[2]), 0.22, 0.22, 0.22, 8, 6, C.gold, true);
+    const flagTex = labelTexture((c, w, h) => {
+      c.fillStyle = '#2f6dff'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffd21f';
+      c.beginPath(); for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 22 : 52; c.lineTo(w / 2 + Math.cos(a) * rr, h / 2 + Math.sin(a) * rr); } c.fill();
+    }, 256, 160);
+    L.ownTex.push(flagTex);
+    const flagMesh = build((gg) => {
+      for (let k = 0; k < 6; k++) {
+        const u0 = k / 6, u1 = (k + 1) / 6;
+        gg.quad([u0 * 2.6, -0.85, 0], [u1 * 2.6, -0.85, 0], [u1 * 2.6, 0.85, 0], [u0 * 2.6, 0.85, 0], C.white, [[u0, 1], [u1, 1], [u1, 0], [u0, 0]]);
+      }
+    });
+    L.ownMeshes.push(flagMesh);
+
+    // ── Sternmarke, Wegweiser, Schilder, Bewohner ──
+    K.talker(5, H(5, 56), 56, 'Schild', [
+      '★ BOUNCE-BERG ★\nWillkommen auf der Schneeinsel über den Wolken! Am Rand geht es tief hinab – also Vorsicht.',
+      'Der Weg zum Gipfel beginnt links vom Berg und windet sich einmal um ihn herum. Oben steht die Hütte mit der Rodelbahn.',
+      'Die Sternmarke auf der Wiese leuchtet, bis alle 8 roten Münzen gefunden sind.',
+      'Und wer 100 Münzen in einem Besuch sammelt, bekommt ebenfalls einen Stern.',
+    ]);
+    K.talker(-17.5, H(-17.5, 21), 21, 'Schild', ['Zum Gipfel ↑\nVorsicht: Von oben rollen Schneebälle!', 'Im Westen hilft ein Bounce-Pilz beim Abkürzen.'], { ry: 0.5 });
+    K.talker(-52, H(-52, 4), 4, 'Schild', ['VORSICHT, EISBEISSER!\nNicht füttern. Und bitte NICHT auf den Pfahl stampfen.', '…drei Mal schon gar nicht.'], { ry: 1.6 });
+    K.talker(-14, H(-14, -86), -86, 'Schild', ['GLETSCHERSPALTE!\nBitte die Brücke benutzen.', 'Da unten auf dem Sims glitzert etwas Rotes …'], { ry: Math.PI });
+    K.portal(24, H(24, 58), 58, 2, { scale: 0.9 });
+    const frost = K.life.npc(-9, 55, 'Schneekatze Frost', [], { cat: 1, r: 4, tint: '#8ad8ff', mix: 0.35 });
+    Object.defineProperty(L.talkers[L.talkers.length - 1], 'text', { get: () => [
+      M === 0 ? 'Hörst du das Grollen? Oben auf dem Gipfel sitzt der FROSTKÖNIG und lässt niemanden hoch!' : 'Schön klar heute – man sieht bis zur Wolkeninsel!',
+      M === 0 ? 'Er ist stark, aber schwerfällig. Lauf um ihn herum, pack ihn von hinten und wirf ihn – aber bleib dabei auf dem Gipfel!'
+        : 'Der Kanonier Kasimir hinten bei der Grube kann dir die Kanone öffnen.',
+      'Am Rand der Insel geht es ins Wolkenmeer. Wer da reinfällt, landet wieder am Start – mit blauen Flecken.',
+    ] });
+
+    // ── Bergweg: Muenzen, Pfosten mit Seil an den gefaehrlichsten Stellen ──
+    for (let t = 0.04; t < 0.98; t += 0.034) {
+      const p = bbPath(t);
+      L.coin('yellow', p.x, p.h + 1.1, p.z);
+    }
+    for (let t = 0.3; t < 0.97; t += 0.055) {
+      const a = BB.T0 + BB.SPAN * t, p = bbPath(t), rr = p.r + BB.W / 2 - 0.35, x = BB.CX + Math.cos(a) * rr, z = BB.CZ + Math.sin(a) * rr;
+      cyl(g, M4.from(x, H(x, z) - 0.2, z), 0.12, 0.1, 1.4, 6, hex('#7a5028'));
+    }
+    // Trampelpfad vom Start zum Bergweg: Muenzen als Wegweiser
+    for (let i = 0; i < BB.TRAIL.length - 1; i++) {
+      const [ax, az] = BB.TRAIL[i], [bx, bz] = BB.TRAIL[i + 1];
+      for (let k = 0; k < 2; k++) { const x = lerp(ax, bx, (k + 0.5) / 2), z = lerp(az, bz, (k + 0.5) / 2); L.coin('yellow', x, H(x, z) + 1, z); }
+    }
+    // ── Bounce-Pilze: Abkuerzung im Westen (auf den Weg in ~10 m Hoehe), einer im Sueden (rote Muenze in der Luft) ──
+    const pad = (x, z, pw = 82) => {
+      const y = H(x, z);
+      cyl(g, M4.from(x, y - 0.3, z), 0.5, 0.45, 1.1, 8, hex('#f4ecd8'));
+      sphere(g, M4.from(x, y + 0.85, z), 1.9, 0.62, 1.9, 16, 6, (i, j) => (((i + j) % 4) ? hex('#ff5aa8') : hex('#ffffff')), true, 0, Math.PI / 2);
+      const b = L.solid(x - 1.6, y, z - 1.6, x + 1.6, y + 0.95, z + 1.6, 'bouncy'); b.bounce = pw;
+      return y;
+    };
+    const pw = pad(BB.PAD_W[0], BB.PAD_W[1]);
+    { const tp = bbPath(0.25); K.coinLine([BB.PAD_W[0], pw + 4, BB.PAD_W[1]], [lerp(BB.PAD_W[0], tp.x, 0.7), tp.h + 3.5, lerp(BB.PAD_W[1], tp.z, 0.7)], 4); }
+    const ps = pad(BB.PAD_S[0], BB.PAD_S[1]);
+    L.coin('red', BB.PAD_S[0], ps + 10.5, BB.PAD_S[1]);
+
+    // ── Gletscherspalte: Bruecke, Sims mit roter Muenze ──
+    { const bxm = -10, bzm = lerp(BB.CREV[0][1], BB.CREV[1][1], (bxm - BB.CREV[0][0]) / (BB.CREV[1][0] - BB.CREV[0][0]));
+      K.bridge(bxm - 1.6, bzm - 3.6, bxm + 1.6, bzm + 3.6, 0.05);
+      K.coinLine([bxm, 1.1, bzm - 2.5], [bxm, 1.1, bzm + 2.5], 4);
+      const sx = -20, sz = lerp(BB.CREV[0][1], BB.CREV[1][1], (sx - BB.CREV[0][0]) / (BB.CREV[1][0] - BB.CREV[0][0])) + 1.7;
+      L.block(sx, -2.65, sz, 3.2, 0.5, 1.2, { top: hex('#dfe8f4'), side: hex('#7a8494') }, 'ledge');
+      L.coin('red', sx, -1.3, sz); }
+
+    // ── Eissee mit zwei Eissaeulen (Wandsprung) ──
+    const LK = BB.LAKE;
+    K.coinRing(LK[0], -0.1, LK[1], 7, 10);
+    const ICEP = { top: hex('#e8f6ff'), side: hex('#a8d8f8') };
+    L.block(LK[0] - 17, 4.3, LK[1] + 4, 2.4, 10.6, 2.4, ICEP, 'icepillar');
+    L.block(LK[0] - 17, 4.3, LK[1] + 8.8, 2.4, 10.6, 2.4, ICEP, 'icepillar');
+    L.coin('red', LK[0] - 17, 10.4, LK[1] + 4);
+    life(LK);
+    function life(lk) {
+      K.life.critters('penguin', lk[0] - 9, lk[1] - 9, lk[0] + 9, lk[1] + 9, 4, { y: -1, s: 1.1, hop: 0.02, speed: 0.7 });
+    }
+
+    // ── Pferch mit Eisbeisser (Westen) + Kaefig mit Eisgitter ──
+    const [PX, PZ] = BB.PEN, [CX2, CZ2] = BB.CAGE, PY = H(PX, PZ);
+    K.fence(PX - 11, PZ - 11, PX + 11, PZ - 11, PY); K.fence(PX - 11, PZ + 11, PX + 11, PZ + 11, PY);
+    K.fence(PX + 11, PZ - 11, PX + 11, PZ - 3, PY); K.fence(PX + 11, PZ + 3, PX + 11, PZ + 11, PY);
+    const ROCKB = { top: hex('#e8eef8'), side: hex('#7d8697') }, CY = H(CX2, CZ2);
+    L.block(CX2 - 3.2, CY + 2, CZ2, 1.2, 5, 7.6, ROCKB, 'cliff');
+    L.block(CX2, CY + 2, CZ2 - 3.6, 5.6, 5, 1.2, ROCKB, 'cliff'); L.block(CX2, CY + 2, CZ2 + 3.6, 5.6, 5, 1.2, ROCKB, 'cliff');
+    L.block(CX2 - 0.2, CY + 4.1, CZ2, 6, 0.8, 8.4, ROCKB, 'cliff');
+    for (const s of [-1, 1]) K.rock(CX2 + 2.6, CY, CZ2 + s * 4.6, 1.6, hex('#8a93a3'));
+    const gate = L.solid(CX2 + 2.4, CY, CZ2 - 3, CX2 + 3.0, CY + 3.6, CZ2 + 3, 'icegate');
+    let gateOpen = false;
+    K.coinRing(PX, PY + 1, PZ, 4.2, 8);
+    L.coin('red', PX, PY + 1.2, PZ - 6);
+    if (M === 3) K.star('eisbeisser', [CX2 - 0.4, CY + 1.9, CZ2]);
+    const stake = L.solid(PX - 0.36, PY, PZ - 0.36, PX + 0.36, PY + 1.4, PZ + 0.36, 'stake');
+    let stakeHits = 0;
+    const CHAIN = 7.4;
+    const chomp = { pos: [PX + 4, PY, PZ], vy: 0, v: [0, 0], face: -Math.PI / 2, state: 'idle', t: 1, cool: 1, jaw: 0, free: false, gone: false, air: false };
+
+    // ── Iglu (Nordwesten, auf dem Huegel): nur auf allen vieren hinein ──
+    { const [IX, IZ] = BB.IGLU, IY = H(IX, IZ) - 0.2, IGL = hex('#eef6ff');
+      sphere(g, M4.from(IX, IY, IZ), 4.2, 3.4, 4.2, 16, 6, (i, j) => shade(IGL, (i + j) % 2 ? 1 : 0.94), false, 0, Math.PI / 2);
+      for (let j = 1; j < 4; j++) box(g, M4.from(IX, IY + j * 0.85, IZ), 8.6 - j * 1.2, 0.05, 8.6 - j * 1.2, hex('#c8dcf0'));
+      for (const s of [-1, 1]) L.block(IX + s * 1.1, IY + 0.6, IZ + 4.8, 0.6, 1.2, 2.4, { top: IGL, side: hex('#d8e8f8') }, 'igloo');
+      L.block(IX, IY + 1.35, IZ + 4.8, 2.8, 0.3, 2.4, { top: IGL, side: hex('#d8e8f8') }, 'igloo');
+      L.solid(IX - 4, IY, IZ - 4, IX + 4, IY + 3.4, IZ - 2.2, 'igloo'); L.solid(IX - 4, IY, IZ - 2.2, IX - 2.2, IY + 3.4, IZ + 3.6, 'igloo');
+      L.solid(IX + 2.2, IY, IZ - 2.2, IX + 4, IY + 3.4, IZ + 3.6, 'igloo'); L.solid(IX - 2.2, IY + 1.2, IZ + 2.4, IX + 2.2, IY + 3.4, IZ + 3.6, 'igloo');
+      L.solid(IX - 2.2, IY + 2.8, IZ - 2.2, IX + 2.2, IY + 3.4, IZ + 2.4, 'igloo');
+      L.solid(IX - 2.2, IY - 3, IZ - 2.2, IX + 2.2, IY + 0.2, IZ + 3.6, 'iglufloor');
+      L.coin('red', IX + 1.2, IY + 1.2, IZ - 0.8);
+      K.item(MESH.chest, [IX - 1, IY + 0.2, IZ - 1], (it) => {
+        Snd.starAppear(); addCoins(10);
+        burst([it.pos[0], it.pos[1] + 1, it.pos[2]], 16, { spread: 3, up: 4, life: .8, size: .2, cols: [[1, .85, .2], [1, 1, 1]], grav: 2 });
+        toast('\u{1F9CA} Im Iglu: +10 Münzen!');
+      }, 1.8); }
+
+    // ── Schneemann mit Hut-Geheimnis ──
+    const SX = -32, SZ = 34, SY = H(SX, SZ), SN = hex('#f8fbff');
+    sphere(g, M4.from(SX, SY + 1.5, SZ), 1.6, 1.5, 1.6, 12, 8, SN, true);
+    sphere(g, M4.from(SX, SY + 3.9, SZ), 1.2, 1.1, 1.2, 12, 8, SN, true);
+    sphere(g, M4.from(SX, SY + 5.6, SZ), 0.85, 0.8, 0.85, 12, 8, SN, true);
+    cyl(g, M4.from(SX, SY + 5.6, SZ + 0.8, 0, Math.PI / 2), 0.14, 0, 0.7, 6, hex('#f08020'));
+    for (const s of [-1, 1]) { sphere(g, M4.from(SX + s * 0.3, SY + 5.85, SZ + 0.7), 0.1, 0.1, 0.08, 5, 4, C.black); cyl(g, M4.from(SX + s * 1.1, SY + 3.9, SZ, 0, 0, -s * 1.1), 0.06, 0.04, 1.6, 4, hex('#6b4214')); }
+    L.solid(SX - 1.4, SY, SZ - 1.4, SX + 1.4, SY + 5, SZ + 1.4, 'snowman');
+    L.solid(SX - 0.7, SY + 5, SZ - 0.7, SX + 0.7, SY + 6.45, SZ + 0.7, 'snowhat');
+    let hatOn = true;
+
+    // ── Kanone (Grube mit Deckel) + Kanonier ──
+    const [KX, KZ] = BB.PIT;
+    const cannon = { pos: [KX, -1.3, KZ], yaw0: Math.atan2(BB.FI[0] - KX, BB.FI[2] - KZ), pitch0: 0.6, exit: [KX + 2.8, 0.4, KZ], yaw: 0, pitch: 0.72 };
+    let cannonOpen = !!state.flags.bbCannon;
+    const lid = L.solid(KX - 1.75, -0.4, KZ - 1.75, KX + 1.75, 0.12, KZ + 1.75, 'lid');
+    const setLid = () => { if (cannonOpen) { lid.min[1] = -9999; lid.max[1] = -9998; } };
+    setLid();
+    for (let k = 0; k < 14; k++) {
+      const a = k / 14 * TAU, x = KX + Math.cos(a) * 2.15, z = KZ + Math.sin(a) * 2.15;
+      box(g, M4.from(x, H(x, z) + 0.12, z, -a), 0.55, 0.42, 0.95, k % 2 ? hex('#9aa2b0') : hex('#8a92a0'));
+    }
+    const kas = K.life.npc(KX + 4.5, KZ + 3, 'Kanonier Kasimir', [], { cat: 3, r: 2, tint: '#ffb070', mix: 0.3 });
+    const kasT = L.talkers[L.talkers.length - 1];
+    Object.defineProperty(kasT, 'text', { get: () => (cannonOpen
+      ? ['Die Kanone ist bereit! Lauf in die Grube, ziel mit dem Stick oder der Maus – und A oder Leertaste zum Abfeuern.', 'Die Wolkeninsel liegt da drüben im Westen, knapp über dem Rand. Ein bisschen höher zielen!']
+      : ['Aha, ein Abenteurer! Ich bin Kasimir, der Kanonier.', 'Siehst du die Insel da oben über den Wolken? Da kommt man nur mit meiner Kanone hin.', 'Ich mach sie dir auf. Viel Glück – und nicht zu weit schießen!']) });
+    kasT.onDone = () => {
+      if (cannonOpen) return;
+      cannonOpen = true; state.flags.bbCannon = true; save(); setLid();
+      Snd.door(); Snd.boom(); cam.shake = 0.3;
+      burst([KX, 0.5, KZ], 20, { spread: 4, up: 4, life: .8, size: .3, cols: [[.6, .45, .25], [.9, .9, .9]], grav: 6 });
+      toast('\u{1F4A5} Die Kanone ist offen!');
+    };
+
+    // ── Wolkeninsel ──
+    { const [fx, fy, fz] = BB.FI, fh = (x, z) => BC.F.h(x, z);
+      K.coinRing(fx, fy + 1.4, fz, 5.5, 8);
+      L.coin('red', fx, fy + 1.4, fz - 3);
+      oneUp(K, [fx + 3, fh(fx + 3, fz + 3), fz + 3]);
+      K.pine(fx - 4, fz + 2, fh(fx - 4, fz + 2) - 0.1, 5, true);
+      K.pine(fx + 5, fz - 3, fh(fx + 5, fz - 3) - 0.1, 4, true);
+      if (M === 4) K.star('wolkeninsel', [fx, fy + 2.2, fz + 1]); }
+
+    // ── Rodelbahn: Muenzen in der Rinne, Zeitmessung, Stern am Ziel (M3) ──
+    for (let i = 60; i < sl.n - 20; i += 16) L.coin('yellow', sl.P[i][0], sl.h[i] + 1.0, sl.P[i][1]);
+    { const i = Math.floor(sl.n * 0.72), [x, z] = sl.P[i], gy = H(x, z);
+      if (sl.h[i] - SLIDE.THICK - gy > 2.4) L.coin('red', x + sl.N[i][0] * 0.3, gy + 1.1, z + sl.N[i][1] * 0.3); }
+    const endP = [sl.P[sl.n - 1][0], sl.h[sl.n - 1], sl.P[sl.n - 1][1]];
+    let slideT = -1;
+
+    // ── Rote Muenze Nr. 1: auf dem Huettendach ──
+    L.coin('red', 0, RY + 2.9, -23);
+
+    // ── Wiesen: Tannen, Felsen, Schneemaenner, Wimpel ──
+    const avoid = (x, z) => {
+      if (Math.hypot(x - BB.CX, z - BB.CZ) < 58) return true;
+      if (Math.hypot(x - 0, z - 64) < 14) return true;
+      if (polyDist(x, z, BB.TRAIL) < 5) return true;
+      if (Math.hypot(x - LK[0], z - LK[1]) < LK[2] + 7) return true;
+      if (Math.abs(x - PX) < 16 && Math.abs(z - PZ) < 16) return true;
+      if (Math.hypot(x - BB.IGLU[0], z - BB.IGLU[1]) < 9) return true;
+      if (segDist(x, z, BB.CREV[0], BB.CREV[1]) < 7) return true;
+      if (segDist(x, z, BB.PIT, [BB.FI[0], BB.FI[2]]) < 8) return true;   // Schusslinie der Kanone frei
+      if (Math.hypot(x - KX, z - KZ) < 8 || Math.hypot(x - SX, z - SZ) < 5 || Math.hypot(x - BB.MARK[0], z - BB.MARK[1]) < 6) return true;
+      if (Math.hypot(x - BB.PAD_S[0], z - BB.PAD_S[1]) < 4 || Math.hypot(x - 24, z - 58) < 6) return true;
+      for (let i = 0; i < sl.n; i += 6) if (Math.hypot(x - sl.P[i][0], z - sl.P[i][1]) < 6) return true;
+      const E = bbEdge(x, z);
+      return E.d > E.R - 4;
+    };
+    const place = (n, fn) => {
+      for (let tries = 0, got = 0; got < n && tries < n * 30; tries++) {
+        const x = lerp(-105, 105, r()), z = lerp(-120, 92, r());
+        if (avoid(x, z) || L.scatterPts.some(([qx, qz]) => (qx - x) ** 2 + (qz - z) ** 2 < 25)) continue;
+        const y = H(x, z);
+        if (!(y > -0.8)) continue;
+        fn(x, y, z); L.scatterPts.push([x, z]); got++;
+      }
+    };
+    place(58, (x, y, z) => K.pine(x, z, y - 0.2, 5 + r() * 6, true));
+    place(16, (x, y, z) => K.rock(x, y - 0.2, z, 1 + r() * 1.6, hex('#dfe8f0')));
+    place(8, (x, y, z) => {
+      cyl(g, M4.from(x, y - 0.1, z), 0.1, 0.08, 3 + r(), 6, hex('#6b4214'));
+      for (let k = 0; k < 3; k++) g.tri([x, y + 3.2 - k * 0.5, z], [x, y + 2.9 - k * 0.5, z], [x + 1.2, y + 3.05 - k * 0.5, z + 0.2], hex(['#e03a4a', '#2f6dff', '#ffd21f'][k]));
+    });
+    // Felsbrocken am Berg (Leib), nur Deko
+    for (let k = 0; k < 16; k++) {
+      const t = 0.05 + k * 0.058, p = bbPath(t), a = p.a, rr = p.r - BB.W / 2 - 0.2, x = BB.CX + Math.cos(a) * rr, z = BB.CZ + Math.sin(a) * rr;
+      K.rock(x, H(x, z) - 0.55, z, 0.8 + r() * 0.7, hex('#9aa2b0'), false);   // am Fuss der Wand, halb eingegraben
+    }
+    // Muenzringe auf den Wiesen
+    [[30, 48], [-44, 22], [38, -86], [-30, -100], [70, -30], [84, 24]].forEach(([x, z]) => K.coinRing(x, H(x, z) + 1, z, 3.2, 8));
+
+    // ── Gegner (nie am Start) ──
+    const onPathY = (t) => bbPath(t).h + 2.5;
+    [0.09, 0.18, 0.27].forEach((t) => { const p = bbPath(t); L.enemies.push(makeBomb(p.x, p.z, onPathY(t))); });
+    [0.5, 0.64].forEach((t) => { const p = bbPath(t); L.enemies.push(makeSpiky(p.x, p.z, onPathY(t), '#5aa0e0')); });
+    [[-36, 46], [36, 38], [-48, 8], [20, -84], [-22, -78], [74, -8]].forEach(([x, z]) => L.enemies.push(makeGrummel(x, z, H(x, z) + 3)));
+    [[0, -84], [30, -96], [-78, -44]].forEach(([x, z], i) => L.enemies.push(makeHopper(x, z, H(x, z) + 3, i % 2 ? '#bfe6ff' : '#ffffff')));
+    { const p = bbPath(0.42), q = bbPath(0.78); L.enemies.push(makeBat(p.x, p.h + 7, p.z, '#3a4a8a'), makeBat(q.x, q.h + 7, q.z, '#3a4a8a')); }
+    { const roll = []; for (let t = 0.985; t > 0.02; t -= 0.012) { const p = bbPath(t); roll.push([p.x, p.z]); }
+      L.enemies.push(makeRoller(roll, { speed: 7.5, delay: 1, r: 1.1, gap: 2.5, tint: [1, 1, 1, 0.85] }),
+        makeRoller(roll, { speed: 7.5, delay: 9, r: 1.1, gap: 2.5, tint: [1, 1, 1, 0.85] })); }
+
+    // ── Leben ──
+    K.life.critters('penguin', -20, 40, 20, 52, 3, { y: 0, s: 1, hop: 0.02, speed: 0.8 });
+    K.life.critters('bunny', -60, -60, 60, 50, 4, { s: 0.7, hop: 0.3, speed: 1.1 });
+    K.life.birds(5, { cx: 0, cz: -30, y: 52, col: '#e8f0fa', r: 1.6 });
+    if (!clear) K.life.drifts(-100, -120, 100, 90, 60, { y0: -5, y1: 60, col: '#ffffff', s: 0.7, speed: 1.1 });
+    else K.life.drifts(-100, -120, 100, 90, 18, { y0: -5, y1: 60, col: '#ffffff', s: 0.55, speed: 0.5 });
+
+    // ── M1: der Frostkoenig auf dem Gipfel ──
+    // Wie im Vorbild: Schlaege prallen ab. Um ihn herumlaufen, von hinten packen (B), werfen - landet er auf dem Gipfel,
+    // tut es ihm weh (3x). Faellt er hinunter, springt er beleidigt zurueck. Steht man vor ihm, stampft er.
+    const KC = [BB.CX, BB.TOP, BB.CZ - 6];
+    const king = M === 0 ? { pos: KC.slice(), face: Math.PI * 0.5 + Math.PI, state: 'sleep', st: 0, hits: 0, walk: 0, vy: 0, speed: 0,
+      held: false, thrown: 0, anim: 0, arms: 0, squash: 1, gone: false, talked: false } : null;
+    CAT_VOICES.set('Frostkönig', { hz: 150, dur: 0.18, rate: 3 });
+    const onSummit = (p) => Math.hypot(p[0] - BB.CX, p[2] - BB.CZ) < BB.RS + 0.4 && p[1] > BB.TOP - 1.6;
+    function kingLand() {
+      const k = king;
+      if (Math.abs(k.pos[0]) < 4.4 && k.pos[2] > HZ0 - 0.6 && k.pos[2] < HZ1 + 0.6) k.pos[2] = HZ0 - 2.4;   // nie in der Huette landen
+      if (onSummit(k.pos)) {
+        k.hits++; k.state = 'hurt'; k.st = 0; k.squash = 0.55;
+        Snd.boom(); Snd.bonk(); cam.shake = 0.6; rumble(1, 400);
+        burst([k.pos[0], k.pos[1] + 1, k.pos[2]], 26, { spread: 7, up: 5, upRand: 3, life: .9, size: .35, cols: [[1, 1, 1], [.8, .9, 1], [1, .9, .3]], grav: 8 });
+        if (k.hits >= 3) {
+          k.state = 'beaten';
+          setTimeout(() => Dialog.show('Frostkönig', ['Uff … schon gut, schon gut!', 'Du bist stärker, als du aussiehst. Mein Gipfel gehört dir.', 'Hier – nimm diesen Stern. Aber sag es niemandem!'], () => {
+            k.gone = true; Snd.poof();
+            burst([k.pos[0], k.pos[1] + 2, k.pos[2]], 40, { spread: 8, up: 6, upRand: 4, life: 1.2, size: .45, cols: [[1, 1, 1], [.85, .93, 1], [1, .85, .2]], grav: 3 });
+            spawnStar('bounce', L, [BB.CX, BB.TOP + 2.8, BB.CZ - 4]);
+          }), 700);
+        } else toast(['\u{1F451} Treffer! Noch 2.', '\u{1F451} Treffer! Noch einmal!'][k.hits - 1]);
+      } else {
+        // vom Berg gefallen: zurueck auf den Gipfel (hoher Bogen)
+        k.state = 'return'; k.st = 0; k.from = k.pos.slice();
+        toast('\u{1F451} „Hmpf! So nicht!“');
+        Snd.boing();
+      }
+    }
+    function updKing(dt) {
+      const k = king, p = pl.pos;
+      if (!k || k.gone) return;
+      k.anim += dt; k.st += dt; k.squash += (1 - k.squash) * Math.min(1, dt * 6);
+      const dx = p[0] - k.pos[0], dz = p[2] - k.pos[2], d = Math.hypot(dx, dz);
+      if (k.held) { k.pos = [p[0], p[1] + 2.05, p[2]]; k.face = pl.face; pl.speed = Math.min(pl.speed, RUN * 0.45); return; }
+      if (k.thrown > 0) {
+        if (!k.fly) { k.fly = true; k.speed *= 0.55; k.vy = Math.min(k.vy, 6.5); Snd.voice('throw'); }   // schwer: fliegt nur halb so weit
+        k.thrown -= dt; k.vy -= 30 * dt;
+        const nx = k.pos[0] + Math.sin(k.face) * k.speed * dt, nz = k.pos[2] + Math.cos(k.face) * k.speed * dt, ny = k.pos[1] + k.vy * dt;
+        // Waende (Huette, Kaefig ...) halten ihn auf; Gelaende zaehlt hier nicht als Wand
+        const q = [nx, ny, nz];
+        if (pushOut(L, q, 1.7, 3.8, ny + 0.5, (b) => !!b.hf)) k.speed = 0;
+        const gy = groundAt(L, q[0], q[2], Math.max(k.pos[1], ny) + 0.8, 0.4);
+        k.pos = q;
+        if (gy > -Infinity && ny <= gy) { k.pos[1] = gy; k.thrown = 0; k.fly = false; kingLand(); }
+        else if (k.pos[1] < -15) { k.thrown = 0; k.fly = false; kingLand(); }
+        return;
+      }
+      if (k.state === 'return') {
+        const u = Math.min(1, k.st / 1.3), to = [KC[0], KC[1], KC[2]];
+        k.pos = [lerp(k.from[0], to[0], u), lerp(k.from[1], to[1], u) + Math.sin(u * Math.PI) * 14, lerp(k.from[2], to[2], u)];
+        if (u >= 1) { k.state = 'walk'; k.st = 0; Snd.stomp(); cam.shake = 0.35; }
+        return;
+      }
+      if (k.state === 'beaten') { k.face += dt * 6; return; }
+      if (k.state === 'sleep') {
+        if (onSummit(p) && !pl.dead) {
+          k.state = 'walk'; k.st = 0;
+          Dialog.show('Frostkönig', ['HALT! Wer wagt es, meinen Gipfel zu betreten?', 'Ich bin der FROSTKÖNIG, Herrscher über Schnee, Eis und Bounce!', 'Wenn du meinen Stern willst, musst du mich schon hochheben. HA! Das schafft keiner!']);
+        }
+        return;
+      }
+      if (k.state === 'hurt') { if (k.st > 1.4) { k.state = 'walk'; k.st = 0; } return; }
+      if (k.state === 'wind') {
+        k.arms = Math.min(1, k.st / 0.55);
+        if (k.st > 0.6) { k.state = 'slam'; k.st = 0; k.vy = 7; }
+        return;
+      }
+      if (k.state === 'slam') {
+        k.vy -= 32 * dt; k.pos[1] += k.vy * dt;
+        if (k.pos[1] <= KC[1] && k.vy < 0) {
+          k.pos[1] = KC[1]; k.state = 'walk'; k.st = 0; k.arms = 0; k.squash = 0.7;
+          Snd.stomp(); Snd.boom(); cam.shake = 0.5; rumble(0.8, 250);
+          burst([k.pos[0], k.pos[1] + 0.2, k.pos[2]], 24, { spread: 8, up: 1.5, life: .6, size: .4, cols: [[1, 1, 1], [.85, .92, 1]], grav: 2 });
+          if (d < 5 && pl.grounded && !pl.dead) hurtPlayer(2, k.pos, true);
+        }
+        return;
+      }
+      // laufen: langsam zum Spieler drehen (so kommt man hinter ihn), vorne dran -> Stampfer ausholen
+      const want = Math.atan2(dx, dz), diff = angDiff(k.face, want);
+      k.face += clamp(diff, -1.15 * dt, 1.15 * dt);
+      k.speed = onSummit(p) && d > 2.6 ? 2.1 : 0;
+      k.walk += dt * k.speed * 1.6;
+      if (k.speed) {
+        const nx = k.pos[0] + Math.sin(k.face) * k.speed * dt, nz = k.pos[2] + Math.cos(k.face) * k.speed * dt;
+        if (Math.hypot(nx - BB.CX, nz - BB.CZ) < BB.RS - 2.2 && !(Math.abs(nx) < 5 && nz > -29)) { k.pos[0] = nx; k.pos[2] = nz; }
+      }
+      if (d < 3.6 && Math.abs(diff) < 0.8 && k.st > 1.2 && onSummit(p)) { k.state = 'wind'; k.st = 0; Snd.whoosh(); }
+    }
+    // Packen: nur von hinten und nah genug
+    L.interact = () => {
+      const k = king;
+      if (!k || k.gone || k.held || k.thrown > 0 || !['walk', 'wind'].includes(k.state) || pl.hold) return null;
+      const dx = pl.pos[0] - k.pos[0], dz = pl.pos[2] - k.pos[2], d = Math.hypot(dx, dz);
+      if (d > 3.1 || Math.abs(pl.pos[1] - k.pos[1]) > 1.2) return null;
+      if (Math.cos(angDiff(k.face, Math.atan2(dx, dz))) > -0.25) return null;   // nicht hinter ihm
+      return { label: 'Packen', act: () => {
+        pl.hold = k; k.held = true; k.state = 'walk'; k.arms = 0.7;
+        Snd.grab(); Snd.voice('throw'); rumble(0.4, 120);
+        toast('\u{1F451} Gepackt! B = werfen');
+      } };
+    };
+
+    // ── M2: Wettlauf mit Schneekatze Flitz ──
+    const racer = M === 1 ? { pos: onT(11, 59.5), face: Math.PI, state: 'wait', st: 0, walk: 0, i: 0, t: 0 } : null;
+    const RACE = [];
+    if (racer) {
+      for (const [x, z] of BB.TRAIL.slice(1)) RACE.push([x, z]);
+      for (let t = 0.01; t <= 1.0001; t += 0.012) { const p = bbPath(t), a = p.a, rr = p.r - 0.6; RACE.push([BB.CX + Math.cos(a) * rr, BB.CZ + Math.sin(a) * rr]); }
+      RACE.push([6.5, -21], [5.5, -30], [-1, -35.5], [BB.FLAG[0] + 1.2, BB.FLAG[1] + 0.8]);
+      K.talker(racer.pos[0], racer.pos[1], racer.pos[2], 'Schneekatze Flitz', [], false);
+      const rt = L.talkers[L.talkers.length - 1];
+      rt.pos = racer.pos; rt.cat = true;
+      Object.defineProperty(rt, 'text', { get: () => (racer.state === 'wait'
+        ? ['Na, du? Ich bin Flitz, die schnellste Katze über den Wolken.', 'Wettlauf bis zur Fahne auf dem Gipfel? Wer zuerst die Fahne berührt, gewinnt.', 'Keine Tricks mit der Kanone! Bereit? Dann los, wenn ich zähle …']
+        : racer.state === 'lost' ? ['Hehe, ich war schneller! Sprich mich unten am Start nochmal an.'] : ['Lauf lieber, statt zu quatschen!']) });
+      rt.onDone = () => { if (racer.state === 'wait' || racer.state === 'lost') { racer.state = 'count'; racer.st = 0; racer.i = 0; racer.pos.splice(0, 3, ...onT(11, 59.5)); racer.lastN = 4; } };
+      CAT_VOICES.set('Schneekatze Flitz', catVoice('Schneekatze Flitz', 2));
+    }
+    function updRacer(dt) {
+      const R2 = racer;
+      if (!R2) return;
+      R2.st += dt;
+      if (R2.state === 'count') {
+        const n = 3 - Math.floor(R2.st);
+        if (n !== R2.lastN && n > 0) { R2.lastN = n; toast(`\u{1F3C1} ${n} …`); Snd.tick(false); }
+        if (R2.st >= 3) { R2.state = 'run'; R2.st = 0; R2.t0 = time; toast('\u{1F3C1} LOS!'); Snd.whistle(); }
+        return;
+      }
+      const atFlag = (p) => Math.hypot(p[0] - BB.FLAG[0], p[2] - BB.FLAG[1]) < 2.6 && p[1] > BB.TOP - 1;
+      if (R2.state === 'run') {
+        if (pl.shotT > R2.t0) { R2.state = 'wait'; Dialog.show('Schneekatze Flitz', ['He! Mit der Kanone? Das zählt nicht!', 'Komm zurück zum Start, wenn du fair laufen willst.']); R2.pos.splice(0, 3, ...onT(11, 59.5)); R2.i = 0; return; }
+        if (atFlag(pl.pos) && !pl.dead) {
+          R2.state = 'won';
+          Dialog.show('Schneekatze Flitz', ['Waaas?! Du warst vor mir oben?', 'Unglaublich … Na gut, abgemacht ist abgemacht. Hier ist dein Stern!']);
+          spawnStar('rennen', L, [BB.FLAG[0] + 2.2, BB.TOP + 2.4, BB.FLAG[1] + 2.2]);
+        }
+        let move = 9.4 * dt;
+        while (move > 0 && R2.i < RACE.length) {
+          const tx = RACE[R2.i][0], tz = RACE[R2.i][1], ddx = tx - R2.pos[0], ddz = tz - R2.pos[2], dd = Math.hypot(ddx, ddz);
+          if (dd <= move) { R2.pos[0] = tx; R2.pos[2] = tz; move -= dd; R2.i++; }
+          else { R2.pos[0] += ddx / dd * move; R2.pos[2] += ddz / dd * move; R2.face = Math.atan2(ddx, ddz); move = 0; }
+        }
+        R2.pos[1] = H(R2.pos[0], R2.pos[2]);
+        R2.walk = 1;
+        if (R2.i >= RACE.length && R2.state === 'run') {
+          R2.state = 'lost';
+          Dialog.show('Schneekatze Flitz', ['Erste! Wie immer. Hihi!', 'Willst du Revanche? Dann komm zurück zum Start und sprich mich an.'], () => { R2.pos.splice(0, 3, ...onT(11, 59.5)); R2.face = Math.PI; R2.i = 0; });
+        }
+      } else R2.walk = Math.max(0, R2.walk - dt * 3);
+    }
+
+    // ── Eisbeisser ──
+    function updChomp(dt) {
+      const c = chomp;
+      if (c.gone) return;
+      c.t -= dt; c.cool -= dt;
+      const anchor = [PX, PY, PZ];
+      if (c.free) {
+        // befreit: erst ins Eisgitter, dann in hohem Bogen davon (ueber den Rand ins Wolkenmeer)
+        c.ft = (c.ft || 0) + dt;
+        const A = c.from, B2 = c.to, u = Math.min(1, c.ft / c.dur);
+        c.pos = [lerp(A[0], B2[0], u), lerp(A[1], B2[1], u) + Math.sin(u * Math.PI) * c.arc, lerp(A[2], B2[2], u)];
+        c.face = Math.atan2(B2[0] - A[0], B2[2] - A[2]); c.jaw = 0.5 + 0.5 * Math.sin(c.ft * 20);
+        if (u >= 1) {
+          if (c.leg === 0) {
+            c.leg = 1; gateOpen = true; gate.min[1] = -9999; gate.max[1] = -9998;
+            Snd.boom(); cam.shake = 0.7; rumble(1, 400);
+            burst([CX2 + 2.7, CY + 1.8, CZ2], 34, { spread: 7, up: 5, upRand: 3, life: 1, size: .4, cols: [[.8, .93, 1], [1, 1, 1], [.6, .85, 1]], grav: 9 });
+            toast('\u{1F9CA} Das Eisgitter ist zersplittert!');
+            c.from = c.pos.slice(); c.to = [-122, -30, 10]; c.ft = 0; c.dur = 2.2; c.arc = 16;
+          } else c.gone = true;
+        }
+        return;
+      }
+      // Schwerkraft + Boden
+      c.vy -= 28 * dt;
+      c.pos[0] += c.v[0] * dt; c.pos[2] += c.v[1] * dt; c.pos[1] += c.vy * dt;
+      const gy = H(c.pos[0], c.pos[2]);
+      if (c.pos[1] <= gy) { c.pos[1] = gy; c.vy = 0; c.v[0] *= 0.82; c.v[1] *= 0.82; c.air = false; } else c.air = true;
+      // Kette: nie weiter als CHAIN vom Pfahl
+      const ax = c.pos[0] - anchor[0], az = c.pos[2] - anchor[2], ad = Math.hypot(ax, az);
+      if (ad > CHAIN) { c.pos[0] = anchor[0] + ax / ad * CHAIN; c.pos[2] = anchor[2] + az / ad * CHAIN; c.v = [0, 0]; if (c.state === 'lunge') { c.state = 'recoil'; c.t = 0.5; Snd.stomp(); } }
+      const p = pl.pos, dpx = p[0] - anchor[0], dpz = p[2] - anchor[2], dp = Math.hypot(dpx, dpz);
+      if (c.state === 'idle' && !c.air && c.t <= 0) {
+        if (dp < 11.5 && c.cool <= 0 && !pl.dead && Math.abs(p[1] - c.pos[1]) < 4) {
+          const tx = p[0] - c.pos[0], tz = p[2] - c.pos[2], tl = Math.hypot(tx, tz) || 1;
+          c.state = 'lunge'; c.v = [tx / tl * 17, tz / tl * 17]; c.vy = 5.5; c.face = Math.atan2(tx, tz);
+          Snd.boing(); Snd.bonk();
+        } else {
+          const a = Math.random() * TAU, rr = Math.random() * 4.5, tx = anchor[0] + Math.cos(a) * rr - c.pos[0], tz = anchor[2] + Math.sin(a) * rr - c.pos[2], tl = Math.hypot(tx, tz) || 1;
+          c.v = [tx / tl * 3.2, tz / tl * 3.2]; c.vy = 4.2; c.face = Math.atan2(tx, tz); c.t = 0.5 + Math.random() * 0.6;
+        }
+      }
+      if (c.state === 'lunge' && !c.air && c.vy === 0 && Math.hypot(c.v[0], c.v[1]) < 2) { c.state = 'recoil'; c.t = 0.4; }
+      if (c.state === 'recoil' && c.t <= 0) { c.state = 'idle'; c.t = 0.8; c.cool = 1.4; }
+      c.jaw = c.state === 'lunge' ? 0.7 + 0.3 * Math.sin(time * 26) : Math.max(0, Math.sin(time * 7)) * 0.35;
+      const pc = [p[0], p[1] + 1.1, p[2]], cc = [c.pos[0], c.pos[1] + 1.25, c.pos[2]];
+      if (!pl.dead && v3.len(v3.sub(pc, cc)) < 1.3 + 0.55) hurtPlayer(3, c.pos, true);
+    }
+    // Pfahl: Stampfer drueckt ihn ein Stueck in den Boden, beim dritten ist der Eisbeisser frei
+    L.onLand = (gb, from) => {
+      if (gb.tag === 'snowhat' && hatOn) {
+        hatOn = false;
+        for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; L.coin('yellow', SX + Math.cos(a) * 3.6, SY + 1.1, SZ + Math.sin(a) * 3.6); }
+        Snd.starAppear(); toast('\u{1F3A9} Unter dem Hut lagen 10 Münzen!');
+        burst([SX, SY + 6.5, SZ], 14, { spread: 3, up: 5, life: .7, size: .18, cols: [[1, 1, 1], [1, .85, .2]], grav: 6 });
+      }
+      if (gb.tag === 'stake' && from === 'pound' && !chomp.free) {
+        stakeHits++;
+        stake.max[1] = PY + 1.4 - stakeHits * 0.42;
+        Snd.stomp(); rumble(0.6, 180); cam.shake = 0.3;
+        burst([PX, stake.max[1], PZ], 10, { spread: 3, up: 3, life: .5, size: .2, cols: [[.6, .45, .25], [1, 1, 1]], grav: 6 });
+        if (stakeHits >= 3) {
+          chomp.free = true; chomp.leg = 0; chomp.from = chomp.pos.slice(); chomp.to = [CX2 + 4.2, CY, CZ2]; chomp.ft = 0; chomp.dur = 1.1; chomp.arc = 6;
+          toast('\u{1F9CA} Der Eisbeißer ist frei!'); Snd.boing();
+        } else toast(`\u{1FAB5} Der Pfahl gibt nach … (${stakeHits}/3)`);
+      }
+    };
+
+    // ── Kanone betreten, Rodelbahn, Schneefall ──
+    let rodelBest = 0;
     L.update = (dt) => {
-      if (parts.length < 110 && Math.random() < dt * 30) {
-        parts.push({ p: [cam.pos[0] + (Math.random() - 0.5) * 40, cam.pos[1] + 12, cam.pos[2] + (Math.random() - 0.5) * 40], v: [0.4, -2.2, 0.2],
+      if (!clear && parts.length < 120 && Math.random() < dt * 40) {
+        parts.push({ p: [cam.pos[0] + (Math.random() - 0.5) * 40, cam.pos[1] + 12, cam.pos[2] + (Math.random() - 0.5) * 40], v: [1.2, -2.6, 0.4],
           life: 6, max: 6, s: 0.12, col: [1, 1, 1], g: 0, rot: Math.random() * 6 });
       }
-      if (pl.grounded && pl.groundBox === segA && !racing) { racing = true; raceT = 0; Snd.whistle(); toast('🛷 Los geht\'s!'); }
-      if (racing) {
-        raceT += dt;
-        const p = pl.pos;
-        if (p[0] > -58 && p[2] > -3 && p[2] < 11 && p[1] < 3) {
-          racing = false;
-          const t = raceT.toFixed(1).replace('.', ','), rec = !best() || raceT < best();
-          if (rec) { state.rodel = +raceT.toFixed(2); save(); }
+      if (cannonOpen && pl.action === 'ground' && pl.grounded && !pl.dead && Math.hypot(pl.pos[0] - KX, pl.pos[2] - KZ) < 1.1 && pl.pos[1] < -0.7) enterCannon(cannon);
+      // Rodelbahn: Zeit ab dem ersten Rutschen im Huettenstueck, Ziel am Ende (See)
+      if (slideT < 0 && pl.grounded && pl.groundBox === slideB && pl.action === 'slide' && Math.hypot(pl.pos[0] - sl.P[0][0], pl.pos[2] - sl.P[0][1]) < 14) {
+        slideT = 0; Snd.whistle(); toast('\u{1F6F7} Los geht\'s!');
+      }
+      if (slideT >= 0) {
+        slideT += dt;
+        if (Math.hypot(pl.pos[0] - endP[0], pl.pos[2] - endP[2]) < 6 && pl.pos[1] < endP[1] + 2.5) {
+          const tt = slideT; slideT = -1;
+          const rec = !rodelBest || tt < rodelBest; if (rec) rodelBest = tt;
           Snd.chime(8);
-          toast(`🏁 Ziel! ${t} s` + (rec ? ' – neuer Rekord!' : ` (Rekord: ${String(best().toFixed(1)).replace('.', ',')} s)`));
-          spawnStar('rodel', L, [-50, 3, 4]);
-          if (raceT < 13) setTimeout(() => { Snd.coin(); addCoins(5); toast('🐰 Schneehase: Wahnsinnstempo! +5 Münzen'); }, 900);
-        } else if (raceT > 90 || pl.dead || pl.pos[1] < -5) racing = false;
+          toast(`\u{1F3C1} Ziel! ${tt.toFixed(1).replace('.', ',')} s` + (rec ? ' – Bestzeit!' : ''));
+          if (M === 2) spawnStar('rodel', L, [endP[0] - 3, endP[1] + 2.6, endP[2] - 6]);
+          if (tt < 9.9 && !L.hareGift) { L.hareGift = true; setTimeout(() => { oneUp(K, [endP[0] + 2, H(endP[0] + 2, endP[2] - 4) + 0.3, endP[2] - 4]); toast('\u{1F430} Schneehase: Wahnsinnstempo! Da, für dich!'); }, 900); }
+        } else if (slideT > 60 || pl.dead) slideT = -1;
       }
+      updKing(dt); updChomp(dt); updRacer(dt);
     };
+
+    Object.assign(L, { king, chomp, racer, cannon });   // fuer Tests (?debug: g64.cur.king ...)
+    // ── Zeichnen ──
+    const FIG = { shine: 0.35, rim: 0.2, lit: 0.85 };
     L.drawSolid = () => {
-      if (hatOn) draw(MESH.hat, M4.from(58, 6.3, 8, 0.3, 0, 0.12));
-      draw(MESH.bunny, M4.from(hare.pos[0], HY, hare.pos[2], 0.5 + Math.sin(clock * 0.8) * 0.3, 0, 0, 1.05 + Math.abs(Math.sin(clock * 3)) * 0.03));
-      draw(bannerMesh, M4.from(-57.75, 4.5, 4), { tex: bannerTex, lit: 0 });
-    };
-
-    // ── Eissee, Schneemann mit Hut-Geheimnis, Iglu ──
-    L.block(30, -0.12, 18, 28, 0.3, 24, { top: hex('#bfe6ff'), side: hex('#9ccbe8') }, 'ice');
-    for (let i = 0; i < 12; i++) box(g, M4.from(lerp(18, 42, r()), 0.04, lerp(8, 28, r()), r() * 3), 1.5 + r() * 2, 0.01, 0.08, hex('#e8f6ff'));
-    K.coinRing(30, 1.1, 18, 7, 10);
-    const SN = hex('#f8fbff');
-    sphere(g, M4.from(58, 1.5, 8), 1.6, 1.5, 1.6, 12, 8, SN, true);
-    sphere(g, M4.from(58, 3.9, 8), 1.2, 1.1, 1.2, 12, 8, SN, true);
-    sphere(g, M4.from(58, 5.6, 8), 0.85, 0.8, 0.85, 12, 8, SN, true);
-    cyl(g, M4.from(58, 5.6, 8.8, 0, Math.PI / 2), 0.14, 0, 0.7, 6, hex('#f08020'));
-    for (const s of [-1, 1]) { sphere(g, M4.from(58 + s * 0.3, 5.85, 8.7), 0.1, 0.1, 0.08, 5, 4, C.black); cyl(g, M4.from(58 + s * 1.1, 3.9, 8, 0, 0, -s * 1.1), 0.06, 0.04, 1.6, 4, hex('#6b4214')); }
-    for (let k = 0; k < 3; k++) sphere(g, M4.from(58, 3.4 + k * 0.45, 9.12), 0.09, 0.09, 0.06, 5, 4, C.black);
-    L.solid(56.6, 0, 6.6, 59.4, 5, 9.4, 'snowman');
-    L.solid(57.3, 5, 7.3, 58.7, 6.45, 8.7, 'snowhat');
-    L.block(62, 2, 8, 3, 4, 3, TER, 'snowpile');
-    let hatOn = true;
-    L.onLand = (gb) => {
-      if (gb.tag !== 'snowhat' || !hatOn) return;
-      hatOn = false;
-      for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; L.coin('yellow', 58 + Math.cos(a) * 3.6, 1.1, 8 + Math.sin(a) * 3.6); }
-      Snd.starAppear(); toast('🎩 Unter dem Hut lagen 10 Münzen!');
-      burst([58, 6.5, 8], 14, { spread: 3, up: 5, life: .7, size: .18, cols: [[1, 1, 1], [1, .85, .2]], grav: 6 });
-    };
-    // Iglu: Kuppel aus Eisbloecken, Eingang zum Hineinkrabbeln
-    const IX = 72, IZ = -24, IGL = hex('#eef6ff');
-    sphere(g, M4.from(IX, 0, IZ), 4.2, 3.4, 4.2, 14, 6, (i, j) => shade(IGL, (i + j) % 2 ? 1 : 0.94), false, 0, Math.PI / 2);
-    for (let j = 1; j < 4; j++) box(g, M4.from(IX, j * 0.85, IZ), 8.6 - j * 1.2, 0.05, 8.6 - j * 1.2, hex('#c8dcf0'));
-    for (const s of [-1, 1]) L.block(IX + s * 1.1, 0.6, IZ + 4.8, 0.6, 1.2, 2.4, { top: IGL, side: hex('#d8e8f8') }, 'igloo');
-    L.block(IX, 1.35, IZ + 4.8, 2.8, 0.3, 2.4, { top: IGL, side: hex('#d8e8f8') }, 'igloo');
-    L.solid(IX - 4, 0, IZ - 4, IX + 4, 3.4, IZ - 2.2, 'igloo'); L.solid(IX - 4, 0, IZ - 2.2, IX - 2.2, 3.4, IZ + 3.6, 'igloo');
-    L.solid(IX + 2.2, 0, IZ - 2.2, IX + 4, 3.4, IZ + 3.6, 'igloo'); L.solid(IX - 2.2, 1.2, IZ + 2.4, IX + 2.2, 3.4, IZ + 3.6, 'igloo');
-    L.solid(IX - 2.2, 2.8, IZ - 2.2, IX + 2.2, 3.4, IZ + 2.4, 'igloo');
-    K.coinRing(IX, 0.9, IZ, 1.2, 6);
-    K.item(MESH.chest, [IX, 0, IZ - 0.8], (it) => {
-      Snd.starAppear(); addCoins(10);
-      burst([it.pos[0], it.pos[1] + 1, it.pos[2]], 16, { spread: 3, up: 4, life: .8, size: .2, cols: [[1, .85, .2], [1, 1, 1]], grav: 2 });
-      toast('🧊 Im Iglu: +10 Münzen!');
-    }, 1.8);
-
-    // ── Tannenwald, Felsen, Schneehuegel ──
-    for (let i = 0; i < 46; i++) {
-      const x = lerp(-104, 104, r()), z = lerp(-130, 44, r());
-      if (Math.abs(x) < 44 && z < -4) continue;                           // Berg
-      if (x < -40 && z < 12 && z > -104) continue;                         // Rodelbahn
-      if (Math.abs(x - 30) < 18 && Math.abs(z - 18) < 16) continue;        // Eissee
-      if (Math.abs(x - IX) < 7 && Math.abs(z - IZ) < 8) continue;
-      if (Math.abs(x) < 8 && z > 26) continue;                             // Weg zum Tor
-      if (Math.abs(x + 50) < 14 && Math.abs(z - 4) < 10) continue;         // Ziel
-      if (Math.abs(x - 60) < 7 && Math.abs(z - 8) < 6) continue;           // Schneemann
-      if (Math.abs(x - 39) < 5 && z < 8) continue;                         // Schneeball-Bahn
-      K.pine(x, z, 0, 6 + r() * 5, true);
-    }
-    for (let i = 0; i < 14; i++) {
-      const x = lerp(-110, 110, r()), z = lerp(-150, -138, r());
-      sphere(g, M4.from(x, -0.5, z), 6 + r() * 6, 3 + r() * 3, 5 + r() * 4, 10, 5, (ii, jj) => shade(hex('#f4f8ff'), 0.95 + ((ii + jj) % 2) * 0.05), true, 0, Math.PI / 2);
-    }
-    [[-30, 20], [45, -60], [80, 30], [-80, 30], [90, -90]].forEach(([x, z]) => K.rock(x, 0, z, 2, ROCKC));
-    K.coinRing(-30, 1.1, 30, 4, 8);
-    K.talker(6, 0, 44, 'Schild', [
-      '★ BOUNCE-BERG ★\nVorsicht, glatt! Der See ist gefroren.',
-      'Die Seerosen sind Trampoline: von Terrasse zu Terrasse springen – ganz oben wartet ein Stern.',
-      'Wer lieber läuft: An der Ostflanke führt ein Serpentinenweg hinauf. Achtung, da rollen Schneebälle!',
-      'Oben steht eine Berghütte. Der Schneehase dort kennt die RODELBAHN.',
-      'Neben dem Frosch auf der zweiten Terrasse geht es zur echten Bounce-Seite.',
-      'Der Schneemann trägt seinen Hut erstaunlich locker. Und ins Iglu passt man nur auf allen vieren.',
-    ]);
-    K.exit(0, 47);
-    L.enemies.push(makeGrummel(-12, 20), makeGrummel(20, 36), makeGrummel(-25, -20, 8), makeGrummel(-22, -30, 15),
-      makeGrummel(60, -10), makeGrummel(-70, 25), makeGrummel(80, -70));
-    L.enemies.push(makeSpiky(-25, -15, 8, '#5aa0e0'), makeSpiky(10, -29, 15, '#5aa0e0'), makeSpiky(-8, -40, 22, '#5aa0e0'), makeSpiky(-60, 30, 5, '#5aa0e0'), makeSpiky(70, 10, 5, '#5aa0e0'), makeSpiky(-30, -110, 5, '#5aa0e0'));
-    L.enemies.push(makeBat(6, 33, -70, '#3a4a8a'), makeBat(30, 16, -40, '#3a4a8a'), makeBat(-20, 18, -30, '#3a4a8a'), makeBat(72, 6, -24, '#3a4a8a'));
-    L.enemies.push(makeHopper(26, 16, 3, '#ffffff'), makeHopper(36, 22, 3, '#bfe6ff'), makeHopper(-40, -20, 3, '#ffffff'), makeHopper(80, 0, 3, '#bfe6ff'), makeHopper(0, -60, 30, '#ffffff'));
-    L.enemies.push(makeRoller([[39, -44], [39, -12], [39, 2]], { speed: 7, delay: 1, r: 1.1, tint: [1, 1, 1, 0.85] }),
-      makeRoller([[22.75, -68], [22.75, -38]], { speed: 6, delay: 3, r: 1, tint: [1, 1, 1, 0.85] }));
-    // ── Leben ──
-    K.life.drifts(-100, -120, 100, 44, 40, { y0: 0, y1: 26, col: '#ffffff', s: 0.7, speed: 0.6 });
-    K.life.critters('bunny', -60, -40, 60, 38, 4, { s: 0.7, hop: 0.3, speed: 1.1 });
-    K.life.birds(5, { cx: 0, cz: -40, y: 34, col: '#cfe0f0' });
-    K.life.npc(-9, 34, 'Schneekatze Frost', ['Die Seerosen federn — spring einfach drauf.',
-      'Traust du dich zu einem Wettlauf? Stell dich auf die rote Kachel, dann vier Fahnen um den Berg und zurück — 45 Sekunden.',
-      'Ganz oben am Gipfel wartet außerdem ein Stern. Und die Rodelbahn.'], { cat: 1, r: 4, tint: '#8ad8ff', mix: 0.35 });
-    // ── Deko: Tannen, Schneemaenner, Eisbrocken, Iglu, Fahnen ──
-    const schneemann = (x, y, z, r2) => {
-      const W2 = hex('#f8fbff');
-      sphere(g, M4.from(x, y + 0.7, z), 0.9, 0.8, 0.9, 10, 6, W2, true);
-      sphere(g, M4.from(x, y + 1.7, z), 0.62, 0.58, 0.62, 10, 6, W2, true);
-      sphere(g, M4.from(x, y + 2.5, z), 0.45, 0.44, 0.45, 10, 6, W2, true);
-      for (const sx of [-1, 1]) sphere(g, M4.from(x + sx * 0.16, y + 2.58, z + 0.36), 0.06, 0.06, 0.04, 5, 4, C.black, true);
-      cyl(g, M4.from(x, y + 2.62, z, 0, Math.PI / 2), 0.09, 0, 0.45, 6, hex('#ff8a3a'));
-      cyl(g, M4.from(x, y + 2.86, z), 0.42, 0.42, 0.06, 10, hex('#2a2a32'));
-      cyl(g, M4.from(x, y + 2.9, z), 0.3, 0.3, 0.42, 10, hex('#2a2a32'));
-      for (const sx of [-1, 1]) box(g, M4.from(x + sx * 0.75, y + 1.8, z, 0, 0, sx * 0.5), 1.1, 0.1, 0.1, hex('#6b4214'));
-      L.solid(x - 0.9, y, z - 0.9, x + 0.9, y + 2.2, z + 0.9, 'snowman');
-    };
-    const iglu = (x, y, z) => {
-      sphere(g, M4.from(x, y, z), 3.4, 2.6, 3.4, 12, 6, (i, j) => shade(hex('#e8f2ff'), 0.92 + ((i + j) % 3) * 0.05), false, 0, Math.PI / 2);
-      box(g, M4.from(x, y + 0.9, z + 3.2), 1.6, 1.8, 1.6, hex('#dfeaf8'));
-      box(g, M4.from(x, y + 0.8, z + 4), 1.1, 1.5, 0.2, hex('#1a2a3a'));
-      L.solid(x - 3.2, y, z - 3.2, x + 3.2, y + 2.6, z + 3.9, 'iglu');
-    };
-    K.scatter(-100, -118, 100, 42, 26, (x, y, z, i, r) => K.pine(x, z, y, 4 + r() * 5, true), { avoid: [[-16, -20, 16, 44]] });
-    K.scatter(-95, -110, 95, 40, 10, (x, y, z, i, r) => schneemann(x, y, z, r), { avoid: [[-14, -18, 14, 44]] });
-    K.scatter(-98, -112, 98, 42, 18, (x, y, z, i, r) => K.rock(x, y, z, 1 + r() * 1.8, hex('#dfe8f0')), { avoid: [[-14, -18, 14, 44]] });
-    K.scatter(-90, -100, 90, 30, 3, (x, y, z) => iglu(x, y, z), { avoid: [[-20, -24, 20, 44]] });
-    K.scatter(-96, -110, 96, 40, 16, (x, y, z, i, r) => {   // Wimpel-Stangen
-      cyl(g, M4.from(x, y, z), 0.1, 0.08, 3 + r(), 6, hex('#6b4214'));
-      for (let k = 0; k < 3; k++) g.tri([x, y + 3.2 - k * 0.5, z], [x, y + 2.9 - k * 0.5, z], [x + 1.2, y + 3.05 - k * 0.5, z + 0.2], hex(['#e03a4a', '#2f6dff', '#ffd21f'][k]));
-    }, { avoid: [[-16, -20, 16, 44]] });
-    // ── Auftrag: Wettlauf um den Berg (vier Fahnen in 45 Sekunden) ──
-    const FLAGS = [[-46, 0, -16], [46, 0, -16], [46, 0, 22], [-46, 0, 22]];
-    FLAGS.forEach(([fx, fy, fz]) => box(g, M4.from(fx, fy + 0.06, fz), 2.6, 0.12, 2.6, hex('#ffd21f')));
-    K.anim(MESH.flagge, (t) => M4.from(FLAGS[0][0], 0, FLAGS[0][2], Math.sin(t) * 0.2), { lit: 0.9 });
-    K.anim(MESH.flagge, (t) => M4.from(FLAGS[1][0], 0, FLAGS[1][2], Math.PI / 2 + Math.sin(t + 1) * 0.2), { lit: 0.9 });
-    K.anim(MESH.flagge, (t) => M4.from(FLAGS[2][0], 0, FLAGS[2][2], Math.PI + Math.sin(t + 2) * 0.2), { lit: 0.9 });
-    K.anim(MESH.flagge, (t) => M4.from(FLAGS[3][0], 0, FLAGS[3][2], -Math.PI / 2 + Math.sin(t + 3) * 0.2), { lit: 0.9 });
-    box(g, M4.from(0, 0.06, 34), 5, 0.12, 5, hex('#e03a4a'));
-    box(g, M4.from(0, 0.08, 34), 4, 0.1, 1.2, C.white);
-    const prevUpdate = L.update;
-    let race = 0, hit = [false, false, false, false], lastS = 0;
-    L.update = (dt) => {
-      if (prevUpdate) prevUpdate(dt);
-      const p = pl.pos, at = (x, z, r2) => Math.hypot(p[0] - x, p[2] - z) < r2 && p[1] < 2.5;
-      if (race <= 0 && at(0, 34, 2.6)) {
-        race = 45; lastS = 45; hit = [false, false, false, false];
-        Snd.chime(0); toast('\u{1F3C1} Los! Vier Fahnen in 45 Sekunden!');
+      draw(BC.terrainMesh, I4, { tex: BC.snowTex, tri: 0.25, detail: 0.55 });
+      draw(BC.slideMesh, I4, { detail: 0.3 });
+      draw(BC.fiMesh, I4, { tex: BC.snowTex, tri: 0.25, detail: 0.4 });
+      if (hatOn) draw(MESH.hat, M4.from(SX, SY + 6.3, SZ, 0.3, 0, 0.12));
+      draw(MESH.bunny, M4.from(hare[0], Y, hare[2], Math.PI + Math.sin(clock * 0.8) * 0.3, 0, 0, 1.05 + Math.abs(Math.sin(clock * 3)) * 0.03));
+      draw(bannerMesh, M4.from(0, RY - 0.35, HZ1 + 0.3), { tex: RODEL_BANNER, lit: 0 });
+      draw(bannerMesh, M4.from(0, Y + 3.45, HZ0 - 0.3, Math.PI), { tex: RODEL_BANNER, lit: 0 });
+      // Fahne auf dem Gipfel: weht
+      for (let k = 0; k < 1; k++) draw(flagMesh, M4.from(FP[0] + 0.1, FP[1] + 5.4, FP[2], -0.4 + Math.sin(clock * 2.2) * 0.25, 0, Math.sin(clock * 3.1) * 0.05), { tex: flagTex, lit: 0.9 });
+      // Kanone: Deckel zu oder Rohr schaut aus der Grube
+      if (!cannonOpen) draw(MS.lid, M4.from(KX, 0.02, KZ));
+      else if (!cannon.inside) {   // beim Zielen sitzt die Kamera im Rohr - dann nicht zeichnen
+        const c = cannon, yaw = c.inside ? c.yaw : c.yaw0, pitch = c.inside ? c.pitch : c.pitch0, kick = c.fired && clock - c.fired < 0.4 ? (0.4 - (clock - c.fired)) * 1.5 : 0;
+        draw(MS.barrel, M4.mul(M4.from(KX, -1.1, KZ, yaw), M4.from(0, 0, -kick, 0, Math.PI / 2 - pitch)), { shine: 0.5 });
       }
-      if (race <= 0) return;
-      race -= dt;
-      if (Math.ceil(race) < lastS) { lastS = Math.ceil(race); Snd.tick(race < 5); }
-      FLAGS.forEach(([fx, , fz], i) => {
-        if (!hit[i] && at(fx, fz, 2.4)) { hit[i] = true; Snd.chime(3 + i * 3); toast(`\u{1F6A9} Fahne ${hit.filter(Boolean).length} / 4`); }
-      });
-      if (hit.every(Boolean) && at(0, 34, 2.8)) {
-        race = 0;
-        spawnStar('rennen', L, [0, 2.6, 30]);
-        Dialog.show('Schneekatze Frost', ['Geschafft — und das im Schnee!', 'Am Ziel ist ein Stern aufgetaucht.']);
-      } else if (race <= 0) { Snd.deny(); toast('\u{1F3C1} Zeit um! Zurück auf die rote Kachel.'); }
+      // Eisbeisser, Kette, Pfahl
+      draw(MS.stake, M4.from(PX, stake.max[1] - 1.4, PZ));
+      if (!chomp.gone) {
+        const c = chomp, base = M4.from(c.pos[0], c.pos[1] + 1.25, c.pos[2], c.face), op = c.jaw * 0.55;
+        // Kiefer klappen um ein Scharnier hinten am Kopf
+        draw(MS.chompTop, M4.mul(base, M4.mul(M4.from(0, 0, -1.0, 0, -op), M4.from(0, 0, 1.0))), FIG);
+        draw(MS.chompBot, M4.mul(base, M4.mul(M4.from(0, 0, -1.0, 0, op * 0.6), M4.from(0, 0, 1.0))), FIG);
+        if (!c.free) {
+          const a = [PX, stake.max[1] - 0.25, PZ], b = [c.pos[0] - Math.sin(c.face) * 1.1, c.pos[1] + 0.9, c.pos[2] - Math.cos(c.face) * 1.1];
+          const slack = Math.max(0, 1 - Math.hypot(b[0] - a[0], b[2] - a[2]) / CHAIN);
+          for (let k = 1; k < 9; k++) {
+            const u = k / 9, q = [lerp(a[0], b[0], u), lerp(a[1], b[1], u) - Math.sin(u * Math.PI) * slack * 1.4, lerp(a[2], b[2], u)];
+            draw(MS.link, M4.from(q[0], Math.max(q[1], H(q[0], q[2]) + 0.12), q[2], Math.atan2(b[0] - a[0], b[2] - a[2]) + (k % 2) * Math.PI / 2));
+          }
+        }
+      } else if (!gateOpen) { /* nie */ }
+      if (!gateOpen) for (let k = 0; k < 7; k++) draw(MS.bar, M4.from(CX2 + 2.7, CY, CZ2 - 2.7 + k * 0.9), { lit: 0.7, shine: 0.5 });
+      // Frostkoenig
+      if (king && !king.gone) {
+        const k = king, hurt = k.state === 'hurt' ? Math.sin(k.st * 30) * 0.12 : 0, sw = Math.sin(k.walk * 2.2) * 0.4;
+        const base = M4.from(k.pos[0], k.pos[1], k.pos[2], k.face, 0, hurt + (k.state === 'beaten' ? 0.3 : 0), 1, k.squash, 1);
+        draw(MS.king, base, { shine: 0.2, rim: 0.25, lit: 0.85, tint: k.state === 'hurt' && Math.floor(k.st * 12) % 2 ? [1, 0.5, 0.5, 0.5] : undefined });
+        const up = k.held ? 2.6 : k.arms * 2.4;
+        for (const s of [-1, 1]) {
+          draw(MS.kingArm, M4.mul(base, M4.from(s * 1.72, 2.5, 0.1, 0, -up + (k.held ? 0 : s * sw * 0.4), s * (0.35 + up * 0.25))), { lit: 0.85 });
+          draw(MS.kingFoot, M4.mul(base, M4.from(s * 0.85, 0, 0.1 + (k.speed ? s * sw * 0.5 : 0))), { lit: 0.85 });
+        }
+      }
+      // Wettlaeuferin
+      if (racer) {
+        const base = M4.from(racer.pos[0], racer.pos[1], racer.pos[2], racer.face);
+        Life.drawCat(CATS[2 % CATS.length], base, clock * (racer.walk > 0.5 ? 2.2 : 1), racer.walk, racer.state === 'wait' && Dialog.open, [...hex('#ffe070'), 0.3]);
+      }
     };
+    L.drawAlpha = () => {
+      const s1 = (clock * 1.3) % 120, s2 = (clock * 0.7) % 120;
+      draw(BC.cloudMesh, M4.from(s1, -23, s1 * 0.4), { tex: BC.cloudTex, alpha: 0.93, lit: 0.9 });
+      draw(BC.cloudMesh, M4.from(-s2, -31, 20 + s2 * 0.3), { tex: BC.cloudTex, alpha: 0.6, lit: 0.75 });
+      if (king && !king.gone && !king.held) shadowAt(king.pos[0], king.pos[1], king.pos[2], 2.1);
+      if (!chomp.gone) shadowAt(chomp.pos[0], chomp.pos[1], chomp.pos[2], 1.3);
+      if (racer) shadowAt(racer.pos[0], racer.pos[1], racer.pos[2], 0.7);
+    };
+
+    // ── Kameraflug zum Start: hoch ueber der Insel, am Missionsziel vorbei, hinter die Figur ──
+    const FOCUS = [[BB.CX, BB.TOP + 3, BB.CZ - 4], [11, 2, 59.5], [0, 30, -8], [BB.PEN[0], PY + 2, BB.PEN[1]], [BB.FI[0], BB.FI[1] + 2, BB.FI[2]], [BB.MARK[0], 1, BB.MARK[1]]][M];
+    const fcam = [FOCUS[0] + 22, Math.max(FOCUS[1] + 12, H(FOCUS[0] + 22, FOCUS[2] + 26) + 6), FOCUS[2] + 26];
+    L.flyby = [
+      [0, [120, 78, 140], [0, 24, -30]],
+      [2.4, [70, 62, 40], [0, 34, -30]],
+      [4.8, fcam, FOCUS],
+      [7.2, [-18, 14, 96], [0, 6, 50]],
+      [8.8, [0, 5.6, 75.3], [0, 1.6, 64]],
+    ];
     L.finish();
     return L;
   }
@@ -7013,7 +7857,6 @@ vec3 art(vec2 p) {
       'Das Bild neben der Haustür führt zur echten Home-Seite.',
       'In die alte Gruft kommt man nur auf allen vieren. Und in der Hinterhalle … lies das Schild.',
     ]);
-    K.exit(0, 39);
     // ── Leben ──
     K.life.glows(-70, -90, 70, 36, 26, { y: 0.5, yr: 6, col: '#8affc8', s: 1.1, speed: 0.5 });
     K.life.drifts(-70, -90, 70, 36, 16, { y0: 0, y1: 16, col: '#6a6a78', s: 0.9, speed: 0.5 });
@@ -7254,7 +8097,6 @@ vec3 art(vec2 p) {
       'Der Suchrahmen führt zur echten Suchmaschine.',
     ]);
     K.talker(6, 0, -76, 'Schild', ['UHRWERK-TURM\nBitte nicht in die Zahnräder fassen. Oben an der Westwand wartet ein Stern.']);
-    K.exit(0, 35);
     L.enemies.push(makeBomb(-10, 18), makeBomb(20, 14), makeBomb(-40, -50), makeBomb(40, -60), makeBomb(-60, 0));
     L.enemies.push(makeGrummel(-30, 20), makeGrummel(30, -20), makeGrummel(0, -60), makeGrummel(-55, -110));
     L.enemies.push(makeSpiky(20, 25, 3, '#c89a3a'), makeSpiky(-25, -45, 3, '#c89a3a'), makeSpiky(55, -30, 3, '#c89a3a'), makeSpiky(-65, -80, 3, '#c89a3a'));
@@ -7453,7 +8295,6 @@ vec3 art(vec2 p) {
       'Links schwebt das APFELMÄNNCHEN. Und: nicht alles, was man nicht sieht, ist nicht da. Rechts neben der Brücke zum Beispiel.',
       'Auf der Plattform hängt das Tor zum echten Mandelbrot-Explorer.',
     ]);
-    K.exit(0, 25.2);
     L.enemies.push(makeBat(0, 9, -10, '#ff5ae0'), makeBat(-28, 9, 8, '#ff5ae0'), makeBat(60, 11, 4, '#ff5ae0'), makeBat(40, 23, -80, '#ff5ae0'), makeBat(-45, 32, -125, '#ff5ae0'));
     L.enemies.push(makeSpiky(-4, -6, 3, '#3aa0ff'), makeSpiky(5, -14, 3, '#3aa0ff'), makeSpiky(-45, -120, 30, '#3aa0ff'));
     L.enemies.push(makeHopper(-27, 5, 6, '#8a5cff'), makeHopper(-30, 12, 6, '#ff9a2e'), makeHopper(18, 26, 3, '#4cd964'));
@@ -7638,7 +8479,6 @@ vec3 art(vec2 p) {
       'Hinten rechts rauscht die WASSERFALL-KLIPPE – dort wartet ein zweiter Stern. Links liegt das Pilzdorf.',
       'Neben der Hängematte hängt das Bild zur echten Secret Page.',
     ]);
-    K.exit(0, 34);
     L.enemies.push(makeGrummel(-10, 12), makeGrummel(12, -6), makeGrummel(-14, -34), makeGrummel(40, -30), makeGrummel(-60, -50));
     L.enemies.push(makeSpiky(-35, -10, 3, '#6a3a1a'), makeSpiky(30, 0, 3, '#6a3a1a'), makeSpiky(-70, -8, 3, '#6a3a1a'), makeSpiky(40, -110, 15, '#6a3a1a'), makeSpiky(75, -110, 27, '#6a3a1a'));
     L.enemies.push(makeHopper(-20, 25, 3, '#8ac83a'), makeHopper(10, -50, 3, '#8ac83a'), makeHopper(-80, -30, 3, '#8ac83a'), makeHopper(60, -90, 15, '#8ac83a'), makeHopper(78, -138, 39, '#c8ff5a'));
@@ -7861,7 +8701,6 @@ vec3 art(vec2 p) {
       'Die Pfeile auf dem Boden geben ordentlich Schwung. Die WELCOME-Buchstaben kann man übrigens beklettern.',
     ]);
     K.talker(-6, 0, -58, 'Schild', ['SYNTH-STRECKE\nRosa Platten blinken, orange Blöcke schieben, rote Laser brennen. Am Checkpoint den Pfeil nutzen – der Abgrund danach ist breit!']);
-    K.exit(0, 31);
     L.enemies.push(makeGrummel(15, 18), makeGrummel(-15, -10), makeGrummel(40, 20), makeGrummel(-40, 10));
     L.enemies.push(makeSpiky(20, -40, 3, '#ff3fb0'), makeSpiky(-20, -45, 3, '#3ff0ff'), makeSpiky(50, -5, 3, '#ffe45a'), makeSpiky(4, -222, 9, '#ff3fb0'));
     L.enemies.push(makeHopper(-10, -50, 3, '#3ff0ff'), makeHopper(30, 0, 3, '#ff5ae0'), makeHopper(-44, -28, 4, '#7aff5a'), makeHopper(0, -136, 3, '#ffe45a'));
@@ -7927,8 +8766,8 @@ vec3 art(vec2 p) {
     // Tuer zurueck dorthin, wo man hereinkam (Halle, Keller, Hof, Obergeschoss); Suedwand, zeigt in den Raum
     K.roomExit = (x, z, y = 0) => {
       const hub = HUBS[HOME[buildingKey]] || HUBS.hall;
-      castleDoor(L, x, y, z, Math.PI, { w: 3.6, h: 4.4, plaque: plaqueTex(hub.name, hub.icon, '#ffd21f'), torches: true });
-      L.door = { pos: [x, y, z - 1.4], to: HOME[buildingKey] || 'hall', label: 'Zurück: ' + hub.name, back: true };
+      const dfx = castleDoor(L, x, y, z, Math.PI, { w: 3.6, h: 4.4, plaque: plaqueTex(hub.name, hub.icon, '#ffd21f'), torches: true });
+      L.door = { pos: [x, y, z - 1.4], to: HOME[buildingKey] || 'hall', label: 'Zurück: ' + hub.name, back: true, fx: dfx };
       L.solid(x - 1.8, y, z - 0.5, x + 1.8, y + 4.4, z, 'exitdoor');
     };
     // Wandfackel; ry dreht die Vorderseite in den Raum
@@ -8668,8 +9507,8 @@ vec3 art(vec2 p) {
     L.block(-5.5, 3, 7.5, 3, 6, 5, STONE, 'bigwall'); L.block(5.5, 3, 7.5, 3, 6, 5, STONE, 'bigwall');
     L.block(0, 5, 7.5, 8, 2, 5, STONE, 'bigwall'); L.block(0, 3, 9.75, 14, 6, 0.5, STONE, 'bigwall');
     L.block(0, 6.3, 7.5, 14.4, 0.6, 5.4, { top: hex('#4a3a6a'), side: hex('#3a2a5a') }, 'roof');
-    castleDoor(L, 0, 0, 5, Math.PI, { w: 3.6, h: 4, arch: false, plaque: plaqueTex('Schlosshalle', '\u{1F3F0}', '#ffd21f'), torches: true });
-    L.door = { pos: [0, 0, 3.6], to: 'hall', label: 'Zurück in die Halle', back: true };
+    const dfx = castleDoor(L, 0, 0, 5, Math.PI, { w: 3.6, h: 4, arch: false, plaque: plaqueTex('Schlosshalle', '\u{1F3F0}', '#ffd21f'), torches: true });
+    L.door = { pos: [0, 0, 3.6], to: 'hall', label: 'Zurück in die Halle', back: true, fx: dfx };
     L.solid(-1.8, 0, 4.5, 1.8, 4, 5, 'exitdoor');
     // ── Das Planetenmodell ──
     const OX = 0, OZ = -12;
@@ -9760,6 +10599,7 @@ vec3 art(vec2 p) {
     desert: { top: '#3a80dc', mid: '#86c0ee', hor: '#f6e2b8', below: '#e8cf9a', clouds: 4, cloud: '#fff8ec', cloudLo: '#f0dcc0', sun: '#fffbe0', dir: [0.25, 0.85, 0.3], size: 28 },
     sunset: { top: '#23265e', mid: '#b24a86', hor: '#ffb070', below: '#d86a48', clouds: 8, cloud: '#ffc8a0', cloudLo: '#9a4a86', sun: '#ffe070', dir: [0, 0.1, -1], size: 44 },
     snow:   { top: '#6a8ab8', mid: '#a8c0dc', hor: '#eef3fa', below: '#dde6f0', clouds: 14, cloud: '#f4f8ff', cloudLo: '#c8d4e4', sun: '#ffffff', dir: [-0.3, 0.6, -0.5], size: 16 },
+    cloudsea: { top: '#2a6fe8', mid: '#76bcff', hor: '#d6ecff', below: '#eef5ff', clouds: 9, cloud: '#ffffff', cloudLo: '#dde9f8', sun: '#fff6c0', dir: [-0.35, 0.78, -0.4], size: 22 },
     night:  { top: '#07051a', mid: '#221245', hor: '#4a2a6a', below: '#150c28', clouds: 5, cloud: '#3a2a5a', cloudLo: '#241840', stars: 280, moon: '#fff4c0', dir: [-0.4, 0.5, -0.6], size: 22 },
     brass:  { top: '#35251c', mid: '#8a5a30', hor: '#e8b068', below: '#6a4428', clouds: 10, cloud: '#c89060', cloudLo: '#7a5030', sun: '#ffd890', dir: [0.5, 0.22, -0.7], size: 34 },
     space:  { top: '#02010a', mid: '#140a3a', hor: '#3a1a6a', below: '#0a1030', clouds: 0, stars: 520, planet: '#8ad0ff', dir: [0.6, 0.35, -0.6], size: 40 },
@@ -9841,7 +10681,7 @@ vec3 art(vec2 p) {
      Wolken mit Licht und Schatten, Berge am Horizont, Sterne, Milchstrasse, Mond, Nebel, ...
      Beim Zeichnen wird dann nur noch die Textur in Blickrichtung abgelesen (billig). */
   const Skybox = (() => {
-    const THEME = { day: 0, desert: 1, sunset: 2, snow: 3, night: 4, brass: 5, space: 6, forest: 7, synth: 8 };
+    const THEME = { day: 0, desert: 1, sunset: 2, snow: 3, night: 4, brass: 5, space: 6, forest: 7, synth: 8, cloudsea: 9 };
     const SIZE = 512;
     const GEN = `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
@@ -9920,6 +10760,19 @@ vec3 skyDay(vec3 d) {
   if (d.y < r1) col = mix(vec3(0.5, 0.64, 0.82), col, 0.25);
   if (d.y < r2) col = mix(vec3(0.34, 0.54, 0.44), vec3(0.5, 0.64, 0.8), 0.35);
   return haze(col, d, 22.0, 0.45);
+}
+// Ueber den Wolken (Bounce-Berg): Tageshimmel ohne Berge, unter dem Horizont ein weiches Wolkenmeer
+vec3 skyCloudSea(vec3 d) {
+  vec3 col = grad3(d.y, vec3(0.8, 0.9, 1.0), vec3(0.45, 0.68, 0.98), vec3(0.16, 0.4, 0.9), 0.35);
+  col = sunDisc(col, d, vec3(1.0, 0.97, 0.88), 0.012, 0.35, 12.0);
+  col = over(col, clouds(d, 0.5, 1.5, vec3(1.0), vec3(0.7, 0.76, 0.88), 1.0, 0.2));
+  if (d.y < 0.02) {
+    vec2 p = d.xz / (0.06 - d.y);
+    float puff = fbm4(vec3(p * 0.9, 3.0)) * 0.7 + fbm4(vec3(p * 3.1, 8.0)) * 0.3;
+    vec3 sea = mix(vec3(0.7, 0.78, 0.9), vec3(0.97, 0.98, 1.0), smoothstep(0.35, 0.75, puff));
+    col = mix(sea, col, smoothstep(-0.004, 0.02, d.y));
+  }
+  return haze(col, d, 26.0, 0.45);
 }
 vec3 skyDesert(vec3 d) {
   vec3 col = grad3(d.y, vec3(0.98, 0.86, 0.66), vec3(0.6, 0.76, 0.95), vec3(0.18, 0.42, 0.86), 0.3);
@@ -10232,7 +11085,7 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
        (Grafiktreiber ohne Zwischenspeicher, Windows/D3D) ueber 8 s und froren dabei die Seite ein.
        Darum pro Himmel ein eigenes Programm (0,1-0,4 s), mit KHR_parallel_shader_compile im Hintergrund. */
     const par = gl.getExtension('KHR_parallel_shader_compile');
-    const THEME_FN = ['skyDay', 'skyDesert', 'skySunset', 'skySnow', 'skyNight', 'skyBrass', 'skySpace', 'skyForest', 'skySynth'];
+    const THEME_FN = ['skyDay', 'skyDesert', 'skySunset', 'skySnow', 'skyNight', 'skyBrass', 'skySpace', 'skyForest', 'skySynth', 'skyCloudSea'];
     const genSrc = (name) => `#define SKY ${THEME_FN[THEME[name] ?? 0]}\n` + GEN;
     const gens = {};
     function startProg(vs, fs) {
@@ -10621,7 +11474,7 @@ void main() {
       if (b.min[1] > fromY) continue;
       const nx = clamp(x, b.min[0], b.max[0]), nz = clamp(z, b.min[2], b.max[2]);
       if ((x - nx) * (x - nx) + (z - nz) * (z - nz) > r * r) continue;
-      const t = b.slope ? topAt(b, x, z) : b.max[1];
+      const t = b.slope || b.hf ? topAt(b, x, z) : b.max[1];
       if (t > fromY) continue;
       if (t > best) best = t;
     }
@@ -10634,6 +11487,7 @@ void main() {
       for (const b of near(L, p[0], p[2])) {
         if ((!b.slope && b.max[1] <= stepTop) || b.min[1] >= p[1] + h) continue;
         if (skip && skip(b)) continue;
+        if (b.hf) { const hh = it === 0 && hfPush(b, p, r, h, stepTop); if (hh) hit = hh; continue; }
         const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
         let dx = p[0] - nx, dz = p[2] - nz;
         const d2 = dx * dx + dz * dz;
@@ -11007,6 +11861,7 @@ void main() {
 
   // Bergab-Richtung [x, z] einer Rampe, die zu steil zum Stehen ist, sonst null
   function steepDown(b) {
+    if (b.hf) return hfSteep(b, pl.pos);
     const s = b.slope;
     if (!s || Math.abs(s.y1 - s.y0) < STEEP * Math.abs(s.c1 - s.c0)) return null;
     const down = -Math.sign((s.y1 - s.y0) / (s.c1 - s.c0));
@@ -11051,7 +11906,7 @@ void main() {
     const p = pl.pos, fx = Math.sin(pl.face), fz = Math.cos(pl.face);
     let best = null;
     for (const b of near(L, p[0], p[2])) {
-      if (b.slope || NO_GRAB.has(b.tag) || (b.tag || '').startsWith('key:')) continue;
+      if (b.slope || b.hf || NO_GRAB.has(b.tag) || (b.tag || '').startsWith('key:')) continue;
       const top = b.max[1], rel = top - p[1];
       if (rel < GRAB_LO || rel > GRAB_HI) continue;
       if (b.max[0] - b.min[0] < 0.6 && b.max[2] - b.min[2] < 0.6) continue;
@@ -11081,7 +11936,7 @@ void main() {
     const p = pl.pos, ix = Math.sin(dir), iz = Math.cos(dir);
     let best = null;
     for (const b of near(L, p[0], p[2])) {
-      if (b.slope || NO_GRAB.has(b.tag) || (b.tag || '').startsWith('key:')) continue;
+      if (b.slope || b.hf || NO_GRAB.has(b.tag) || (b.tag || '').startsWith('key:')) continue;
       const top = b.max[1], rel = top - p[1];
       if (rel <= 0.05 || rel >= GRAB_LO) continue;
       if (b.max[0] - b.min[0] < 0.6 && b.max[2] - b.min[2] < 0.6) continue;
@@ -11109,7 +11964,7 @@ void main() {
   const SHIMMY = 1.8;   // m/s
   function ledgeAt(L, q, top, n) {
     for (const b of near(L, q[0], q[2])) {
-      if (b.slope || Math.abs(b.max[1] - top) > 0.05 || NO_GRAB.has(b.tag)) continue;
+      if (b.slope || b.hf || Math.abs(b.max[1] - top) > 0.05 || NO_GRAB.has(b.tag)) continue;
       const dx = q[0] - clamp(q[0], b.min[0], b.max[0]), dz = q[2] - clamp(q[2], b.min[2], b.max[2]), d = Math.hypot(dx, dz);
       if (d > R - 0.1 && d < R + 0.15 && (dx * n[0] + dz * n[2]) / d > 0.95) return b;
     }
@@ -11192,6 +12047,7 @@ void main() {
     // Wandsprung-Kette endet erst mit festem Boden, Kante oder Wasser
     if (pl.grounded || pl.inWater || pl.action === 'hang' || pl.action === 'climb') { pl.kicks = 0; pl.kickN = null; }
     if (pl.action === 'hang' || pl.action === 'climb') { pl.carry = [0, 0]; updateLedge(dt, inp, lock); return; }
+    if (pl.action === 'cannon') { updateCannon(dt, inp, lock); return; }
     const gbBefore = pl.grounded ? pl.groundBox : null;
     const water = pl.inWater;
     if (pl.grounded || water) pl.fallTop = p[1];
@@ -11234,16 +12090,20 @@ void main() {
         const lat = !lock && moving ? Math.sin(angDiff(down, intended)) * mag : 0;
         if (Math.cos(angDiff(pl.face, down)) < 0) {
           // bergauf hineingerutscht: die Schwerkraft bremst, dann kippt Glappo und rutscht bergab
-          const s = pl.groundBox.slope, rise = Math.abs(s.y1 - s.y0);
-          pl.speed -= GRAV * rise / Math.hypot(rise, s.c1 - s.c0) * dt;
+          const s = pl.groundBox.slope, gr = s ? null : pl.groundBox.hf ? pl.groundBox.hf.grad(p[0], p[2]) : [0, 0];
+          const sinA = s ? Math.abs(s.y1 - s.y0) / Math.hypot(s.y1 - s.y0, s.c1 - s.c0) : Math.hypot(gr[0], gr[1]) / Math.hypot(1, gr[0], gr[1]);
+          pl.speed -= GRAV * Math.max(0.15, sinA) * dt;
           if (pl.speed <= 0.5) { pl.face = down; pl.speed = 0; }
         } else {
           pl.face += clamp(angDiff(pl.face, down + lat * 0.75), -4.2 * dt, 4.2 * dt);
-          pl.speed = Math.min(CHUTE_MAX, Math.max(pl.speed, 4) + CHUTE_ACC * dt);
+          // wie im Vorbild: Stick bergab = schneller, zurueck = bremsen
+          const push = !lock && moving ? Math.cos(angDiff(down, intended)) * mag : 0;
+          const top = CHUTE_MAX * (1 + 0.28 * Math.max(0, push) + 0.25 * Math.min(0, push));
+          pl.speed = pl.speed > top ? Math.max(top, pl.speed - 6 * dt) : Math.min(top, Math.max(pl.speed, 4) + CHUTE_ACC * (1 + 0.4 * Math.max(0, push)) * dt);
         }
       } else {
         if (!lock && moving) pl.face += clamp(dYaw, -1.8 * dt, 1.8 * dt);
-        const brake = pl.groundBox && pl.groundBox.tag === 'ice' ? 3 : pl.action === 'kickslide' ? KICKSLIDE_BRAKE : 12;
+        const brake = gtagOf(pl.groundBox) === 'ice' ? 3 : pl.action === 'kickslide' ? KICKSLIDE_BRAKE : 12;
         pl.speed = Math.max(0, pl.speed - brake * dt);
       }
       if (pl.speed > 2 && Math.random() < dt * 22) dust(p, 1);
@@ -11258,7 +12118,7 @@ void main() {
       pl.side = 0;
       pl.crouch = ((!lock && inp.z) || pl.forceCrouch || pl.sweepT > 0) && !water;
       if (pl.sweepT > 0) { pl.speed = 0; pl.crawl = false; }
-      const gtag = pl.groundBox ? pl.groundBox.tag : '';
+      const gtag = gtagOf(pl.groundBox);
       const icy = gtag === 'ice', fr = icy ? 0.16 : 1;
       const top = RUN * mag * (water ? 0.5 : 1);
       // Kehrtwende: Stick deutlich zurueck (> ~100°) bei Tempo -> rutschen
@@ -11366,6 +12226,8 @@ void main() {
       if (pl.action === 'pound') {
         pl.pound += dt; pl.speed = 0; pl.side = 0;
         pl.vel[1] = pl.pound < 0.3 ? 0 : -50 * UF;
+      } else if (pl.action === 'shot') {
+        pl.side = 0;   // aus der Kanone: Flugbahn steht, nur die Schwerkraft zieht (SHOT_GRAV)
       } else {
         // Luftsteuerung: vor/zurueck beschleunigen, seitlich driften und sanft in Stickrichtung drehen.
         // Ohne Stick bremst es spuerbar (nur Weitsprung/Hechtsprung behalten ihren Schwung).
@@ -11415,7 +12277,7 @@ void main() {
     }
     // Schwerkraft
     if (!pl.grounded && pl.action !== 'pound' && pl.action !== 'swim') {
-      pl.vel[1] = Math.max(pl.vel[1] - GRAV * (water ? 0.55 : pl.action === 'long' ? LONG_GRAV : 1) * dt, water ? -8 : -TERMINAL);
+      pl.vel[1] = Math.max(pl.vel[1] - GRAV * (water ? 0.55 : pl.action === 'long' ? LONG_GRAV : pl.action === 'shot' ? SHOT_GRAV : 1) * dt, water ? -8 : -TERMINAL);
     }
     if (pl.action === 'swim') pl.vel[1] = clamp(pl.vel[1], -5, 6);
 
@@ -11473,10 +12335,12 @@ void main() {
     }
     if (pl.vel[1] > 0) {
       for (const b of near(L, p[0], p[2])) {
-        if (b.min[1] < prevY + pl.h - 0.05 || b.min[1] > p[1] + pl.h) continue;
+        // Gelaende hat keine Decke - ausser duennen Flaechen (Rodelbahn, schwebende Insel): deren Unterseite
+        const bot = b.hf ? (b.hf.overlay ? b.hf.h(p[0], p[2]) - b.hf.thick : -Infinity) : b.min[1];
+        if (bot < prevY + pl.h - 0.05 || bot > p[1] + pl.h) continue;
         const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
         if ((p[0] - nx) ** 2 + (p[2] - nz) ** 2 > (R * 0.7) ** 2) continue;
-        p[1] = b.min[1] - pl.h; pl.vel[1] = 0;
+        p[1] = bot - pl.h; pl.vel[1] = 0;
         Snd.stomp();
         break;
       }
@@ -11487,7 +12351,7 @@ void main() {
       if (b.min[1] > reach) continue;
       const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
       if ((p[0] - nx) ** 2 + (p[2] - nz) ** 2 > (R * 0.75) ** 2) continue;
-      const t = b.slope ? topAt(b, p[0], p[2]) : b.max[1];
+      const t = b.slope || b.hf ? topAt(b, p[0], p[2]) : b.max[1];
       if (t <= reach && t > gy) { gy = t; gb = b; }
     }
     const was = pl.grounded;
@@ -11530,7 +12394,7 @@ void main() {
     else if (pl.action === 'swim') pl.action = 'fall';
     updateAir(dt);
     if (!pl.grounded && pl.ledgeCool <= 0 && !lock && !pl.entering
-        && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'dive', 'slidekick'].includes(pl.action)) {
+        && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'dive', 'slidekick', 'shot'].includes(pl.action)) {
       if (pl.action !== 'long' && (pl.action !== 'swim' || moving) && tryLedgeGrab(L)) return;
       if (moving && tryMantle(L, intended)) return;
     }
@@ -11544,8 +12408,8 @@ void main() {
     const stepN = Math.floor(pl.walk / Math.PI + 0.5);
     if (stepN !== pl.stepN) {
       pl.stepN = stepN;
-      const gt = pl.groundBox && pl.groundBox.tag;
-      if ((pl.gait === 'walk' || pl.gait === 'run') && !pl.skid) Snd.step(pl.inWater ? 'water' : gt === 'ice' ? 'ice' : '', pl.gait === 'run');
+      const gt = gtagOf(pl.groundBox);
+      if ((pl.gait === 'walk' || pl.gait === 'run') && !pl.skid) Snd.step(pl.inWater ? 'water' : gt === 'ice' ? 'ice' : gt === 'snow' || gt === 'path' ? 'snow' : '', pl.gait === 'run');
       else if (pl.crawl) Snd.step('soft');
     }
     pl.squash += (1 - pl.squash) * Math.min(1, dt * 12);   // Hocke staucht NICHT mehr (eigene Pose, siehe crouchK)
@@ -11570,6 +12434,49 @@ void main() {
     }
     if (flipRate) pl.flip = Math.min(TAU, pl.flip + dt * flipRate);
     if (!pl.grounded) pl.fallTop = Math.max(pl.fallTop ?? p[1], p[1]);
+  }
+
+  /* ═══════════ Kanone ═══════════
+     Wie im Vorbild: ein Bewohner oeffnet sie, man laeuft in die Grube, zielt durchs Rohr (Stick/Maus) und fliegt.
+     Der Flug ist die Aktion 'shot': das Tempo bleibt, nur eine schwaechere Schwerkraft (SHOT_GRAV) zieht - bei voller
+     Schwerkraft braeuchte die Wolkeninsel ein Tempo, bei dem man durch duenne Waende tunnelt. Landung ist immer weich.
+     Kanonen-Objekt (vom Level): { pos: Sitz im Rohr, yaw0, pitch0, exit: Ausstiegspunkt } */
+  const SHOT_GRAV = 0.36, SHOT_SPEED = 40;
+  const cannonDir = (c) => [Math.sin(c.yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(c.yaw) * Math.cos(c.pitch)];
+  const aimEl = $('#cannonAim');
+  function enterCannon(c) {
+    if (pl.hold) dropHold(true);
+    pl.action = 'cannon'; pl.cannon = c; pl.grounded = false; pl.groundBox = null; pl.crouch = false; pl.skid = false;
+    pl.pos = c.pos.slice(); pl.vel = [0, 0, 0]; pl.speed = 0; pl.side = 0; pl.push = [0, 0, 0]; pl.carry = [0, 0];
+    c.yaw = c.yaw0; c.pitch = c.pitch0; c.t = 0; c.inside = true;
+    Snd.door(); rumble(0.3, 120);
+    if (aimEl) aimEl.hidden = false;
+  }
+  function leaveCannonUi() { if (aimEl) aimEl.hidden = true; }
+  function updateCannon(dt, inp, lock) {
+    const c = pl.cannon;
+    if (!c) { pl.action = 'fall'; leaveCannonUi(); return; }
+    c.t += dt;
+    if (lock) return;
+    c.yaw -= inp.mx * 1.1 * dt + inp.mdx * 0.0025;
+    c.pitch = clamp(c.pitch - inp.my * 0.8 * dt - inp.mdy * 0.0025, 0.06, 1.35);
+    pl.face = c.yaw;
+    if (c.t < 0.4) return;
+    if (inp.jumpP) {
+      const d = cannonDir(c);
+      pl.pos = [c.pos[0] + d[0] * 2.4, c.pos[1] + 0.2 + d[1] * 2.4, c.pos[2] + d[2] * 2.4];
+      airborne('shot', SHOT_SPEED * d[1], SHOT_SPEED * Math.cos(c.pitch));
+      pl.face = c.yaw; pl.shotT = time; pl.cannon = null; c.inside = false; c.fired = clock;
+      leaveCannonUi();
+      cam.yaw = c.yaw + Math.PI; cam.pitch = 0.3; cam.snap = true; cam.manual = 0;
+      Snd.boom(); Snd.voice('yay'); rumble(1, 300); cam.shake = 0.5;
+      burst([pl.pos[0], pl.pos[1] + 1, pl.pos[2]], 18, { spread: 4, up: 2, upRand: 2, life: .8, size: .45, cols: [[.92, .92, .95], [.7, .7, .75], [1, .8, .3]], grav: -1 });
+      if (cur.onShot) cur.onShot(c);
+    } else if (inp.zP) {   // doch nicht: aussteigen
+      pl.cannon = null; c.inside = false; leaveCannonUi();
+      pl.pos = c.exit.slice(); pl.action = 'fall'; pl.vel = [0, 4, 0]; pl.face = c.yaw;
+      cam.snap = true;
+    }
   }
 
   function onLand(gb, impact) {
@@ -11620,7 +12527,7 @@ void main() {
     if (gb && gb.tag === 'switch') pressSwitch();
     // Tiefer Fall: harte Landung — ausser mit Stampfer, ins Wasser, auf Federn oder Rutschbahnen
     const bouncy = gb && (gb.tag === 'awning' || gb.tag === 'bouncy');
-    const soft = from === 'pound' || bouncy || (gb && (gb.chute || steepDown(gb))) || cur.waters.some((w) => inWaterBox(w, pl.pos));
+    const soft = from === 'pound' || from === 'shot' || bouncy || (gb && (gb.chute || steepDown(gb))) || cur.waters.some((w) => inWaterBox(w, pl.pos));
     const drop = (pl.fallTop ?? pl.pos[1]) - pl.pos[1];
     if (!soft && drop >= FALL_HURT) hardLanding(drop);
     // Markisen, Seerosen, Pilze ... federn wie ein Trampolin
@@ -11775,7 +12682,16 @@ void main() {
   function collectCoin(L, c) {
     c.taken = true;
     sparkle(c.pos);
-    if (c.kind === 'red') {
+    if (c.kind === 'red' && L.redStar) {
+      // Kurs: eigene acht rote Muenzen, der Stern erscheint ueber der Sternmarke dieses Kurses
+      L.redN = (L.redN || 0) + 1;
+      Snd.red(L.redN);
+      popNumber(c.pos, L.redN);
+      if (L.redN === 8) setTimeout(() => {
+        spawnStar(L.redStar.id, L, L.redStar.pos);
+        if (L === cur) Dialog.show('Wolki', ['Alle 8 roten Münzen! Über der Sternmarke ist ein Stern erschienen.']);
+      }, 700);
+    } else if (c.kind === 'red') {
       run.red++;
       Snd.red(run.red);
       popNumber(c.pos, run.red);
@@ -11797,6 +12713,16 @@ void main() {
     if (before < 50 && run.coins >= 50) {
       const p = pl.pos;
       setTimeout(() => spawnStar('coins', cur, [p[0] + Math.sin(pl.face) * 2.5, p[1] + 2.8, p[2] + Math.cos(pl.face) * 2.5]), 400);
+    }
+    // Kurs: 100 Muenzen in einem Besuch = eigener Stern (erscheint neben Glappo)
+    const L = cur;
+    if (L && L.coins100) {
+      const was = L.coinN || 0;
+      L.coinN = was + n;
+      if (was < 100 && L.coinN >= 100) {
+        const p = pl.pos;
+        setTimeout(() => spawnStar(L.coins100, L, [p[0], p[1] + 3.6, p[2]]), 500);
+      }
     }
   }
   function spawnStar(id, L, pos) {
@@ -11825,14 +12751,16 @@ void main() {
     pl.speed = 0;
     setTimeout(() => {
       $('#starGet').hidden = true;
-      if (mode === 'starget') mode = 'play';
-      if (!isNew) return;
       const n = starCount();
-      let lines;
-      if (n >= STAR_TOTAL) lines = ['ALLE STERNE! Du hast wirklich jeden Winkel gefunden.'].concat(state.doorOpen ? [] : ['Die Sterntür oben auf der Galerie wartet auf dich.']);
+      let lines = null;
+      if (!isNew) lines = null;
+      else if (n >= STAR_TOTAL) lines = ['ALLE STERNE! Du hast wirklich jeden Winkel gefunden.'].concat(state.doorOpen ? [] : ['Die Sterntür oben auf der Galerie wartet auf dich.']);
       else if (n === 4) lines = ['WAHNSINN! Das war der vierte Stern!', 'Die Sterntür oben auf der Galerie der Schlosshalle lässt sich jetzt öffnen.'];
       else lines = [`Stern Nummer ${n}!` + (n < 4 ? ` Noch ${4 - n}, dann gibt die Sterntür nach.` : '')];
-      Dialog.show('Wolki', lines);
+      // im Kurs: wie im Vorbild nach jedem Stern zurueck vors Bild
+      if (L.course && L === cur && mode === 'starget') { exitCourse(lines); return; }
+      if (mode === 'starget') mode = 'play';
+      if (lines) Dialog.show('Wolki', lines);
     }, StarFx.DUR * 1000);
   }
   function pressSwitch() {
@@ -12409,6 +13337,7 @@ void main() {
   }
   function useDoor(d = cur.door) {
     if (mode !== 'play' || pl.entering || !d) return;
+    if (d.fx && !d.end) { DoorSeq.start(d); return; }
     Snd.door();
     if (d.end) { openEnding(); return; }
     if (d.back) { leaveBack(); return; }
@@ -12432,6 +13361,129 @@ void main() {
     const s = backSpot(cur.key);
     transition(() => enterLevel(s.level, s.pos, s.face, s.face));
   }
+  /* ═══════════ Tueren wie im Vorbild (nach Video 2026-09-28) ═══════════
+     Hinaus: die Figur tritt vor die Tuer, greift den Knauf, der Fluegel auf ihrer rechten Seite schwingt von ihr weg auf,
+     sie geht hindurch; die Kamera steht ruhig hinter ihr, dann zieht sich die Sternblende auf die Figur zusammen.
+     Herein: Blende geht auf, die Kamera steht im neuen Raum und schaut auf die Tuer - die Figur steht in der offenen
+     Tuer und geht ein paar Schritte herein, hinter ihr faellt der Fluegel zu; dann schwenkt die Kamera hinter sie.
+     Waehrend der Sequenz steht die Welt (mode 'door'), die Figur wird hier direkt bewegt. */
+  const DoorSeq = (() => {
+    let S = null;
+    const E = (t, a, b) => smooth((t - a) / (b - a));
+    const lerp3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+    // Geometrie einer Tuer von der Seite n aus (n = Einheitsvektor von der Tuer zu dieser Seite)
+    function sideOf(f, p) { return Math.sign((p[0] - f.pos[0]) * f.fwd[0] + (p[2] - f.pos[2]) * f.fwd[1]) || 1; }
+    // Fluegel rechts vom Betrachter, der von Seite side auf die Tuer zugeht; Winkel so, dass er von ihm weg schwingt
+    const wingFor = (side) => (side > 0 ? 1 : 0);
+    const lateral = (f, wing, k) => { const sg = wing ? 1 : -1, c = Math.cos(f.ry), sn = Math.sin(f.ry); return [sg * k * c, -sg * k * sn]; };
+    // Ankunftstuer = die Tuer mit Fluegeln, die der Ankunftsstelle am naechsten ist (kommt man vor einem Bild an: keine)
+    function arrivalFx(L) {
+      let best = null, bd = 6.5;
+      for (const f of L.doorFx) {
+        const d = Math.hypot(pl.pos[0] - f.pos[0], pl.pos[2] - f.pos[2]);
+        if (d < bd && Math.abs(pl.pos[1] - f.pos[1]) < 2.5) { bd = d; best = f; }
+      }
+      return best;
+    }
+    function start(d) {
+      if (S) return;
+      const f = d.fx, side = sideOf(f, pl.pos), n = [f.fwd[0] * side, f.fwd[1] * side], wing = wingFor(side);
+      if (pl.hold) dropHold(true);
+      const lat = lateral(f, wing, Math.min(1.1, f.half * 0.5)), y = f.pos[1];
+      const A = [f.pos[0] + n[0] * 1.15 + lat[0], y, f.pos[2] + n[1] * 1.15 + lat[1]];
+      const B = [f.pos[0] - n[0] * 2.2 + lat[0], y, f.pos[2] - n[1] * 2.2 + lat[1]];
+      const camTo = [f.pos[0] + n[0] * 7 + lat[0] * 0.4, y + 3.1, f.pos[2] + n[1] * 7 + lat[1] * 0.4];
+      S = { phase: 'out', t: 0, d, f, side, n, wing, A, B, p0: pl.pos.slice(), face0: pl.face, camFrom: cam.pos.slice(), camTo, fromKey: cur.key, closing: false };
+      mode = 'door';
+      Object.assign(pl, { vel: [0, 0, 0], push: [0, 0, 0], speed: 0, side: 0, grounded: true, action: 'ground', skid: false, crouch: false, crawl: false, doorReach: 0 });
+    }
+    // Hinein in den neuen Raum (nach geschlossener Blende)
+    function arrive() {
+      const d = S.d, from = S.fromKey;
+      S.f.open = [0, 0];
+      if (d.back) { const b = backSpot(from); enterLevel(b.level, b.pos, b.face, b.face); }
+      else enterLevel(d.to, d.spawn, d.face, d.yaw);
+      const f = arrivalFx(cur);
+      S.t = 0; S.phase = 'in'; S.f2 = f;
+      if (f) {
+        const P1 = pl.pos.slice(), side = sideOf(f, P1), n = [f.fwd[0] * side, f.fwd[1] * side], wing = 1 - wingFor(side);
+        const lat = lateral(f, wing, Math.min(1.1, f.half * 0.5)), y = f.pos[1];
+        const face = Math.atan2(n[0], n[1]), perp = [n[1], -n[0]];
+        Object.assign(S, { P1, n, wing, face,
+          P0: [f.pos[0] + n[0] * 0.35 + lat[0], y, f.pos[2] + n[1] * 0.35 + lat[1]],
+          cam2: [f.pos[0] + n[0] * 8.2 + perp[0] * 2.6, y + 3.3, f.pos[2] + n[1] * 8.2 + perp[1] * 2.6],
+          look2: [f.pos[0] + lat[0] * 0.5, y + 1.7, f.pos[2] + lat[1] * 0.5] });
+        f.open[wing] = -side * 1.5;   // steht offen: zur Raumseite aufgeschwungen
+        pl.pos = S.P0.slice(); pl.face = face;
+      }
+      Iris.open(null, null, 600);
+    }
+    function tick(dt) {
+      if (!S) return;
+      S.t += dt;
+      const t = S.t;
+      if (S.phase === 'out') {
+        // 0-0,3 s vor die Tuer treten, 0,25-0,45 Hand an den Knauf, 0,35-0,8 Fluegel auf, 0,62-1,45 hindurch
+        const k1 = E(t, 0, 0.3), k2 = E(t, 0.62, 1.45);
+        const want = Math.atan2(-S.n[0], -S.n[1]);
+        pl.face = S.face0 + angDiff(S.face0, want) * E(t, 0, 0.22);
+        pl.pos = t < 0.62 ? lerp3(S.p0, S.A, k1) : lerp3(S.A, S.B, k2);
+        const v = t < 0.3 ? Math.hypot(S.A[0] - S.p0[0], S.A[2] - S.p0[2]) / 0.3 : t > 0.62 && t < 1.45 ? 3.6 : 0;
+        pl.speed = v; pl.walk += dt * v * 1.1; pl.gait = v > 0.2 ? 'walk' : 'stand';
+        pl.doorReach = t < 0.62 ? E(t, 0.22, 0.42) : 1 - E(t, 0.62, 0.85);
+        if (t >= 0.33 && !S.snd) { S.snd = true; Snd.door(); }
+        S.f.open[S.wing] = S.side * 1.45 * E(t, 0.35, 0.82);
+        if (t > 1.0 && !S.closing) {
+          S.closing = true;
+          const sp = toScreen([pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]]) || [innerWidth / 2, innerHeight / 2];
+          Iris.close(sp[0], sp[1], 560).then(arrive);
+        }
+        return;
+      }
+      if (!S.f2) { if (t > 0.65) finish(); return; }
+      // Herein: 0,1-1,0 s Schritte in den Raum, 0,95-1,35 Fluegel faellt zu, 1,35-2,0 Kamera schwenkt hinter die Figur
+      const k = E(t, 0.1, 1.0);
+      pl.pos = lerp3(S.P0, S.P1, k);
+      const v = t > 0.1 && t < 1.0 ? Math.hypot(S.P1[0] - S.P0[0], S.P1[2] - S.P0[2]) / 0.9 : 0;
+      pl.speed = v; pl.walk += dt * v * 1.1; pl.gait = v > 0.2 ? 'walk' : 'stand'; pl.doorReach = 0;
+      pl.face = S.face;
+      const w = S.f2.open[S.wing] !== 0 ? Math.sign(S.f2.open[S.wing]) : 0;
+      if (t > 0.95) S.f2.open[S.wing] = w * 1.5 * (1 - E(t, 0.95, 1.33));
+      if (t > 1.3 && !S.clack) { S.clack = true; Snd.stomp(); rumble(0.25, 80); }
+      if (t >= 2.0) finish();
+    }
+    function finish() {
+      if (S && S.f2) S.f2.open = [0, 0];
+      const f = S && S.f2;
+      S = null;
+      pl.doorReach = 0; pl.speed = 0;
+      if (f) { cam.yaw = pl.face + Math.PI; cam.pitch = 0.34; }
+      cam.snap = true; cam.manual = 0;
+      mode = 'play';
+    }
+    // Kamera: hinaus = ruhig hinter der Figur (schaut auf die Tuer), herein = im Raum auf die Tuer, dann hinter die Figur
+    function camera() {
+      const t = S.t;
+      let pos, look;
+      if (S.phase === 'out') {
+        pos = lerp3(S.camFrom, S.camTo, E(t, 0, 0.4));
+        look = lerp3([S.f.pos[0], S.f.pos[1] + 1.8, S.f.pos[2]], [pl.pos[0], pl.pos[1] + 1.3, pl.pos[2]], 0.55);
+      } else if (!S.f2) {
+        const yaw = pl.face + Math.PI;
+        pos = [pl.pos[0] + Math.sin(yaw) * 11, pl.pos[1] + 5.6, pl.pos[2] + Math.cos(yaw) * 11]; look = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
+      } else {
+        const yaw = S.face + Math.PI, cp = Math.cos(0.34), tg = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
+        const dir = [Math.sin(yaw) * cp, Math.sin(0.34), Math.cos(yaw) * cp], dd = camReach(tg, dir, 12);   // wie die normale Kamera
+        const follow = [tg[0] + dir[0] * dd, tg[1] + dir[1] * dd, tg[2] + dir[2] * dd];
+        const k = E(t, 1.35, 2.0);
+        pos = lerp3(S.cam2, follow, k);
+        look = lerp3(lerp3(S.look2, [pl.pos[0], pl.pos[1] + 1.4, pl.pos[2]], E(t, 0.2, 1.0) * 0.7), [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], k);
+      }
+      cam.pos = pos; cam.tgt = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
+      cam.view = M4.lookAt(pos, look, [0, 1, 0]);
+    }
+    return { start, tick, camera, get active() { return !!S; } };
+  })();
   // Die Sterntuer oben auf der Galerie: mit 4 Sternen geht sie auf, dahinter liegt das Obergeschoss
   function useStarDoor() {
     const sd = cur.starDoor, n = starCount(), miss = 4 - n;
@@ -12516,7 +13568,7 @@ void main() {
     if (!pt.level) {
       // Merken, wo es nach dem Webseiten-Besuch weitergeht (vor dem Portal)
       const gy = groundAt(cur, pt.x, pt.z + 3.8, pt.y + 4, 0.3);
-      pendingReturn = { level: cur.key, pos: [pt.x, gy > -Infinity ? gy : pl.pos[1], pt.z + 3.8], face: 0, slot };
+      pendingReturn = { level: cur.key, pos: [pt.x, gy > -Infinity ? gy : pl.pos[1], pt.z + 3.8], face: 0, slot, mission: cur.mission || 0 };
       try { sessionStorage.setItem('glappa64-return', JSON.stringify(pendingReturn)); } catch (e) {}
     }
   }
@@ -12534,6 +13586,19 @@ void main() {
       pt.swirl = 0; pt.rip = null;
       Cine.active = null;
       document.body.classList.remove('cine');
+      if (COURSES[pt.level]) {
+        // Kurs: erst die Sternwahl (die Blende bleibt so lange stehen)
+        CourseSel.open(pt.level, (m) => {
+          if (m < 0) {   // abgebrochen: wieder vor das Bild
+            const s = backSpot(pt.level);
+            enterLevel(s.level, s.pos, s.face, s.face);
+            MagicFade.off(); mode = 'play';
+            return;
+          }
+          enterCourse(pt.level, m);
+        });
+        return;
+      }
       enterLevel(pt.level);
       mode = 'play';
       pl.appearT = clock;
@@ -12605,12 +13670,12 @@ void main() {
     if (!pl.grounded || pl.dead || pl.entering) return null;
     const bomb = bombInReach();
     if (bomb) return { label: 'Aufheben', act: () => pickUp(bomb) };
+    if (L.interact) { const it = L.interact(); if (it) return it; }   // Level-eigenes (z. B. Boss packen)
     if (L.sign && dist2D(p, L.sign.pos) < 2.8) return { label: 'Lesen', act: readSign };
     if (L.door && dist2D(p, L.door.pos) < 3.2 && Math.abs(p[1] - L.door.pos[1]) < 1.5) return { label: L.door.label, act: () => useDoor() };
     for (const d of L.doors) if (dist2D(p, d.pos) < 3 && Math.abs(p[1] - d.pos[1]) < 1.5) return { label: d.label, act: () => useDoor(d) };
     for (const t of L.talkers) {
-      if (t.cat && dist2D(p, t.pos) < 9) Snd.ttsPreload();   // Sprachausgabe schon mal laden (einmalig, im Hintergrund)
-      if (dist2D(p, t.pos) < 2.8 && Math.abs(p[1] - t.pos[1]) < 2) return { label: t.speaker === 'Schild' ? 'Lesen' : 'Reden', act: () => Dialog.show(t.speaker, t.text) };
+      if (dist2D(p, t.pos) < (t.r || 2.8) && Math.abs(p[1] - t.pos[1]) < 2) return { label: t.label || (t.speaker === 'Schild' ? 'Lesen' : 'Reden'), act: () => Dialog.show(t.speaker, t.text, t.onDone) };
     }
     if (L.starDoor && dist2D(p, L.starDoor.pos) < 4.5 && p[1] > 4) return { label: 'Sterntür', act: useStarDoor };
     if (L.sun && dist2D(p, L.sun.spot) < L.sun.r) return { label: 'Nach oben schauen', btn: 'look' };
@@ -12699,6 +13764,16 @@ void main() {
     'terrace', 'pc', 'monitor', 'manor', 'cliff', 'lighthouse', 'clocktower', 'trunk', 'hedge', 'crypt', 'gate', 'exitdoor',
     'mountain', 'pyramid', 'clockwall', 'hull', 'cabin', 'bigwall', 'roof', 'glass']);
   const cam = { yaw: 0, pitch: 0.34, dist: 12, pos: [0, 6, 20], tgt: [0, 1.6, 0], manual: 0, shake: 0, view: I4, proj: I4, snap: true, look: 0 };
+  // Wie weit die Kamera vom Ziel o in Richtung dir weg darf (Waende, Gebaeude, Gelaende halten sie davor)
+  function camReach(o, dir, t) {
+    for (const b of cur.solids) {
+      if (b.hf) { if (!b.hf.overlay) t = hfRay(b, o, dir, t); continue; }
+      if (!CAM_HIT.has(b.tag)) continue;
+      const h = rayBox(o, dir, b, t);
+      if (h < t) t = Math.max(1.2, h - 0.35);
+    }
+    return t;
+  }
   function updateCamera(dt, inp) {
     if (Intro.active) { Intro.camera(); return; }
     if (Cine.active) { cineCamera(); return; }
@@ -12707,6 +13782,16 @@ void main() {
       cam.tgt = [0, 10, -36];
       cam.pos = [Math.sin(a) * 64, 20 + Math.sin(time * 0.2) * 4, -36 + Math.cos(a) * 64];
       cam.view = M4.lookAt(cam.pos, cam.tgt, [0, 1, 0]);
+      return;
+    }
+    if (Flyby.active) { Flyby.camera(); return; }
+    if (DoorSeq.active) { DoorSeq.camera(); return; }
+    if (pl.action === 'cannon' && pl.cannon) {
+      // in der Kanone: Blick durchs Rohr (Zielen mit Stick/Maus, siehe updateCannon)
+      const c = pl.cannon, d = cannonDir(c);
+      cam.pos = [c.pos[0] - d[0] * 0.6, c.pos[1] + 1.25, c.pos[2] - d[2] * 0.6];
+      cam.view = M4.lookAt(cam.pos, v3.add(cam.pos, d), [0, 1, 0]);
+      cam.tgt = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
       return;
     }
     const playing = mode === 'play' && !Dialog.open;
@@ -12733,15 +13818,11 @@ void main() {
     const pitch = lerp(cam.pitch, -0.5, cam.look), dist = lerp(cam.dist, 3.2, cam.look);
     const cp = Math.cos(pitch);
     const dir = [Math.sin(cam.yaw) * cp, Math.sin(pitch), Math.cos(cam.yaw) * cp];
-    let t = dist;
-    for (const b of cur.solids) {
-      if (!CAM_HIT.has(b.tag)) continue;
-      const h = rayBox(cam.tgt, dir, b, t);
-      if (h < t) t = Math.max(1.2, h - 0.35);
-    }
+    const t = camReach(cam.tgt, dir, dist);
     const pos = [cam.tgt[0] + dir[0] * t, cam.tgt[1] + dir[1] * t, cam.tgt[2] + dir[2] * t];
     const gy = groundAt(cur, pos[0], pos[2], pos[1] + 0.6, 0.1);
     if (pos[1] < gy + 0.5) pos[1] = gy + 0.5;
+    if (cur.terrain) { const ty = cur.terrain.hf.h(pos[0], pos[2]); if (pos[1] < ty + 0.6) pos[1] = ty + 0.6; }
     if (cam.shake > 0 && !reduceMotion) {
       pos[0] += (Math.random() - 0.5) * cam.shake; pos[1] += (Math.random() - 0.5) * cam.shake;
       cam.shake = Math.max(0, cam.shake - dt * 1.6);
@@ -12842,6 +13923,7 @@ void main() {
     pl.face = face ?? cur.spawnFace; cam.yaw = yaw ?? cur.spawnYaw; cam.snap = true; cam.manual = 0;
     pl.grounded = true; pl.inWater = false; pl.entering = 0; pl.action = 'ground'; pl.flip = 0; pl.side = 0; pl.skid = false;
     pl.knock = 0; pl.groundBox = null; pl.h = PH; pl.waterJump = false; pl.hangBox = null; pl.ledgeCool = 0;
+    pl.cannon = null; leaveCannonUi();
     parts.length = 0;
     // Feste Sterne stehen immer da (schon gesammelt -> als blasser Stern)
     for (const fs of cur.fixedStars) {
@@ -12852,6 +13934,157 @@ void main() {
     }
     showCourse(cur.name);
   }
+  /* ═══════════ Kurse mit Missionen (Ablauf wie im Vorbild) ═══════════
+     Ins Bild springen -> Sternwahl (Missionen 1-6, sichtbar sind die geholten und die naechsten) -> die Welt wird
+     fuer genau diese Mission neu gebaut (Boss nur in M1, Wettlaeufer nur in M2 ...) -> Kameraflug mit Kursname und
+     Missionstitel -> spielen. Nach jedem Stern geht es zurueck vors Bild. Rote Muenzen und 100 Muenzen zaehlen je Besuch. */
+  const COURSES = {
+    bounce: {
+      name: 'Bounce-Berg',
+      missions: [
+        { id: 'bounce', hint: 'Oben auf dem Gipfel thront ein König, der keinen Besuch mag.' },
+        { id: 'rennen', hint: 'Schneekatze Flitz wartet am Start und hält sich für unschlagbar.' },
+        { id: 'rodel', hint: 'In der Gipfelhütte beginnt eine lange, eisige Abfahrt.' },
+        { id: 'eisbeisser', hint: 'Im Westen hängt ein Eisbeißer an der Kette. Ob der Pfahl nachgibt?' },
+        { id: 'wolkeninsel', hint: 'Über dem Wolkenmeer schwebt eine Insel. Frag den Kanonier.' },
+        { id: 'bounceRot', hint: 'Acht rote Münzen – eine sogar in einer Gletscherspalte.' },
+      ],
+      coins100: 'bounce100',
+    },
+  };
+  let courseMission = 0;   // welche Mission gerade gebaut/gespielt wird
+  // Level-Puffer freigeben, bevor ein Kurs fuer eine andere Mission neu gebaut wird
+  function dropLevel(key) {
+    const L = levels[key];
+    if (!L) return;
+    const free = (m) => { if (m && m.p) for (const k of ['p', 'n', 'c', 't']) gl.deleteBuffer(m[k]); };
+    free(L.mesh); free(L.glowMesh);
+    for (const m of L.movers) free(m.mesh);
+    for (const k of L.blinkers) free(k.mesh);
+    for (const m of L.ownMeshes || []) free(m);
+    delete levels[key];
+  }
+  const CourseSel = (() => {
+    const el = $('#courseSel'), row = $('#csStars'), nameEl = $('#csName'), hintEl = $('#csHint'), extraEl = $('#csExtra'), head = $('#csTitle');
+    let key = null, sel = 0, vis = [], nav = 0, onPick = null, openedAt = 0;
+    function open(k, cb) {
+      key = k; onPick = cb; const C = COURSES[k];
+      const got = C.missions.map((m) => !!state.stars[m.id]), n = got.filter(Boolean).length;
+      vis = got.map((g, i) => g || i <= n);   // geholte + so viele weitere, wie man Sterne hat (mind. die erste)
+      sel = got.findIndex((g, i) => !g && vis[i]); if (sel < 0) sel = 0;
+      head.textContent = C.name.toUpperCase();
+      row.replaceChildren(...C.missions.map((m, i) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'cs-star' + (got[i] ? ' got' : '') + (vis[i] ? '' : ' locked');
+        b.innerHTML = '<span class="cs-glyph">' + (got[i] ? '★' : '☆') + '</span><span class="cs-num">' + (i + 1) + '</span>';
+        b.setAttribute('aria-label', vis[i] ? `Stern ${i + 1}: ${STARS[m.id].name}` : `Stern ${i + 1}: noch unbekannt`);
+        b.disabled = !vis[i];
+        b.addEventListener('click', () => { if (vis[i]) { sel = i; show(); confirm(); } });
+        b.addEventListener('mouseenter', () => { if (vis[i] && sel !== i) { sel = i; show(); Snd.blip(); } });
+        return b;
+      }));
+      const c100 = C.coins100;
+      extraEl.textContent = (state.stars[c100] ? '★ ' : '☆ ') + STARS[c100].name;
+      show();
+      el.hidden = false; openedAt = performance.now(); nav = 0;
+      mode = 'coursesel'; Input.unlock();
+      Snd.chime(5);
+    }
+    function show() {
+      const m = COURSES[key].missions[sel];
+      [...row.children].forEach((b, i) => { b.classList.toggle('sel', i === sel); b.setAttribute('aria-pressed', String(i === sel)); });
+      nameEl.textContent = `${sel + 1}. ${STARS[m.id].name}`;
+      hintEl.textContent = m.hint;
+      const b = row.children[sel]; if (b && document.activeElement !== b) b.focus({ preventScroll: true });
+    }
+    function stepSel(d) {
+      for (let i = sel + d; i >= 0 && i < vis.length; i += d) if (vis[i]) { sel = i; show(); Snd.blip(); return; }
+    }
+    function close() { el.hidden = true; }
+    function confirm() {
+      if (el.hidden || performance.now() - openedAt < 250) return;
+      close(); Snd.starAppear();
+      Input.lock();
+      onPick(sel);
+    }
+    function pad(inp) {
+      const d = inp.mx > 0.6 ? 1 : inp.mx < -0.6 ? -1 : 0;
+      if (d && d !== nav) stepSel(d);
+      nav = d;
+      if (inp.jumpP || inp.actionP || inp.startP) confirm();
+      else if (inp.zP || inp.pauseP) { close(); onPick(-1); }
+    }
+    return { open, pad, get open_() { return !el.hidden; } };
+  })();
+  /* Kameraflug zum Kursbeginn: Schluesselbilder [Zeit, Kamera, Blickziel] aus L.flyby, weich per Catmull-Rom;
+     endet genau hinter der Figur. A/Start ueberspringt. Dazu eine Titelkarte (Kursname + Mission). */
+  const Flyby = (() => {
+    let F = null;
+    const cr = (p0, p1, p2, p3, u) => p1.map((_, i) => {
+      const a = p0[i], b = p1[i], c2 = p2[i], d = p3[i];
+      return 0.5 * (2 * b + (-a + c2) * u + (2 * a - 5 * b + 4 * c2 - d) * u * u + (-a + 3 * b - 3 * c2 + d) * u * u * u);
+    });
+    function path(t, j) {
+      const K = F.keys;
+      t = clamp(t, 0, F.T);
+      let i = 0;
+      while (i < K.length - 2 && K[i + 1][0] <= t) i++;
+      const u = (t - K[i][0]) / (K[i + 1][0] - K[i][0]);
+      const P = (k) => K[clamp(k, 0, K.length - 1)][j];
+      return cr(P(i - 1), P(i), P(i + 1), P(i + 2), smooth(u) * 0.4 + u * 0.6);
+    }
+    function start(L, title, sub, noFly) {
+      document.querySelectorAll('.course-name, .course-card').forEach((o) => o.remove());
+      const card = document.createElement('div');
+      card.className = 'course-card outlined';
+      const h = document.createElement('div'); h.className = 'cc-title'; h.textContent = title;
+      const s = document.createElement('div'); s.className = 'cc-sub'; s.textContent = sub;
+      card.append(h, s);
+      document.body.appendChild(card);
+      if (!L.flyby || reduceMotion || noFly) { F = null; setTimeout(() => card.remove(), 2600); mode = 'play'; cam.snap = true; return; }
+      F = { keys: L.flyby, t: 0, T: L.flyby[L.flyby.length - 1][0], card };
+      mode = 'flyby';
+      document.body.classList.add('cine');
+    }
+    function tick(dt) { if (F) { F.t += dt; if (F.t >= F.T) finish(); } }
+    function camera() {
+      const pos = path(F.t, 1), look = path(F.t, 2);
+      cam.pos = pos; cam.view = M4.lookAt(pos, look, [0, 1, 0]);
+    }
+    function finish() {
+      if (!F) return;
+      const card = F.card;
+      F = null;
+      card.classList.add('out'); setTimeout(() => card.remove(), 700);
+      document.body.classList.remove('cine');
+      mode = 'play';
+      cam.yaw = cur.spawnYaw; cam.pitch = 0.34; cam.dist = 12; cam.snap = true; cam.manual = 0;
+      pl.appearT = clock; Snd.arrive();
+      burst([pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]], 18, { spread: 4, up: 3, upRand: 3, life: .8, size: .15, cols: [[1, 1, 1], [1, .9, .45], [.7, .9, 1]], grav: 2 });
+    }
+    return { start, tick, camera, skip: finish, get active() { return !!F; } };
+  })();
+  // Kurs fuer Mission m betreten (aus der Sternwahl)
+  function enterCourse(key, m) {
+    courseMission = m;
+    dropLevel(key);
+    enterLevel(key);
+    cur.mission = m;
+    MagicFade.off();
+    const C = COURSES[key], id = C.missions[m].id;
+    // Kameraflug nur beim ersten Betreten (je Datei, Wunsch 2026-09-28) - danach nur die Titelkarte
+    const seen = !!state.flags['flyby_' + key];
+    if (!seen) { state.flags['flyby_' + key] = true; save(); }
+    Flyby.start(cur, C.name.toUpperCase(), `★ ${m + 1}: ${STARS[id].name}`, seen);
+  }
+  // Nach einem Stern im Kurs: zurueck vors Bild, dort erst die Glueckwuensche
+  function exitCourse(lines) {
+    mode = 'iris';
+    const s = backSpot(cur.key);
+    Iris.close(null, null, 700).then(() => { enterLevel(s.level, s.pos, s.face, s.face); return Iris.open(null, null, 650); })
+      .then(() => { mode = 'play'; if (lines) Dialog.show('Wolki', lines); });
+  }
+
   let pendingReturn = null;
   function transition(fn) {
     mode = 'iris';
@@ -12897,7 +14130,7 @@ void main() {
       // Kommt man von einer Webseite zurueck, geht es vor dem Portal in derselben Welt weiter
       let ret = null;
       try { ret = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); sessionStorage.removeItem('glappa64-return'); } catch (e) { ret = null; }
-      if (ret && BUILDERS[ret.level] && Array.isArray(ret.pos)) { enterLevel(ret.level, ret.pos, ret.face || 0, ret.face || 0); pl.appearT = clock + 0.5; }
+      if (ret && BUILDERS[ret.level] && Array.isArray(ret.pos)) { courseMission = ret.mission || 0; enterLevel(ret.level, ret.pos, ret.face || 0, ret.face || 0); cur.mission = courseMission; pl.appearT = clock + 0.5; }
       else enterLevel(/[?&]gym\b/.test(location.search) ? 'gym' : 'garden');   // ?gym = Testlevel fuers Moveset
       return Iris.open(null, null, 700);
     }).then(() => { mode = 'play'; setTimeout(intro, 1300); Net.autoJoin(); });
@@ -12930,7 +14163,8 @@ void main() {
     if (mode !== 'play' || Dialog.open) return;
     mode = 'pause'; Input.unlock();
     Snd.pause();
-    $('#pauseCourse').textContent = `${cur.name} · Datei ${(slot || 'a').toUpperCase()} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`;
+    $('#pauseCourse').textContent = `${cur.name} · Datei ${(slot || 'a').toUpperCase()} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`
+      + (cur.coins100 ? ` · hier ${cur.coinN || 0} / 100 · rot ${cur.redN || 0} / 8` : '');
     const ul = $('#starList');
     ul.replaceChildren();
     for (const [id, s] of Object.entries(STARS)) {
@@ -12941,7 +14175,7 @@ void main() {
     }
     $('#btnLeave').hidden = cur.key === 'garden' || cur.key === 'hall';
     const hk = HOME[cur.key];
-    $('#btnLeave').textContent = hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
+    $('#btnLeave').textContent = hk && hk.startsWith('bild_') ? 'Kurs verlassen' : hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
       : hk && !hk.startsWith('bild_') && levels[hk] ? 'Zurück: ' + levels[hk].name : 'Zurück ins Schloss';
     $('#pause').hidden = false;
     CatPick.open();
@@ -12976,6 +14210,9 @@ void main() {
   function handleUI(inp) {
     if (mode === 'title') { if (inp.startP) pressStart(); return; }
     if (mode === 'intro') { if (inp.startP || inp.jumpP || inp.actionP) Intro.skip(); return; }
+    if (mode === 'flyby') { if (inp.startP || inp.jumpP || inp.actionP) Flyby.skip(); return; }
+    if (mode === 'door') return;
+    if (mode === 'coursesel') { CourseSel.pad(inp); return; }
     if (mode === 'files') { FileMenu.pad(inp); return; }
     if (Dialog.open) {
       if (inp.jumpP || inp.actionP || inp.startP) Dialog.advance();
@@ -13111,7 +14348,14 @@ void main() {
   function shadowAt(x, y, z, size) {
     const gy = groundAt(cur, x, z, y + 0.2, 0.25);
     if (gy === -Infinity) return;
-    const k = 1 - clamp((y - gy) / 14, 0, 0.6);
+    const k = 1 - clamp((y - gy) / 14, 0, 0.6), T = cur.terrain;
+    if (T && Math.abs(T.hf.h(x, z) - gy) < 0.01) {
+      // am Hang: Schatten liegt schraeg auf dem Gelaende statt halb darin zu stecken
+      const gr = T.hf.grad(x, z), n = v3.norm([-gr[0], 1, -gr[1]]), s = size * k;
+      const ax = v3.norm(v3.cross(n, [0, 0, 1])), az = v3.cross(ax, n);
+      draw(MESH.shadow, M4.basis([x, gy + 0.06, z], v3.scale(ax, s), v3.scale(n, s), v3.scale(az, s)), { tint: SHADOW_TINT, alpha: 0.32, lit: 0 });
+      return;
+    }
     draw(MESH.shadow, M4.from(x, gy + 0.04, z, 0, 0, 0, size * k), { tint: SHADOW_TINT, alpha: 0.32, lit: 0 });
   }
   let faceLast = 0, turnRate = 0;
@@ -13739,7 +14983,7 @@ void main() {
     const appear = clamp((clock - pl.appearT) / 0.55, 0, 1);
     const ek = appear < 1 ? Math.max(0.02, 1 - Math.pow(1 - appear, 3) + Math.sin(appear * Math.PI) * 0.2) : 1;
     const sq = pl.squash, sx = 1 / Math.sqrt(sq);
-    const a = pl.action;
+    const a = pl.action === 'shot' ? 'dive' : pl.action;   // Kanonenflug sieht aus wie der Hechtsprung
     let spin = (a === 'pound' && pl.pound < 0.3 ? pl.pound / 0.3 * TAU : 0) + dissolve * dissolve * 9;
     let rx = 0, rz = 0, dy = 0;
     // Beinfeger: sweepK = Fortschritt 0..1, sweepE = Huellkurve (weich rein aus der Hocke, weich zurueck)
@@ -13993,6 +15237,8 @@ void main() {
       armL = armR = -3.02; armOut = 0.24; headTilt = Math.min(headTilt, -0.1);
       tailRx = -2.2;
     }
+    // Tuer: rechte Hand zum Knauf (DoorSeq setzt pl.doorReach 0..1)
+    if (pl.doorReach > 0) { const e = smooth(pl.doorReach); armR = lerp(armR ?? 0, -1.45, e); armOutR = lerp(armOut, 0.1, e); headTilt += 0.1 * e; }
     if (pk >= 0) {
       if (pl.punchN === 1) { armR = lerp(armR ?? 0, -1.62, pExt); armL = lerp(armL ?? 0, 0.35, pExt); }
       else if (pl.punchN === 2) { armL = lerp(armL ?? 0, -1.62, pExt); armR = lerp(armR ?? 0, 0.35, pExt); }
@@ -14598,6 +15844,7 @@ void main() {
     for (const an of L.anims) draw(an.mesh, an.fn(clock), an.o);
     Life.drawOpaque(L);
     if (L.drawSolid) L.drawSolid();
+    for (const f of L.doorFx) drawDoorFx(f);
     for (const d of L.decals) drawSign(d.mesh, d.model, { tex: d.tex, lit: 0.9 });
     Net.drawTags();
 
@@ -14637,7 +15884,7 @@ void main() {
     }
     for (const e of L.enemies) drawEnemy(e);
     if (curTrip) setTrip(0);
-    if (!Intro.playerHidden()) drawPlayer();
+    if (!Intro.playerHidden() && pl.action !== 'cannon') drawPlayer();
     Intro.draw();
     Net.drawOthers();
     if (curTrip) setTrip(curTrip);
@@ -14647,7 +15894,7 @@ void main() {
     gl.depthMask(false);
     gl.enable(gl.POLYGON_OFFSET_FILL);
     gl.polygonOffset(-2, -2);
-    if (!pl.entering && !Intro.playerHidden()) shadowAt(pl.pos[0], pl.pos[1], pl.pos[2], 0.75);
+    if (!pl.entering && !Intro.playerHidden() && pl.action !== 'cannon') shadowAt(pl.pos[0], pl.pos[1], pl.pos[2], 0.75);
     Intro.drawAlpha();
     Net.shadows();
     for (const e of L.enemies) {
@@ -14655,7 +15902,7 @@ void main() {
       shadowAt(e.pos[0], e.pos[1], e.pos[2], e.type === 'toast' ? 0.9 : e.type === 'roller' ? e.r * e.scale : e.type === 'bat' ? 0.6 : 1);
     }
     for (const s of L.stars) if (!s.gone) shadowAt(s.pos[0], s.pos[1], s.pos[2], 0.9);
-    if (L.marker && !L.stars.some((s) => s.id === 'red') && run.red < 8) {
+    if (L.marker && !L.stars.some((s) => s.id === (L.redStar ? L.redStar.id : 'red')) && (L.redStar ? L.redN || 0 : run.red) < 8) {
       draw(MESH.marker, M4.from(L.marker[0], L.marker[1], L.marker[2], clock * 0.4), { lit: 0, alpha: 0.35 + Math.sin(clock * 3) * 0.1 });
     }
     if (L.sun) {
@@ -15371,6 +16618,8 @@ void main() {
     ambient(dt);
     updateCine(dt);
     Intro.tick(dt);
+    Flyby.tick(dt);
+    DoorSeq.tick(dt);
     if (mode === 'title') TitleHead.tick(dt);
     updateCamera(dt, inp);
     ArtGen.pump(64);
@@ -15560,6 +16809,7 @@ void main() {
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
       measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby, TitleHead,
+      enterCourse, CourseSel, Flyby, COURSES, bbCache, get BB_CACHE() { return BB_CACHE; }, BB, bbPath, HField, render, exitCourse, dropLevel,
     };
   }
 })();

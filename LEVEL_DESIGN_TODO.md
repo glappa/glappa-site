@@ -66,21 +66,22 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 - [ ] Kamera-Zonen mit fester Perspektive für enge Stellen/Boss-Arenen
 - [x] Kamera weicht Wänden aus
   - `updateCamera`: Strahl gegen große Wände/Gebäude (`CAM_HIT`, `rayBox`), nie unter den Boden
-- [ ] Intro-Kameraflug beim Levelstart (zeigt Wahrzeichen + Missionsziel)
-  - bisher nur Levelname-Einblendung (`showCourse`)
+- [x] Intro-Kameraflug beim Levelstart (zeigt Wahrzeichen + Missionsziel)
+  - `Flyby` (Schluesselbilder `L.flyby`, Catmull-Rom, Titelkarte Kurs + Mission, A/Start ueberspringt); bisher nur im Kurs Bounce-Berg, andere Welten zeigen weiter `showCourse`
 - [ ] Kurzer Kameraschwenk, wenn ein Stern erscheint
 
 ## Phase 3 – Kernsysteme (Sterne, Münzen, Objekte)
 
 **Sterne:** 7 pro Level (6 Missionen + 100-Münzen-Stern). Mission wird vor Betreten gewählt, Name ist ein Hinweis.
 
-- [ ] Stern-Auswahl-Menü (Name, gesammelt ja/nein)
-  - Pause zeigt alle Sterne mit Namen/Hinweis (`openPause`), eine Auswahl vor dem Betreten gibt es nicht
+- [x] Stern-Auswahl-Menü (Name, gesammelt ja/nein)
+  - `CourseSel` (#courseSel) beim Sprung ins Bild eines Kurses (`COURSES`): geholte Sterne gold, sichtbar sind geholte + so viele weitere wie man hat, Hinweiszeile, 100-Münzen-Stern darunter. Bisher ein Kurs: Bounce-Berg
 - [ ] Stern-Spawn: fest platziert / nach Boss / nach Schaltern / nach 8 roten Münzen / bei 100 Münzen
-  - fest (`K.star`), nach 8 roten Münzen und bei 50 Münzen (`collectCoin`/`addCoins`), nach Aufträgen (`K.quest`); Boss/Schalter/100 fehlen
+  - fest (`K.star`), nach 8 roten Münzen (Kurse: `L.redStar`, Zähler je Besuch), bei 50 Münzen, bei 100 Münzen je Besuch (`L.coins100`), nach Boss (Frostkönig), nach Aufträgen (`K.quest`); Schalter fehlen
 - [ ] Beim Einsammeln: Jingle, Pose, Speichern, zurück in den Hub
-  - Jingle, Siegerpose, Speichern ✅ (`collectStar`, `StarFx`); man bleibt aber im Level
+  - Jingle, Siegerpose, Speichern ✅; in Kursen danach zurück vors Bild (`exitCourse`), in den alten Welten bleibt man noch im Level
 - [ ] Level-Varianten je Mission (Objekte an/aus pro Stern-Nummer)
+  - im Kurs ✅: `courseMission` beim Bauen (Boss nur M1, Wettläufer nur M2, Stern im Käfig nur M4 …, Wetter: M1 Schneesturm); alte Welten noch ohne
 - [ ] Speichersystem (Sterne, Münzrekord, freigeschaltete Türen/Mützen)
   - Sterne + Sterntür in `localStorage` (`state`, `save`); Münzrekord/Mützen fehlen
 
@@ -93,8 +94,10 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 
 **Objekte & Power-Ups:**
 
-- [ ] Kanone (wird durch NPC geöffnet, freies Zielen, Flug)
+- [x] Kanone (wird durch NPC geöffnet, freies Zielen, Flug)
+  - `enterCannon`/`updateCannon`, Flug = Aktion `'shot'` (`SHOT_SPEED` 40, `SHOT_GRAV` 0,36, Landung weich); geöffnet bleibt sie (`state.flags`). Bounce-Berg: Kanonier Kasimir, Wolkeninsel trifft man bei 56–72°
 - [ ] 1-Up-Pilze (auch fliehende, auch durch Reihenfolge-Trigger)
+  - eigenes grünes Herz (`oneUp`), feste Plätze + Belohnung (Rodelbahn unter 10 s); fliehende/Reihenfolge fehlen
 - [ ] Kisten / !-Blöcke mit Inhalt (Münzen, 1-Up, Mütze, Panzer)
   - es gibt Schatzkisten mit Münzen (`CHEST_TAKE`), keine Blöcke zum Aufschlagen
 - [ ] Panzer zum Surfen auf Wasser und Lava
@@ -147,7 +150,9 @@ Vorhanden (`make*`/`upd*`): Grummel (Patrouille), Knallkiste (Kamikaze, greifbar
   - Gegner sind einfache Objekte mit `type` + eigener `upd*`-Funktion, keine gemeinsame Basis
 - [ ] Jeder Gegner: Warn-Animation + eigener Sound
 - [ ] Boss-System: 3 Treffer/Phasen, eigene Arena am Wahrzeichen, Dialog vor/nach Kampf
+  - erster Boss ✅: Frostkönig (Bounce-Berg M1, Gipfel): Dialog, 3 Treffer, Stampf-Angriff; noch kein allgemeines System
 - [ ] Boss-Idee Wurf: Boss greifen und werfen; Endboss: am Schwanz packen, drehen, gegen Bomben am Arenarand schleudern
+  - Wurf ✅ (von hinten packen, `L.interact`, auf dem Gipfel landen = Treffer, fällt er runter, springt er zurück); Endboss offen
 - [ ] Gegner nie direkt am Levelstart (außer harmlose)
 
 ## Phase 6 – Hub-Welt (Schloss)
@@ -239,7 +244,7 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 | Finale | Boss 3 | 70 | Alles kombiniert |
 
 - [ ] Insgesamt 120 Sterne, 70 für das Ende nötig
-  - aktuell 41 Sterne (`STARS`, davon 4 in Staub II), 4 für die Sterntür
+  - aktuell 45 Sterne (`STARS`, davon 4 in Staub II, 7 im Kurs Bounce-Berg), 4 für die Sterntür
 - [ ] Jeden Stern mit Schwierigkeit 1–5 bewerten (Datei/Tabelle im Projekt)
 - [ ] Debug-Werkzeuge: Level-Auswahl, Stern-Cheat, Todes-Heatmap-Logging
   - `?debug` gibt `window.g64` (Level betreten, Sterne setzen, Frames von Hand schalten), aber ohne Oberfläche und ohne Heatmap
@@ -281,6 +286,8 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 ## Fortschritt
 
 (Claude Code trägt hier nach jeder Phase ein, was erledigt ist.)
+
+- 2026-09-28: **Bounce-Berg als erster echter Kurs** (Vorzeigelevel für Phase 7): Gelände als Höhenraster (`HField`, `L.surface`) statt Quader – Schneeinsel über einem Wolkenmeer (Rand = Absturz), runder Kegelberg mit Spiralweg, Rodelbahn aus der Gipfelhütte (Stelzen, dünne Kollisionsfläche), Wolkeninsel, Eissee, Gletscherspalte. 6 Missionen + 100 Münzen: Frostkönig (Boss), Wettlauf mit Flitz, Rodelbahn, Eisbeißer an der Kette, Kanone zur Wolkeninsel, 8 rote Münzen. Sternwahl, Kameraflug, nach dem Stern zurück vors Bild. Außerdem: Türen mit Animation wie im Vorbild (`DoorSeq`), Katzen sprechen in Zip-Lauten (Sprachausgabe entfernt).
 
 - 2026-09-23: Abgleich mit dem Stand von SUPER GLAPPA 64 (Commit `b29538c`).
 - 2026-09-23 – **Phase 1** bis auf das Tuning der Luftphysik erledigt (je ein Commit): Bewegungs-Gym, Messtabelle `MOVES` + Messbank, Level-Raster `GRID` + Gym-Stationen, Fallschaden, Luftvorrat, Kanten-Hilfe, Hangeln, Gangarten, Rutschen auf steilen Hängen (dabei Fehler behoben: bergauf in eine Rutsche rutschte man im Bogen bergauf weiter), Klänge für Schritte/Landen/Kehrtwende/Rutschen/Hangeln, Stimme.
