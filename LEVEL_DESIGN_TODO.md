@@ -75,11 +75,11 @@ Level werden für Bewegungen gebaut. Erst das Moveset tunen, dann Level bauen.
 **Sterne:** 7 pro Level (6 Missionen + 100-Münzen-Stern). Mission wird vor Betreten gewählt, Name ist ein Hinweis.
 
 - [x] Stern-Auswahl-Menü (Name, gesammelt ja/nein)
-  - `CourseSel` (#courseSel) beim Sprung ins Bild eines Kurses (`COURSES`): geholte Sterne gold, sichtbar sind geholte + so viele weitere wie man hat, Hinweiszeile, 100-Münzen-Stern darunter. Bisher ein Kurs: Bounce-Berg
+  - `CourseSel` (#courseSel) beim Sprung in jedes Bild, Stil wie im Vorbild-Video: weißer Schirm, drehende 3D-Sterne mit Nummer, Name + Hinweis, rundes KURS-Emblem, Weißblende ins Level. Kurse (`COURSES`, bisher Bounce-Berg): sichtbar sind geholte + so viele weitere wie man hat, 100-Münzen-Stern darunter; alte Welten zeigen alle Sterne
 - [ ] Stern-Spawn: fest platziert / nach Boss / nach Schaltern / nach 8 roten Münzen / bei 100 Münzen
   - fest (`K.star`), nach 8 roten Münzen (Kurse: `L.redStar`, Zähler je Besuch), bei 50 Münzen, bei 100 Münzen je Besuch (`L.coins100`), nach Boss (Frostkönig), nach Aufträgen (`K.quest`); Schalter fehlen
-- [ ] Beim Einsammeln: Jingle, Pose, Speichern, zurück in den Hub
-  - Jingle, Siegerpose, Speichern ✅; in Kursen danach zurück vors Bild (`exitCourse`), in den alten Welten bleibt man noch im Level
+- [x] Beim Einsammeln: Jingle, Pose, Speichern, zurück in den Hub
+  - Jingle, Siegerpose, Speichern ✅; in jeder Welt hinter einem Bild danach raus vors Bild (`exitCourse` → Figur hüpft aus dem Bild), außer beim 50-Münzen-Stern
 - [ ] Level-Varianten je Mission (Objekte an/aus pro Stern-Nummer)
   - im Kurs ✅: `courseMission` beim Bauen (Boss nur M1, Wettläufer nur M2, Stern im Käfig nur M4 …, Wetter: M1 Schneesturm); alte Welten noch ohne
 - [ ] Speichersystem (Sterne, Münzrekord, freigeschaltete Türen/Mützen)
@@ -287,6 +287,7 @@ Pro Level – Master-Checkliste (für jedes Level kopieren):
 
 (Claude Code trägt hier nach jeder Phase ein, was erledigt ist.)
 
+- 2026-09-28 (Cloud): **Sterben wie im Vorbild** (umkippen, Kamera näher, Katzenfratzen-Blende, im Kurs fliegt die Figur aus dem Bild und landet bäuchlings), **aus dem Bild hüpfen** (Kurs verlassen, nach dem Stern), **Sternwahl im Video-Stil** für alle Gemälde-Welten.
 - 2026-09-28: **Bounce-Berg als erster echter Kurs** (Vorzeigelevel für Phase 7): Gelände als Höhenraster (`HField`, `L.surface`) statt Quader – Schneeinsel über einem Wolkenmeer (Rand = Absturz), runder Kegelberg mit Spiralweg, Rodelbahn aus der Gipfelhütte (Stelzen, dünne Kollisionsfläche), Wolkeninsel, Eissee, Gletscherspalte. 6 Missionen + 100 Münzen: Frostkönig (Boss), Wettlauf mit Flitz, Rodelbahn, Eisbeißer an der Kette, Kanone zur Wolkeninsel, 8 rote Münzen. Sternwahl, Kameraflug, nach dem Stern zurück vors Bild. Außerdem: Türen mit Animation wie im Vorbild (`DoorSeq`), Katzen sprechen in Zip-Lauten (Sprachausgabe entfernt).
 
 - 2026-09-23: Abgleich mit dem Stand von SUPER GLAPPA 64 (Commit `b29538c`).

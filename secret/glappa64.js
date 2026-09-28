@@ -1255,10 +1255,37 @@
   const Iris = (() => {
     const cv = $('#iris'), ctx = cv.getContext('2d');
     let W = 0, H = 0;
-    function frame(x, y, R, rot) {
+    // Umriss in Einheiten des Radius (y nach unten)
+    const poly = (x, y, R, pts) => { ctx.beginPath(); for (const [u, v] of pts) ctx.lineTo(x + u * R, y + v * R); ctx.closePath(); ctx.fill(); };
+    // Blende beim Sterben: Loch in Form eines boesen Katzenkopfs (spitze Ohren, zottelige Backen)
+    function catFace(x, y, R, rot, fa) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot); x = y = 0;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath(); ctx.ellipse(0, 0.08 * R, R, 0.82 * R, 0, 0, TAU); ctx.fill();
+      for (const s of [-1, 1]) {
+        poly(x, y, R, [[s * 0.98, -0.18], [s * 0.84, -1.1], [s * 0.28, -0.66]]);
+        poly(x, y, R, [[s * 0.9, 0.25], [s * 1.2, 0.4], [s * 0.94, 0.5], [s * 1.12, 0.66], [s * 0.72, 0.7]]);
+      }
+      // darin eine fiese Fratze: schraege gelbe Augen mit Schlitzpupillen, Nase, Grinsen mit Reisszaehnen
+      // (blendet beim Zuziehen ein, sonst ploppen riesige Augen ins Bild)
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = fa;
+      for (const s of [-1, 1]) {
+        ctx.fillStyle = '#000'; poly(x, y, R, [[s * 0.78, -0.26], [s * 0.1, 0.02], [s * 0.12, 0.1], [s * 0.74, -0.12]]);
+        ctx.fillStyle = '#ffd21f'; poly(x, y, R, [[s * 0.7, -0.1], [s * 0.15, 0.1], [s * 0.24, 0.25], [s * 0.6, 0.17]]);
+        ctx.fillStyle = '#000'; poly(x, y, R, [[s * 0.42, -0.01], [s * 0.47, 0.1], [s * 0.42, 0.21], [s * 0.37, 0.1]]);
+      }
+      poly(x, y, R, [[-0.1, 0.3], [0.1, 0.3], [0, 0.4]]);
+      ctx.beginPath(); ctx.moveTo(-0.6 * R, 0.4 * R);
+      ctx.quadraticCurveTo(0, 0.95 * R, 0.6 * R, 0.4 * R); ctx.quadraticCurveTo(0, 0.62 * R, -0.6 * R, 0.4 * R); ctx.fill();
+      ctx.fillStyle = '#fff';
+      for (const u of [-0.24, 0.24]) poly(x, y, R, [[u - 0.07, 0.49], [u + 0.07, 0.49], [u, 0.63]]);
+      ctx.restore();
+    }
+    function frame(x, y, R, rot, cat) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
       if (R < 0.5) return;
+      if (cat) { catFace(x, y, R, rot * 0.12, cat.a); return; }
       ctx.globalCompositeOperation = 'destination-out';
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
@@ -1267,13 +1294,13 @@
       }
       ctx.closePath(); ctx.fill();
     }
-    function anim(from, to, dur, x, y) {
+    function anim(from, to, dur, x, y, cat) {
       return new Promise((res) => {
         if (reduceMotion) { cv.hidden = to > 0; if (to === 0) { W = cv.width = 2; H = cv.height = 2; frame(0, 0, 0, 0); cv.hidden = false; } res(); return; }
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         W = cv.width = Math.round(innerWidth * dpr); H = cv.height = Math.round(innerHeight * dpr);
         x *= dpr; y *= dpr;
-        const max = Math.hypot(Math.max(x, W - x), Math.max(y, H - y)) / 0.5 * 1.05;
+        const max = Math.hypot(Math.max(x, W - x), Math.max(y, H - y)) * (cat ? 1.4 : 2.1);
         cv.hidden = false;
         const t0 = performance.now();
         let done = false;
@@ -1285,7 +1312,7 @@
         const stepFn = (now) => {
           if (done) return;
           const k = Math.min(1, (now - t0) / dur), e = k * k * (3 - 2 * k);
-          frame(x, y, (from + (to - from) * e) * max, e * 1.4 * (to > from ? -1 : 1));
+          frame(x, y, (from + (to - from) * e) * max, e * 1.4 * (to > from ? -1 : 1), cat && { a: Math.min(1, e * 2.5) });
           if (k < 1) requestAnimationFrame(stepFn); else finish();
         };
         requestAnimationFrame(stepFn);
@@ -1293,7 +1320,7 @@
       });
     }
     return {
-      close: (x, y, d = 650) => anim(1, 0, d, x ?? innerWidth / 2, y ?? innerHeight / 2),
+      close: (x, y, d = 650, cat = false) => anim(1, 0, d, x ?? innerWidth / 2, y ?? innerHeight / 2, cat),
       open:  (x, y, d = 650) => anim(0, 1, d, x ?? innerWidth / 2, y ?? innerHeight / 2),
       hide:  () => { cv.hidden = true; },
     };
@@ -9667,8 +9694,7 @@ vec3 art(vec2 p) {
      ist jedes Zimmer im Stil seiner Welt. Die Sterntafel am Teppich zeigt die Sterne dieser Welt. */
   const DESERT_PD = { name: 'Wüstenstadt', bg: 'desert', level: 'desert' };
   function worldStarLines(world) {
-    const where = (world === 'desert' ? DESERT_PD : PAINTINGS.find((q) => q.level === world)).name;
-    const ids = Object.keys(STARS).filter((id) => STARS[id].where === where || (world === 'desert' && STARS[id].where === 'Staub II'));
+    const where = (world === 'desert' ? DESERT_PD : PAINTINGS.find((q) => q.level === world)).name, ids = courseStars(world);
     const got = ids.filter((id) => state.stars[id]).length;
     return [`★ ${where.toUpperCase()} ★\nHinter diesem Bild: ${got} von ${ids.length} Sternen gefunden.`,
       ids.map((id) => (state.stars[id] ? '★ ' : '☆ ') + STARS[id].name).join('\n'),
@@ -11843,6 +11869,7 @@ void main() {
     groundBox: null, knock: 0, h: 2.2, crawl: false, forceCrouch: false, boostCool: 0, carry: [0, 0],
     waterObj: null, waterJump: false, swimPh: 0, strokeT: -9, ledgeCool: 0, hangBox: null, hangN: null, hangT: 0,
     climbK: 0, climbDur: 0.5, climbFrom: null, climbTo: null, appearT: -9,
+    pose: null, deadAt: -9, dieT: -1,   // pose: Szenen-Pose (PaintOut); dieT: Beginn des Umkippens beim Sterben
     punchN: 0, punchDur: 0.26, comboT: -9,
     skidT: -9, skidTo: 0, fastT: -9,   // Kehrtwende: Beginn, Zielrichtung, zuletzt schnell genug (Seitsalto-Fenster)
   };
@@ -12647,19 +12674,27 @@ void main() {
     Snd.burn(); rumble(0.7, 200);
     burst([p[0], p[1] + 0.3, p[2]], 16, { spread: 3, up: 5, upRand: 3, life: .6, size: .25, cols: [[1, .5, .1], [1, .85, .2], [.3, .3, .3]], grav: 4 });
   }
+  /* Sterben wie im Vorbild: die Figur kippt nach hinten um (Pose in drawPlayer), die Kamera rueckt naeher, dann
+     schliesst sich die Blende als boese Katzenfratze. Im Kurs fliegt die Figur danach vor dem Gemaelde aus dem Bild
+     (PaintOut 'fly'), sonst geht es am Startpunkt weiter. */
   function loseLife() {
-    pl.dead = true; Snd.voice('die');
+    if (pl.dead) return;
+    pl.dead = true; pl.deadAt = clock; pl.dieT = -1; Snd.voice('die');
     run.lives = Math.max(0, run.lives - 1);
     renderHud('lives');
     setTimeout(() => {
+      if (mode === 'pause') closePause();
       mode = 'iris';
-      Iris.close(null, null, 700).then(() => {
+      const s = toScreen([pl.pos[0], pl.pos[1] + 0.5, pl.pos[2]]) || [innerWidth / 2, innerHeight / 2];
+      const course = courseOf(cur.key);
+      Iris.close(s[0], s[1], 1100, true).then(() => new Promise((r) => setTimeout(r, 450))).then(() => {
         run.health = 8; Power.render();
-        pl.dead = false; pl.invuln = 1;
+        pl.dead = false; pl.dieT = -1;
+        if (course) return PaintOut.start(course, 'fly');
+        pl.invuln = 1;
         respawn();
-        return Iris.open(null, null, 600);
+        return Iris.open(null, null, 600).then(() => { mode = 'play'; });
       }).then(() => {
-        mode = 'play';
         if (run.lives > 0) {
           Dialog.show('Wolki', [`Autsch! Ein Leben weg – du hast noch ${run.lives}.`]);
         } else {
@@ -12667,7 +12702,7 @@ void main() {
           Dialog.show('Wolki', ['GAME OVER … aber Wolki hat ein Herz.', 'Hier sind 4 neue Leben. Nicht verraten!']);
         }
       });
-    }, 900);
+    }, 1500);
   }
   function respawn() {
     const L = cur;
@@ -12757,8 +12792,8 @@ void main() {
       else if (n >= STAR_TOTAL) lines = ['ALLE STERNE! Du hast wirklich jeden Winkel gefunden.'].concat(state.doorOpen ? [] : ['Die Sterntür oben auf der Galerie wartet auf dich.']);
       else if (n === 4) lines = ['WAHNSINN! Das war der vierte Stern!', 'Die Sterntür oben auf der Galerie der Schlosshalle lässt sich jetzt öffnen.'];
       else lines = [`Stern Nummer ${n}!` + (n < 4 ? ` Noch ${4 - n}, dann gibt die Sterntür nach.` : '')];
-      // im Kurs: wie im Vorbild nach jedem Stern zurueck vors Bild
-      if (L.course && L === cur && mode === 'starget') { exitCourse(lines); return; }
+      // im Kurs (jede Welt hinter einem Bild, nicht beim 50-Muenzen-Stern): wie im Vorbild zurueck vors Bild
+      if (courseOf(L.key) && s.id !== 'coins' && L === cur && mode === 'starget') { exitCourse(lines); return; }
       if (mode === 'starget') mode = 'play';
       if (lines) Dialog.show('Wolki', lines);
     }, StarFx.DUR * 1000);
@@ -13586,26 +13621,27 @@ void main() {
       pt.swirl = 0; pt.rip = null;
       Cine.active = null;
       document.body.classList.remove('cine');
-      if (COURSES[pt.level]) {
-        // Kurs: erst die Sternwahl (die Blende bleibt so lange stehen)
-        CourseSel.open(pt.level, (m) => {
-          if (m < 0) {   // abgebrochen: wieder vor das Bild
-            const s = backSpot(pt.level);
-            enterLevel(s.level, s.pos, s.face, s.face);
-            MagicFade.off(); mode = 'play';
-            return;
-          }
-          enterCourse(pt.level, m);
-        });
-        return;
-      }
-      enterLevel(pt.level);
-      mode = 'play';
-      pl.appearT = clock;
       MagicFade.off();
-      Snd.arrive();
-      burst([pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]], 22, { spread: 4, up: 3, upRand: 3, life: .8, size: .15, cols: [[1, 1, 1], [1, .9, .45], hex(c.tint[1])], grav: 2 });
+      // erst die Sternwahl (weisser Schirm); Kurse mit Missionen bauen die Welt dann je Mission neu
+      const picked = CourseSel.open(pt.level, (m) => {
+        if (m < 0) {   // abgebrochen: wieder vor das Bild
+          const s = backSpot(pt.level);
+          enterLevel(s.level, s.pos, s.face, s.face);
+          mode = 'play';
+          return;
+        }
+        if (COURSES[pt.level]) enterCourse(pt.level, m); else arriveIn(pt.level, c.tint);
+      });
+      if (!picked) arriveIn(pt.level, c.tint);
     }
+  }
+  // Ankunft in einer Welt ohne Missionen: Figur erscheint leuchtend am Start
+  function arriveIn(level, tint) {
+    enterLevel(level);
+    mode = 'play';
+    pl.appearT = clock;
+    Snd.arrive();
+    burst([pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]], 22, { spread: 4, up: 3, upRand: 3, life: .8, size: .15, cols: [[1, 1, 1], [1, .9, .45], hex(tint[1])], grav: 2 });
   }
   function cineCamera() {
     const c = Cine.active, t = c.t;
@@ -13625,6 +13661,119 @@ void main() {
     const upv = v3.norm(v3.add(v3.scale([0, 1, 0], Math.cos(roll)), v3.scale(c.right, Math.sin(roll))));
     cam.view = M4.lookAt(pos, look, upv);
   }
+
+  /* ─── Kurs = Welt hinter einem Gemaelde; Unterwelten (Staub II) gehoeren zu ihrer Welt. Sonst null. ─── */
+  const courseOf = (k) => ((HOME[k] || '').startsWith('bild_') ? k : (HOME[HOME[k]] || '').startsWith('bild_') ? HOME[k] : null);
+  // "Kurs verlassen" (Pausenmenue, nach einem Stern): Blende zu, dann huepft die Figur vor dem Bild heraus
+  function leaveCourse() {
+    const course = courseOf(cur.key);
+    if (!course) { leaveBack(); return Promise.resolve(); }
+    mode = 'iris';
+    const s = toScreen([pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]]) || [innerWidth / 2, innerHeight / 2];
+    return Iris.close(s[0], s[1], 650).then(() => PaintOut.start(course, 'hop'));
+  }
+  /* ─── Aus dem Bild heraus (wie im Vorbild) ───
+     fly (nach dem Tod): klein und ausgestreckt aus dem Bild, waechst im Flug, landet baeuchlings, bleibt kurz liegen,
+          rappelt sich auf.
+     hop (Kurs verlassen, nach einem Stern): huepft aus dem Bild und landet auf den Fuessen.
+     Feste Kamera wie die Spielkamera nach der Landung (Blick zum Bild), damit der Uebergang nahtlos ist.
+     Die Pose kommt ueber pl.pose zu drawPlayer; place() setzt pl.pos so, dass die Koerpermitte am Ziel liegt. */
+  const PaintOut = (() => {
+    const FLY = 1.0, LIE = 0.9, UP = 0.7, HOP = 0.8, SETTLE = 0.3, WAIT = 0.35;
+    let A = null;
+    // Koerpermitte (Modellhoehe 1,0) nach B legen - drawPose dreht um 1,1 m ueber den Fuessen und skaliert ab den Fuessen
+    function place(B, s, rx) {
+      const c = 1.0 * s - 1.1, sX = Math.sin(rx), fx = Math.sin(A.face), fz = Math.cos(A.face);
+      pl.pos = [B[0] - c * sX * fx, B[1] - c * Math.cos(rx) - 1.1, B[2] - c * sX * fz];
+      A.body = B;
+    }
+    function start(course, kind) {
+      enterLevel('bild_' + course, null, null, null, true);
+      const L = cur, pt = L.paintings[0];
+      const n = v3.norm(M4.dir(pt.model, [0, 0, 1])), center = M4.point(pt.model, [0, 0.325, 0]);
+      const far = kind === 'fly' ? 5.2 : 3.8, lx = center[0] + n[0] * far, lz = center[2] + n[2] * far;
+      const gy = groundAt(L, lx, lz, center[1], 0.3), land = [lx, gy > -Infinity ? gy : 0, lz];
+      const pitch = clamp(cam.pitch, 0.2, 0.55), dist = clamp(cam.dist, 8, 12), tgt = [land[0], land[1] + 1.6, land[2]];
+      const dir = [n[0] * Math.cos(pitch), Math.sin(pitch), n[2] * Math.cos(pitch)];
+      let d = dist;
+      for (const b of L.solids) {
+        if (!CAM_HIT.has(b.tag)) continue;
+        const h = rayBox(tgt, dir, b, d);
+        if (h < d) d = Math.max(1.2, h - 0.35);
+      }
+      cam.pitch = pitch; cam.dist = dist;
+      A = { kind, t: -WAIT, n, center, land, tgt, face: Math.atan2(n[0], n[2]), from: v3.add(center, v3.scale(n, 0.2)),
+        camPos: v3.add(tgt, v3.scale(dir, d)), landed: false, body: null };
+      Object.assign(pl, { vel: [0, 0, 0], push: [0, 0, 0], speed: 0, side: 0, face: A.face, invuln: 0, knock: 0, hurtT: 0,
+        appearT: -9, flip: 0, skid: false, crouch: false, action: 'ground', grounded: false });
+      mode = 'out';
+      tick(0);
+      pt.rip = { x: 0, y: 0.3, t0: clock + WAIT, amp: 0.4 };
+      Iris.open(null, null, 600);
+      return new Promise((res) => { A.res = res; });
+    }
+    function tick(dt) {
+      if (!A) return;
+      A.t += dt;
+      const t = Math.max(0, A.t), land = A.land;
+      if (A.kind === 'fly') {
+        if (A.t > 0 && !A.go) { A.go = true; Snd.whoosh(); }
+        if (t < FLY) {
+          const k = t / FLY, s = lerp(0.22, 1, smooth(Math.min(1, k / 0.85)));
+          const B = v3.add(lerpv(A.from, [land[0], land[1] + 0.34, land[2]], k), [0, 0.9 * 4 * k * (1 - k), 0]);
+          pl.pose = { kind: 'fly', k, s, rx: 1.3 };
+          place(B, s, 1.3);
+        } else if (t < FLY + LIE) {
+          if (!A.landed) {
+            A.landed = true;
+            Snd.land(1); Snd.bonk(); Snd.voice('hurt'); rumble(0.6, 250); cam.shake = 0.25;
+            burst([land[0], land[1] + 0.2, land[2]], 14, { spread: 3, up: 2, upRand: 1.5, life: .6, size: .22, cols: [[.8, .75, .65], [.95, .9, .8]], grav: 5 });
+          }
+          const k = (t - FLY) / LIE, bounce = Math.sin(clamp(k / 0.25, 0, 1) * Math.PI) * 0.18;
+          pl.pose = { kind: 'belly', k, s: 1, rx: 1.5 - bounce * 0.4 };
+          place([land[0], land[1] + 0.34 + bounce, land[2]], 1, pl.pose.rx);
+        } else if (t < FLY + LIE + UP) {
+          const k = (t - FLY - LIE) / UP, u = smooth(k), rx = lerp(1.5, 0, u);
+          pl.pose = { kind: 'up', k, s: 1, rx };
+          place([land[0], land[1] + lerp(0.34, 1.0, u) + Math.sin(k * Math.PI) * 0.15, land[2]], 1, rx);
+        } else finish();
+      } else {
+        if (A.t > 0 && !A.go) { A.go = true; Snd.voice('hop'); Snd.jump(1); }
+        if (t < HOP) {
+          const k = t / HOP, s = lerp(0.45, 1, smooth(Math.min(1, k / 0.6))), H = 1.3;
+          const y0 = A.from[1] - 1.0 * 0.45;
+          pl.pos = [lerp(A.from[0], land[0], k), lerp(y0, land[1], k) + H * 4 * k * (1 - k), lerp(A.from[2], land[2], k)];
+          pl.vel = [0, ((land[1] - y0) + H * 4 * (1 - 2 * k)) / HOP, 0];
+          pl.action = 'jump'; pl.grounded = false;
+          pl.pose = { kind: 'hop', k, s, rx: 0 };
+          A.body = [pl.pos[0], pl.pos[1] + s, pl.pos[2]];
+        } else if (t < HOP + SETTLE) {
+          if (!A.landed) {
+            A.landed = true;
+            pl.pos = land.slice(); pl.vel = [0, 0, 0]; pl.grounded = true; pl.action = 'ground';
+            pl.landT = time; pl.landFrom = 'jump'; pl.squash = 0.8; pl.pose = null; A.body = null;
+            Snd.land(0.6);
+          }
+          pl.squash += (1 - pl.squash) * Math.min(1, dt * 12);
+        } else finish();
+      }
+    }
+    function finish() {
+      const res = A.res;
+      pl.pose = null; pl.pos = A.land.slice(); pl.face = A.face; pl.vel = [0, 0, 0]; pl.speed = 0; pl.squash = 1;
+      pl.grounded = true; pl.action = 'ground'; pl.groundBox = null;
+      cam.yaw = A.face; cam.tgt = A.tgt.slice(); cam.manual = 0;
+      A = null;
+      mode = 'play';
+      res();
+    }
+    function camera() {
+      const look = lerpv(A.center, A.tgt, smooth(clamp(A.t / (A.kind === 'fly' ? FLY * 0.9 : HOP), 0, 1)));
+      cam.pos = A.camPos.slice();
+      cam.view = M4.lookAt(cam.pos, look, [0, 1, 0]);
+    }
+    return { start, tick, camera, get active() { return !!A; }, get body() { return A && A.body; } };
+  })();
   function drawCineSparks() {
     const c = Cine.active;
     if (!c) return;
@@ -13786,6 +13935,7 @@ void main() {
     }
     if (Flyby.active) { Flyby.camera(); return; }
     if (DoorSeq.active) { DoorSeq.camera(); return; }
+    if (PaintOut.active) { PaintOut.camera(); return; }
     if (pl.action === 'cannon' && pl.cannon) {
       // in der Kanone: Blick durchs Rohr (Zielen mit Stick/Maus, siehe updateCannon)
       const c = pl.cannon, d = cannonDir(c);
@@ -13806,7 +13956,9 @@ void main() {
         if (Math.abs(diff) < 2.3) cam.yaw += diff * Math.min(1, dt * 0.9 * pl.speed / RUN);
       }
     }
-    const want = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
+    // Sterben: die Kamera rueckt naeher an die umkippende Figur
+    const dk = pl.dead ? smooth(clamp((clock - pl.deadAt) / 1.1, 0, 1)) : 0;
+    const want = [pl.pos[0], pl.pos[1] + 1.6 - dk, pl.pos[2]];
     if (cam.snap) { cam.tgt = want.slice(); cam.snap = false; }
     const k = Math.min(1, dt * 10), ky = Math.min(1, dt * (pl.grounded || pl.inWater ? 7 : 2.2));
     cam.tgt[0] += (want[0] - cam.tgt[0]) * k;
@@ -13815,7 +13967,7 @@ void main() {
     if (cam.tgt[1] - want[1] > 3.5) cam.tgt[1] = want[1] + 3.5;
     if (want[1] - cam.tgt[1] > 5) cam.tgt[1] = want[1] - 5;
     cam.look += ((pl.looking ? 1 : 0) - cam.look) * Math.min(1, dt * 5);
-    const pitch = lerp(cam.pitch, -0.5, cam.look), dist = lerp(cam.dist, 3.2, cam.look);
+    const pitch = lerp(lerp(cam.pitch, -0.5, cam.look), 0.5, dk), dist = lerp(lerp(cam.dist, 3.2, cam.look), 5, dk);
     const cp = Math.cos(pitch);
     const dir = [Math.sin(cam.yaw) * cp, Math.sin(pitch), Math.cos(cam.yaw) * cp];
     const t = camReach(cam.tgt, dir, dist);
@@ -13915,7 +14067,7 @@ void main() {
     }
     return levels[key];
   }
-  function enterLevel(name, pos, face, yaw) {
+  function enterLevel(name, pos, face, yaw, quiet) {
     if (pl.hold) { pl.hold.held = false; pl.hold.state = 'walk'; pl.hold.t = 0; pl.hold = null; }
     cur = getLevel(name);
     pl.pos = (pos || cur.spawn).slice(); pl.vel = [0, 0, 0]; pl.push = [0, 0, 0]; pl.speed = 0; pl.carry = [0, 0];
@@ -13932,7 +14084,7 @@ void main() {
       if (!s) cur.stars.push(Object.assign({ id: fs.id }, fresh));
       else if (s.gone) Object.assign(s, fresh);
     }
-    showCourse(cur.name);
+    if (!quiet) showCourse(cur.name);
   }
   /* ═══════════ Kurse mit Missionen (Ablauf wie im Vorbild) ═══════════
      Ins Bild springen -> Sternwahl (Missionen 1-6, sichtbar sind die geholten und die naechsten) -> die Welt wird
@@ -13964,57 +14116,121 @@ void main() {
     for (const m of L.ownMeshes || []) free(m);
     delete levels[key];
   }
+  /* Sternwahl wie im Vorbild (Video): weisser Schirm, oben drehen sich die Sterne des Kurses (gesammelte golden, Nummer
+     darunter), darunter Name + Hinweis des gewaehlten Sterns, unten das runde KURS-Emblem mit dem Kursnamen. Die Sterne
+     malt WebGL (render), Schrift und Emblem sind HTML (#courseSel). Kurse mit Missionen (COURSES): sichtbar sind die
+     geholten + so viele weitere, wie man hat; die Welt wird je Mission gebaut. Die alten Welten zeigen alle ihre Sterne,
+     die Wahl ist dort nur das Ziel. Links/rechts oder Klick waehlt, A/Enter/Klick = los (danach Weissblende ins Level),
+     Z/Esc = zurueck vors Bild. */
+  function courseStars(world) {
+    const where = (world === 'desert' ? DESERT_PD : PAINTINGS.find((q) => q.level === world) || {}).name;
+    return Object.keys(STARS).filter((id) => STARS[id].where === where || (world === 'desert' && STARS[id].where === 'Staub II'));
+  }
   const CourseSel = (() => {
-    const el = $('#courseSel'), row = $('#csStars'), nameEl = $('#csName'), hintEl = $('#csHint'), extraEl = $('#csExtra'), head = $('#csTitle');
-    let key = null, sel = 0, vis = [], nav = 0, onPick = null, openedAt = 0;
-    function open(k, cb) {
-      key = k; onPick = cb; const C = COURSES[k];
-      const got = C.missions.map((m) => !!state.stars[m.id]), n = got.filter(Boolean).length;
-      vis = got.map((g, i) => g || i <= n);   // geholte + so viele weitere, wie man Sterne hat (mind. die erste)
-      sel = got.findIndex((g, i) => !g && vis[i]); if (sel < 0) sel = 0;
-      head.textContent = C.name.toUpperCase();
-      row.replaceChildren(...C.missions.map((m, i) => {
+    const el = $('#courseSel'), nums = $('#csNums'), nameEl = $('#csName'), hintEl = $('#csHint'), extraEl = $('#csExtra');
+    const ROW = 0.56;   // Sternreihe: so weit ueber der Bildmitte (Anteil der halben Hoehe)
+    let S = null;       // { key, ids, hints, vis, sel, t, go, nav, cb }
+    function open(key, cb) {
+      const C = COURSES[key], ids = C ? C.missions.map((m) => m.id) : courseStars(key);
+      if (!ids.length) return false;
+      const got = ids.map((id) => !!state.stars[id]), n = got.filter(Boolean).length;
+      const vis = C ? got.map((g, i) => g || i <= n) : ids.map(() => true);   // Kurs: geholte + so viele weitere, wie man hat
+      let sel = got.findIndex((g, i) => !g && vis[i]); if (sel < 0) sel = 0;
+      S = { key, ids, hints: C ? C.missions.map((m) => m.hint) : [], vis, sel, t: 0, go: -1, nav: 0, cb };
+      const pd = key === 'desert' ? DESERT_PD : PAINTINGS.find((q) => q.level === key);
+      $('#csKurs').textContent = String(key === 'desert' ? 9 : PAINTINGS.indexOf(pd) + 1);
+      $('#csCourse').textContent = C ? C.name : pd.name;
+      extraEl.textContent = C && C.coins100 ? (state.stars[C.coins100] ? '★ ' : '☆ ') + STARS[C.coins100].name : '';
+      nums.replaceChildren(...ids.map((id, i) => {
         const b = document.createElement('button');
-        b.type = 'button'; b.className = 'cs-star' + (got[i] ? ' got' : '') + (vis[i] ? '' : ' locked');
-        b.innerHTML = '<span class="cs-glyph">' + (got[i] ? '★' : '☆') + '</span><span class="cs-num">' + (i + 1) + '</span>';
-        b.setAttribute('aria-label', vis[i] ? `Stern ${i + 1}: ${STARS[m.id].name}` : `Stern ${i + 1}: noch unbekannt`);
-        b.disabled = !vis[i];
-        b.addEventListener('click', () => { if (vis[i]) { sel = i; show(); confirm(); } });
-        b.addEventListener('mouseenter', () => { if (vis[i] && sel !== i) { sel = i; show(); Snd.blip(); } });
+        b.type = 'button'; b.className = 'cs-num outlined'; b.textContent = String(i + 1); b.disabled = !vis[i];
+        b.setAttribute('aria-label', vis[i] ? `Stern ${i + 1}: ${STARS[id].name}` + (got[i] ? ' (schon gefunden)' : '') : `Stern ${i + 1}: noch unbekannt`);
+        b.addEventListener('click', (e) => { e.stopPropagation(); if (vis[i]) { pick(i, true); go(); } });
         return b;
       }));
-      const c100 = C.coins100;
-      extraEl.textContent = (state.stars[c100] ? '★ ' : '☆ ') + STARS[c100].name;
-      show();
-      el.hidden = false; openedAt = performance.now(); nav = 0;
+      pick(sel, true);
+      el.hidden = false;
+      document.body.classList.add('sel');
       mode = 'coursesel'; Input.unlock();
       Snd.chime(5);
+      return true;
     }
-    function show() {
-      const m = COURSES[key].missions[sel];
-      [...row.children].forEach((b, i) => { b.classList.toggle('sel', i === sel); b.setAttribute('aria-pressed', String(i === sel)); });
-      nameEl.textContent = `${sel + 1}. ${STARS[m.id].name}`;
-      hintEl.textContent = m.hint;
-      const b = row.children[sel]; if (b && document.activeElement !== b) b.focus({ preventScroll: true });
+    function pick(i, quiet) {
+      if (!S || S.go >= 0 || !S.vis[i]) return;
+      S.sel = i;
+      const id = S.ids[i];
+      nameEl.textContent = STARS[id].name;
+      nameEl.classList.toggle('got', !!state.stars[id]);
+      hintEl.textContent = S.hints[i] || '';
+      [...nums.children].forEach((b, j) => b.classList.toggle('on', j === i));
+      if (!quiet) Snd.blip();
     }
-    function stepSel(d) {
-      for (let i = sel + d; i >= 0 && i < vis.length; i += d) if (vis[i]) { sel = i; show(); Snd.blip(); return; }
+    function step(d) { for (let i = S.sel + d; i >= 0 && i < S.ids.length; i += d) if (S.vis[i]) { pick(i); return; } }
+    function close() { el.hidden = true; document.body.classList.remove('sel'); }
+    function go() {
+      if (!S || S.go >= 0 || S.t < 0.4) return;
+      S.go = S.t;
+      Snd.starAppear(); Input.lock();
+      setTimeout(finish, 800);
     }
-    function close() { el.hidden = true; }
-    function confirm() {
-      if (el.hidden || performance.now() - openedAt < 250) return;
-      close(); Snd.starAppear();
-      Input.lock();
-      onPick(sel);
+    // aus Weiss ins Level: weisse Flaeche liegt ueber dem neuen Bild und blendet aus
+    function finish() {
+      const { cb, sel } = S;
+      S = null;
+      close();
+      const wf = document.createElement('div');
+      wf.className = 'white-in';
+      document.body.appendChild(wf);
+      cb(sel);
+      requestAnimationFrame(() => requestAnimationFrame(() => wf.classList.add('out')));
+      setTimeout(() => wf.remove(), 1400);
+    }
+    function cancel() {
+      if (!S || S.go >= 0) return;
+      const cb = S.cb;
+      S = null;
+      close(); Input.lock();
+      cb(-1);
     }
     function pad(inp) {
+      if (!S) return;
       const d = inp.mx > 0.6 ? 1 : inp.mx < -0.6 ? -1 : 0;
-      if (d && d !== nav) stepSel(d);
-      nav = d;
-      if (inp.jumpP || inp.actionP || inp.startP) confirm();
-      else if (inp.zP || inp.pauseP) { close(); onPick(-1); }
+      if (d && d !== S.nav && S.go < 0) step(d);
+      S.nav = d;
+      if (inp.jumpP || inp.actionP || inp.startP) go();
+      else if (inp.zP || inp.pauseP) cancel();
     }
-    return { open, pad, get open_() { return !el.hidden; } };
+    el.addEventListener('click', () => go());
+    function render(w, h) {
+      gl.clearColor(1, 1, 1, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (!S) { Post.end(w, h); return; }
+      const fov = fovFor(w / h), proj = M4.persp(fov, w / h, 0.5, 100), eye = [0, 0, 9];
+      gl.uniformMatrix4fv(U.uProj, false, proj);
+      gl.uniformMatrix4fv(U.uView, false, M4.lookAt(eye, [0, 0, 0], [0, 1, 0]));
+      gl.uniform3fv(U.uLight, v3.norm([-0.3, -0.55, -1]));
+      gl.uniform3fv(U.uFogCol, [1, 1, 1]);
+      gl.uniform3fv(U.uCam, eye);
+      gl.uniform1f(U.uDim, 1);
+      setTrip(0);
+      if (U.uTime) gl.uniform1f(U.uTime, clock % 1000);
+      gl.uniform2f(U.uFog, 1e5, 2e5);
+      const n = S.ids.length, hh = Math.tan(fov / 2) * 9, hw = hh * w / h;
+      const gap = Math.min(2.8, hw * 1.7 / n), sz = Math.min(1, gap / 2.4), y = ROW * hh;
+      const kids = nums.children;
+      for (let i = 0; i < n; i++) {
+        const x = (i - (n - 1) / 2) * gap, on = i === S.sel, got = !!state.stars[S.ids[i]], vis = S.vis[i];
+        const g = on && S.go >= 0 ? smooth(clamp((S.t - S.go) / 0.7, 0, 1)) : 0;
+        const spin = on ? clock * 3.4 + g * 14 : vis ? clock * 1.6 + i * 0.8 : 0.5;
+        const sc = sz * (on ? 1.3 + Math.sin(clock * 4) * 0.04 + g * 0.5 : vis ? 0.95 : 0.6);
+        draw(MESH.star, M4.from(x, y + (on ? 0.15 : 0) + g * 0.8, 0, spin, 0, 0, sc),
+          { lit: 0.55, shine: 0.5, tint: got ? undefined : vis ? [0.72, 0.76, 0.9, 1] : [0.9, 0.91, 0.95, 1] });
+        const b = kids[i];
+        if (b) { b.style.left = ((proj[0] * x / 9) * 0.5 + 0.5) * 100 + '%'; b.style.top = ((-proj[5] * (y - 1.45 * sz) / 9) * 0.5 + 0.5) * 100 + '%'; }
+      }
+      Post.end(w, h);
+    }
+    return { open, pad, render, tick: (dt) => { if (S) S.t += dt; }, get key() { return S && S.key; }, get open_() { return !!S; } };
   })();
   /* Kameraflug zum Kursbeginn: Schluesselbilder [Zeit, Kamera, Blickziel] aus L.flyby, weich per Catmull-Rom;
      endet genau hinter der Figur. A/Start ueberspringt. Dazu eine Titelkarte (Kursname + Mission). */
@@ -14077,12 +14293,9 @@ void main() {
     if (!seen) { state.flags['flyby_' + key] = true; save(); }
     Flyby.start(cur, C.name.toUpperCase(), `★ ${m + 1}: ${STARS[id].name}`, seen);
   }
-  // Nach einem Stern im Kurs: zurueck vors Bild, dort erst die Glueckwuensche
+  // Nach einem Stern im Kurs: raus vors Bild (die Figur huepft heraus), dort erst die Glueckwuensche
   function exitCourse(lines) {
-    mode = 'iris';
-    const s = backSpot(cur.key);
-    Iris.close(null, null, 700).then(() => { enterLevel(s.level, s.pos, s.face, s.face); return Iris.open(null, null, 650); })
-      .then(() => { mode = 'play'; if (lines) Dialog.show('Wolki', lines); });
+    leaveCourse().then(() => { if (lines) Dialog.show('Wolki', lines); });
   }
 
   let pendingReturn = null;
@@ -14160,7 +14373,7 @@ void main() {
     }
   }
   function openPause() {
-    if (mode !== 'play' || Dialog.open) return;
+    if (mode !== 'play' || Dialog.open || pl.dead) return;
     mode = 'pause'; Input.unlock();
     Snd.pause();
     $('#pauseCourse').textContent = `${cur.name} · Datei ${(slot || 'a').toUpperCase()} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`
@@ -14175,7 +14388,7 @@ void main() {
     }
     $('#btnLeave').hidden = cur.key === 'garden' || cur.key === 'hall';
     const hk = HOME[cur.key];
-    $('#btnLeave').textContent = hk && hk.startsWith('bild_') ? 'Kurs verlassen' : hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
+    $('#btnLeave').textContent = courseOf(cur.key) ? 'Kurs verlassen' : hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
       : hk && !hk.startsWith('bild_') && levels[hk] ? 'Zurück: ' + levels[hk].name : 'Zurück ins Schloss';
     $('#pause').hidden = false;
     CatPick.open();
@@ -14213,6 +14426,7 @@ void main() {
     if (mode === 'flyby') { if (inp.startP || inp.jumpP || inp.actionP) Flyby.skip(); return; }
     if (mode === 'door') return;
     if (mode === 'coursesel') { CourseSel.pad(inp); return; }
+    if (mode === 'out') return;
     if (mode === 'files') { FileMenu.pad(inp); return; }
     if (Dialog.open) {
       if (inp.jumpP || inp.actionP || inp.startP) Dialog.advance();
@@ -15279,6 +15493,35 @@ void main() {
       armR = lerp(-1.2, -2.95, up); armOutR = 0.35; armL = -0.4; armOut = lerp(1.1, armOut, up); headTilt -= 0.3 * up;
     }
     if (pl.looking) headTilt = -0.55;
+    // Szenen-Posen ueberschreiben alles davor: Sterben und aus dem Bild kommen (PaintOut)
+    let scl = 1, lidOver = -1;
+    if (pl.dead) {
+      // nach hinten umkippen (erst wenn die Figur wieder am Boden ist), kurz nachfedern, Augen zu
+      if (pl.dieT < 0 && (pl.grounded || swim || clock - pl.deadAt > 0.7)) pl.dieT = clock;
+      const u = pl.dieT < 0 ? 0 : clamp((clock - pl.dieT) / 0.5, 0, 1), e = u * u;
+      const bump = pl.dieT < 0 ? 0 : Math.sin(clamp((clock - pl.dieT - 0.5) / 0.3, 0, 1) * Math.PI) * 0.1;
+      rx = lerp(rx, -1.42, e) + bump; rz = lerp(rz, 0, e); dy = lerp(dy, -0.74, e) + bump * 0.3; spin *= 1 - e; twist *= 1 - e;
+      legL = lerp(legL, -0.5, e); legR = lerp(legR, -0.2, e); legSYL = lerp(legSYL, 1, e); legSYR = lerp(legSYR, 1, e); legSplay = lerp(legSplay, 0.22, e); legOutR *= 1 - e;
+      armL = lerp(armL, -0.45, e); armR = lerp(armR, -0.75, e); armOut = lerp(armOut, 1.3, e); armOutR = armOutR == null ? null : lerp(armOutR, 1.3, e);
+      headTilt = lerp(headTilt, -0.4, e); tailRx = lerp(tailRx, -0.25, e);
+      if (e > 0.5) lidOver = 1;
+    }
+    const po = pl.pose;
+    if (po) {
+      scl = po.s; spin = 0; twist = 0; rz = 0; dy = 0; rx = po.rx; armOutR = null; legOutR = 0; legSYL = legSYR = 1;
+      if (po.kind === 'fly') {
+        // klein und ausgestreckt aus dem Bild: flach nach vorn, Arme und Beine weit gespreizt, Kopf hoch
+        const w = Math.sin(clock * 9);
+        rz = w * 0.07; armL = armR = -1.7 + w * 0.1; armOut = 1.35; legL = legR = 0.18; legSplay = 0.5;
+        headTilt = -1.0; tailRx = -2.9; tailRz = w * 0.3;
+      } else if (po.kind === 'belly' || po.kind === 'up') {
+        // baeuchlings am Boden (Arme vorn-seitlich, Beine gestreckt), dann aufrappeln: abstuetzen und aufrichten
+        const k = po.kind === 'up' ? smooth(po.k) : 0, push = po.kind === 'up' ? Math.sin(po.k * Math.PI) : 0;
+        armL = armR = lerp(-2.55, -0.12, k) + push * 1.1; armOut = lerp(1.05, 0.34, k); legL = lerp(0.06, 0, k) - push * 0.6; legR = lerp(-0.06, 0, k);
+        legSplay = lerp(0.28, 0.07, k); legSYL = 1 - push * 0.25; headTilt = lerp(-0.75, 0, k); tailRx = lerp(-3.0, -1.85, k); tailRz = 0;
+        if (po.kind === 'belly' && po.k < 0.45) lidOver = 1;
+      }
+    }
     const bob = pl.grounded ? Math.abs(sw) * 0.07 * run01 + Math.sin(clock * 2.2) * 0.012 : 0;
     const glowK = dissolve > 0 ? dissolve : appear < 1 ? (1 - appear) * 0.9 : 0;
     const FIG = { shine: 0.06, rim: 0.16 + glowK * 1.6, lit: 0.78, tint: glowK > 0 ? [1, 1, 0.92, glowK] : undefined };
@@ -15293,10 +15536,10 @@ void main() {
     const toCam = angDiff(pl.face, Math.atan2(cam.pos[0] - p[0], cam.pos[2] - p[2]));
     const headYaw = (run01 < 0.06 && pl.grounded && !lying ? clamp(toCam, -0.55, 0.55) * 0.5 * (1 - env) : clamp(turn * 0.25, -0.35, 0.35)) + headYawAdd;
     // Blinzeln: das Lid wird in der Hoehe aufgezogen (beim Gaehnen/Schlafen bleibt es zu)
-    const bl = swim || lying ? 0 : Math.max(blinkAt(clock, 0), lidK);
+    const bl = lidOver >= 0 ? lidOver : swim || lying ? 0 : Math.max(blinkAt(clock, 0), lidK);
     // Fertige Pose: drawPose zeichnet daraus die Figur - dieselbe Pose geht an die Mitspieler (Net)
     const P = pl.netPose = {
-      x: p[0], y: p[1], z: p[2], yaw: pl.face + spin + twist, rx, rz, dy, sx: sx * ek * thin, sy: sq * ek * stretch,
+      x: p[0], y: p[1], z: p[2], yaw: pl.face + spin + twist, rx, rz, dy, sx: sx * ek * thin * scl, sy: sq * ek * stretch * scl,
       legL, legR, splL: cSplay + legSplay, splR: cSplay + legSplay + legOutR, legSYL: cLegSY * legSYL, legSYR: cLegSY * legSYR,
       bob, sink: cSink, breathe, ck, bodyYaw, tailRx, tailRz: tailRz + turn * 0.35,
       armL, armR, outL: armOut, outR: armOutR ?? armOut,
@@ -15805,6 +16048,7 @@ void main() {
     signMark = Post.begin(w, h) ? 0 : 1;
     signQueue.length = 0;
     if (mode === 'title' || mode === 'files') { renderMenu(w, h); return; }
+    if (mode === 'coursesel') { CourseSel.render(w, h); return; }
     const L = cur;
     // Unter Wasser: blauer, dichter Nebel
     let fogCol = L.fog, fogN = L.fogNear, fogF = L.fogFar;
@@ -15894,7 +16138,7 @@ void main() {
     gl.depthMask(false);
     gl.enable(gl.POLYGON_OFFSET_FILL);
     gl.polygonOffset(-2, -2);
-    if (!pl.entering && !Intro.playerHidden() && pl.action !== 'cannon') shadowAt(pl.pos[0], pl.pos[1], pl.pos[2], 0.75);
+    if (!pl.entering && !Intro.playerHidden() && pl.action !== 'cannon') { const sp = PaintOut.body || pl.pos; shadowAt(sp[0], sp[1], sp[2], 0.75 * (pl.pose ? pl.pose.s : 1)); }
     Intro.drawAlpha();
     Net.shadows();
     for (const e of L.enemies) {
@@ -16582,6 +16826,7 @@ void main() {
     if (!state.music || document.hidden) return null;
     if (mode === 'title' || mode === 'files' || mode === 'ending') return { id: 'title' };
     if (mode === 'intro' || !cur) return { id: 'garden' };
+    if (mode === 'coursesel') return { id: SONG_OF[CourseSel.key] || 'garden' };
     const k = cur.key, paint = k.startsWith('bild_'), base = paint ? k.slice(5) : k;
     return { id: SONG_OF[base] || 'garden', duck: mode === 'pause', muffle: paint };
   }
@@ -16617,6 +16862,8 @@ void main() {
     }
     ambient(dt);
     updateCine(dt);
+    PaintOut.tick(dt);
+    CourseSel.tick(dt);
     Intro.tick(dt);
     Flyby.tick(dt);
     DoorSeq.tick(dt);
@@ -16680,7 +16927,7 @@ void main() {
   });
   $('#btnResume').addEventListener('click', closePause);
   $('#btnReset').addEventListener('click', resetGame);
-  $('#btnLeave').addEventListener('click', () => { closePause(); leaveBack(); });
+  $('#btnLeave').addEventListener('click', () => { closePause(); leaveCourse(); });
   $('#btnEndBack').addEventListener('click', closeEnding);
   $('#btnEndReset').addEventListener('click', resetGame);
   document.addEventListener('visibilitychange', () => {
@@ -16810,6 +17057,7 @@ void main() {
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
       measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby, TitleHead,
       enterCourse, CourseSel, Flyby, COURSES, bbCache, get BB_CACHE() { return BB_CACHE; }, BB, bbPath, HField, render, exitCourse, dropLevel,
+      PaintOut, courseOf, leaveCourse, loseLife, collectStar, Iris,
     };
   }
 })();

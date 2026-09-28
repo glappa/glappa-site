@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=137`** (2026-09-28, noch NICHT committet), Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=139`** (2026-09-28), Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -296,6 +296,26 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   hindurch, Sternblende auf die Figur; im neuen Raum schaut die Kamera auf die Ankunftstür (nächste `doorFx` zur
   Ankunftsstelle), Figur tritt heraus, Flügel fällt zu, Kamera schwenkt hinter sie. Ohne Ankunftstür (vor einem Bild):
   nur Blende. Die Sterntür (Obergeschoss) und die Finaltür haben ihren eigenen Ablauf behalten.
+
+### 1.19 Sterben, aus dem Bild, Sternwahl wie im Video (2026-09-28, Cloud-Sitzung)
+- **Keine Ausgangstüren** in den Gemälde-Welten (lokal schon erledigt). **Kurs** = `courseOf(key)`: Welt hinter einem Gemälde
+  (HOME → `bild_*`), Unterwelten zählen zur Welt (dust → desert). Pausenknopf dort „Kurs verlassen“ → `leaveCourse()`.
+- **Sterben** (`loseLife`): Figur kippt nach hinten um (Pose in `drawPlayer`, `pl.dieT`), Kamera rückt näher (`updateCamera`,
+  `dk`), nach 1,5 s schließt sich die Blende als böse Katzenfratze (`Iris.close(x, y, d, true)`), 0,45 s schwarz. Im Kurs
+  danach `PaintOut 'fly'` (auch Bounce-Berg), sonst Startpunkt wie früher. Doppelter Aufruf zieht nur ein Leben ab.
+- **PaintOut** (Modus `out`): `fly` = klein und ausgestreckt aus dem Bild, wächst, landet bäuchlings, bleibt 0,9 s liegen,
+  rappelt sich auf; `hop` (Kurs verlassen und nach jedem Stern in JEDER Gemälde-Welt außer dem 50-Münzen-Stern, über
+  `exitCourse`) = hüpft heraus, landet auf den Füßen. Feste Kamera = Spielkamera nach der Landung (nahtlos). Pose über
+  `pl.pose`; `place()` rechnet die Körpermitte gegen den Drehpunkt von `drawPose` (1,1 m über den Füßen).
+- **Sternwahl** `CourseSel` jetzt im Stil des Videos und für alle Gemälde-Welten: weißer Schirm, Sterne drehen sich
+  (WebGL in `CourseSel.render`, geholte golden, gesperrte blass ohne Nummer), Nummern + Name + Hinweis + 100-Münzen-Zeile
+  und rundes „KURS n“-Emblem als HTML (`#courseSel`). Kurse (`COURSES`) behalten ihre Logik (sichtbar = geholte + so viele
+  weitere, Welt je Mission, danach `Flyby`); alte Welten zeigen alle Sterne, Wahl ändert nichts (`arriveIn`).
+  A/Enter/Klick = los → Weißblende (`.white-in`) ins Level; Z/Esc = zurück vors Bild. Kursnummer = Index in `PAINTINGS`
+  + 1, Wüstenstadt 9. Sternliste je Welt: `courseStars(world)` (auch Sterntafel).
+- Test-Haken: `g64.PaintOut.start(kurs, 'fly'|'hop')`, `g64.CourseSel.open(kurs, cb)`, `g64.loseLife()`, `g64.leaveCourse()`,
+  `g64.Iris`. Headless-Chromium läuft ~5× langsamer als Echtzeit → Bilder per `advance` + `toDataURL` im selben Aufruf.
+- Bekannt: Im Rechnerraum läuft ein Käfer (-7, -20) nah am Landeplatz und kann die gelandete Figur treffen.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
