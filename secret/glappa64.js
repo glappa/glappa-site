@@ -3682,7 +3682,8 @@ vec3 art(vec2 p) {
      1) Oeffnung schwarz malen, wo sie sichtbar ist, 2) genau dort die Tiefe auf "ganz hinten" setzen - so bleiben der
      aufschwingende Fluegel und die Figur, die hindurchgeht, davor sichtbar, 3) Schablone wieder loeschen. */
   function drawDoorHole(f) {
-    const m = M4.mul(f.M, M4.from(0, f.h / 2, 0.03, 0, 0, 0, f.half * 2, f.h, 0.002));
+    // vor den Zierleisten der Wand (ragen bis ~0,3 m in den Raum, sonst laufen sie als Balken durchs Schwarz), ueber der Schwelle
+    const m = M4.mul(f.M, M4.from(0, 0.1 + (f.h - 0.1) / 2, 0.42, 0, 0, 0, f.half * 2, f.h - 0.1, 0.002));
     gl.enable(gl.STENCIL_TEST);
     gl.stencilFunc(gl.ALWAYS, 1, 0xff); gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
     draw(MESH.cube, m, { lit: 0, tint: [0, 0, 0, 1] });
