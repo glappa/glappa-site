@@ -11737,7 +11737,7 @@ void main() {
     });
     addEventListener('touchstart', () => {
       st.device = 'touch';
-      if ($('#touch').hidden) $('#touch').hidden = false;
+      if ($('#touch').hidden) { $('#touch').hidden = false; document.body.classList.add('touch-ui'); }   // zeigt den Pause-Knopf oben
     }, { passive: true });
 
     addEventListener('gamepadconnected', (e) => {
@@ -14460,6 +14460,7 @@ void main() {
     $('#btnLeave').textContent = courseOf(cur.key) ? 'Kurs verlassen' : hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
       : hk && !hk.startsWith('bild_') && levels[hk] ? 'Zurück: ' + levels[hk].name : 'Zurück ins Schloss';
     $('#pause').hidden = false;
+    showControls(false);
     CatPick.open();
     FilterPick.sync();
     $('#btnResume').focus({ preventScroll: true });
@@ -16950,9 +16951,11 @@ void main() {
   }
 
   /* ═══════════ Knoepfe + Lebenszyklus ═══════════ */
+  // Ton, Musik, Vollbild und Steuerung liegen im Pausenmenue (Einstellungen); der Knopf nennt den Zustand
+  const onOff = (el, on, label) => { el.setAttribute('aria-pressed', String(on)); el.textContent = label + (on ? 'an' : 'aus'); };
   const syncButtons = () => {
-    $('#btnSfx').setAttribute('aria-pressed', String(state.sfx));
-    $('#btnMusic').setAttribute('aria-pressed', String(state.music));
+    onOff($('#btnSfx'), state.sfx, '\u{1F508} Soundeffekte: ');
+    onOff($('#btnMusic'), state.music, '\u266B Musik: ');
   };
   const blurAfter = (fn) => (e) => { fn(e); if (e.currentTarget.blur) e.currentTarget.blur(); };
   $('#pressStart').addEventListener('click', pressStart);
@@ -16962,6 +16965,9 @@ void main() {
     Snd.unlock();
   }));
   $('#btnPause').addEventListener('click', blurAfter(() => { if (mode === 'pause') closePause(); else openPause(); }));
+  // Steuerung nur auf Knopfdruck zeigen (haelt das Pausenmenue kurz)
+  const showControls = (on) => { $('#controls').hidden = !on; $('#btnCtrl').setAttribute('aria-expanded', String(on)); };
+  $('#btnCtrl').addEventListener('click', () => showControls($('#controls').hidden));
   /* Vollbild: eigener Knopf (Fullscreen-API). Dort laesst Chrome/Edge die Seite per Keyboard Lock Tasten wie Strg+W
      abfangen -> gesperrt, mit Hinweis. Esc bleibt frei (Vollbild verlassen + Pause wie gewohnt). Browser ohne
      Keyboard Lock (Firefox) und F11-Vollbild: beim Schliessen/Neuladen fragt der Browser nach ("Seite verlassen?"). */
@@ -16970,7 +16976,7 @@ void main() {
   let leavingOnPurpose = false;
   function syncFull() {
     const full = !!document.fullscreenElement;
-    $('#btnFull').setAttribute('aria-pressed', String(full));
+    onOff($('#btnFull'), full, '\u26F6 Vollbild: ');
     try {
       if (full && navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(LOCK_KEYS).catch(() => {});
       else if (!full && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();

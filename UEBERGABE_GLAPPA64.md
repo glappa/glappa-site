@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=140`** (2026-09-28), Modelle `?v=12` (`MODEL_BYTES = 226336`).
+  **kein root nötig**). Aktuell **JS `?v=141`** (2026-09-28), Modelle `?v=12` (`MODEL_BYTES = 226336`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -330,6 +330,12 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - **Fallschrei:** `VOICE.fall` (Katzenstimme), ab `FALL_SCREAM` 8 m freiem Fall einmal je Sturz (nicht Stampfer/Hecht/
   Kanone). Die Mario-Aufnahme des Users wurde nur VERMESSEN (2,75 s, 440→710→~560→470 Hz), nicht eingebaut – rechtliche
   Linie (Abschnitt 4). Silben-Eintrag hat jetzt optional ein 6. Feld „volle Lautstärke bis“ (Vorgabe 0,65).
+
+### 1.21 HUD aufgeräumt, Einstellungen im Pausenmenü (2026-09-28)
+- Oben rechts keine Knöpfe mehr; nur auf Touch-Geräten der Pause-Knopf (`body.touch-ui`, gesetzt beim ersten Tippen).
+- Pausenmenü „~ Einstellungen ~“: Soundeffekte / Musik / Vollbild als Knöpfe mit „an/aus“ (`onOff` in `syncButtons`,
+  `syncFull`) und „Steuerung“ (`#btnCtrl`), das die Steuerungs-Tabelle `#controls` auf- und zuklappt; beim Öffnen der
+  Pause ist sie immer zu (`showControls(false)` in `openPause`).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
