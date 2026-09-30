@@ -12352,18 +12352,21 @@ void main() {
     function lockAfterEscUp() { if (!lockable()) return; lockAfterEsc = true; softLook = true; }
     const lockable = () => !lockBroken && !!canvas.requestPointerLock && !matchMedia('(pointer: coarse)').matches;
     const locked = () => document.pointerLockElement === canvas;
+    /* Ein Fehlschlag ist meist voruebergehend (Fenster gerade ohne Fokus, Klick kurz nach Esc - Chrome sperrt dann ~1 s).
+       Frueher machte schon EIN solcher Fehler das Einfangen bis zum Neuladen kaputt (und die Kamera hing). Jetzt: bis die
+       Maus gefangen ist, dreht die freie Maus die Kamera; erst nach vielen Klick-Fehlschlaegen in Folge gibt das Spiel auf. */
     function lock(byClick = false) {
       if (!lockable() || locked()) return;
       lockByClick = byClick;
-      if (!byClick) softLook = true;
+      softLook = true;
       try {
         const r = canvas.requestPointerLock();
-        if (r && r.catch) r.catch((err) => { if (err && /WrongDocument|NotSupported/.test(err.name)) lockBroken = true; });
+        if (r && r.catch) r.catch(() => { /* meldet pointerlockerror */ });
       } catch (err) { lockBroken = true; }
     }
     document.addEventListener('pointerlockerror', () => {
       // nur Fehlschlaege nach einem Klick zaehlen; ohne Klick verweigert der Browser das Einfangen absichtlich
-      if (lockByClick) { if (++lockErrs >= 2) lockBroken = true; return; }
+      if (lockByClick) { if (++lockErrs >= 6) lockBroken = true; return; }
       if (softLook && !softHint && mode === 'play') { softHint = true; toast('\u{1F5B1}\u{FE0F} Klick ins Bild fängt die Maus wieder ein'); }
     });
     function unlock() { softLook = false; lockAfterEsc = false; if (locked() && document.exitPointerLock) document.exitPointerLock(); }
