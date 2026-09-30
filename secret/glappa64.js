@@ -102,6 +102,7 @@
     dustSpray:  { name: 'Fünf Spraydosen',         where: 'Staub II' },
   };
   const STAR_TOTAL = Object.keys(STARS).length;
+  const STAR_DOOR = 10;   // so viele Sterne braucht die Sterntuer auf der Galerie (Wunsch 2026-09-29, vorher 4)
   const starCount = () => Object.keys(STARS).filter((id) => state.stars[id]).length;
 
   /* ═══════════ Sound — alles live per WebAudio gepiepst ═══════════ */
@@ -242,6 +243,11 @@
       boom:  fx(() => { noise(0, 1.1, { f: 1400, fTo: 70, vol: .7, attack: .005 }); tone(110, 0, .7, { type: 'sine', vol: .4, slide: .3 }); }),
       hurt:  fx(() => { tone(620, 0, .12, { type: 'sawtooth', vol: .12, slide: .6 }); tone(420, .12, .25, { type: 'sawtooth', vol: .12, slide: .5 }); }),
       deny:  fx(() => { tone(150, 0, .15, { vol: .12 }); tone(120, .17, .25, { vol: .12 }); }),
+      // Schluessel dreht im Schloss: helles Metall-Klicken, dann ein satter Riegel
+      lock:  fx(() => {
+        noise(0, .03, { filter: 'highpass', f: 3500, vol: .25 }); tone(2400, 0, .04, { type: 'square', vol: .05 });
+        noise(.12, .05, { filter: 'bandpass', f: 1800, q: 3, vol: .3 }); tone(160, .12, .18, { vol: .22, slide: .6 });
+      }),
       door:  fx(() => { tone(90, 0, 1.2, { type: 'sawtooth', vol: .08, slide: 1.6, attack: .2 }); noise(0, 1.2, { filter: 'bandpass', f: 500, q: 4, vol: .12, attack: .3 }); }),
       start: fx(() => ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => tone(N(n), i * .07, .18, { vol: .14 }))),
       pause: fx(() => { tone(1047, 0, .08, { vol: .1 }); tone(784, .08, .12, { vol: .1 }); }),
@@ -939,18 +945,64 @@
       for (const syl of Array.isArray(v[0]) ? v : [v]) t = gnarp(c, dest, syl, t, k, vol) + 0.035;
       return t;
     }
-    let mouthA = 0, mouthB = 0;   // wann die Figur gerade ruft (performance.now) - fuer den Mund
-    api.voice = fx((name) => {
+    let mouthA = 0, mouthB = 0, mouthV = '';   // wann und was die Figur gerade ruft (performance.now) - fuer den Mund
+    const voiceLen = (name) => { const v = VOICE[name]; return v ? (Array.isArray(v[0]) ? v : [v]).reduce((s, syl) => s + syl[2] + 0.035, 0) : 0; };
+    // Der Mund bewegt sich auch bei ausgeschaltetem Ton (die Figur ruft ja trotzdem)
+    // jeder Ruf laeuft ueber einen eigenen Regler, damit er sich vorzeitig abbrechen laesst (voiceStop)
+    const liveVoices = new Map();
+    api.voice = (name) => {
+      const now = performance.now();
+      mouthA = now; mouthB = now + voiceLen(name) * 1000; mouthV = name;
+      if (!state.sfx) return;
       const c = ac();
       if (!c) return;
-      const end = say(c, sfxBus, name, c.currentTime, VOICE_PITCH[CAT.id] || 1), now = performance.now();
-      mouthA = now; mouthB = now + (end - c.currentTime) * 1000;
-    });
-    // Mund-Oeffnung 0..1: schnell auf, leicht flatternd, zum Ende der Silbe wieder zu
+      const g = c.createGain();
+      g.connect(sfxBus);
+      liveVoices.set(name, g);
+      say(c, g, name, c.currentTime, VOICE_PITCH[CAT.id] || 1);
+    };
+    // Ruf sofort beenden (Fallschrei beim Aufsetzen, Wunsch 2026-09-30): in 40 ms ausblenden, Mund zu
+    api.voiceStop = (name) => {
+      if (mouthV === name) mouthB = Math.min(mouthB, performance.now());
+      const g = liveVoices.get(name), c = ctx;
+      if (!g || !c) return;
+      liveVoices.delete(name);
+      g.gain.cancelScheduledValues(c.currentTime);
+      g.gain.setValueAtTime(g.gain.value, c.currentTime);
+      g.gain.linearRampToValueAtTime(0, c.currentTime + 0.04);
+    };
+    /* Boeses Lachen der Katzenfratze, wenn die Figur stirbt (Wunsch 2026-09-30): "Mwa-ha-ha-ha-haaa" mit derselben
+       Stimmtechnik, aber tief und stark knarrend, zweistimmig (eine tiefere Stimme darunter) und mit Hallfahne (Echo mit
+       Rueckkopplung). Gehoert der Fratze, nicht der Figur: gleiche Tonlage fuer alle Figuren, kein Mund. */
+    const LAUGH = [['nua', [118, 158, 146], 0.32, 0, 0.75, 0.55], ['a', [172, 150], 0.13, 1, 0.85], ['a', [166, 144], 0.13, 1, 0.85],
+      ['a', [158, 138], 0.13, 1, 0.85], ['a', [150, 130], 0.14, 1, 0.85], ['aaa', [156, 178, 150, 104], 0.62, 1, 0.9, 0.45]];
+    function evilLaugh(c, dest, t0) {
+      const dry = c.createGain(), echo = c.createDelay(1), fb = c.createGain(), dl = c.createBiquadFilter(), wet = c.createGain();
+      echo.delayTime.value = 0.19; fb.gain.value = 0.34; dl.type = 'lowpass'; dl.frequency.value = 1700; wet.gain.value = 0.55;
+      dry.connect(dest); dry.connect(echo); echo.connect(dl); dl.connect(fb); fb.connect(echo); dl.connect(wet); wet.connect(dest);
+      let t = t0;
+      for (const syl of LAUGH) { gnarp(c, dry, syl, t, 0.8, VOICE_VOL * 1.15); gnarp(c, dry, syl, t, 0.56, VOICE_VOL * 0.6); t += syl[2] + 0.06; }
+      return { t, nodes: [dry, echo, fb, dl, wet] };
+    }
+    api.evilLaugh = () => {
+      if (!state.sfx) return;
+      const c = ac();
+      if (!c) return;
+      const { t, nodes } = evilLaugh(c, sfxBus, c.currentTime + 0.02);
+      setTimeout(() => nodes.forEach((n) => n.disconnect()), (t - c.currentTime + 2) * 1000);   // Echo ausklingen lassen
+    };
+    // Testhilfe: Lachen offline rechnen -> AudioBuffer
+    api.laughOffline = (sr = 22050) => {
+      const oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, sr * 3, sr);
+      evilLaugh(oc, oc.destination, 0.02);
+      return oc.startRendering();
+    };
+    // Mund-Oeffnung 0..1: schnell auf, leicht flatternd, zum Ende der Silbe wieder zu; mouthVoice = welcher Laut
     api.mouth = () => {
       const n = performance.now();
       return n >= mouthB ? 0 : Math.min(1, (n - mouthA) / 40, (mouthB - n) / 70) * (0.8 + 0.2 * Math.sin(n / 45));
     };
+    api.mouthVoice = () => mouthV;
     /* ── Alien-Katzen "sprechen" in Zip-Lauten (Wunsch 2026-09-28; ersetzt die fruehere Sprachausgabe) ──
        Auf Wunsch die ECHTEN Silben aus der mp3 des Users ("Alien Speaking Meme", N:\Downloads): 20 Silben der ersten
        Alien-Stimme (0,4-8,3 s) ausgeschnitten, die Hintergrundmusik je Silbe aus den Pausen davor/danach gemessen und
@@ -997,17 +1049,17 @@
       if (!zipBuf) { loadZip(c); return; }
       zipPlay(c, sfxBus, c.currentTime + 0.005, clamp((v.hz || 300) / 300, 0.45, 1.5) * (0.96 + Math.random() * 0.08), ZIP_VOL);
     });
-    // "ZIP ZIP ZIP" (Wunsch 2026-09-28): ein Satz einer Alien-Katze = drei Silben dicht hintereinander, in ihrer
-    // Reihenfolge aus der Aufnahme; ein weiterer Satz reiht sich dahinter ein
-    api.zips = fx((v, n = 3) => {
+    // Ein "ZIP" je Wort (Wunsch 2026-09-29, vorher drei je Satz): reiht sich hinter die vorige Silbe ein, damit nichts
+    // uebereinander liegt. Liefert, in wie vielen s die Silbe beginnt - die Dialogbox wartet so lange mit dem Wort.
+    api.zipWord = (v) => {
+      if (!state.sfx) return 0;
       const c = ac();
-      if (!c) return;
-      if (!zipBuf) { loadZip(c); return; }
-      const rate = clamp((v.hz || 300) / 300, 0.45, 1.5), k0 = Math.floor(Math.random() * zipClips.length);
-      let t = Math.max(c.currentTime + 0.005, zipEnd + 0.14);
-      for (let i = 0; i < n; i++) t += zipPlay(c, sfxBus, t, rate * (0.97 + Math.random() * 0.06), ZIP_VOL, (k0 + i) % zipClips.length) + 0.05;
-      zipEnd = t;
-    });
+      if (!c || c.state !== 'running') return 0;   // Ton noch nicht freigeschaltet: Uhr steht, nicht warten
+      if (!zipBuf) { loadZip(c); return 0; }
+      const t = Math.max(c.currentTime + 0.005, zipEnd + 0.04);
+      zipEnd = t + zipPlay(c, sfxBus, t, clamp((v.hz || 300) / 300, 0.45, 1.5) * (0.96 + Math.random() * 0.08), ZIP_VOL);
+      return t - c.currentTime;
+    };
     api.zipStop = () => { for (const q of zipSrcs) { try { q.stop(); } catch (e) { /* schon aus */ } } zipSrcs = []; zipEnd = 0; };
     api.zipPreload = () => { const c = ac(); if (c) loadZip(c); };
     // Testhilfe: n Silben offline rechnen (Lautstaerke/Klang pruefen)
@@ -1036,247 +1088,7 @@
     }
   }
 
-  /* ═══════════ 2D-Stern fuer Titelbild + "Stern erhalten" ═══════════ */
-  const StarGfx = (() => {
-    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-    const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
-    const rim = [];
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 0.44 : 1;
-      rim.push([Math.cos(a) * r, Math.sin(a) * r, 0]);
-    }
-    const tris = [];
-    for (let i = 0; i < 10; i++) {
-      const a = rim[i], b = rim[(i + 1) % 10];
-      tris.push([[0, 0, 0.34], a, b], [[0, 0, -0.34], b, a]);
-    }
-    const L = norm([-0.45, -0.6, 0.66]);
-    const Hv = norm([L[0], L[1], L[2] + 1]);
-    // vierzackiges Glitzern (Mitte x/y, halbe Laenge s)
-    function glint(ctx, x, y, s) {
-      ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.18, y - s * 0.18); ctx.lineTo(x + s, y); ctx.lineTo(x + s * 0.18, y + s * 0.18);
-      ctx.lineTo(x, y + s); ctx.lineTo(x - s * 0.18, y + s * 0.18); ctx.lineTo(x - s, y); ctx.lineTo(x - s * 0.18, y - s * 0.18); ctx.closePath(); ctx.fill();
-    }
-    /* Titelstern: alles (Schein, Strahlen, Glitzer) bleibt innerhalb des Kreises mit Radius R um die Mitte
-       und laeuft dort weich aus, damit die Zeichenflaeche nirgends als Quadrat sichtbar wird. */
-    function draw(ctx, w, h, t, o = {}) {
-      const R = Math.min(w, h) / 2, cx = w / 2, bob = Math.sin(t * 1.6) * R * 0.035, cy = h / 2 + bob;
-      const S = R * (o.size || 0.5);
-      const ry = t * (o.speed || 1.6), rx = 0.2 * Math.sin(t * 0.9);
-      ctx.clearRect(0, 0, w, h);
-      // warmer Schein, pulsiert leicht
-      const pulse = 1 + Math.sin(t * 2.2) * 0.05;
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-      g.addColorStop(0, 'rgba(255,246,190,.75)'); g.addColorStop(0.28 * pulse, 'rgba(255,214,90,.38)');
-      g.addColorStop(0.62, 'rgba(255,170,40,.1)'); g.addColorStop(1, 'rgba(255,160,40,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
-      // zwei gegenlaeufige Strahlenkraenze, zum Rand hin ausgeblendet
-      const rays = (n, rot, len, wid, a) => {
-        const rg = ctx.createRadialGradient(0, 0, S * 0.3, 0, 0, len);
-        rg.addColorStop(0, `rgba(255,252,215,${a})`); rg.addColorStop(1, 'rgba(255,240,170,0)');
-        ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.fillStyle = rg;
-        ctx.beginPath();
-        for (let i = 0; i < n; i++) {
-          const b = i * TAU / n, c = Math.cos(b), s = Math.sin(b);
-          ctx.moveTo(0, 0); ctx.lineTo(c * len - s * len * wid, s * len + c * len * wid); ctx.lineTo(c * len + s * len * wid, s * len - c * len * wid); ctx.closePath();
-        }
-        ctx.fill(); ctx.restore();
-      };
-      rays(12, t * 0.35, R * 0.97, 0.075, 0.42);
-      rays(8, -t * 0.22 + 0.2, R * 0.8, 0.05, 0.3);
-      // Glitzer kreist um den Stern und blinkt
-      ctx.fillStyle = '#fff';
-      for (let i = 0; i < 8; i++) {
-        const ph = (t * 0.55 + i / 8) % 1, a = i * 2.399 + t * 0.4, rr = S * (1.25 + 0.45 * Math.sin(i * 1.7 + t * 0.6));
-        const k = Math.sin(ph * Math.PI);
-        if (k > 0.05) glint(ctx, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.9, S * 0.13 * k * k);
-      }
-      star(ctx, cx, cy, S, ry, rx);
-    }
-    // nur der facettierte Stern mit Augen (Mitte cx/cy, Groesse S, Drehung ry/rx)
-    function star(ctx, cx, cy, S, ry, rx = 0) {
-      const cY = Math.cos(ry), sY = Math.sin(ry), cX = Math.cos(rx), sX = Math.sin(rx);
-      const rot = (p) => {
-        const x = p[0] * cY + p[2] * sY, z = -p[0] * sY + p[2] * cY, y = p[1];
-        return [x, y * cX - z * sX, y * sX + z * cX];
-      };
-      const proj = (p) => { const k = 3.4 / (3.4 - p[2]); return [cx + p[0] * S * k, cy + p[1] * S * k]; };
-      const faces = [];
-      for (const tr of tris) {
-        const r = tr.map(rot);
-        let n = norm(cross(sub(r[1], r[0]), sub(r[2], r[0])));
-        const c = [(r[0][0] + r[1][0] + r[2][0]) / 3, (r[0][1] + r[1][1] + r[2][1]) / 3, (r[0][2] + r[1][2] + r[2][2]) / 3];
-        if (dot(n, c) < 0) n = [-n[0], -n[1], -n[2]];
-        if (n[2] > -0.02) faces.push({ r, n, z: c[2], p: r.map(proj) });
-      }
-      faces.sort((a, b) => a.z - b.z);
-      const path = (f) => { ctx.beginPath(); ctx.moveTo(f.p[0][0], f.p[0][1]); ctx.lineTo(f.p[1][0], f.p[1][1]); ctx.lineTo(f.p[2][0], f.p[2][1]); ctx.closePath(); };
-      // 1) dunkle Kontur: alle Flaechen dick umranden, 2) Flaechen darueber -> nur der Aussenrand bleibt
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#7a4a00'; ctx.lineWidth = Math.max(1.5, S * 0.07);
-      for (const f of faces) { path(f); ctx.stroke(); }
-      ctx.lineWidth = 1;
-      for (const f of faces) {
-        const lam = Math.max(0, dot(f.n, L));
-        const spec = Math.pow(Math.max(0, dot(f.n, Hv)), 18);
-        const k = 0.42 + 0.58 * lam;
-        const col = [255, 200, 28].map((ch) => Math.min(255, Math.round(ch * k + 255 * spec * 0.6)));
-        ctx.fillStyle = ctx.strokeStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
-        path(f); ctx.fill(); ctx.stroke();
-      }
-      // Augen wie beim Stern im Spiel (nur auf der Vorderseite)
-      const front = cY * cX;
-      if (front > 0.12) {
-        const ga = ctx.globalAlpha;
-        ctx.globalAlpha = ga * Math.min(1, (front - 0.12) / 0.2);
-        for (const s of [-1, 1]) {
-          const e = proj(rot([s * 0.17, 0.08, 0.3]));
-          const rw = S * 0.07 * Math.max(0.15, Math.abs(cY)), rh = S * 0.17 * Math.abs(cX);
-          ctx.fillStyle = '#1a1000';
-          ctx.beginPath(); ctx.ellipse(e[0], e[1], rw, rh, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = 'rgba(255,255,255,.85)';
-          ctx.beginPath(); ctx.ellipse(e[0] - rw * 0.25, e[1] - rh * 0.45, rw * 0.35, rh * 0.2, 0, 0, TAU); ctx.fill();
-        }
-        ctx.globalAlpha = ga;
-      }
-    }
-    return { draw, star };
-  })();
 
-  /* ═══════════ "Stern erhalten" im Vollbild ═══════════
-     0,00 s  weisser Blitz + Schockwelle dort, wo der Stern eingesammelt wurde
-     0,00-0,55 s  der Stern fliegt wirbelnd in die Bildmitte (mit Funkenschweif) und ploppt gross auf
-     0,50 s  Konfetti-/Sternchen-Explosion, danach pulsierende Ringe, Strahlenkranz, Glitzerpunkte
-     2,55-3,00 s  der Stern saust zur Sternanzeige oben, alles blendet aus */
-  const StarFx = (() => {
-    const el = $('#starGet'), cv = $('#starGetCanvas'), ctx = cv.getContext('2d');
-    const DUR = 3, OUT = 2.55;
-    let t0 = 0, lastT = 0, from = [0, 0], to = [0, 0], W = 0, H = 0, dpr = 1, bits = [], glints = [], trail = [], burst2 = false;
-    const COLS = ['#ffe14a', '#ffffff', '#ff5fc8', '#5ff0ff', '#8dff5a', '#ffb13f'];
-    const ease = (k) => 1 - Math.pow(1 - k, 3);
-    const back = (k) => { const c = 1.9; return 1 + (c + 1) * Math.pow(k - 1, 3) + c * Math.pow(k - 1, 2); };
-    function pop(x, y, n, sp) {
-      for (let i = 0; i < n; i++) {
-        const a = Math.random() * TAU, v = (0.35 + Math.random() * 0.9) * sp;
-        bits.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - sp * 0.25, rot: Math.random() * TAU, vr: (Math.random() - 0.5) * 14,
-          life: 1.2 + Math.random() * 1.1, age: 0, size: (0.012 + Math.random() * 0.02) * Math.min(W, H),
-          kind: i % 3 === 0 ? 'star' : i % 3 === 1 ? 'confetti' : 'spark', col: COLS[i % COLS.length] });
-      }
-    }
-    function start(p, isNew) {
-      dpr = Math.min(1.5, window.devicePixelRatio || 1);
-      W = cv.width = Math.round(innerWidth * dpr); H = cv.height = Math.round(innerHeight * dpr);
-      const s = p && toScreen(p);
-      from = s ? [s[0] * dpr, s[1] * dpr] : [W / 2, H / 2];
-      const hs = document.querySelector('.hud-item.stars');
-      const r = hs ? hs.getBoundingClientRect() : null;
-      to = r && r.width ? [(r.left + r.width * 0.25) * dpr, (r.top + r.height / 2) * dpr] : [W * 0.1, H * 0.06];
-      t0 = lastT = clock; bits = []; glints = []; trail = []; burst2 = false;
-      el.classList.remove('out');
-      el.hidden = false;
-      el.dataset.fresh = isNew ? '1' : '0';
-    }
-    function draw() {
-      if (el.hidden) return;
-      const t = clock - t0, S = Math.min(W, H), cx = W / 2, cy = H * 0.44, dt = clamp(clock - lastT, 0, 0.05);
-      lastT = clock;
-      const fadeIn = smooth(t / 0.25), fadeOut = 1 - smooth((t - OUT - 0.1) / 0.35);
-      if (t > OUT && !el.classList.contains('out')) { el.classList.add('out'); Snd.whoosh(); }
-      ctx.clearRect(0, 0, W, H);
-      ctx.save();
-      ctx.globalAlpha = fadeIn * fadeOut;
-      // Hintergrund: warmes Leuchten in der Mitte, dunkler Rand
-      const R = Math.hypot(W, H) / 2;
-      const bg = ctx.createRadialGradient(cx, cy, S * 0.05, cx, cy, R);
-      bg.addColorStop(0, 'rgba(255,236,140,.62)'); bg.addColorStop(0.35, 'rgba(180,70,190,.5)'); bg.addColorStop(1, 'rgba(12,0,40,.88)');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      // Strahlenkranz: zwei gegenlaeufige Kraenze
-      const rays = (n, rot, len, col, wid) => {
-        ctx.save(); ctx.translate(cx, cy); ctx.rotate(rot); ctx.fillStyle = col;
-        for (let i = 0; i < n; i++) {
-          ctx.rotate(TAU / n);
-          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, -len * wid); ctx.lineTo(len, len * wid); ctx.fill();
-        }
-        ctx.restore();
-      };
-      const grow = ease(clamp((t - 0.35) / 0.6, 0, 1));
-      rays(18, t * 0.35, R * 1.1 * grow, 'rgba(255,248,200,.14)', 0.1);
-      rays(12, -t * 0.22, R * 0.9 * grow, 'rgba(255,200,90,.12)', 0.06);
-      // pulsierende Ringe aus der Mitte
-      for (let k = 0; k < 4; k++) {
-        const a = ((t - 0.5) * 0.9 + k / 4) % 1;
-        if (t < 0.5) break;
-        ctx.strokeStyle = `rgba(255,230,120,${0.35 * (1 - a)})`; ctx.lineWidth = S * 0.012 * (1 - a) + 1;
-        ctx.beginPath(); ctx.arc(cx, cy, S * (0.18 + a * 0.75), 0, TAU); ctx.stroke();
-      }
-      // Blitz und Schockwelle am Fundort
-      if (t < 0.6) {
-        const k = t / 0.6;
-        ctx.strokeStyle = `rgba(255,255,255,${0.9 * (1 - k)})`; ctx.lineWidth = S * 0.03 * (1 - k) + 1;
-        ctx.beginPath(); ctx.arc(from[0], from[1], S * 0.9 * ease(k), 0, TAU); ctx.stroke();
-      }
-      // Flug des Sterns: Fundort -> Mitte, am Ende -> Sternanzeige
-      let px, py, sz;
-      const fly = clamp(t / 0.55, 0, 1), outK = clamp((t - OUT) / 0.42, 0, 1);
-      if (t < OUT) {
-        const e2 = ease(fly);
-        px = lerp(from[0], cx, e2); py = lerp(from[1], cy, e2) - Math.sin(fly * Math.PI) * S * 0.12;
-        sz = S * lerp(0.05, 0.19, back(fly)) * (1 + Math.sin(t * 5) * 0.025 * (fly >= 1 ? 1 : 0));
-      } else {
-        const e3 = outK * outK;
-        px = lerp(cx, to[0], e3); py = lerp(cy, to[1], e3) - Math.sin(outK * Math.PI) * S * 0.08;
-        sz = S * lerp(0.19, 0.02, e3);
-      }
-      trail.push([px, py, sz]); if (trail.length > 14) trail.shift();
-      ctx.globalCompositeOperation = 'lighter';
-      trail.forEach(([x, y, s2], i) => {
-        const a = i / trail.length;
-        ctx.fillStyle = `rgba(255,220,90,${0.18 * a})`;
-        ctx.beginPath(); ctx.arc(x, y, s2 * 0.55 * a, 0, TAU); ctx.fill();
-      });
-      const halo = ctx.createRadialGradient(px, py, 0, px, py, sz * 2.4);
-      halo.addColorStop(0, 'rgba(255,250,200,.9)'); halo.addColorStop(0.3, 'rgba(255,210,80,.45)'); halo.addColorStop(1, 'rgba(255,160,40,0)');
-      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(px, py, sz * 2.4, 0, TAU); ctx.fill();
-      ctx.globalCompositeOperation = 'source-over';
-      // Explosionen
-      if (t >= 0.5 && bits.length === 0 && !burst2) { pop(cx, cy, 110, S * 1.4); Snd.chime(12); }
-      if (t >= 1.5 && !burst2) { burst2 = true; pop(cx, cy, 50, S * 0.9); }
-      // der Stern selbst: erst wild, dann gemaechlich drehend
-      const spin = 2.2 * t + 12 * (1 - Math.exp(-2.6 * t)) + (t > OUT ? outK * 9 : 0);
-      StarGfx.star(ctx, px, py, sz, spin, 0.2 * Math.sin(t * 1.3));
-      // Glitzerpunkte rund um den Stern
-      if (t > 0.55 && t < OUT && Math.random() < 0.5) glints.push({ a: Math.random() * TAU, r: sz * (1.1 + Math.random() * 1.2), age: 0, life: 0.5 + Math.random() * 0.4 });
-      ctx.fillStyle = '#fff';
-      glints = glints.filter((q) => (q.age += dt) < q.life);
-      for (const q of glints) {
-        const k = Math.sin(q.age / q.life * Math.PI), s3 = S * 0.022 * k, x = px + Math.cos(q.a) * q.r, y = py + Math.sin(q.a) * q.r;
-        ctx.beginPath(); ctx.moveTo(x, y - s3 * 2); ctx.lineTo(x + s3 * 0.35, y); ctx.lineTo(x, y + s3 * 2); ctx.lineTo(x - s3 * 0.35, y); ctx.closePath(); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(x - s3 * 2, y); ctx.lineTo(x, y + s3 * 0.35); ctx.lineTo(x + s3 * 2, y); ctx.lineTo(x, y - s3 * 0.35); ctx.closePath(); ctx.fill();
-      }
-      // Konfetti, Sternchen, Funken
-      for (const b of bits) {
-        b.age += dt; if (b.age > b.life) continue;
-        b.vx *= 0.985; b.vy = b.vy * 0.985 + S * 0.9 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
-        const a = 1 - smooth((b.age - b.life + 0.4) / 0.4);
-        ctx.save(); ctx.globalAlpha = fadeOut * a; ctx.translate(b.x, b.y); ctx.rotate(b.rot); ctx.fillStyle = ctx.strokeStyle = b.col;
-        if (b.kind === 'confetti') ctx.fillRect(-b.size * 0.5, -b.size * 0.25, b.size, b.size * 0.5 * Math.abs(Math.cos(b.rot * 1.7)) + 1);
-        else if (b.kind === 'spark') { ctx.lineWidth = Math.max(1, b.size * 0.2); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-b.vx * 0.03, -b.vy * 0.03); ctx.stroke(); }
-        else {
-          ctx.beginPath();
-          for (let i = 0; i < 10; i++) { const r2 = i % 2 ? b.size * 0.42 : b.size; ctx.lineTo(Math.cos(-Math.PI / 2 + i * Math.PI / 5) * r2, Math.sin(-Math.PI / 2 + i * Math.PI / 5) * r2); }
-          ctx.closePath(); ctx.fill();
-        }
-        ctx.restore();
-      }
-      // Blitz ganz am Anfang
-      if (t < 0.3) { ctx.globalAlpha = 0.85 * (1 - t / 0.3); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
-      ctx.restore();
-      if (t >= DUR) { el.hidden = true; el.classList.remove('out'); }
-    }
-    return { start, draw, DUR, get active() { return !el.hidden; } };
-  })();
 
   /* ═══════════ Stern-Blende ═══════════ */
   const Iris = (() => {
@@ -1308,12 +1120,20 @@
       for (const u of [-0.24, 0.24]) poly(x, y, R, [[u - 0.07, 0.49], [u + 0.07, 0.49], [u, 0.63]]);
       ctx.restore();
     }
-    function frame(x, y, R, rot, cat) {
+    // shape: 'star' (Vorgabe), 'cat' (boese Fratze beim Sterben, cat.a = Deckkraft der Fratze), 'circle' (Tueren wie im
+    // Vorbild: runder Ausschnitt mit weichem Rand)
+    function frame(x, y, R, rot, cat, shape) {
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
       if (R < 0.5) return;
       if (cat) { catFace(x, y, R, rot * 0.12, cat.a); return; }
       ctx.globalCompositeOperation = 'destination-out';
+      if (shape === 'circle') {
+        const gr = ctx.createRadialGradient(x, y, R * 0.8, x, y, R);
+        gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill();
+        return;
+      }
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const a = rot - Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? R * 0.5 : R;
@@ -1321,13 +1141,13 @@
       }
       ctx.closePath(); ctx.fill();
     }
-    function anim(from, to, dur, x, y, cat) {
+    function anim(from, to, dur, x, y, cat, shape) {
       return new Promise((res) => {
         if (reduceMotion) { cv.hidden = to > 0; if (to === 0) { W = cv.width = 2; H = cv.height = 2; frame(0, 0, 0, 0); cv.hidden = false; } res(); return; }
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         W = cv.width = Math.round(innerWidth * dpr); H = cv.height = Math.round(innerHeight * dpr);
         x *= dpr; y *= dpr;
-        const max = Math.hypot(Math.max(x, W - x), Math.max(y, H - y)) * (cat ? 1.4 : 2.1);
+        const max = Math.hypot(Math.max(x, W - x), Math.max(y, H - y)) * (cat ? 1.4 : shape === 'circle' ? 1.3 : 2.1);
         cv.hidden = false;
         const t0 = performance.now();
         let done = false;
@@ -1339,16 +1159,35 @@
         const stepFn = (now) => {
           if (done) return;
           const k = Math.min(1, (now - t0) / dur), e = k * k * (3 - 2 * k);
-          frame(x, y, (from + (to - from) * e) * max, e * 1.4 * (to > from ? -1 : 1), cat && { a: Math.min(1, e * 2.5) });
+          frame(x, y, (from + (to - from) * e) * max, e * 1.4 * (to > from ? -1 : 1), cat && { a: Math.min(1, e * 2.5) }, shape);
           if (k < 1) requestAnimationFrame(stepFn); else finish();
         };
         requestAnimationFrame(stepFn);
         setTimeout(finish, dur + 400);
       });
     }
+    // einfache Schwarzblende (Tueren: ganz kurz schwarz in der dunklen Oeffnung) - Deckkraft a0 -> a1
+    function fade(a0, a1, dur) {
+      return new Promise((res) => {
+        W = cv.width = 2; H = cv.height = 2;   // einfarbig: 2x2 Pixel, per CSS aufs ganze Bild gezogen
+        const put = (a) => { ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, W, H); ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, W, H); };
+        put(a0); cv.hidden = false;
+        const t0 = performance.now();
+        let done = false;
+        const finish = () => { if (done) return; done = true; put(a1); if (a1 <= 0) cv.hidden = true; res(); };
+        const stepFn = (now) => {
+          if (done) return;
+          const k = Math.min(1, (now - t0) / dur);
+          put(a0 + (a1 - a0) * k * k * (3 - 2 * k));
+          if (k < 1) requestAnimationFrame(stepFn); else finish();
+        };
+        if (reduceMotion) finish(); else { requestAnimationFrame(stepFn); setTimeout(finish, dur + 300); }
+      });
+    }
     return {
-      close: (x, y, d = 650, cat = false) => anim(1, 0, d, x ?? innerWidth / 2, y ?? innerHeight / 2, cat),
-      open:  (x, y, d = 650) => anim(0, 1, d, x ?? innerWidth / 2, y ?? innerHeight / 2),
+      close: (x, y, d = 650, cat = false, shape = 'star') => anim(1, 0, d, x ?? innerWidth / 2, y ?? innerHeight / 2, cat, shape),
+      open:  (x, y, d = 650, shape = 'star') => anim(0, 1, d, x ?? innerWidth / 2, y ?? innerHeight / 2, false, shape),
+      fade,
       hide:  () => { cv.hidden = true; },
     };
   })();
@@ -1361,61 +1200,85 @@
     for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
     return { hz: 262 + (h % 70) + [10, -15, 0, 8, 0][catIdx % 5], dur: 0.12 + ((h >> 7) % 5) / 100, rate: 3.6 + ((h >> 11) % 8) / 10 };
   }
-  // Stellen im Text, an denen ein Satz beginnt (erster Buchstabe; danach nach . ! ? … mit Leerzeichen oder Zeilenumbruch)
-  function sentenceStarts(t) {
-    const out = new Set();
-    let want = true;
-    for (let i = 0; i < t.length; i++) {
-      const ch = t[i];
-      if (want && /[\p{L}\d]/u.test(ch)) { out.add(i); want = false; }
-      else if (ch === '\n' || (/[.!?…]/.test(ch) && (i + 1 >= t.length || /\s/.test(t[i + 1])))) want = true;
-    }
+  // Stellen im Text, an denen ein Wort beginnt (Buchstabe oder Ziffer nach etwas anderem)
+  function wordStarts(t) {
+    const out = new Set(), isW = (ch) => /[\p{L}\d]/u.test(ch);
+    for (let i = 0; i < t.length; i++) if (isW(t[i]) && (i === 0 || !isW(t[i - 1]))) out.add(i);
     return out;
   }
   const Dialog = (() => {
-    const box = $('#dialog'), txt = $('#dlgText'), spk = $('#dlgSpeaker'), nxt = $('#dlgNext');
+    const box = $('#dialog'), txt = $('#dlgText'), spk = $('#dlgSpeaker'), nxt = $('#dlgNext'), lbl = nxt.querySelector('.dn-lbl');
     let lines = [], idx = 0, typing = null, full = '', done = null, openedAt = 0;
     let voice = null;   // sprechende Katze: Stimme statt Tipp-Klaengen
+    // Weiter-Hinweis (Wunsch 2026-09-30): A-Knopf bei Controller/Handy, Maus mit rechter Taste am PC; letzte Zeile "schließen"
+    const showDev = () => { const d = Input.st.device === 'keyboard' ? 'pc' : 'pad'; if (box.dataset.dev !== d) box.dataset.dev = d; };
     function typeLine() {
       clearInterval(typing);
       full = lines[idx]; txt.textContent = ''; nxt.classList.add('wait');
-      // Alien-Katze: pro Satz einmal "ZIP ZIP ZIP", sobald der Satz zu tippen beginnt
-      const starts = voice ? sentenceStarts(full) : null;
+      const last = idx >= lines.length - 1;
+      nxt.classList.toggle('last', last); lbl.textContent = last ? 'schließen' : 'weiter';
+      showDev();
+      // Alien-Katze: je Wort einmal "ZIP", sobald das Wort erscheint; laeuft die vorige Silbe noch, wartet das Wort
+      const starts = voice ? wordStarts(full) : null;
       if (voice) Snd.zipStop();
       if (reduceMotion) {
         txt.textContent = full; nxt.classList.remove('wait'); typing = null;
-        if (voice) for (let i = 0; i < starts.size; i++) Snd.zips(voice);
+        if (voice) for (let i = 0; i < starts.size; i++) Snd.zipWord(voice);
         return;
       }
-      let pos = 0;
+      let pos = 0, said = -1, holdTo = 0;
       typing = setInterval(() => {
+        if (voice && starts.has(pos) && said !== pos) {
+          said = pos;
+          const lag = Math.min(0.6, Snd.zipWord(voice));
+          if (lag > 0.03) holdTo = performance.now() + lag * 1000;
+          wordT = performance.now() + Math.max(0, lag) * 1000;   // da geht der Mund des Sprechers auf
+        }
+        if (performance.now() < holdTo) return;
         pos++;
         txt.textContent = full.slice(0, pos);
         const ch = full[pos - 1];
-        if (voice) { if (starts.has(pos - 1)) Snd.zips(voice); }
-        else if (pos % 2 === 0 && ch !== ' ') Snd.blip();
+        if (!voice && pos % 2 === 0 && ch !== ' ') Snd.blip();
         if (pos >= full.length) { clearInterval(typing); typing = null; nxt.classList.remove('wait'); }
       }, 22);
     }
-    function show(speaker, list, onDone) {
+    /* Dialoge halten das Spiel nicht an (Wunsch 2026-09-29): Welt und Figur laufen weiter. at = wo der Sprecher steht
+       (NPC, Schild) - wer sich mehr als AWAY m davon entfernt, beendet das Gespraech (siehe tick). */
+    const AWAY = 7;
+    let at = null, who = '', wordT = -9;
+    function show(speaker, list, onDone, where) {
       if (done) { const cb = done; done = null; cb(); }
       lines = Array.isArray(list) ? list : [list]; idx = 0; done = onDone || null;
       spk.textContent = speaker || ''; box.hidden = false; openedAt = performance.now();
-      voice = CAT_VOICES.get(speaker) || null;
+      voice = CAT_VOICES.get(speaker) || null; who = speaker || ''; at = where || null;
       typeLine();
     }
     function close() {
       clearInterval(typing); typing = null; box.hidden = true;
-      voice = null;
+      voice = null; who = ''; at = null;
       const cb = done; done = null; if (cb) cb();
     }
+    // true = der Druck hat geblaettert (dann springt A nicht)
     function advance() {
-      if (box.hidden || performance.now() - openedAt < 180) return;
-      if (typing) { clearInterval(typing); typing = null; txt.textContent = full; nxt.classList.remove('wait'); return; }
+      if (box.hidden || performance.now() - openedAt < 180) return false;
+      if (typing) { clearInterval(typing); typing = null; txt.textContent = full; nxt.classList.remove('wait'); return true; }
       if (++idx < lines.length) typeLine(); else close();
+      return true;
+    }
+    function tick() {
+      if (box.hidden) return;
+      showDev();   // Geraet gewechselt (Controller angefasst, Maus benutzt): Hinweis passt sich an
+      if (at && Math.hypot(pl.pos[0] - at[0], pl.pos[2] - at[2]) > AWAY) close();
+    }
+    // Mund des Sprechers 0..1: geht je Wort einmal auf (Katzen: genau mit ihrem Zip), zwischen den Zeilen zu
+    function talk() {
+      if (box.hidden || !typing) return 0;
+      const k = (performance.now() - wordT) / 190;
+      return k >= 0 && k < 1 ? Math.sin(k * Math.PI) : 0.12;
     }
     box.addEventListener('click', advance);
-    return { show, advance, close, get open() { return !box.hidden; } };
+    box.addEventListener('contextmenu', (e) => { e.preventDefault(); advance(); });   // Rechtsklick auf die Box (Maus frei)
+    return { show, advance, close, tick, talk, get open() { return !box.hidden; }, get speaker() { return box.hidden ? '' : who; } };
   })();
 
   /* ═══════════ HUD + Power-Anzeige ═══════════ */
@@ -1517,6 +1380,12 @@
     attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol; attribute vec2 aUV;
     uniform mat4 uProj; uniform mat4 uView; uniform mat4 uModel;
     uniform vec4 uRip; uniform float uRipOn; uniform float uTrip; uniform float uTime;
+    // Trip als Ganzes (Wunsch 2026-09-30, Schilder im Mandelbrot-Level): xyz = Fusspunkt; w = 0 jede Ecke fuer sich,
+    // 1 = starr mitwabern (wie die Umgebung an diesem Punkt), 2 = dazu sanft schwanken (Schilder: Brett und Schrift gleich)
+    uniform vec4 uTripAt;
+    // Trip-Stillstand (Wunsch 2026-09-30): xyz = Figur, w = 0..1 - je laenger sie steht, desto mehr driftet die Welt um
+    // sie herum auseinander (nah bei ihr bleibt alles ruhig)
+    uniform vec4 uDrift;
     varying vec3 vCol; varying vec3 vNrm; varying vec2 vUV; varying vec3 vWPos;
     void main() {
       vec3 p = aPos;
@@ -1529,10 +1398,22 @@
       vec4 wp = uModel * vec4(p, 1.0);
       if (uTrip > 0.0) {
         // Trip: die Welt atmet und wabert (seitlich mehr als in der Hoehe, damit die Fuesse nicht einsinken)
-        vec3 w = wp.xyz;
-        wp.xyz += uTrip * vec3(sin(w.y * 0.45 + w.z * 0.21 + uTime * 1.3) * 0.16,
-                               sin(w.x * 0.33 + w.z * 0.27 + uTime * 1.7) * 0.05,
-                               sin(w.y * 0.41 + w.x * 0.19 - uTime * 1.1) * 0.16);
+        vec3 w = uTripAt.w > 0.5 ? uTripAt.xyz : wp.xyz;
+        vec3 off = uTrip * vec3(sin(w.y * 0.45 + w.z * 0.21 + uTime * 1.3) * 0.16,
+                                sin(w.x * 0.33 + w.z * 0.27 + uTime * 1.7) * 0.05,
+                                sin(w.y * 0.41 + w.x * 0.19 - uTime * 1.1) * 0.16);
+        if (uTripAt.w > 1.5) off.xz += (wp.y - uTripAt.y) * uTrip * 0.04 * vec2(sin(uTime * 1.3 + uTripAt.x * 0.3), sin(uTime * 1.05 + uTripAt.z * 0.3));
+        if (uDrift.w > 0.0) {
+          // um die Figur drehen, von ihr wegtreiben, dazu grosse langsame Wogen - erst ab ein paar Metern Abstand
+          vec2 rel = w.xz - uDrift.xz;
+          float d = length(rel), k = uDrift.w * smoothstep(2.5, 14.0, d), sw = k * 0.25 * sin(uTime * 0.23);
+          vec2 rr = mat2(cos(sw), sin(sw), -sin(sw), cos(sw)) * rel;
+          off.xz += (rr - rel) + rel / max(d, 0.001) * k * d * 0.09 * (0.7 + 0.3 * sin(uTime * 0.41));
+          off += k * vec3(sin(w.z * 0.09 + uTime * 0.53) * 2.4,
+                          sin(w.x * 0.07 + w.z * 0.05 + uTime * 0.37) * 1.8 + (w.y - uDrift.y) * 0.12 * sin(uTime * 0.3),
+                          sin(w.x * 0.08 - uTime * 0.47) * 2.4);
+        }
+        wp.xyz += off;
       }
       vec4 vp = uView * wp;
       vWPos = wp.xyz;
@@ -1581,12 +1462,13 @@
         uv += vec2(sin(vUV.y * 23.0 + uArt * 0.8), cos(vUV.x * 19.0 - uArt * 0.6)) * (0.0022 + uSwirl * 0.006);
         uv = clamp(uv, vec2(0.002), vec2(0.998, 0.852));
       }
+      float ta = 1.0;   // Deckkraft aus der Textur (durchsichtige Stellen fallen weg, z. B. aussen am Apfelmaennchen)
       if (uUseTex > 0.5) {
         if (uTri > 0.0) {
           // Gelaende: Textur aus drei Richtungen, nach der Flaechenneigung gemischt (keine Streifen an steilen Haengen)
           vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
           base *= texture2D(uTex, vWPos.zy * uTri).rgb * w.x + texture2D(uTex, vWPos.xz * uTri).rgb * w.y + texture2D(uTex, vWPos.xy * uTri).rgb * w.z;
-        } else base *= texture2D(uTex, uv).rgb;
+        } else { vec4 tx = texture2D(uTex, uv); if (tx.a < 0.02) discard; base *= tx.rgb; ta = tx.a; }
       }
       if (uArt > 0.0) base *= 1.0 + uSwirl * 0.45;
       if (uDetail > 0.0) {
@@ -1615,7 +1497,7 @@
         c += (base * 0.7 + vec3(0.18, 0.22, 0.3)) * pow(1.0 - max(dot(n, v), 0.0), 3.0) * uRim;
       }
       float f = clamp((dist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-      gl_FragColor = vec4(mix(c, uFogCol, f), uAlpha);
+      gl_FragColor = vec4(mix(c, uFogCol, f), uAlpha * ta);
     }`;
   function compile(type, src) {
     const s = gl.createShader(type);
@@ -1631,7 +1513,7 @@
   gl.useProgram(prog);
   const A = {}, U = {};
   ['aPos', 'aNrm', 'aCol', 'aUV'].forEach((n) => { A[n] = gl.getAttribLocation(prog, n); gl.enableVertexAttribArray(A[n]); });
-  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri']
+  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift']
     .forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
   gl.enable(gl.DEPTH_TEST);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1694,6 +1576,47 @@
     q([-x, -y, -z], [-x, -y, z], [-x, y, z], [-x, y, -z], side);
     q([-x, y, z], [x, y, z], [x, y, -z], [-x, y, -z], top);
     q([-x, -y, -z], [x, -y, -z], [x, -y, z], [-x, -y, z], bot);
+  }
+  /* Prisma: konvexes Vieleck pts ([x, z] lokal, Reihenfolge egal) von y=0 bis y=h hochgezogen, oben um bev und auf Wunsch
+     unten um bevB gefast. col: Farbe oder {top, side, bottom}. Fuer Platten, Steine, Bretter und Bloecke, die nicht
+     wie glatte Quader aussehen sollen (Wunsch 2026-09-29). */
+  function prism(g, m, pts, h, col, bev = 0, bevB = 0) {
+    const top = col.top || col, side = col.side || col, bot = col.bottom || side, n = pts.length;
+    let area = 0;
+    for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; area += a[0] * b[1] - b[0] * a[1]; }
+    const Q = area > 0 ? pts.slice().reverse() : pts;   // von oben im Uhrzeigersinn -> Normalen zeigen nach aussen
+    const inset = (d) => Q.map((p, i) => {
+      if (d <= 0) return p;
+      const a = Q[(i + n - 1) % n], b = Q[(i + 1) % n];
+      const n1 = v3.norm([p[1] - a[1], 0, a[0] - p[0]]), n2 = v3.norm([b[1] - p[1], 0, p[0] - b[0]]);
+      const k = d / Math.max(0.2, 1 + n1[0] * n2[0] + n1[2] * n2[2]);
+      return [p[0] + (n1[0] + n2[0]) * k, p[1] + (n1[2] + n2[2]) * k];
+    });
+    const IT = inset(bev), IB = inset(bevB), W = (p, y) => P(m, p[0], y, p[1]);
+    const yT = h - bev, yB = bevB;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      g.quad(W(Q[i], yB), W(Q[j], yB), W(Q[j], yT), W(Q[i], yT), side);
+      if (bev > 0) g.quad(W(Q[i], yT), W(Q[j], yT), W(IT[j], h), W(IT[i], h), top);
+      if (bevB > 0) g.quad(W(IB[i], 0), W(IB[j], 0), W(Q[j], yB), W(Q[i], yB), bot);
+      if (i > 0 && j > 0) { g.tri(W(IT[0], h), W(IT[i], h), W(IT[j], h), top); g.tri(W(IB[0], 0), W(IB[j], 0), W(IB[i], 0), bot); }
+    }
+  }
+  // Block mit abgeschraegten senkrechten Kanten (Ecken um r gekappt) und gefaster Oberkante - mittig wie box()
+  function rbox(g, m, sx, sy, sz, col, r = 0.12, bev = r, bevB = 0) {
+    const x = sx / 2, z = sz / 2, c = Math.min(r, x * 0.45, z * 0.45);
+    prism(g, M4.mul(m, M4.from(0, -sy / 2, 0)), [[-x + c, -z], [x - c, -z], [x, -z + c], [x, z - c], [x - c, z], [-x + c, z], [-x, z - c], [-x, -z + c]],
+      sy, col, Math.min(bev, sy * 0.45), Math.min(bevB, sy * 0.45));
+  }
+  // unregelmaessiger Stein/Platte als Umriss: n Punkte auf einer Ellipse (rx, rz), leicht verschoben;
+  // sq > 2 = eckiger (Superellipse), damit der Umriss eine quadratische Kollision besser deckt
+  function stoneOutline(rnd, rx, rz, n = 7, sq = 2) {
+    const a0 = rnd() * TAU;
+    return Array.from({ length: n }, (_, i) => {
+      const a = a0 + (i + (rnd() - 0.5) * 0.45) / n * TAU, c = Math.cos(a), s = Math.sin(a);
+      const k = (0.92 + rnd() * 0.08) / Math.pow(Math.abs(c) ** sq + Math.abs(s) ** sq, 1 / sq);
+      return [c * rx * k, s * rz * k];
+    });
   }
   /* 64er-Look fuer Figuren: waehrend lowPoly(...) baut, werden Kugeln, Zylinder und Scheiben
      deutlich grober unterteilt (wenige, gut sichtbare Flaechen wie auf der Konsole). */
@@ -3054,6 +2977,20 @@ vec3 art(vec2 p) {
     sphere(g, M4.from(-0.17, 0.08, 0.3), 0.07, 0.17, 0.05, 6, 4, C.black);
     sphere(g, M4.from(0.17, 0.08, 0.3), 0.07, 0.17, 0.05, 6, 4, C.black);
   });
+  // Schluessel (Belohnung von Kater Grimm, Aufschliessen der Schluesseltuer): Kragen im Ursprung, Schaft entlang +z
+  // (steckt so ins Schloss), dicke Reide dahinter, Bart mit zwei Zaehnen am Ende
+  MESH.key = build((g) => {
+    const GOLD = hex('#ffcc1a'), GOLD_D = hex('#d99a10');
+    for (let i = 0; i < 14; i++) {
+      const a = i / 14 * TAU;
+      box(g, M4.from(0, Math.sin(a) * 0.24, -0.34 + Math.cos(a) * 0.24, 0, -a), 0.12, 0.14, 0.12, i % 2 ? GOLD : GOLD_D);
+    }
+    sphere(g, M4.from(0, 0, -0.34), 0.07, 0.07, 0.07, 6, 4, hex('#e03040'), true);   // Edelstein in der Reide
+    sphere(g, M4.from(0, 0, -0.04), 0.1, 0.1, 0.1, 8, 6, GOLD, true);                // Kragen
+    cyl(g, M4.from(0, 0, 0, 0, Math.PI / 2), 0.055, 0.055, 0.78, 8, GOLD);            // Schaft
+    box(g, M4.from(0, -0.13, 0.64), 0.07, 0.22, 0.12, GOLD_D);
+    box(g, M4.from(0, -0.1, 0.46), 0.07, 0.16, 0.08, GOLD_D);
+  });
   MESH.shadow = build((g) => disc(g, M4.from(0, 0, 0, 0, -Math.PI / 2, 0), 1, 16, C.black));
   MESH.cube = build((g) => box(g, I4, 1, 1, 1, C.white));
   MESH.ball = build((g) => sphere(g, I4, 1, 1, 1, 8, 6, C.white, true));
@@ -3090,12 +3027,6 @@ vec3 art(vec2 p) {
     for (let i = 0; i < 4; i++) q(bot[i], bot[(i + 1) % 4], top[(i + 1) % 4], top[i]);
   });
   MESH.marker = build((g) => starGeo(g, M4.from(0, 0, 0, 0, -Math.PI / 2, 0), 1.6, 0.02, hex('#ffe680')));
-  MESH.doorLeaf = build((g) => {
-    box(g, M4.from(1.5, 3.5, 0), 3, 7, 0.4, { top: C.woodDark, side: C.wood });
-    for (let i = 0; i < 4; i++) box(g, M4.from(0.35 + i * 0.75, 3.5, 0.22), 0.08, 6.6, 0.05, C.woodDark);
-    box(g, M4.from(2.6, 3.3, 0.3), 0.18, 0.6, 0.12, C.gold);
-  });
-  MESH.emblem = build((g) => planeGeo(g, I4, 3, 3, 1, 1, C.white));
   MESH.plaque = build((g) => planeGeo(g, I4, 2.9, 1, 1, 1, C.white));
 
   /* ═══════════ Glappo, die Alien-Katze — mehrere Entwuerfe ═══════════
@@ -3214,7 +3145,7 @@ vec3 art(vec2 p) {
     const HC = [0, 0.06, -0.02], HR = [0.31, 0.29, 0.31];
     const TC = [0, 0.06, 0], TR = [0.27, 0.35, 0.21];
     CAT_DEFS.push({
-      id: 'sphinx', name: 'Sphinx',
+      id: 'sphinx', name: 'Zip',   // heisst seit 2026-09-30 "Zip" (Kennung bleibt sphinx: Stimme, Speicher, Mitspieler)
       rig: { legX: 0.14, legY: 0.64, bodyY: 1.0, armX: 0.27, armY: 1.3, headY: 1.74, headZ: 0.05, tailY: 0.78, tailZ: -0.17 },
       head(g) {
         sphere(g, M4.from(...HC), HR[0], HR[1], HR[2], 24, 16, grad(HI, SK, 16), true);
@@ -3362,7 +3293,6 @@ vec3 art(vec2 p) {
   //    Blender (tools/blender/kappi.py). Ohne geladene Modelldatei gibt es Kappi nicht - siehe CATS.
   CAT_DEFS.push({
     id: 'kappi', name: 'Kappi', blenderOnly: true, eyes2d: true,
-    mouth: [0, -0.285, 0.438, 0.075, 0.05],   // Kopf-lokal: Mitte x y z, halbe Breite, halbe Hoehe (auf der Schnauze)
     rig: { legX: 0.155, legY: 0.672, bodyY: 0.887, armX: 0.32, armY: 1.078, headY: 1.63, headZ: 0.03, tailY: 0.66, tailZ: -0.24 },
   });
   /* Figuren im 64er-Look: grob unterteilt (lowPoly).
@@ -3374,7 +3304,7 @@ vec3 art(vec2 p) {
   // Eckpunkte fuer den verformbaren Titelkopf (TitleHead): gleiche Daten wie im hochgeladenen Mesh
   const cpuOf = (x) => (x ? { P: new Float32Array(x.pos || x.P), N: new Float32Array(x.nrm || x.N), C: new Float32Array(x.col || x.C) } : null);
   const CATS = lowPoly(() => CAT_DEFS.filter((d) => !d.blenderOnly || CAT_PARTS.every((k) => MODELS[d.id + '.' + k])).map((d) => {
-    const c = { id: d.id, name: d.name, rig: d.rig, glow: {}, cpu: {}, eyes2d: !!d.eyes2d, mouth: d.mouth || null };
+    const c = { id: d.id, name: d.name, rig: d.rig, glow: {}, cpu: {}, eyes2d: !!d.eyes2d };
     for (const k of CAT_PARTS) {
       if (!d[k]) continue;
       if (k !== 'head') { [c[k], c.glow[k]] = build2(d[k]); continue; }
@@ -3399,20 +3329,22 @@ vec3 art(vec2 p) {
     const X0 = -0.34, X1 = 0.34, Y0 = -0.19, Y1 = 0.2, NX = 26, NY = 16, SKIN = [126, 211, 106];
     const made = new Map();
     let texs = null;   // erst beim ersten Zeichnen bauen (signTexture braucht die spaeter angelegten Textur-Helfer)
-    const makeTexs = () => [0, 1, 2].map((st) => signTexture((c) => {
+    // lx/ly (-1..1): Blickrichtung - Iris, Pupille und Glanzpunkt wandern im Augenweiss (Titelkopf, nach dem Vorbild-Video)
+    const paint = (c, st, lx = 0, ly = 0) => {
       const px = (x) => (x - X0) * 1000, py = (y) => (Y1 - y) * 1000;
       c.fillStyle = `rgb(${SKIN})`; c.fillRect(0, 0, 680, 390);
       c.lineJoin = 'round'; c.lineCap = 'round';
+      const ix = lx * 36, iy = -ly * 42;
       for (const s of [-1, 1]) {
         c.save(); c.translate(px(s * 0.152), py(0)); c.rotate(-s * 0.1);
         const eye = () => { c.beginPath(); c.ellipse(0, 0, 108, 142, 0, 0, TAU); };
         if (st < 2) {
           eye(); c.fillStyle = '#fff'; c.fill();
           c.save(); eye(); c.clip();
-          c.fillStyle = '#1aa8a0'; c.beginPath(); c.ellipse(s * -12, 12, 68, 92, 0, 0, TAU); c.fill();
+          c.fillStyle = '#1aa8a0'; c.beginPath(); c.ellipse(s * -12 + ix, 12 + iy, 68, 92, 0, 0, TAU); c.fill();
           c.strokeStyle = '#0d6f6a'; c.lineWidth = 10; c.stroke();
-          c.fillStyle = '#0b0e14'; c.beginPath(); c.ellipse(s * -14, 14, 34, 58, 0, 0, TAU); c.fill();
-          c.fillStyle = '#fff'; c.beginPath(); c.ellipse(s * 10, -28, 20, 24, 0, 0, TAU); c.fill();
+          c.fillStyle = '#0b0e14'; c.beginPath(); c.ellipse(s * -14 + ix * 1.1, 14 + iy * 1.1, 34, 58, 0, 0, TAU); c.fill();
+          c.fillStyle = '#fff'; c.beginPath(); c.ellipse(s * 10 + ix * 0.9, -28 + iy * 0.9, 20, 24, 0, 0, TAU); c.fill();
           if (st === 1) {   // halb zu: Lid (Fell) von oben
             c.fillStyle = `rgb(${SKIN})`; c.fillRect(-130, -160, 260, 160);
             c.strokeStyle = '#0b0e14'; c.lineWidth = 12; c.beginPath(); c.moveTo(-110, 0); c.lineTo(110, 0); c.stroke();
@@ -3425,7 +3357,28 @@ vec3 art(vec2 p) {
         }
         c.restore();
       }
-    }, 680, 390, 512, 256));
+    };
+    const makeTexs = () => [0, 1, 2].map((st) => signTexture((c) => paint(c, st), 680, 390, 512, 256));
+    // Titelkopf: eine eigene Textur, die nur neu gemalt wird, wenn sich Blick (auf 1/12 gerundet) oder Lid aendern
+    let dyn = null;
+    function lookTex(st, lx, ly) {
+      const qx = Math.round(clamp(lx, -1, 1) * 12), qy = Math.round(clamp(ly, -1, 1) * 12), key = st + ':' + qx + ':' + qy;
+      if (!dyn) {
+        const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+        const c = cv.getContext('2d'); c.scale(512 / 680, 256 / 390);
+        dyn = { cv, c, tex: gl.createTexture(), key: '' };
+        gl.bindTexture(gl.TEXTURE_2D, dyn.tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      }
+      if (dyn.key !== key) {
+        dyn.key = key; paint(dyn.c, st, qx / 12, qy / 12);
+        gl.bindTexture(gl.TEXTURE_2D, dyn.tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, dyn.cv);
+        gl.generateMipmap(gl.TEXTURE_2D);
+      }
+      return dyn.tex;
+    }
     // Flaeche: fuer jeden Rasterpunkt die vorderste Fell-Flaeche des Kopfes (x/y fest, z gesucht), knapp davor
     function build_(G) {
       const P = G.cpu.head.P, C = G.cpu.head.C, gx = (X1 - X0) / NX, gy = (Y1 - Y0) / NY, Z = new Float32Array((NX + 1) * (NY + 1)).fill(-9);
@@ -3458,16 +3411,18 @@ vec3 art(vec2 p) {
       });
     }
     return {
-      draw(G, hm, bl, o) {
+      // look = [x, y] (-1..1): Pupillen schauen dorthin (nur der Titelkopf), sonst die festen Bilder
+      draw(G, hm, bl, o, look) {
         if (!made.has(G)) made.set(G, build_(G));
         if (!texs) texs = makeTexs();
-        draw(made.get(G), hm, { ...o, tex: texs[bl > 0.75 ? 2 : bl > 0.3 ? 1 : 0] });
+        const st = bl > 0.75 ? 2 : bl > 0.3 ? 1 : 0;
+        draw(made.get(G), hm, { ...o, tex: look && st < 2 ? lookTex(st, look[0], look[1]) : texs[st] });
       },
     };
   })();
   const C_WHITE = [1, 1, 1];
-  function drawEyes(G, hm, bl, o) {
-    if (G.eyes2d) { FaceDecal.draw(G, hm, bl, o); return; }
+  function drawEyes(G, hm, bl, o, look) {
+    if (G.eyes2d) { FaceDecal.draw(G, hm, bl, o, look); return; }
     if (G.lids && bl > 0.02) draw(G.lids, M4.mul(hm, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), o);
   }
   // "Z" fuer die Schlafblasen (zeigt nach +z)
@@ -3476,18 +3431,26 @@ vec3 art(vec2 p) {
     box(g, M4.from(0, -0.26, 0), 0.52, 0.12, 0.06, C.white);
     box(g, M4.from(0, 0, 0, 0, 0, -0.78), 0.12, 0.66, 0.06, C.white);
   });
-  // Standard ist die Astro-Katze; gewaehlt wird im Pausenmenue (ESC), gemerkt im Browser
-  let catIdx = Math.max(0, CATS.findIndex((c) => c.id === 'astro'));
+  /* Waehlbar sind erstmal nur Zip (die Sphinx-Katze) und Kappi (Wunsch 2026-09-30). Knuddel, Astro-Katze und Neon
+     bleiben als Modelle im Spiel - Bewohner (K.life.npc cat: n) und Mitspieler benutzen sie weiter -, stehen aber nicht
+     mehr zur Wahl. Standard ist Kappi (ohne Modelldatei Zip); gewaehlt wird im Pausenmenue, gemerkt im Browser. */
+  const PLAYABLE = CATS.map((c, i) => (c.id === 'sphinx' || c.id === 'kappi' ? i : -1)).filter((i) => i >= 0);
+  let catIdx = PLAYABLE.find((i) => CATS[i].id === 'kappi') ?? PLAYABLE[0] ?? 0;
   try {
     const want = localStorage.getItem('glappa64-cat');
     const i = CATS.findIndex((c) => c.id === want);
-    if (i >= 0) catIdx = i;
+    if (PLAYABLE.includes(i)) catIdx = i;   // alte Wahl (Knuddel/Astro/Neon) faellt auf den Standard zurueck
   } catch (e) { /* ohne Speicher: Standard */ }
   let CAT = CATS[catIdx];
   function setCat(i) {
     catIdx = ((i % CATS.length) + CATS.length) % CATS.length; CAT = CATS[catIdx];
     try { localStorage.setItem('glappa64-cat', CAT.id); } catch (e) { /* egal */ }
     return CAT.name;
+  }
+  // naechste waehlbare Figur (dir = +1 / -1)
+  function stepCat(dir) {
+    const n = PLAYABLE.length, p = PLAYABLE.indexOf(catIdx);
+    return n ? PLAYABLE[(((p < 0 ? 0 : p + dir) % n) + n) % n] : catIdx;
   }
   // Grummel: griesgraemiger Laufstein mit einem Auge
   MESH.grummel = buildLP((g) => {
@@ -3705,31 +3668,93 @@ vec3 art(vec2 p) {
      castleDoor liefert das Tuer-Objekt zurueck - wer die Tuer benutzt, haengt es als .fx an seine Tuer-Daten. */
   const DOOR_WINGS = {};
   // Ein Fluegel: Scharnier bei x = 0, freie Kante bei x = half, Mitte der Dicke bei z = 0; Beschlaege auf beiden Seiten
-  function doorWingMesh(half, h, wood) {
-    const key = [half.toFixed(2), h.toFixed(2), ...wood.map((v) => v.toFixed(3))].join('/');
+  // deco: 0 = schlicht, 'star' = Sterntuer (grosser Stern mit Augen ueber beide Fluegel), 'key' = Schluesseltuer (Schloss)
+  function doorWingMesh(half, h, wood, deco = 0) {
+    const key = [half.toFixed(2), h.toFixed(2), ...wood.map((v) => v.toFixed(3)), deco].join('/');
     if (DOOR_WINGS[key]) return DOOR_WINGS[key];
     return (DOOR_WINGS[key] = build((g) => {
+      if (deco === 'star') starWingDeco(g, half, h);
+      if (deco === 'key') keyWingDeco(g, half, h);
       const DK = shade(wood, 0.6), IRON = hex('#2a2a32'), BRASS = hex('#d8aa4a');
       box(g, M4.from(half / 2, h / 2, 0), half - 0.03, h, 0.24, wood);
       for (const zs of [1, -1]) {
         for (let k = 1; k < 3; k++) box(g, M4.from(half * k / 3, h / 2, zs * 0.14), 0.06, h - 0.2, 0.06, DK);
-        for (const yy of [0.2, 0.78]) {
+        // Eisenbaender (nicht bei der Sterntuer: dort ist das Holz schlicht wie im Vorbild, der Stern steht fuer sich)
+        if (deco !== 'star') for (const yy of [0.2, 0.78]) {
           box(g, M4.from(half / 2, h * yy, zs * 0.15), half - 0.25, 0.18, 0.06, IRON);
           for (let k = 0; k < 4; k++) sphere(g, M4.from(half / 2 + (k - 1.5) * (half - 0.5) / 3, h * yy, zs * 0.19), 0.05, 0.05, 0.04, 5, 3, hex('#6a6a74'), true);
         }
-        const hx = half - Math.min(0.4, half * 0.25), hy = h * 0.48;
+        // Knauf; bei der Sterntuer unter dem Stern (sonst saesse er mitten im Stern)
+        const hx = half - Math.min(0.4, half * 0.25), hy = deco === 'star' ? h * 0.6 - Math.min(half * 0.8, h * 0.3) - 0.4 : h * 0.48;
         sphere(g, M4.from(hx, hy, zs * 0.18), 0.1, 0.1, 0.06, 6, 4, BRASS, true);
         for (let k = 0; k < 10; k++) { const a = k / 10 * TAU; box(g, M4.from(hx + Math.sin(a) * 0.17, hy - 0.2 - Math.cos(a) * 0.17, zs * 0.21, 0, 0, -a), 0.05, 0.11, 0.04, BRASS); }
       }
       box(g, M4.from(half - 0.02, h / 2, 0), 0.04, h, 0.26, DK);   // Anschlagleiste = Mittelfuge bei geschlossener Tuer
     }));
   }
+  /* Sterntuer wie im Vorbild (Wunsch 2026-09-29/30, Screenshot des Users): EIN grosser Stern mit Augen mitten auf der
+     Tuer, keine Zahl darauf (wie viele Sterne es braucht, sagt die Tuer, wenn man sie anfasst). Jeder Fluegel traegt die
+     Haelfte an der Mittelfuge - geschlossen ergeben beide den ganzen Stern (der rechte Fluegel ist gespiegelt). Der Stern
+     ist erhaben (Mitte vorgewoelbt, Zacken flach) und hat je Haelfte ein schwarzes, hochovales Auge. */
+  function starWingDeco(g, half, h) {
+    const GOLD = hex('#ffd21f'), GOLD_D = hex('#d9a414');
+    const R = Math.min(half * 0.8, h * 0.3), cy = h * 0.6, z0 = 0.18, RISE = R * 0.12;
+    const pts = [];
+    for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? R * 0.44 : R; pts.push([half + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+    // nur der Teil links der Fuge (Sutherland-Hodgman an x = half)
+    const poly = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length], ia = a[0] <= half + 1e-6, ib = b[0] <= half + 1e-6;
+      if (ia) poly.push(a);
+      if (ia !== ib) { const t = (half - a[0]) / (b[0] - a[0]); poly.push([half, a[1] + (b[1] - a[1]) * t]); }
+    }
+    const c = [half, cy];
+    for (const zs of [1, -1]) {
+      for (let i = 0; i < poly.length; i++) {
+        const p = poly[i], q = poly[(i + 1) % poly.length], col = i % 2 ? GOLD : GOLD_D;
+        if (zs > 0) g.tri([c[0], c[1], z0 + RISE], [p[0], p[1], z0], [q[0], q[1], z0], col);
+        else g.tri([c[0], c[1], -z0 - RISE], [q[0], q[1], -z0], [p[0], p[1], -z0], col);
+      }
+      // Auge: hochoval, schwarz, knapp vor der gewoelbten Flaeche
+      const ex = half - R * 0.2, ey = cy + R * 0.1, ez = z0 + RISE * 0.8 + 0.03;   // Flaeche liegt dort bei ~0,72 RISE
+      sphere(g, M4.from(ex, ey, zs * ez), R * 0.075, R * 0.19, 0.035, 8, 6, C.black, true);
+      // Goldrahmen: oben, unten, an der Scharnierseite
+      box(g, M4.from(half / 2, h - 0.12, zs * 0.15), half - 0.06, 0.14, 0.06, GOLD);
+      box(g, M4.from(half / 2, 0.12, zs * 0.15), half - 0.06, 0.14, 0.06, GOLD);
+      box(g, M4.from(0.1, h / 2, zs * 0.15), 0.12, h - 0.1, 0.06, GOLD);
+    }
+  }
+  /* Schluesseltuer (Wunsch 2026-09-30, wie die Schluesseltueren im Vorbild): ein grosses goldenes Schloss mit Schluesselloch
+     mitten an der Fuge, je Fluegel eine Haelfte; Hoehe wie im Aufschliessen (DoorSeq.keyPose: min(2,1 m, 0,42 h)) */
+  function keyWingDeco(g, half, h) {
+    const GOLD = hex('#ffd21f'), GOLD_D = hex('#d9a414'), HOLE = hex('#140c06');
+    const R = 0.5, cy = Math.min(2.1, h * 0.42), z0 = 0.19, RISE = 0.07, N = 12;
+    for (const zs of [1, -1]) {
+      const T = (x, y, z) => [x, y, zs * z];
+      const tri = (a, b, c2, col) => (zs > 0 ? g.tri(a, b, c2, col) : g.tri(a, c2, b, col));
+      for (let i = 0; i < N; i++) {   // halbe Scheibe links der Fuge, Mitte erhaben
+        const a0 = Math.PI / 2 + i / N * Math.PI, a1 = Math.PI / 2 + (i + 1) / N * Math.PI;
+        tri(T(half, cy, z0 + RISE), T(half + Math.cos(a0) * R, cy + Math.sin(a0) * R, z0), T(half + Math.cos(a1) * R, cy + Math.sin(a1) * R, z0), i % 2 ? GOLD : GOLD_D);
+      }
+      // Schluesselloch: runder Kopf und Keil nach unten, knapp vor der Wölbung
+      const hz = z0 + RISE + 0.012;
+      for (let i = 0; i < 6; i++) {
+        const a0 = Math.PI / 2 + i / 6 * Math.PI, a1 = Math.PI / 2 + (i + 1) / 6 * Math.PI, hy = cy + 0.1;
+        tri(T(half, hy, hz), T(half + Math.cos(a0) * 0.11, hy + Math.sin(a0) * 0.11, hz), T(half + Math.cos(a1) * 0.11, hy + Math.sin(a1) * 0.11, hz), HOLE);
+      }
+      tri(T(half, cy + 0.08, hz), T(half - 0.05, cy + 0.08, hz), T(half - 0.1, cy - 0.24, hz), HOLE);
+      tri(T(half, cy + 0.08, hz), T(half - 0.1, cy - 0.24, hz), T(half, cy - 0.24, hz), HOLE);
+      // Beschlag darunter: Riegel quer ueber die Fuge
+      box(g, M4.from(half - 0.35, cy - R - 0.25, zs * 0.2), 0.7, 0.2, 0.08, GOLD_D);
+    }
+  }
   function castleDoor(L, x, y, z, ry, o = {}) {
     const g = L.geo, gw = L.glowGeo, M = M4.from(x, y, z, ry), T = (m) => M4.mul(M, m);
     const w = o.w || 3.6, h = o.h || 4.4, arch = o.arch !== false, half = w / 2;
     const WOOD = o.wood || hex('#6a3a14'), DK = shade(WOOD, 0.6), IRON = hex('#2a2a32');
-    const ST = o.stone || { top: hex('#d8d0c0'), side: hex('#b8ae9c') }, KEY = { top: shade(ST.top, 1.05), side: shade(ST.side, 1.08) };
-    const fx = { M, pos: [x, y, z], ry, fwd: [Math.sin(ry), Math.cos(ry)], half, h, mesh: doorWingMesh(half, h, WOOD), open: [0, 0] };
+    const ST = o.stone || { top: hex('#d8d0c0'), side: hex('#b8ae9c') };
+    const KEY = o.stars ? { top: hex('#ffd21f'), side: hex('#d8a818') } : { top: shade(ST.top, 1.05), side: shade(ST.side, 1.08) };   // Sterntuer: goldene Schlusssteine
+    const fx = { M, pos: [x, y, z], ry, fwd: [Math.sin(ry), Math.cos(ry)], half, h, mesh: doorWingMesh(half, h, WOOD, o.stars ? 'star' : o.key ? 'key' : 0), open: [0, 0] };
     L.doorFx.push(fx);
     if (o.bare) {
       if (arch) { disc(g, T(M4.from(0, h, 0.24)), half, 18, WOOD, 0, Math.PI); disc(g, T(M4.from(0, h, 0.005)), half, 18, WOOD, 0, Math.PI); }
@@ -3785,8 +3810,10 @@ vec3 art(vec2 p) {
   // Fluegel zeichnen: open[0] = linker, open[1] = rechter Fluegel (von vorn gesehen); Winkel > 0 schwingt nach hinten (-z)
   function drawDoorFx(f) {
     if (f.open[0] || f.open[1]) drawDoorHole(f);
+    // verschlossen (Sterntuer mit zu wenig Sternen): die Fluegel ruetteln kurz im Rahmen
+    const rk = f.rattle != null ? clock - f.rattle : 9, sh = rk < 0.6 ? Math.sin(rk * 48) * 0.03 * (1 - rk / 0.6) : 0;
     for (let k = 0; k < 2; k++) {
-      const s = k ? 1 : -1, a = f.open[k];
+      const s = k ? 1 : -1, a = f.open[k] + (k ? -sh : sh);
       draw(f.mesh, M4.mul(f.M, M4.mul(M4.from(s * f.half, 0, 0.12, s < 0 ? a : -a), M4.from(0, 0, 0, 0, 0, 0, -s, 1, 1))));
     }
   }
@@ -3990,11 +4017,27 @@ vec3 art(vec2 p) {
       const [bx, bz] = RIM[(i + 1) % RIM.length];
       g.quad([ax, -1.6, az], [bx, -1.6, bz], [bx, 0, bz], [ax, 0, az], C.dirtDark);
     });
-    // Bruecke
-    L.block(0, 0.05, -31, 6, 0.5, 7.4, { top: C.wood, side: C.woodDark }, 'bridge');
-    for (let z = -34; z <= -28; z += 1.2) box(g, M4.from(0, 0.31, z), 6, 0.02, 0.08, C.woodDark);
-    L.block(-3.1, 0.8, -31, 0.3, 1.1, 7.4, C.woodDark, 'rail');
-    L.block(3.1, 0.8, -31, 0.3, 1.1, 7.4, C.woodDark, 'rail');
+    // Bruecke: Kollision wie gehabt (unsichtbare Quader), zu sehen sind Tragbalken, einzelne Bohlen mit Fugen und ein
+    // Gelaender aus Pfosten und Handlauf statt glatter Kaesten
+    L.block(0, 0.05, -31, 6, 0.5, 7.4, C.wood, 'bridge', false);
+    L.block(-3.1, 0.8, -31, 0.3, 1.1, 7.4, C.woodDark, 'rail', false);
+    L.block(3.1, 0.8, -31, 0.3, 1.1, 7.4, C.woodDark, 'rail', false);
+    {
+      const br = seeded(31), WOOD_T = { top: C.wood, side: C.woodDark };
+      for (const sx of [-1, 1]) rbox(g, M4.from(sx * 2.3, -0.02, -31), 0.55, 0.4, 7.9, C.woodDark, 0.12, 0.08, 0.06);   // Tragbalken
+      for (let z = -34.45; z < -27.4; z += 0.5) {
+        const c = shade(C.wood, 0.9 + br() * 0.16);
+        rbox(g, M4.from((br() - 0.5) * 0.14, 0.2 + (br() - 0.5) * 0.02, z, (br() - 0.5) * 0.03), 5.9 + br() * 0.2, 0.2, 0.44, { top: c, side: shade(c, 0.78) }, 0.07, 0.04);
+      }
+      for (const sx of [-1, 1]) {
+        for (const z of [-34.45, -32.7, -31, -29.3, -27.55]) {
+          rbox(g, M4.from(sx * 3.1, 0.82, z), 0.3, 1.16, 0.3, WOOD_T, 0.07, 0.05);
+          sphere(g, M4.from(sx * 3.1, 1.45, z), 0.17, 0.12, 0.17, 8, 4, C.woodDark, true);   // Knauf
+        }
+        rbox(g, M4.from(sx * 3.1, 1.3, -31), 0.24, 0.16, 7.2, WOOD_T, 0.07, 0.05, 0.04);   // Handlauf
+        rbox(g, M4.from(sx * 3.1, 0.72, -31), 0.12, 0.12, 7.0, C.woodDark, 0.04, 0.03, 0.03);
+      }
+    }
 
     // ── Schloss ──
     // Aussehen: Blender-Modell castle.body (tools/blender/castle.py, eigener Entwurf nach dem Aufbau eines
@@ -4041,7 +4084,9 @@ vec3 art(vec2 p) {
     // Tor
     box(g, M4.from(0, 2.6, -38.05), 4.6, 5.2, 0.04, hex('#0c0806'));   // dunkel dahinter
     const gateFx = castleDoor(L, 0, 0, -37.98, 0, { w: 4.6, h: 5.2, bare: true, wood: hex('#5a3414') });
-    L.door = { pos: [0, 0, -38.2], to: 'hall', label: 'Eintreten', spawn: [0, 0, 13], face: Math.PI, yaw: 0, fx: gateFx };
+    // Ankunft 4,5 m vor der Hallentuer (z 20): nah genug, dass DoorSeq sie als Ankunftstuer findet (vorher 7 m -> Kamera
+    // stand draussen vor der geschlossenen Tuer)
+    L.door = { pos: [0, 0, -38.2], to: 'hall', label: 'Eintreten', spawn: [0, 0, 15.5], face: Math.PI, yaw: 0, fx: gateFx };
 
     // ── Garten-Deko und Parcours ──
     const tree = (x, z, s = 1) => {
@@ -4051,12 +4096,22 @@ vec3 art(vec2 p) {
     };
     [[-40, -8], [-56, 22, 1.2], [44, 36], [58, 8, 1.1], [-26, 48, .9], [22, 50], [-54, -52, 1.3], [60, -50, 1.2],
      [-14, 70], [14, 72, 1.1], [-30, 80, 1.2], [32, 82], [-78, 62, 1.3], [62, 20, 0.9], [88, 8, 1.2], [-40, -86, 1.2], [44, -88, 1.1], [70, -70, 1.3], [-66, -84]].forEach((t) => tree(...t));
-    // Stufenhuegel
-    [[16, 1.2], [12, 2.4], [8, 3.6], [4, 4.8]].forEach(([s, h]) => L.block(-42, h / 2, 24, s, h, s, { top: C.grassA, side: C.dirt }, 'hill'));
-    // Schwebende Steine zur Saeule
-    L.block(30, 0.6, 15, 3, 1.2, 3, { top: C.stone, side: C.stoneDark }, 'stone');
-    [[34.5, 2.6, 11], [38.5, 4.0, 6.5], [42, 5.4, 1.5], [45, 6.8, -4]].forEach(([x, y, z]) => L.block(x, y - 0.4, z, 3, 0.8, 3, { top: C.stone, side: C.stoneDark }, 'stone'));
-    L.block(48, 4.1, -10, 4, 8.2, 4, { top: C.stone, side: C.stoneDark }, 'pillar');
+    // Stufenhuegel: Stufen mit gekappten Ecken und Grasnarbe ueber der Erdkante (Kollision bleibt quadratisch)
+    [[16, 1.2], [12, 2.4], [8, 3.6], [4, 4.8]].forEach(([s, h]) => {
+      L.block(-42, h / 2, 24, s, h, s, C.grassA, 'hill', false);
+      rbox(g, M4.from(-42, h / 2 - 0.1, 24), s, h - 0.2, s, C.dirt, 0.45, 0.1);
+      rbox(g, M4.from(-42, h - 0.12, 24), s + 0.14, 0.24, s + 0.14, { top: C.grassA, side: shade(C.grassA, 0.8) }, 0.5, 0.12, 0.06);
+    });
+    // Schwebende Steine zur Saeule: Felsbrocken mit gefasten Kanten oben und unten statt Quader
+    const ROCK = { top: C.stone, side: C.stoneDark, bottom: shade(C.stoneDark, 0.8) }, rk = seeded(77);
+    const rock = (x, y, z, sx, sy, sz) => prism(g, M4.from(x, y, z), stoneOutline(rk, sx * 0.52, sz * 0.52, 9, 4), sy, ROCK, 0.18, 0.2);
+    L.block(30, 0.6, 15, 3, 1.2, 3, ROCK, 'stone', false); rock(30, 0, 15, 3, 1.2, 3);
+    [[34.5, 2.6, 11], [38.5, 4.0, 6.5], [42, 5.4, 1.5], [45, 6.8, -4]].forEach(([x, y, z]) => { L.block(x, y - 0.4, z, 3, 0.8, 3, ROCK, 'stone', false); rock(x, y - 0.8, z, 3, 0.8, 3); });
+    // Saeule: gekappte Kanten, Sockel und Kapitell
+    L.block(48, 4.1, -10, 4, 8.2, 4, ROCK, 'pillar', false);
+    rbox(g, M4.from(48, 4.1, -10), 3.7, 8.2, 3.7, { top: C.stone, side: C.stoneDark }, 0.5, 0.2);
+    rbox(g, M4.from(48, 0.35, -10), 4.3, 0.7, 4.3, { top: C.stone, side: shade(C.stoneDark, 0.92) }, 0.6, 0.2);
+    rbox(g, M4.from(48, 7.95, -10), 4.3, 0.5, 4.3, { top: C.stone, side: shade(C.stoneDark, 0.92) }, 0.6, 0.15, 0.12);
     // Pilz-Plattform + Kiste
     cyl(g, M4.from(-15, 0, 40), 0.9, 0.8, 3, 8, hex('#f2e6c8'));
     sphere(g, M4.from(-15, 3, 40), 3.2, 1.4, 3.2, 12, 4, (i, j) => (i % 3 === 0 && j === 1) ? C.white : C.red, false, 0, Math.PI / 2);
@@ -4108,12 +4163,22 @@ vec3 art(vec2 p) {
 
     // ── Steinweg vom Tunnel bis zur Bruecke, runder Platz um die Sternmarke, Laternen ──
     const rnd = seeded(4711), SLAB = [hex('#c9c2b2'), hex('#b8b1a2'), hex('#d4cdbd')];
+    // je Reihe zwei unregelmaessige, gefaste Steinplatten mit Grasfugen statt einer rechteckigen Platte
+    const flag = (x, z, rx, rz, c) => prism(g, M4.from(x, -0.03, z, (rnd() - 0.5) * 0.1), stoneOutline(rnd, rx, rz, 7, 3), 0.1, { top: c, side: shade(c, 0.72) }, 0.035);
     for (let z = 90; z > -27; z -= 2.3) {
       if (z < 14 && z > -6) continue;
-      box(g, M4.from((rnd() - 0.5) * 0.5, 0.03, z, (rnd() - 0.5) * 0.12), 4.4 + rnd() * 0.8, 0.06, 1.95, SLAB[Math.floor(rnd() * 3)]);
+      const wl = 1.9 + rnd() * 0.9, wr = 4.66 - wl, dx = (rnd() - 0.5) * 0.3;
+      flag(-2.4 + wl / 2 + dx, z + (rnd() - 0.5) * 0.15, wl / 2, 0.98, shade(SLAB[Math.floor(rnd() * 3)], 0.95 + rnd() * 0.08));
+      flag(2.4 - wr / 2 + dx, z + (rnd() - 0.5) * 0.15, wr / 2, 0.98, shade(SLAB[Math.floor(rnd() * 3)], 0.95 + rnd() * 0.08));
     }
     cyl(g, M4.from(0, -0.2, 4), 9.6, 9.6, 0.225, 28, C.stoneDark, hex('#d8d0bf'));
-    for (let i = 0; i < 28; i++) { const a = i / 28 * TAU; box(g, M4.from(Math.cos(a) * 9.9, 0.08, 4 + Math.sin(a) * 9.9, -a), 0.5, 0.16, 2.2, C.stoneDark); }
+    // Bordsteine als gebogene Stuecke mit Fugen; innen ein Ring aus dunkleren Bogenplatten um die Sternmarke
+    const arcStone = (r0, r1, a0, a1, y, h, c, bev) => {
+      const am = (a0 + a1) / 2, pts = [[r0, a0], [r1, a0], [r1, am], [r1, a1], [r0, a1]].map(([r, a]) => [Math.cos(a) * r, Math.sin(a) * r]);
+      prism(g, M4.from(0, y, 4), pts, h, { top: c, side: shade(c, 0.78) }, bev);
+    };
+    for (let i = 0; i < 28; i++) arcStone(9.55, 10.3, (i + 0.04) / 28 * TAU, (i + 0.96) / 28 * TAU, -0.02, 0.2, shade(C.stoneDark, 0.94 + rnd() * 0.1), 0.05);
+    for (let i = 0; i < 16; i++) arcStone(2.5, 3.2, (i + 0.05) / 16 * TAU, (i + 0.95) / 16 * TAU, 0.0, 0.05, shade(hex('#b3aa98'), 0.95 + rnd() * 0.08), 0.015);
     for (const z of [22, 36, 50, 64, 78, -12, -22]) for (const sx of [-1, 1]) K.lamp(sx * 4.2, z);
 
     // ── Sandweg: Schleife um die grosse Wiese, beginnt und endet am runden Platz ──
@@ -4130,8 +4195,9 @@ vec3 art(vec2 p) {
         const mx = Math.cos(am) * LOOP.rx, mz = LOOP.cz + Math.sin(am) * LOOP.rz;
         if (Math.hypot(mx, mz - 4) < 10.4) continue;              // im runden Platz: dort liegen schon Steine
         const hw = LOOP.w / 2, c = shade(i % 3 ? SAND : SAND2, 0.96 + ((i * 7) % 5) * 0.02);
+        // nur EINE Flaeche mit Normale nach oben: eine zweite, umgekehrt gewickelte Kopie (Normale nach unten = dunkel)
+        // lag an derselben Stelle und flackerte mit ihr um die Wette - dunkle, gezackte Flecken im Weg (Video 2026-09-29)
         g.quad(pt(a0, -hw), pt(a1, -hw), pt(a1, hw), pt(a0, hw), c);
-        g.quad(pt(a0, hw), pt(a1, hw), pt(a1, -hw), pt(a0, -hw), c);   // beidseitig, egal wie herum gewickelt
       }
     }
 
@@ -4407,7 +4473,7 @@ vec3 art(vec2 p) {
     K.life.npc(-62, -20, 'Fischerin Ada', ['Die Fische springen heute. Gutes Zeichen.',
       'Der Teich ist flach — du kannst hindurchwaten.'], { cat: 0, r: 4, tint: '#4ab0d8', mix: 0.35 });
     K.life.npc(-9, -24, 'Wache Bruno', ['Willkommen im Schlossgarten!',
-      'Oben im Schloss ist eine Tür mit Sternen drauf. Vier Sterne, dann geht sie auf.'], { cat: 3, r: 3, tint: '#b0b8c8', mix: 0.4 });
+      'Oben im Schloss ist eine Tür mit einem großen Stern drauf. Zehn Sterne, dann geht sie auf.'], { cat: 3, r: 3, tint: '#b0b8c8', mix: 0.4 });
 
     // ── Muenzen ──
     [[-40, 6.1, 24], [48, 9.3, -10], [-16, -0.2, -31], [-15, 4.4, 40], [0, 11.6, -82], [42, 6.8, 1.5], [-60, 1.1, 52], [0, 8.2, 14]]
@@ -4534,21 +4600,13 @@ vec3 art(vec2 p) {
     // Unter der Galerie: links hinab in den Keller, rechts hinaus in den Schlosshof (Schild neben der Tuer)
     hubDoor(L, -14, 0, balZ0, 's', 'keller', 'Keller', '\u{1F56F}\u{FE0F}', '#ffb13f', { h: 3.9, arch: false, plaqueAt: [-4.9, 3.1, 0.1], plaqueScale: 1 });
     hubDoor(L, 14, 0, balZ0, 's', 'hof', 'Schlosshof', '\u{26F2}', '#8ae8ff', { h: 3.9, arch: false, plaqueAt: [4.9, 3.1, 0.1], plaqueScale: 1 });
-    // Sterntuer oben an der Nordwand
-    L.starDoor = { pos: [0, 5, ZN + 0.1], open: 0, opening: false, emblem: labelTexture((c, w, h) => {
-      c.fillStyle = '#3a2008'; c.fillRect(0, 0, w, h);
-      c.fillStyle = '#ffd21f'; c.strokeStyle = '#000'; c.lineWidth = 8; c.beginPath();
-      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 50 : 115; c.lineTo(w / 2 + Math.cos(a) * r, h / 2 + 8 + Math.sin(a) * r); }
-      c.closePath(); c.stroke(); c.fill();
-      c.fillStyle = '#fff'; c.font = 'italic 900 84px Arial Black, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.lineWidth = 10; c.strokeText('4', w / 2, h / 2 + 18); c.fillText('4', w / 2, h / 2 + 18);
-    }) };
-    box(g, M4.from(0, 8.8, ZN + 0.12), 7.4, 7.6, 0.1, hex('#6a6a6a'));
-    for (const s of [-1, 1]) box(g, M4.from(s * 4.1, 8.8, ZN + 0.35), 0.8, 7.8, 0.6, { top: C.stone, side: hex('#e8dcc0') });
-    box(g, M4.from(0, 13, ZN + 0.35), 9, 0.9, 0.6, C.gold);
-    L.solid(-3.2, 5, ZN, 3.2, 12, ZN + 0.6, 'stardoor');
-    // Hinter der Sterntuer liegt das Obergeschoss; von dort kommt man hier oben wieder heraus
-    L.backSpots = { og: { pos: [0, 5, ZN + 3.6], face: 0 } };
+    /* Sterntuer oben an der Nordwand (Wunsch 2026-09-29): eine echte Tuer mit Tueranimation, die erst ab STAR_DOOR
+       Sternen aufgeht (sonst ruettelt sie und sagt, wie viele fehlen - siehe lockedDoor). Wie im Vorbild nur ein grosser
+       Stern mit Augen auf den Fluegeln, keine Zahl (Wunsch 2026-09-30). Dahinter liegt das Treppenhaus mit derselben Tuer
+       auf der anderen Seite, dem Weg zu Kater Grimm und der Schluesseltuer ins Obergeschoss. */
+    const sd = hubDoor(L, 0, 5, ZN, 's', 'treppe', 'Treppenhaus', '⭐', '#ffd21f',
+      { w: 5, h: 6, stars: STAR_DOOR, wood: hex('#5a2e12'), plaque: null });
+    sd.stars = STAR_DOOR; sd.label = `Sterntür (★ ${STAR_DOOR})`;
     // Die Gemaelde haengen nicht mehr hier: jedes Bild hat sein eigenes Zimmer hinter einer Tuer
     // Sonnenstrahl durchs Fenster
     const win = [-W + 0.1, 13, -2], spot = [-12, 0.02, 4];
@@ -4638,7 +4696,7 @@ vec3 art(vec2 p) {
     KH.life.critters('mouse', -20, -26, 20, 16, 4, { speed: 1 });
     KH.life.npc(-11, 9, 'Hallenwache Tilda', ['Willkommen in der Halle! Jedes Bild hat jetzt ein eigenes Zimmer – das Schild über der Tür sagt, welches.',
       'Unter der Galerie geht es links in den KELLER und rechts in den SCHLOSSHOF mit dem Geisterbrunnen.',
-      'Und hinter der Sterntür oben liegt das OBERGESCHOSS mit dem großen Turm. Reinlaufen genügt überall.'], { cat: 1, r: 4, tint: '#c8b0ff', mix: 0.3 });
+      'Und hinter der Sterntür oben (ab 10 Sternen) geht es übers TREPPENHAUS ins OBERGESCHOSS mit dem großen Turm. Reinlaufen genügt überall.'], { cat: 1, r: 4, tint: '#c8b0ff', mix: 0.3 });
     L.finish();
     return L;
   }
@@ -5665,7 +5723,7 @@ vec3 art(vec2 p) {
       npc(x, z, speaker, text, o = {}) {
         const c = add(L, { k: 'npc', pos: [x, o.y ?? 0, z], home: [x, o.y ?? 0, z], r: o.r ?? 7, cat: o.cat ?? 0,
           tint: o.tint ? [...hex(o.tint), o.mix ?? 0.5] : null, s: o.s ?? 1, sp: rr(1.4, 2.0) * (o.speed ?? 1),
-          tgt: null, wait: rr(0, 2), face: o.face ?? 0, walk: 0, t: Math.random() * 10 });
+          tgt: null, wait: rr(0, 2), face: o.face ?? 0, walk: 0, t: Math.random() * 10, speaker, talkK: 0 });
         L.talkers.push({ pos: c.pos, speaker, text, cat: true });
         if (!CAT_VOICES.has(speaker)) CAT_VOICES.set(speaker, catVoice(speaker, o.cat ?? 0));
         return c;
@@ -5766,8 +5824,11 @@ vec3 art(vec2 p) {
           }
           case 'npc': {
             c.t += dt;
-            const near2 = Math.hypot(px - c.pos[0], pz - c.pos[2]);
-            if (near2 < 4 || Dialog.open) {                    // stehen bleiben und zum Spieler schauen
+            const near2 = Math.hypot(px - c.pos[0], pz - c.pos[2]), talking = Dialog.speaker === c.speaker;
+            if (near2 < 3.5 && !c.wasNear) c.greetT = c.t;       // kommt man heran: kurz winken
+            c.wasNear = near2 < 5;
+            c.talkK += ((talking ? 1 : 0) - c.talkK) * Math.min(1, dt * 5);   // Redegesten weich ein/aus
+            if (near2 < 4 || talking) {                        // stehen bleiben und zum Spieler schauen
               c.walk = Math.max(0, c.walk - dt * 4);
               c.face += angDiff(c.face, Math.atan2(px - c.pos[0], pz - c.pos[2])) * Math.min(1, dt * 6);
               c.tgt = null; c.wait = rr(0.4, 1.6);
@@ -5796,26 +5857,36 @@ vec3 art(vec2 p) {
     // ── Zeichnen ──
     const FAR = 110 * 110;
     const far = (c) => (c.pos[0] - cam.pos[0]) ** 2 + (c.pos[2] - cam.pos[2]) ** 2 > FAR;
-    function drawCat(G, base, t, walk, wave, tint) {
+    /* talk (0..1): wie sehr die Katze gerade redet - Kopf nickt und wiegt sich, Haende gestikulieren abwechselnd, der
+       Koerper schwankt leicht; mouth (0..1): Mundoeffnung (je Wort einmal, siehe Dialog.talk); withMouth: flachen Mund
+       zeichnen (nur in der Naehe der Kamera) */
+    const NPC_TALK = [0.09, 0.1, 0.45, 0, 0.5];
+    function drawCat(G, base, t, walk, wave, tint, talk = 0, mouth = 0, withMouth = false) {
       const RG = G.rig, FIG = { shine: 0.06, rim: 0.16, lit: 0.78, tint }, GLOW = { lit: 0, tint };
-      const bob = Math.sin(t * 2.2) * 0.012 + Math.abs(Math.sin(t * 7)) * 0.03 * walk;
+      const bob = Math.sin(t * 2.2) * 0.012 + Math.abs(Math.sin(t * 7)) * 0.03 * walk + Math.abs(Math.sin(t * 3.4)) * 0.02 * talk;
       const sw = Math.sin(t * 7) * 0.85 * walk;
-      const part = (key, tx, ty, tz, rx2, rz2, o = FIG) => {
-        const m = M4.mul(base, M4.from(tx, ty + bob, tz, 0, rx2, rz2));
+      const part = (key, tx, ty, tz, rx2, rz2, o = FIG, ry2 = 0) => {
+        const m = M4.mul(base, M4.from(tx, ty + bob, tz, ry2, rx2, rz2));
         draw(G[key], m, o);
         if (G.glow[key]) draw(G.glow[key], m, GLOW);
         return m;
       };
       part('leg', -RG.legX, RG.legY - bob, 0, sw, 0);
       part('leg', RG.legX, RG.legY - bob, 0, -sw, 0);
-      part('body', 0, RG.bodyY, 0, 0, 0);
-      part('tail', 0, RG.tailY, RG.tailZ, -1.85, Math.sin(t * 2.3) * 0.3);
-      part('arm', -RG.armX, RG.armY, 0, -sw * 0.7, -0.14);
-      part('arm', RG.armX, RG.armY, 0, wave ? -2.7 : sw * 0.7, wave ? 0.5 + Math.sin(t * 7) * 0.35 : 0.14);
+      part('body', 0, RG.bodyY, 0, Math.sin(t * 1.6) * 0.04 * talk, Math.sin(t * 1.9) * 0.05 * talk);
+      part('tail', 0, RG.tailY, RG.tailZ, -1.85, Math.sin(t * 2.3) * 0.3 + Math.sin(t * 4.1) * 0.25 * talk);
+      part('arm', -RG.armX, RG.armY, 0, lerp(-sw * 0.7, -0.55 + Math.sin(t * 2.7 + 1.3) * 0.4, talk), -0.14 - 0.25 * talk);
+      if (wave && talk < 0.3) part('arm', RG.armX, RG.armY, 0, -2.7, 0.5 + Math.sin(t * 7) * 0.35);
+      else part('arm', RG.armX, RG.armY, 0, lerp(sw * 0.7, -1.25 + Math.sin(t * 3.3) * 0.5, talk), 0.14 + 0.3 * talk);
       const hOpt = { shine: 0.14, rim: 0.16, lit: 0.78, tint };
-      const hm = part('head', 0, RG.headY, RG.headZ, 0, Math.sin(t * 1.3) * 0.05, hOpt);
+      const hm = part('head', 0, RG.headY, RG.headZ, (Math.sin(t * 7.5) * 0.05 + mouth * 0.07) * talk,
+        Math.sin(t * 1.3) * 0.05 + Math.sin(t * 2.1) * 0.07 * talk, hOpt, Math.sin(t * 1.1) * 0.18 * talk);
       const bl = blinkAt(t, 2);
       drawEyes(G, hm, bl, hOpt);
+      if (withMouth) {
+        const mm = TitleHead.mouthMesh(G, PL_MOUTH.rest.map((v, i) => lerp(v, NPC_TALK[i], mouth * talk)));
+        if (mm) draw(mm, hm, { lit: 0 });
+      }
     }
     function drawOpaque(L) {
       for (const c of L.life) {
@@ -5848,8 +5919,9 @@ vec3 art(vec2 p) {
           draw(c.kind === 'bunny' ? MESH.bunny : get(c.kind), m, { lit: 0.8, tint: c.col });
           if (c.kind === 'drone') draw(get('rotor'), M4.mul(m, M4.from(0, 0, 0, clock * 22)), { lit: 0.5, alpha: 1 });
         } else if (c.k === 'npc') {
-          const base = M4.from(c.pos[0], c.pos[1], c.pos[2], c.face, 0, 0, c.s);
-          drawCat(CATS[c.cat % CATS.length], base, c.t, c.walk, Dialog.open && Math.hypot(pl.pos[0] - c.pos[0], pl.pos[2] - c.pos[2]) < 4, c.tint);
+          const base = M4.from(c.pos[0], c.pos[1], c.pos[2], c.face, 0, 0, c.s), talking = Dialog.speaker === c.speaker;
+          const camD = Math.hypot(c.pos[0] - cam.pos[0], c.pos[2] - cam.pos[2]);
+          drawCat(CATS[c.cat % CATS.length], base, c.t, c.walk, c.t - (c.greetT ?? -9) < 2.2, c.tint, c.talkK, talking ? Dialog.talk() : 0, camD < 30);
         }
       }
     }
@@ -5902,13 +5974,22 @@ vec3 art(vec2 p) {
         if (sign) {
           const o = sign === true ? {} : sign;
           const sm = M4.from(x, y, z, o.ry ?? signFacing(L, x, z));
-          if (!bakeModel(g, 'sign.body', sm)) {       // ohne Modelldatei: gleicher Umriss aus Quadern
+          // Trip-Welt (Mandelbrot): Brett nicht ins Level backen, sondern einzeln zeichnen - es wabert als Ganzes um den
+          // Fusspunkt (der Pfosten bleibt im Boden), die Schrift genauso (Wunsch 2026-09-30)
+          const trip = L.trip ? [x, y, z, 2] : null;
+          if (trip) {
+            const mesh = MODELS['sign.body'] || build((gg) => {
+              box(gg, M4.from(0, SIGN_Y, 0.17), 1.72, 0.96, 0.18, hex('#8a5a2b'));
+              box(gg, M4.from(0, 1.1, 0), 0.2, 2.2, 0.2, hex('#6b4214'));
+            });
+            (L.signBodies || (L.signBodies = [])).push({ mesh, model: sm, trip });
+          } else if (!bakeModel(g, 'sign.body', sm)) {       // ohne Modelldatei: gleicher Umriss aus Quadern
             box(g, M4.mul(sm, M4.from(0, SIGN_Y, 0.17)), 1.72, 0.96, 0.18, hex('#8a5a2b'));
             box(g, M4.mul(sm, M4.from(0, 1.1, 0)), 0.2, 2.2, 0.2, hex('#6b4214'));
           }
           const lines = o.title ? [].concat(o.title) : signTitle(speaker, text);
           L.decals.push({ mesh: MESH.signFace, model: M4.mul(sm, M4.from(0, SIGN_Y, SIGN_FRONT)),
-            tex: signFaceTex(lines, /★/.test(String(text[0] || ''))) });
+            tex: signFaceTex(lines, /★/.test(String(text[0] || ''))), trip });
           L.solid(x - 0.2, y, z - 0.2, x + 0.2, y + 2.4, z + 0.2, 'sign');
         }
         L.talkers.push({ pos: [x, y, z], speaker, text });
@@ -6030,10 +6111,15 @@ vec3 art(vec2 p) {
         else L.solid(x0 - 0.12, y, Math.min(z0, z1), x0 + 0.12, y + 1.1, Math.max(z0, z1), 'fence');
       },
       lamp(x, z, y = 0, col = hex('#fff2a8'), post = hex('#2a2a32')) {
-        cyl(g, M4.from(x, y, z), 0.14, 0.1, 3.4, 6, post);
-        box(g, M4.from(x, y + 3.45, z), 0.6, 0.1, 0.6, post);
+        // Fuss, leicht verjuengter Mast mit Ring, Teller, Laterne mit Eckstreben, Dach mit Spitze
+        cyl(g, M4.from(x, y, z), 0.27, 0.2, 0.35, 8, post);
+        cyl(g, M4.from(x, y + 0.35, z), 0.12, 0.085, 3.05, 8, post);
+        cyl(g, M4.from(x, y + 1.15, z), 0.155, 0.155, 0.12, 8, post);
+        rbox(g, M4.from(x, y + 3.45, z), 0.62, 0.1, 0.62, post, 0.12, 0.03);
         box(glow, M4.from(x, y + 3.8, z), 0.42, 0.6, 0.42, col);
+        for (const [dx, dz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) box(g, M4.from(x + dx * 0.23, y + 3.8, z + dz * 0.23), 0.06, 0.62, 0.06, post);
         cyl(g, M4.from(x, y + 4.1, z, Math.PI / 4), 0.45, 0, 0.35, 4, post);
+        sphere(g, M4.from(x, y + 4.47, z), 0.07, 0.07, 0.07, 6, 4, post);
         L.solid(x - 0.2, y, z - 0.2, x + 0.2, y + 3.4, z + 0.2, 'post');
       },
       // Holzbruecke (entlang x oder z) mit Seilgelaender
@@ -8284,6 +8370,89 @@ vec3 art(vec2 p) {
     return L;
   }
 
+  /* Apfelmaennchen als begehbare Insel (Wunsch 2026-09-30: "eins mit mehr Detail" statt Herz + zwei Kreisen): das echte
+     Mandelbrot-Set. Oben liegt ein Bild (1024 x 1024, glatte Iterationsfarben: innen fast schwarz, aussen ein Regenbogen-
+     Saum, der in die feinen Faeden und Knospen ausfranst, weiter draussen durchsichtig). Begehbar ist das Innere: ein
+     0,5-m-Raster (beruehrende Knospen per Schliessen verbunden) als Quader-Streifen je Zeile, 2 m Fels darunter.
+     MB(re, im) -> Weltpunkt; liefert { mesh, tex } fuer die Bildflaeche (im durchsichtigen Durchgang zeichnen). */
+  const MANDEL_RE = [-2.2, 0.6], MANDEL_IM = [-1.4, 1.4];
+  let mandelTexCache = null;
+  function mandelIter(cr, ci, max) {
+    // Hauptherz und 2er-Knospe gleich als innen erkennen (spart die meisten Rechnungen)
+    const xq = cr - 0.25, q = xq * xq + ci * ci;
+    if (q * (q + xq) <= 0.25 * ci * ci || (cr + 1) * (cr + 1) + ci * ci <= 0.0625) return max;
+    let x = 0, y = 0, i = 0;
+    for (; i < max; i++) {
+      const xx = x * x, yy = y * y;
+      if (xx + yy > 256) break;
+      y = 2 * x * y + ci; x = xx - yy + cr;
+    }
+    if (i >= max) return max;
+    return i + 1 - Math.log(Math.log(Math.sqrt(x * x + y * y))) / Math.LN2;   // glatt (keine Farbstufen)
+  }
+  function mandelIsland(L, MB) {
+    const [r0, r1] = MANDEL_RE, [i0, i1] = MANDEL_IM;
+    if (!mandelTexCache) {
+      const N = 1024, MAX = 160;
+      mandelTexCache = signTexture((c) => {
+        const img = c.createImageData(N, N), D = img.data;
+        for (let j = 0; j < N; j++) {
+          const ci = i0 + (j + 0.5) / N * (i1 - i0);
+          for (let i = 0; i < N; i++) {
+            const n = mandelIter(r0 + (i + 0.5) / N * (r1 - r0), ci, MAX), o = (j * N + i) * 4;
+            if (n >= MAX) { D[o] = 12; D[o + 1] = 6; D[o + 2] = 24; D[o + 3] = 255; continue; }
+            // Regenbogen nach Iterationen, zum Rand hin heller; weit draussen durchsichtig
+            const t = n * 0.045, k = Math.min(1, n / 40);
+            const al = Math.max(0, Math.min(1, (n - 7) / 9));
+            D[o] = 255 * (0.5 + 0.5 * Math.cos(TAU * t)) * (0.55 + 0.45 * k);
+            D[o + 1] = 255 * (0.5 + 0.5 * Math.cos(TAU * (t + 0.33))) * (0.55 + 0.45 * k);
+            D[o + 2] = 255 * (0.5 + 0.5 * Math.cos(TAU * (t + 0.67))) * (0.55 + 0.45 * k);
+            D[o + 3] = 255 * al * (0.55 + 0.45 * k);
+          }
+        }
+        c.putImageData(img, 0, 0);
+      }, N, N, N, N);
+    }
+    // begehbares Innere: Raster, geschlossen (erweitern, dann schrumpfen), Streifen je Zeile
+    const CELL = 0.5 / 14, nx = Math.ceil((r1 - r0) / CELL), nz = Math.ceil((i1 - i0) / CELL), inside = new Uint8Array(nx * nz);
+    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) inside[k * nx + i] = mandelIter(r0 + (i + 0.5) * CELL, i0 + (k + 0.5) * CELL, 80) >= 80 ? 1 : 0;
+    const morph = (src, keep) => {   // keep = 1: erweitern (ein Nachbar genuegt), 0: schrumpfen (alle Nachbarn noetig)
+      const out = new Uint8Array(src.length);
+      for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+        let any = 0, all = 1;
+        for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
+          const kk = k + dk, ii = i + di, v = kk >= 0 && kk < nz && ii >= 0 && ii < nx ? src[kk * nx + ii] : 0;
+          any |= v; all &= v;
+        }
+        out[k * nx + i] = keep ? any : all;
+      }
+      return out;
+    };
+    const solidMap = morph(morph(inside, 1), 0);
+    const ROCK = { top: hex('#0c0618'), side: hex('#2a1a4a') }, top = MB(0, 0)[1];
+    for (let k = 0; k < nz; k++) {
+      let i = 0;
+      while (i < nx) {
+        if (!solidMap[k * nx + i]) { i++; continue; }
+        const s = i;
+        while (i < nx && solidMap[k * nx + i]) i++;
+        const a = MB(r0 + s * CELL, i0 + k * CELL), b = MB(r0 + i * CELL, i0 + (k + 1) * CELL);
+        L.block((a[0] + b[0]) / 2, top - 1.02, (a[2] + b[2]) / 2, Math.abs(b[0] - a[0]), 2, Math.abs(b[2] - a[2]), ROCK, 'mandel');
+      }
+    }
+    // Bildflaeche knapp ueber den Quadern (UV: u = Realteil, v = Imaginaerteil, wie im Bild) - als feines Raster, damit
+    // sie im Trip genauso wabert und driftet wie der Fels darunter (die Welle wird je Ecke gerechnet)
+    const A = MB(r0, i0), B = MB(r1, i1), y = top + 0.03, G = 32;
+    const mesh = build((gg) => {
+      for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) {
+        const u0 = a / G, u1 = (a + 1) / G, v0 = b / G, v1 = (b + 1) / G;
+        const X = (u) => lerp(A[0], B[0], u), Z = (v) => lerp(A[2], B[2], v);
+        gg.quad([X(u0), y, Z(v1)], [X(u1), y, Z(v1)], [X(u1), y, Z(v0)], [X(u0), y, Z(v0)], C.white, [[u0, v1], [u1, v1], [u1, v0], [u0, v0]]);
+      }
+    });
+    return { mesh, tex: mandelTexCache };
+  }
+
   /* ─────────── Welt 6: Mandelbrot-Regenbogen ───────────
      Schwebende Plattformen im Weltall (Idee: Regenbogen-Ritt am Himmel, eigenes Layout).
      Gimmicks: eine Fraktal-Spirale, die sich langsam dreht — jede Stufe kleiner und hoeher;
@@ -8320,28 +8489,8 @@ vec3 art(vec2 p) {
     });
     K.coinRing(19, -6.9, 1, 2.4, 8);
 
-    // ── Das Apfelmaennchen: begehbare Mandelbrot-Insel im Westen ──
-    const MB = (re, im) => [-24 + re * 14, 3.6, 8 + im * 14];
-    const card = (th) => { const c = [Math.cos(th) / 2 - Math.cos(2 * th) / 4, Math.sin(th) / 2 - Math.sin(2 * th) / 4]; return MB(c[0], c[1]); };
-    const blob = (pts, cen, col, rimCols) => {
-      for (let i = 0; i < pts.length; i++) {
-        const a = pts[i], b = pts[(i + 1) % pts.length];
-        g.tri(cen, b, a, col);
-        g.quad([a[0], a[1] - 2, a[2]], [b[0], b[1] - 2, b[2]], b, a, hex('#2a1a4a'));
-        rimCols.forEach((rc, k) => {
-          const s = 1 + (k + 1) * 0.035;
-          const a2 = [cen[0] + (a[0] - cen[0]) * s, a[1] + 0.02, cen[2] + (a[2] - cen[2]) * s], b2 = [cen[0] + (b[0] - cen[0]) * s, b[1] + 0.02, cen[2] + (b[2] - cen[2]) * s];
-          const s0 = 1 + k * 0.035, a1 = [cen[0] + (a[0] - cen[0]) * s0, a[1] + 0.02, cen[2] + (a[2] - cen[2]) * s0], b1 = [cen[0] + (b[0] - cen[0]) * s0, b[1] + 0.02, cen[2] + (b[2] - cen[2]) * s0];
-          gw.quad(a1, b1, b2, a2, hex(rc));
-        });
-      }
-    };
-    const cardPts = Array.from({ length: 64 }, (_, i) => card(0.001 + i / 64 * (TAU - 0.002)));
-    blob(cardPts, MB(-0.2, 0), hex('#0a0614'), RAINBOW);
-    blob(Array.from({ length: 40 }, (_, i) => { const a = i / 40 * TAU; return MB(-1 + Math.cos(a) * 0.25, Math.sin(a) * 0.25); }), MB(-1, 0), hex('#0a0614'), RAINBOW);
-    blob(Array.from({ length: 24 }, (_, i) => { const a = i / 24 * TAU; return MB(-1.31 + Math.cos(a) * 0.06, Math.sin(a) * 0.06); }), MB(-1.31, 0), hex('#0a0614'), RAINBOW.slice(0, 3));
-    L.solid(-33, 1.6, 1.5, -22, 3.6, 14.5, 'mandel'); L.solid(-36, 1.6, 6.5, -33, 3.6, 9.5, 'mandel');
-    L.solid(-41.4, 1.6, 5.4, -36.6, 3.6, 10.6, 'mandel'); L.solid(-43.2, 1.6, 7.2, -41.9, 3.6, 8.8, 'mandel');
+    // ── Das Apfelmaennchen: begehbare Mandelbrot-Insel im Westen - das echte Mandelbrot-Set (siehe mandelIsland) ──
+    const mandel = mandelIsland(L, (re, im) => [-24 + re * 14, 3.6, 8 + im * 14]);
     for (const [x, top, z] of [[-10, 0.8, 21], [-15, 1.8, 17], [-19.5, 2.8, 13]]) K.plat(x, top, z, 2.6, 2.6, CRYS, 0.6, 'stone');
     K.coinRing(-28, 4.7, 8, 3.5, 8); K.coinLine([-35, 4.7, 8], [-42.5, 4.7, 8], 4);
     K.item(MESH.chest, [-39, 3.6, 8], (it) => {
@@ -8424,6 +8573,7 @@ vec3 art(vec2 p) {
       }
     };
     L.drawAlpha = () => {
+      draw(mandel.mesh, I4, { tex: mandel.tex, lit: 0 });   // Apfelmaennchen: Bild mit Regenbogen-Saum (aussen durchsichtig)
       for (const v of invisBoxes) {
         const d = Math.hypot(pl.pos[0] - v.x, pl.pos[2] - v.z) + Math.abs(pl.pos[1] - v.top) * 0.5;
         const a = clamp(1 - d / 7, 0, 0.45);
@@ -9753,6 +9903,7 @@ vec3 art(vec2 p) {
   const HUBS = {
     hall: { name: 'Schlosshalle', icon: '\u{1F3F0}' }, keller: { name: 'Kellergewölbe', icon: '\u{1F56F}\u{FE0F}' },
     og: { name: 'Obergeschoss', icon: '\u{1F451}' }, hof: { name: 'Schlosshof', icon: '\u{26F2}' },
+    treppe: { name: 'Treppenhaus', icon: '⭐' },
   };
   const HOME = {
     // Welten hinter den Bildern -> ihr Bilderzimmer
@@ -9760,7 +9911,7 @@ vec3 art(vec2 p) {
     fraktal: 'bild_fraktal', pilz: 'bild_pilz', neon: 'bild_neon', desert: 'bild_desert',
     // Zimmer -> der Flur, von dem aus man sie betritt
     bild_terminal: 'hall', bild_pilz: 'hall', bild_bounce: 'hall', bild_video: 'hall', bibliothek: 'hall', musik: 'hall',
-    spiel: 'hall', sternwarte: 'hall', keller: 'hall', hof: 'hall', og: 'hall',
+    spiel: 'hall', sternwarte: 'hall', keller: 'hall', hof: 'hall', treppe: 'hall', og: 'treppe', grimm: 'treppe',   // Halle -> Sterntuer -> Treppenhaus (-> Kater Grimm) -> Schluesseltuer -> Obergeschoss
     verlies: 'keller', aquarium: 'keller', bild_desert: 'keller', bild_neon: 'keller',
     bild_spuk: 'hof', bild_uhrwerk: 'og', bild_fraktal: 'og',
     gym: 'garden', dust: 'desert',
@@ -9812,7 +9963,7 @@ vec3 art(vec2 p) {
   }
   // Schild, dessen Text erst beim Lesen entsteht (zeigt z. B. den aktuellen Sternstand)
   function liveSign(K, L, x, z, speaker, fn) {
-    K.talker(x, 0, z, speaker, []);
+    K.talker(x, 0, z, speaker, [], { title: speaker.toUpperCase() });   // der Text kommt erst beim Lesen - ohne Titel war das Brett leer
     Object.defineProperty(L.talkers[L.talkers.length - 1], 'text', { get: fn });
   }
 
@@ -10484,7 +10635,7 @@ vec3 art(vec2 p) {
     K.coinRing(0, 1.1, -68, 3, 8);
     L.enemies.push(makeBat(0, 10, -68, '#3a2a5a'), makeBat(-8, 18, -72, '#3a2a5a'), makeBat(8, 21, -60, '#3a2a5a'));
     K.talker(4.2, 0, 0, 'Schild', [
-      '★ OBERGESCHOSS ★\nNur wer 4 Sterne hat, kommt hier herauf.',
+      '★ OBERGESCHOSS ★\nNur wer 10 Sterne hat, kommt hier herauf.',
       'Links wartet das Bild zum SUCH-UHRWERK, rechts das zum MANDELBROT-REGENBOGEN.',
       'Am Ende der Galerie steht der TURM. Die Treppe führt ganz nach oben zur FINALE-TÜR – und zu einem Stern.',
     ]);
@@ -10496,6 +10647,401 @@ vec3 art(vec2 p) {
       'Die Treppe im Turm hat eine Lücke. Wer sich traut, springt einfach drüber!'], { cat: 1, r: 4, tint: '#ffd0f0', mix: 0.3 });
     K.life.npc(-6, -64, 'Turmwächterin Hella', ['Ganz oben im Turm ist die Finale-Tür.',
       'Und auf dem Balkon glänzt ein Stern. Den hat noch niemand geholt.'], { cat: 3, r: 3, tint: '#c8d8ff', mix: 0.3 });
+    L.finish();
+    return L;
+  }
+
+  /* ─────────── Treppenhaus (Wunsch 2026-09-29) ───────────
+     Zwischen Halle und Obergeschoss: unten die Rueckseite der Sterntuer (gleiches Modell wie in der Halle), eine
+     Treppe an der Ostwand hinauf, ueber einen Absatz an der Nordwand weiter auf die Galerie im Westen - dort fuehrt die
+     Tuer ins Obergeschoss. */
+  function buildTreppe() {
+    const L = new Level({ name: 'Treppenhaus', spawn: [0, 0, 4.5], spawnFace: Math.PI, spawnYaw: 0,
+      fog: hex('#2a1a34'), fogNear: 60, fogFar: 180, light: v3.norm([-0.3, -0.85, -0.4]), sky: null, dim: 0.95, voidY: -20 });
+    const K = roomKit(L), g = K.g, gw = K.glow;
+    const X1 = 10, Z0 = -24, Z1 = 8, H = 17;
+    const WALL = { top: hex('#dccbe8'), side: hex('#e4d4ee') }, TRIM = hex('#6a3a8a'), GOLD = C.gold;
+    const STEP = { top: C.carpet, side: hex('#b8ae9c') }, LAND = { top: C.floorB, side: hex('#b8ae9c') };
+    K.shell(-X1, Z0, X1, Z1, H, { floorA: C.floorA, floorB: C.floorB, tile: 3, wall: WALL, ceil: hex('#3a2a5a'), trim: TRIM });
+    // Rueckseite der Sterntuer: dieselbe Tuer wie in der Halle, fuehrt zurueck dorthin
+    const dfx = castleDoor(L, 0, 0, Z1, Math.PI, { w: 5, h: 6, stars: STAR_DOOR, wood: hex('#5a2e12'), torches: true });
+    L.door = { pos: [0, 0, Z1 - 1.4], to: 'hall', label: 'Zurück: Schlosshalle', back: true, fx: dfx };
+    L.solid(-2.5, 0, Z1 - 0.5, 2.5, 6, Z1, 'exitdoor');
+    // Treppe: Ostwand nach Norden (0 -> 6,3 m), Absatz, Nordwand nach Westen (-> 10,35 m), Galerie im Westen
+    const Y1 = 0.45 * 14, Y2 = Y1 + 0.45 * 9;
+    K.stairs(7.5, 2, 0, 14, 0.45, 1.3, 4, 'z-', STEP);
+    L.block(7.5, Y1 / 2, -20, 4, Y1, 7.6, LAND, 'landing');
+    K.stairs(5.5, -20, Y1, 9, 0.45, 1.3, 4, 'x-', STEP);
+    L.block(-8.1, Y2 - 0.3, -11.9, 3.8, 0.6, 23.8, LAND, 'balcony');
+    for (const z of [-20, -11, -2]) { L.block(-7, (Y2 - 0.6) / 2, z, 1, Y2 - 0.6, 1, { top: C.stone, side: hex('#e8dcc0') }, 'pillar'); box(g, M4.from(-7, 0.4, z), 1.5, 0.8, 1.5, C.stone); }
+    // Gelaender an der Galerie (ausser dort, wo die Treppe ankommt) und goldene Pfosten an der Treppe
+    L.block(-6.3, Y2 + 0.55, -8.9, 0.2, 1.1, 18.2, { top: GOLD, side: GOLD }, 'rail');
+    for (let z = -17.8; z <= 0; z += 1.4) cyl(g, M4.from(-6.3, Y2, z), 0.08, 0.08, 1.1, 5, GOLD);
+    for (let i = 0; i <= 14; i += 2) cyl(g, M4.from(5.6, 0.45 * (i + 1), 2 - 1.3 * (i + 0.5)), 0.07, 0.07, 1.1, 5, GOLD);
+    for (let i = 0; i <= 9; i += 2) cyl(g, M4.from(5.5 - 1.3 * (i + 0.5), Y1 + 0.45 * (i + 1), -17.9), 0.07, 0.07, 1.1, 5, GOLD);
+    // Tuer ins Obergeschoss auf der Galerie (Westwand): Schluesseltuer - den Schluessel hat Kater Grimm (Wunsch 2026-09-30)
+    const kd = hubDoor(L, -X1, Y2, -12, 'e', 'og', 'Obergeschoss', '\u{1F451}', '#ffd21f', { key: true, wood: hex('#4a2a14') });
+    kd.key = 'key1'; kd.keyHint = 'Kater Grimm hütet ihn – seine Tür ist unten im Treppenhaus, unter der Galerie.';
+    Object.defineProperty(kd, 'label', { get: () => (state.flags.key1 ? 'Eintreten: Obergeschoss' : 'Schlüsseltür') });
+    // unten unter der Galerie: die Tuer zu Kater Grimm
+    hubDoor(L, -X1, 0, -6.5, 'e', 'grimm', 'Kater Grimm', '\u{1F63E}', '#c060ff', { wood: hex('#2a1438') });
+    // Deko: grosses Sternfenster, hohe Fenster, Banner, Leuchter, Fackeln
+    disc(gw, M4.from(0, 12.5, Z0 + 0.06), 2.6, 24, hex('#b8a8ff'));
+    starGeo(gw, M4.from(0, 12.5, Z0 + 0.12), 1.8, 0.02, hex('#ffe680'));
+    for (let k = 0; k < 12; k++) { const a = k / 12 * TAU; box(g, M4.from(Math.cos(a) * 2.75, 12.5 + Math.sin(a) * 2.75, Z0 + 0.15, 0, 0, a), 0.5, 0.9, 0.2, C.stone); }
+    for (const z of [-6, 2]) archWindow(g, gw, X1 - 0.04, 12.5, z, -Math.PI / 2, 2, 3, '#cfe6ff');
+    for (const z of [-16, -6, 2]) {
+      const m = M4.from(-X1 + 0.06, Y2 + 4.2, z, Math.PI / 2);
+      box(g, m, 1.8, 3.2, 0.04, hex('#6a2ab8'));
+      g.tri(P(m, -0.9, -1.6, 0.03), P(m, 0.9, -1.6, 0.03), P(m, 0, -2.3, 0.03), hex('#6a2ab8'));
+      starGeo(g, M4.mul(m, M4.from(0, 0.3, 0.05)), 0.5, 0.02, GOLD);
+    }
+    chandelierAt(g, gw, 0, 12, -8, H);
+    for (const [x, y, z, ry] of [[X1 - 0.25, 4, -4, -Math.PI / 2], [X1 - 0.25, 8, -14, -Math.PI / 2], [4, 9, Z0 + 0.25, 0], [-4, 12, Z0 + 0.25, 0], [-X1 + 0.25, 13, -8, Math.PI / 2]]) K.torch(x, y, z, ry);
+    // Muenzen an der Treppe und ein Ring in der Mitte
+    K.coinLine([7.5, 1.6, 0], [7.5, Y1 + 0.9, -14], 5);
+    K.coinLine([3.5, Y1 + 1.4, -20], [-4, Y2 + 0.9, -20], 4);
+    K.coinRing(0, 1.1, -8, 2.6, 6);
+    K.talker(-3.2, 0, 3, 'Schild', ['★ TREPPENHAUS ★\nHinauf ins OBERGESCHOSS.', 'Die Treppe an der Ostwand hoch, oben links auf der Galerie ist die Tür – sie ist mit einem SCHLÜSSEL verschlossen.',
+      'Den Schlüssel hat KATER GRIMM. Seine Tür ist hier unten, unter der Galerie.']);
+    K.life.glows(-X1, Z0, X1, Z1, 10, { y: 2, yr: 13, col: '#e8d0ff', s: 0.6, speed: 0.3 });
+    K.life.npc(3, -8, 'Treppenwärter Tomm', ['Ganz schön viele Stufen, oder? Frisch gebohnert!',
+      'Oben links auf der Galerie geht es ins OBERGESCHOSS – aber die Tür ist abgeschlossen.',
+      'Den Schlüssel hat sich dieser fiese KATER GRIMM gekrallt. Hinter der dunklen Tür da drüben wartet er …'], { cat: 2, r: 3, tint: '#d8c8ff', mix: 0.3 });
+    L.finish();
+    return L;
+  }
+
+  /* ─────────── Kater Grimms Arena (Wunsch 2026-09-30) ───────────
+     Im Treppenhaus hinter der Sterntuer liegt unten die Tuer zu Kater Grimm - er hat den SCHLUESSEL fuer die Schluesseltuer
+     ins Obergeschoss (Ablauf wie Bowser im Vorbild, alles eigener Entwurf: ein riesiger boeser Alien-Kater, derselbe, dessen
+     Fratze beim Sterben lacht). Schwebende Steinrunde (Radius GRIMM_R) im violetten Nichts, am Rand sechs Stachelminen.
+     Kampf: Schlaege prallen ab. Von hinten packen (B), zu einer Mine drehen, werfen (B) - trifft er eine, explodiert sie
+     (3 Treffer). Er stampft (Druckwelle ueber den Boden: drueberspringen), speit Feuerkugeln und rempelt von vorn.
+     Nach dem 3. Treffer faellt der Schluessel: einsammeln wie einen Stern (collectKey), dann zurueck ins Treppenhaus. */
+  const GRIMM_R = 16;
+  const GRM = {};
+  function grimmMeshes() {
+    if (GRM.body) return GRM;
+    const FUR = hex('#3b1d55'), FUR2 = hex('#2c1442'), BELLY = hex('#7a5a9a'), BONE = hex('#ece4d4'), GOLD = hex('#f2c230'), GOLD2 = hex('#c8961a');
+    const INK2 = hex('#0a0610'), PINK = hex('#b03a6a');
+    GRM.body = build((g) => {
+      sphere(g, M4.from(0, 1.9, 0), 1.7, 1.6, 1.5, 20, 12, (i, j) => (j > 8 ? FUR2 : FUR), true);
+      sphere(g, M4.from(0, 1.6, 0.72), 1.2, 1.1, 1.0, 16, 10, BELLY, true);
+      for (let k = 0; k < 10; k++) {   // Stachelkragen
+        const a = k / 10 * TAU;
+        cyl(g, M4.mul(M4.from(Math.sin(a) * 1.15, 3.05, Math.cos(a) * 1.05, a), M4.from(0, 0, 0, 0, 1.0)), 0.2, 0, 0.7, 6, BONE);
+      }
+      sphere(g, M4.from(0, 3.9, 0.3), 1.25, 1.1, 1.1, 18, 12, FUR, true);                      // Kopf
+      sphere(g, M4.from(0, 3.55, 1.0), 0.7, 0.45, 0.42, 12, 8, BELLY, true);                   // Schnauze
+      for (const s of [-1, 1]) {
+        cyl(g, M4.from(s * 0.92, 4.35, 0.15, 0, 0, -s * 0.4), 0.5, 0, 1.15, 6, FUR);            // Ohren (neben der Krone)
+        cyl(g, M4.from(s * 0.92, 4.42, 0.32, 0, 0, -s * 0.4), 0.3, 0, 0.8, 5, PINK);
+        box(g, M4.from(s * 0.5, 4.38, 1.2, 0, -0.3, s * 0.45), 0.62, 0.13, 0.14, INK2);         // boese Brauen
+        for (const k of [-1, 0, 1]) box(g, M4.from(s * 0.95, 3.55 + k * 0.1, 1.0, s * -0.35, 0, s * k * 0.12), 0.9, 0.035, 0.035, BONE);   // Schnurrhaare
+        cyl(g, M4.from(s * 0.26, 3.42, 1.33, 0, Math.PI), 0.07, 0, 0.26, 5, BONE);             // Reisszaehne
+      }
+      sphere(g, M4.from(0, 3.72, 1.4), 0.16, 0.11, 0.09, 8, 5, INK2, true);                     // Nase
+      sphere(g, M4.from(0, 3.42, 1.34), 0.52, 0.16, 0.12, 12, 6, INK2, true);                    // Grinsen
+      cyl(g, M4.from(0, 4.78, 0.2), 0.72, 0.8, 0.38, 14, GOLD, GOLD2);                           // Krone
+      for (let k = 0; k < 5; k++) {
+        const a = k / 5 * TAU + Math.PI / 2;
+        cyl(g, M4.from(Math.cos(a) * 0.7, 5.15, 0.2 + Math.sin(a) * 0.7), 0.16, 0, 0.5, 5, GOLD);
+      }
+    });
+    // Augen leuchten (ohne Licht gezeichnet): schraege gelbe Mandeln mit Schlitzpupillen
+    GRM.eyes = build((g) => {
+      for (const s of [-1, 1]) {
+        sphere(g, M4.from(s * 0.46, 4.05, 1.25, 0, 0, s * 0.35), 0.3, 0.15, 0.1, 10, 6, hex('#ffd21f'), true);
+        sphere(g, M4.from(s * 0.44, 4.05, 1.33), 0.05, 0.14, 0.04, 6, 4, INK2, true);
+      }
+    });
+    GRM.arm = build((g) => {
+      sphere(g, M4.from(0, -0.35, 0), 0.36, 0.55, 0.36, 10, 6, FUR, true);
+      sphere(g, M4.from(0, -0.95, 0.05), 0.48, 0.44, 0.48, 12, 8, FUR2, true);
+      for (const k of [-1, 0, 1]) cyl(g, M4.from(k * 0.2, -1.2, 0.38, 0, 1.2), 0.07, 0, 0.3, 5, BONE);   // Krallen
+    });
+    GRM.foot = build((g) => sphere(g, M4.from(0, 0.28, 0.2), 0.6, 0.36, 0.78, 12, 8, FUR2, true));
+    GRM.tail = build((g) => sphere(g, I4, 0.3, 0.3, 0.3, 8, 6, FUR, true));
+    GRM.tailTip = build((g) => sphere(g, I4, 0.36, 0.36, 0.36, 8, 6, BELLY, true));
+    // Stachelmine: schwarze Kugel mit Stacheln, rotes Licht oben
+    GRM.mine = build((g) => {
+      sphere(g, I4, 1.05, 1.05, 1.05, 16, 10, hex('#1c1c24'), true);
+      for (let k = 0; k < 14; k++) {
+        const a = k * 2.399963, y = 1 - (k + 0.5) / 14 * 2, r = Math.sqrt(1 - y * y), d = [Math.cos(a) * r, y, Math.sin(a) * r];
+        const ry = Math.atan2(d[0], d[2]), rx = -Math.asin(d[1]);
+        cyl(g, M4.mul(M4.from(d[0] * 0.95, d[1] * 0.95, d[2] * 0.95, ry, rx), M4.from(0, 0, 0, 0, Math.PI / 2)), 0.2, 0, 0.55, 6, hex('#b8bcc8'));
+      }
+    });
+    GRM.minePost = build((g) => { cyl(g, M4.from(0, 0, 0), 0.5, 0.35, 0.8, 8, hex('#2e2238')); });
+    GRM.light = build((g) => sphere(g, I4, 0.22, 0.22, 0.22, 8, 6, C.white, true));
+    // Druckwelle: flacher Ring (Radius 1, beim Zeichnen skaliert)
+    GRM.wave = build((g) => {
+      for (let i = 0; i < 48; i++) {
+        const a0 = i / 48 * TAU, a1 = (i + 1) / 48 * TAU, p = (a, r, y) => [Math.cos(a) * r, y, Math.sin(a) * r];
+        g.quad(p(a0, 0.95, 0), p(a1, 0.95, 0), p(a1, 1, 0.35), p(a0, 1, 0.35), C.white);
+        g.quad(p(a0, 1, 0.35), p(a1, 1, 0.35), p(a1, 0.95, 0), p(a0, 0.95, 0), C.white);
+      }
+    });
+    return GRM;
+  }
+  function buildGrimm() {
+    const L = new Level({ name: 'Kater Grimms Arena', spawn: [0, 0, 29.8], spawnFace: Math.PI, spawnYaw: 0,
+      fog: hex('#1a0828'), fogNear: 70, fogFar: 240, light: v3.norm([-0.3, -0.85, -0.4]), sky: 'night', dim: 0.85, voidY: -26 });
+    const K = roomKit(L), g = K.g, gw = K.glow, MS = grimmMeshes(), R = GRIMM_R;
+    const ROCK = hex('#2e2238'), ROCK2 = hex('#241a2e'), TA = hex('#4a3a5e'), TB = hex('#3a2c4c'), RIM = hex('#6a4a8a');
+    // ── Startplattform mit Tor zurueck ins Treppenhaus ──
+    L.solid(-6, -3, 24, 6, 0, 34, 'ground'); L.checker(-6, 24, 6, 34, 0, 2, TA, TB);
+    box(g, M4.from(0, -1.52, 29), 12, 3, 10, { top: ROCK, side: ROCK });
+    cyl(g, M4.from(0, -9, 29), 0.5, 6, 6, 8, ROCK2);
+    L.block(0, 4.5, 34.75, 12, 9, 1.5, { top: RIM, side: ROCK }, 'bigwall');
+    for (const s of [-1, 1]) { box(g, M4.from(s * 5.6, 9.4, 34.75), 1.2, 0.8, 1.7, RIM); cyl(gw, M4.from(s * 4.2, 6.3, 33.9), 0.18, 0, 0.6, 6, hex('#c060ff')); }
+    K.roomExit(0, 34);
+    // ── Bruecke zur Arena ──
+    L.solid(-2, -2, 15, 2, 0, 24, 'ground'); L.checker(-2, 15, 2, 24, 0, 2, TA, TB);
+    box(g, M4.from(0, -1.02, 19.5), 4, 2, 9, { top: ROCK, side: ROCK });
+    for (let z = 16.5; z < 24; z += 2.5) for (const s of [-1, 1]) cyl(gw, M4.from(s * 1.85, 0, z), 0.12, 0.08, 0.9, 5, hex('#b050ff'));
+    // ── die Arena: Kreis aus Streifen (Kollision), Ringe aus Platten (Bild), Felskegel darunter ──
+    for (let z = -R; z < R - 1e-6; z += 0.5) { const zc = z + 0.25, hw = Math.sqrt(Math.max(0, R * R - zc * zc)); L.solid(-hw, -3, z, hw, 0, z + 0.5, 'ground'); }
+    for (let i = 0; i < 8; i++) {
+      const r0 = i * R / 8, r1 = (i + 1) * R / 8, n = 8 + i * 6;
+      for (let j = 0; j < n; j++) {
+        const a0 = j / n * TAU, a1 = (j + 1) / n * TAU, p = (a, r) => [Math.cos(a) * r, 0, Math.sin(a) * r];
+        g.quad(p(a0, r0), p(a1, r0), p(a1, r1), p(a0, r1), shade((i + j) % 2 ? TA : TB, 0.95 + ((i * 7 + j * 3) % 5) * 0.025));
+      }
+    }
+    disc(gw, M4.from(0, 0.02, 0, 0, -Math.PI / 2), 2.2, 24, hex('#6a2a9a'));   // leuchtendes Mittelsiegel
+    starGeo(gw, M4.from(0, 0.04, 0, 0, -Math.PI / 2), 1.6, 0.01, hex('#c080ff'));
+    cyl(g, M4.from(0, -3.02, 0), R - 0.6, R, 3, 48, RIM);
+    cyl(g, M4.from(0, -15, 0), 1, R - 0.6, 12, 24, ROCK2);
+    // schwebende Felsbrocken und violette Lichter im Nichts
+    for (let k = 0; k < 10; k++) {
+      const a = k * 2.1, rr = 34 + (k % 3) * 14, y = -8 + (k % 4) * 7;
+      sphere(g, M4.from(Math.cos(a) * rr, y, Math.sin(a) * rr - 10, a), 3 + (k % 3), 2 + (k % 2), 3, 7, 5, k % 2 ? ROCK : ROCK2);
+    }
+    K.life.glows(-30, -30, 30, 34, 26, { y: -4, yr: 14, col: '#c080ff', s: 0.8, speed: 0.5 });
+    K.talker(4.2, 0, 27, 'Schild', ['★ KATER GRIMMS ARENA ★\nHier wohnt der, der den SCHLÜSSEL hat.',
+      'Schläge prallen an ihm ab. Lauf um ihn herum, pack ihn von HINTEN (B) und wirf ihn (B) gegen eine STACHELMINE!',
+      'Stampft er, rollt eine Druckwelle über den Boden – spring drüber!']);
+
+    // ── Stachelminen am Rand (nicht vor der Bruecke) ──
+    const mines = [];
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * TAU, p = [Math.cos(a) * (R + 0.3), 1.35, Math.sin(a) * (R + 0.3)];
+      mines.push({ pos: p, alive: true, t: 0 });
+      box(g, M4.from(Math.cos(a) * (R - 0.2), -0.2, Math.sin(a) * (R - 0.2), -a), 1.6, 0.5, 1.6, RIM);   // Halter am Rand
+    }
+    // ── Kater Grimm ──
+    CAT_VOICES.set('Kater Grimm', { hz: 120, dur: 0.2, rate: 2.8 });
+    const HOME_P = [0, 0, -5];
+    const boss = { pos: HOME_P.slice(), face: 0, state: 'sleep', st: 0, hits: 0, walk: 0, vy: 0, speed: 0, held: false, thrown: 0,
+      arms: 0, squash: 1, gone: false, cool: 2, heldT: 0, key: null };
+    const fire = [], waves = [];
+    L.onEnter = () => {
+      // jeder Besuch beginnt von vorn (wie im Vorbild); schon besiegt: er ist fort, nur die Minen stehen noch
+      Object.assign(boss, { pos: HOME_P.slice(), face: 0, state: 'sleep', st: 0, hits: 0, vy: 0, speed: 0, held: false, thrown: 0, arms: 0,
+        squash: 1, gone: !!state.flags.key1, cool: 2, heldT: 0, key: null });
+      for (const m of mines) { m.alive = true; m.t = 0; }
+      fire.length = 0; waves.length = 0;
+    };
+    const onArena = (p) => Math.hypot(p[0], p[2]) < R - 0.3;
+    function hit(m) {
+      const b = boss;
+      m.alive = false; m.t = 0; b.hits++;
+      Snd.boom(); cam.shake = 0.8; rumble(1, 450);
+      burst(m.pos, 34, { spread: 9, up: 6, upRand: 4, life: 1, size: .45, cols: [[1, .6, .2], [1, .9, .3], [.6, .3, 1]], grav: 6 });
+      Snd.bonk();
+      // vom Knall zurueck auf die Runde geschleudert
+      const a = Math.atan2(b.pos[2], b.pos[0]);
+      b.state = 'return'; b.st = 0; b.from = b.pos.slice(); b.to = [Math.cos(a) * 9, 0, Math.sin(a) * 9]; b.thrown = 0; b.fly = false;
+      b.after = b.hits >= 3 ? 'beaten' : 'hurt';
+    }
+    function landed() {
+      const b = boss;
+      b.thrown = 0; b.fly = false;
+      if (onArena(b.pos)) { b.pos[1] = 0; b.state = 'dizzy'; b.st = 0; b.squash = 0.6; Snd.stomp(); cam.shake = 0.35; toast('\u{1F63E} „Grrr! Daneben!“'); }
+      else { const a = Math.atan2(b.pos[2], b.pos[0]); b.state = 'return'; b.st = 0; b.from = b.pos.slice(); b.to = [Math.cos(a) * 10, 0, Math.sin(a) * 10]; b.after = 'walk'; Snd.boing(); }
+    }
+    function beaten() {
+      const b = boss;
+      b.state = 'beaten'; b.st = 0;
+      Dialog.show('Kater Grimm', ['GRRRR … MIAU! Das … das war nur Glück!', 'Schon gut, nimm den SCHLÜSSEL. Aber glaub nicht, dass wir uns zum letzten Mal sehen!'], () => {
+        b.gone = true; Snd.poof(); Snd.evilLaugh();
+        burst([b.pos[0], b.pos[1] + 2.5, b.pos[2]], 50, { spread: 9, up: 7, upRand: 4, life: 1.3, size: .5, cols: [[.6, .3, 1], [1, .85, .2], [1, 1, 1]], grav: 3 });
+        b.key = { pos: [0, 1.6, 0], t: 0 };
+        Snd.starAppear();
+      });
+    }
+    function updBoss(dt) {
+      const b = boss, p = pl.pos;
+      // Minen blinken, Feuerkugeln fliegen, Druckwellen rollen
+      for (let i = fire.length - 1; i >= 0; i--) {
+        const f = fire[i];
+        f.t += dt; f.pos[0] += f.v[0] * dt; f.pos[2] += f.v[2] * dt;
+        if (Math.random() < dt * 30) burst(f.pos, 1, { spread: 0.6, up: 0.6, life: .4, size: .22, cols: [[.7, .3, 1], [1, .5, .9]], grav: -1 });
+        if (!pl.dead && Math.hypot(p[0] - f.pos[0], p[1] + 0.9 - f.pos[1], p[2] - f.pos[2]) < 1.25) { hurtPlayer(1, f.pos); Snd.burn(); fire.splice(i, 1); continue; }
+        if (f.t > 2.4 || !onArena(f.pos) && f.t > 0.3 && Math.hypot(f.pos[0], f.pos[2]) > R + 2) fire.splice(i, 1);
+      }
+      for (let i = waves.length - 1; i >= 0; i--) {
+        const w = waves[i], r0 = w.r;
+        w.r += 11 * dt;
+        const d = Math.hypot(p[0] - w.c[0], p[2] - w.c[2]);
+        if (!pl.dead && !w.hit && p[1] < w.c[1] + 0.45 && d > r0 - 0.4 && d < w.r + 0.4) { w.hit = true; hurtPlayer(2, w.c, true); }
+        if (w.r > R + 1) waves.splice(i, 1);
+      }
+      if (b.key) {
+        b.key.t += dt;
+        if (!pl.dead && mode === 'play' && Math.hypot(p[0] - b.key.pos[0], p[1] + 1 - b.key.pos[1], p[2] - b.key.pos[2]) < 1.7) { const k = b.key; b.key = null; collectKey(L, k); }
+      }
+      if (b.gone) return;
+      b.st += dt; b.squash += (1 - b.squash) * Math.min(1, dt * 6); b.cool -= dt;
+      const dx = p[0] - b.pos[0], dz = p[2] - b.pos[2], d = Math.hypot(dx, dz);
+      if (b.held) {
+        b.pos = [p[0], p[1] + 2.05, p[2]]; b.face = pl.face; pl.speed = Math.min(pl.speed, RUN * 0.4);
+        b.heldT += dt;
+        if (b.heldT > 6) {   // zu lange getragen: er reisst sich los
+          dropHold(false); b.state = 'dizzy'; b.st = 0.6; Snd.voice('oof'); toast('\u{1F63E} „Lass los, du Floh!“');
+        }
+        return;
+      }
+      if (b.thrown > 0) {
+        if (!b.fly) { b.fly = true; b.dirF = b.face; b.speed *= 0.8; b.vy = Math.min(b.vy, 8); b.heldT = 0; }   // schwer: fliegt nicht so weit wie eine Bombe
+        b.thrown -= dt; b.vy -= 26 * dt;
+        b.pos = [b.pos[0] + Math.sin(b.dirF) * b.speed * dt, b.pos[1] + b.vy * dt, b.pos[2] + Math.cos(b.dirF) * b.speed * dt];
+        b.face += dt * 9;   // er wirbelt durch die Luft (die Flugrichtung dirF bleibt)
+        for (const m of mines) if (m.alive && Math.hypot(b.pos[0] - m.pos[0], b.pos[1] + 1.6 - m.pos[1], b.pos[2] - m.pos[2]) < 2.9) { hit(m); return; }
+        if (b.pos[1] <= 0 && onArena(b.pos)) landed();
+        else if (b.pos[1] < -4) landed();
+        return;
+      }
+      if (b.state === 'return') {   // hoher Bogen zurueck auf die Runde
+        const u = Math.min(1, b.st / 1.2);
+        b.pos = [lerp(b.from[0], b.to[0], u), lerp(b.from[1], b.to[1], u) + Math.sin(u * Math.PI) * 9, lerp(b.from[2], b.to[2], u)];
+        b.face += dt * 6;
+        if (u >= 1) {
+          b.pos[1] = 0; b.st = 0; Snd.stomp(); cam.shake = 0.4; b.squash = 0.65;
+          if (b.after === 'beaten') beaten();
+          else if (b.after === 'hurt') { b.state = 'hurt'; toast(['\u{1F4A5} Treffer! Noch 2.', '\u{1F4A5} Treffer! Noch einmal!'][b.hits - 1] || '\u{1F4A5} Treffer!'); }
+          else b.state = 'walk';
+        }
+        return;
+      }
+      if (b.state === 'beaten') { b.face += dt * 5; return; }
+      if (b.state === 'sleep') {
+        b.face = 0;
+        if (!pl.dead && onArena(p) && p[2] < R - 1.5) {
+          b.state = 'taunt'; b.st = 0; Snd.evilLaugh();
+          Dialog.show('Kater Grimm', ['MIAU-HA-HA-HA! Sieh an, ein kleiner Streuner in MEINEM Schloss!', 'Du willst den SCHLÜSSEL zum Obergeschoss? Dann komm und hol ihn dir – wenn du dich traust!']);
+        }
+        return;
+      }
+      if (b.state === 'taunt') { b.arms = 0.5 + Math.sin(b.st * 10) * 0.3; if (b.st > 2.6) { b.state = 'walk'; b.st = 0; b.arms = 0; } return; }
+      if (b.state === 'hurt') { if (b.st > 1.5) { b.state = 'walk'; b.st = 0; b.cool = 1; } return; }
+      if (b.state === 'dizzy') { if (b.st > 1.4) { b.state = 'walk'; b.st = 0; } return; }
+      if (b.state === 'wind') {   // Stampfer ausholen
+        b.arms = Math.min(1, b.st / 0.55);
+        if (b.st > 0.6) { b.state = 'slam'; b.st = 0; b.vy = 8; }
+        return;
+      }
+      if (b.state === 'slam') {
+        b.vy -= 34 * dt; b.pos[1] += b.vy * dt;
+        if (b.pos[1] <= 0 && b.vy < 0) {
+          b.pos[1] = 0; b.state = 'walk'; b.st = 0; b.arms = 0; b.squash = 0.65; b.cool = 1.6;
+          Snd.stomp(); Snd.boom(); cam.shake = 0.6; rumble(0.8, 250);
+          waves.push({ c: b.pos.slice(), r: 1.2, hit: false });
+          burst([b.pos[0], 0.3, b.pos[2]], 26, { spread: 9, up: 1.5, life: .6, size: .4, cols: [[.6, .3, 1], [.9, .8, 1]], grav: 2 });
+        }
+        return;
+      }
+      if (b.state === 'breath') {   // Feuer speien: drei violette Kugeln in einem Faecher
+        b.arms = 0.3;
+        if (b.st > 0.55 && !b.spat) {
+          b.spat = true; Snd.burn();
+          for (const k of [-0.28, 0, 0.28]) {
+            const a = b.face + k, m = [b.pos[0] + Math.sin(b.face) * 1.6, 3.4, b.pos[2] + Math.cos(b.face) * 1.6];
+            fire.push({ pos: [m[0], 1.0, m[2]], v: [Math.sin(a) * 10, 0, Math.cos(a) * 10], t: 0 });
+          }
+        }
+        if (b.st > 1.0) { b.state = 'walk'; b.st = 0; b.arms = 0; b.cool = 1.8; }
+        return;
+      }
+      // laufen: langsam zur Figur drehen (so kommt man hinter ihn), vorn dran -> Stampfer, auf Abstand -> Feuer
+      const want = Math.atan2(dx, dz), diff = angDiff(b.face, want);
+      b.face += clamp(diff, -1.05 * dt, 1.05 * dt);
+      b.speed = !pl.dead && d > 3.4 ? 2.3 : 0;
+      b.walk += dt * b.speed * 1.5;
+      if (b.speed) {
+        const nx = b.pos[0] + Math.sin(b.face) * b.speed * dt, nz = b.pos[2] + Math.cos(b.face) * b.speed * dt;
+        if (Math.hypot(nx, nz) < R - 2.4) { b.pos[0] = nx; b.pos[2] = nz; }
+      }
+      if (b.cool <= 0 && !pl.dead && Math.abs(diff) < 0.7) {
+        if (d < 4.6) { b.state = 'wind'; b.st = 0; Snd.whoosh(); }
+        else if (d > 7 && d < 18) { b.state = 'breath'; b.st = 0; b.spat = false; }
+      }
+      // Anrempeln von vorn tut weh, von hinten schiebt er nur (damit man ihn packen kann)
+      if (d < 2.2 && !pl.dead && Math.abs(p[1] - b.pos[1]) < 2) {
+        const push = (2.2 - d) / Math.max(d, 0.01);
+        p[0] += dx * push; p[2] += dz * push;
+        if (Math.cos(angDiff(b.face, Math.atan2(dx, dz))) > 0.3 && b.speed) hurtPlayer(1, b.pos, true);
+      }
+    }
+    // Packen: nur von hinten und nah genug
+    L.interact = () => {
+      const b = boss;
+      if (b.gone || b.held || b.thrown > 0 || !['walk', 'wind', 'breath', 'dizzy'].includes(b.state) || pl.hold) return null;
+      const dx = pl.pos[0] - b.pos[0], dz = pl.pos[2] - b.pos[2], d = Math.hypot(dx, dz);
+      if (d > 3.4 || Math.abs(pl.pos[1] - b.pos[1]) > 1.2) return null;
+      if (b.state !== 'dizzy' && Math.cos(angDiff(b.face, Math.atan2(dx, dz))) > -0.25) return null;   // nicht hinter ihm
+      return { label: 'Packen', act: () => {
+        pl.hold = b; b.held = true; b.state = 'walk'; b.arms = 0.7; b.heldT = 0;
+        Snd.grab(); Snd.voice('throw'); rumble(0.4, 120);
+        toast('\u{1F63E} Gepackt! Zu einer Stachelmine drehen, B = werfen');
+      } };
+    };
+    L.update = (dt) => updBoss(dt);
+    Object.assign(L, { boss, mines, fire, waves });   // fuer Tests (?debug: g64.cur.boss ...)
+
+    // ── Zeichnen ──
+    const FIG = { shine: 0.25, rim: 0.3, lit: 0.85 };
+    L.drawSolid = () => {
+      for (const m of mines) {
+        if (!m.alive) continue;
+        const bob = Math.sin(clock * 2 + m.pos[0]) * 0.08;
+        draw(MS.minePost, M4.from(m.pos[0], -0.15, m.pos[2]), FIG);
+        draw(MS.mine, M4.from(m.pos[0], m.pos[1] + bob, m.pos[2], clock * 0.4), { shine: 0.5, rim: 0.2, lit: 0.8 });
+        const on = Math.floor(clock * 3 + m.pos[2]) % 2;
+        draw(MS.light, M4.from(m.pos[0], m.pos[1] + 1.1 + bob, m.pos[2]), { lit: 0, tint: on ? [1, 0.15, 0.1, 1] : [0.4, 0.05, 0.05, 1] });
+      }
+      const b = boss;
+      if (!b.gone) {
+        const hurt = b.state === 'hurt' ? Math.sin(b.st * 30) * 0.12 : 0, sw = Math.sin(b.walk * 2.2) * 0.4, dizzy = b.state === 'dizzy' ? Math.sin(b.st * 9) * 0.18 : 0;
+        const base = M4.from(b.pos[0], b.pos[1], b.pos[2], b.face, dizzy, hurt + (b.state === 'beaten' ? 0.3 : 0), 1, b.squash, 1);
+        const flash = (b.state === 'hurt' && Math.floor(b.st * 12) % 2) ? [1, 0.5, 0.6, 0.5] : undefined;
+        draw(MS.body, base, Object.assign({ tint: flash }, FIG));
+        draw(MS.eyes, base, { lit: 0 });
+        const up = b.held ? 2.6 + Math.sin(clock * 14) * 0.4 : b.arms * 2.4;
+        for (const s of [-1, 1]) {
+          draw(MS.arm, M4.mul(base, M4.from(s * 1.72, 2.6, 0.1, 0, -up + (b.held ? 0 : s * sw * 0.4), s * (0.35 + up * 0.25))), FIG);
+          draw(MS.foot, M4.mul(base, M4.from(s * 0.85, 0, 0.1 + (b.speed ? s * sw * 0.5 : 0))), FIG);
+        }
+        // Schwanz: Kette aus Kugeln, schwingt hinten hoch
+        for (let i = 0; i < 7; i++) {
+          const k = i / 6, sway = Math.sin(clock * 3 - i * 0.6) * 0.35 * k;
+          const q = M4.mul(base, M4.from(sway, 1.2 + k * k * 2.2, -1.4 - k * 1.6));
+          draw(i === 6 ? MS.tailTip : MS.tail, q, FIG);
+        }
+      }
+      for (const f of fire) draw(MESH.ball, M4.from(f.pos[0], f.pos[1] + Math.sin(f.t * 12) * 0.1, f.pos[2], 0, 0, 0, 0.55), { lit: 0, tint: [0.75, 0.35, 1, 1] });
+      if (b.key) {
+        const k = b.key;
+        draw(MESH.key, M4.from(k.pos[0], k.pos[1] + Math.sin(k.t * 2.4) * 0.2, k.pos[2], k.t * 2.2, 0, 0, 1.3), { shine: 0.9, rim: 0.4, lit: 0.85 });
+      }
+    };
+    L.drawAlpha = () => {
+      for (const w of waves) draw(MS.wave, M4.from(w.c[0], 0.05, w.c[2], 0, 0, 0, w.r, 1.2, w.r), { lit: 0, tint: [0.75, 0.4, 1, 1], alpha: clamp(1 - w.r / (R + 1), 0.25, 0.85) });
+      const b = boss;
+      if (!b.gone && !b.held && onArena(b.pos)) shadowAt(b.pos[0], 0, b.pos[2], 2.2);
+    };
     L.finish();
     return L;
   }
@@ -11179,6 +11725,51 @@ void main() {
   col = col / (1.0 + col * 0.55);   // sanfter Helligkeitsdeckel statt harter Ueberstrahlung
   gl_FragColor = vec4(clamp(col * 1.35, 0.0, 1.0), 1.0);
 }`;
+    /* Trip-Hoehepunkt (Wunsch 2026-09-30, Mandelbrot-Welt): wer lange stillsteht, sieht Fraktale und geometrische
+       Formen ueber das Bild ziehen. Additiv ueber die fertige Szene: 8-fach gespiegeltes Julia-Kaleidoskop, Tunnelringe
+       mit Bluetenrand, wandernde Drei-/Vier-/Fuenf-/Sechs-/Achtecke (je drei ineinander), feines Moire-Raster.
+       Die Mitte bleibt schwaecher, damit man die Figur noch sieht. uK = Staerke 0..1. */
+    const LSD_FS = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying vec2 vP; uniform float uT; uniform float uK; uniform vec2 uAsp;
+vec3 pal(float t) { return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67))); }
+mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float ngon(vec2 p, float n, float r) { float s = 6.28318 / n, a = atan(p.y, p.x); return cos(floor(0.5 + a / s) * s - a) * length(p) - r; }
+void main() {
+  vec2 p = vP * uAsp;
+  float t = uT, a = 0.0, r = length(p), an = atan(p.y, p.x);
+  vec3 col = vec3(0.0);
+  vec2 q = rot(t * 0.06) * p * (1.15 + 0.3 * sin(t * 0.19));
+  float ang = atan(q.y, q.x), seg = 0.785398;
+  ang = abs(mod(ang, seg) - seg * 0.5);
+  vec2 z = length(q) * vec2(cos(ang), sin(ang)), c = vec2(-0.745 + 0.06 * sin(t * 0.11), 0.12 + 0.05 * cos(t * 0.13));
+  float it = 0.0;
+  for (int i = 0; i < 48; i++) { z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c; if (dot(z, z) > 16.0) break; it += 1.0; }
+  float jf = it / 48.0, jul = smoothstep(0.12, 0.45, jf) * (1.0 - 0.6 * smoothstep(0.9, 1.0, jf));
+  col += pal(jf * 2.3 - t * 0.09 + r * 0.3) * jul; a += jul * 0.6;
+  float ring = pow(max(0.0, sin(r * 14.0 - t * 2.2 + sin(an * 6.0 + t * 0.7) * 0.9)), 18.0);
+  col += pal(r * 0.4 + t * 0.05 + 0.33) * ring * 0.8; a += ring * 0.35 * smoothstep(0.15, 0.6, r);
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i), n = fi < 1.0 ? 3.0 : fi < 2.0 ? 6.0 : fi < 3.0 ? 4.0 : fi < 4.0 ? 8.0 : fi < 5.0 ? 5.0 : 3.0;
+    vec2 cen = vec2((mod(fi * 0.53 + t * (0.05 + fi * 0.013) + 1.6, 3.2) - 1.6) * uAsp.x, 0.75 * sin(t * (0.11 + fi * 0.02) + fi * 2.1));
+    vec2 d = rot(t * (0.3 + fi * 0.07) * (mod(fi, 2.0) * 2.0 - 1.0)) * (p - cen);
+    float size = 0.16 + 0.07 * sin(t * 0.9 + fi), sh = 0.0;
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k), e = abs(ngon(rot(fk * 0.3) * d, n, size * (1.0 + fk * 0.55)));
+      sh += smoothstep(0.012, 0.0, e) + 0.35 * smoothstep(0.05, 0.0, e);
+    }
+    col += pal(fi * 0.17 + t * 0.12) * sh; a += sh * 0.5;
+  }
+  vec2 g = rot(0.5 + t * 0.03) * p * 9.0;
+  float mo = pow(abs(sin(g.x) * sin(g.y)), 12.0);
+  col += pal(t * 0.1 + p.x * 0.2) * mo * 0.4; a += mo * 0.15;
+  float vign = mix(0.5, 1.0, smoothstep(0.1, 0.9, r));
+  gl_FragColor = vec4(col * vign, clamp(a, 0.0, 1.0) * uK * vign);
+}`;
+    let lsdSt = null;
     const BLIT_FS = `precision mediump float; varying vec2 vP; uniform sampler2D uT;
 void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
     let fracP = null, blitP = null, fracFbo = null, fracTex = null, fracW = 0, fracH = 0, fracSt = null, blitSt = null;
@@ -11354,6 +11945,24 @@ void main() { gl_FragColor = vec4(texture2D(uT, vP * 0.5 + 0.5).rgb, 1.0); }`;
         gl.useProgram(MAIN);
         restoreAttribs();
         return true;
+      },
+      // Trip-Hoehepunkt ueber die fertige Szene legen (k = 0..1); das Programm wird beim ersten Aufruf im Hintergrund
+      // uebersetzt (darum schon mit k = 0 aufrufen, sobald man in einer Trip-Welt ist)
+      lsd(k, t) {
+        if (!setup()) return;
+        lsdSt = lsdSt || startProg(DRAW_VS, LSD_FS);
+        if (k <= 0.002 || !progReady(lsdSt)) return;
+        const P = lsdSt.p, vp = gl.getParameter(gl.VIEWPORT);
+        gl.useProgram(P); bindTri();
+        gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        gl.uniform1f(gl.getUniformLocation(P, 'uT'), t);
+        gl.uniform1f(gl.getUniformLocation(P, 'uK'), k);
+        gl.uniform2f(gl.getUniformLocation(P, 'uAsp'), vp[2] / Math.max(1, vp[3]), 1);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.disable(gl.BLEND);
+        gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+        gl.useProgram(MAIN); restoreAttribs();
       },
       THEME,
       // Ladebildschirm: Himmel schon mal uebersetzen lassen; ready() = true/false sobald fertig, null solange es laeuft
@@ -11633,8 +12242,11 @@ void main() {
     }
     return best;
   }
-  // Kreis (Radius r, Hoehe h) aus Quadern schieben; Quader mit Oberkante <= stepTop werden ignoriert
-  function pushOut(L, p, r, h, stepTop, skip) {
+  // Kreis (Radius r, Hoehe h) aus Quadern schieben; Quader mit Oberkante <= stepTop werden ignoriert.
+  // overhead: steht die Mitte UNTER einem Quader, dessen Unterkante hoeher liegt, ist das eine Decke und keine Wand -
+  // nicht seitlich hinausschieben (Wunsch 2026-09-30: an die Decke gesprungen = aus dem Raum geschoben, weil die
+  // Decke ein Quader ueber dem ganzen Raum ist und die naechste "Seite" draussen lag). Decken regelt updatePlayer.
+  function pushOut(L, p, r, h, stepTop, skip, overhead) {
     let hit = null;
     for (let it = 0; it < 2; it++) {
       for (const b of near(L, p[0], p[2])) {
@@ -11646,6 +12258,7 @@ void main() {
         const d2 = dx * dx + dz * dz;
         if (d2 >= r * r) continue;
         if (b.slope && topAt(b, nx, nz) <= stepTop) continue;
+        if (d2 < 1e-10 && overhead != null && b.min[1] > overhead) continue;
         if (d2 < 1e-10) {
           const pen = [p[0] - b.min[0], b.max[0] - p[0], p[2] - b.min[2], b.max[2] - p[2]];
           const k = pen.indexOf(Math.min(...pen));
@@ -11787,6 +12400,15 @@ void main() {
     });
     addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse' && e.button === 0) mouseHeld = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Rechtsklick = Dialog weiter (talkP). mousedown statt pointerdown: das kommt auch, wenn links schon gehalten wird.
+    // Nur ein kurzer Klick zaehlt - Ziehen mit rechts dreht ohne gefangene Maus weiter nur die Kamera.
+    let rDown = null, rclicks = 0;
+    canvas.addEventListener('mousedown', (e) => { if (e.button === 2) { rDown = { x: e.clientX, y: e.clientY, t: performance.now() }; st.device = 'keyboard'; } });
+    addEventListener('mouseup', (e) => {
+      if (e.button !== 2 || !rDown) return;
+      if (Math.hypot(e.clientX - rDown.x, e.clientY - rDown.y) < 8 && performance.now() - rDown.t < 600) rclicks++;
+      rDown = null;
+    });
     canvas.addEventListener('pointermove', (e) => {
       if (!drag || e.pointerId !== drag.id) return;
       mdx += e.clientX - drag.x; mdy += e.clientY - drag.y;
@@ -11825,7 +12447,7 @@ void main() {
     });
     addEventListener('touchstart', () => {
       st.device = 'touch';
-      if ($('#touch').hidden) { $('#touch').hidden = false; document.body.classList.add('touch-ui'); }   // zeigt den Pause-Knopf oben
+      if ($('#touch').hidden) { $('#touch').hidden = false; document.body.classList.add('touch-ui'); PauseBtn.show(); }   // Pause-Knopf oben, blendet sich spaeter aus
     }, { passive: true });
 
     addEventListener('gamepadconnected', (e) => {
@@ -11880,10 +12502,10 @@ void main() {
         mx, my, cx: clamp(cx, -1, 1), cy: clamp(cy, -1, 1), mdx, mdy, wheel,
         jump, action, z, look, pause,
         jumpP: jump && !prev.jump, actionP: (action && !prev.action) || clicks > 0, zP: z && !prev.z, lookP: look && !prev.look,
-        pauseP: pause && !prev.pause, startP: start && !prev.start,
+        pauseP: pause && !prev.pause, startP: start && !prev.start, talkP: rclicks > 0,
       };
       prev = { jump, action, z, look, pause, start };
-      mdx = mdy = wheel = 0; clicks = 0; tapped.clear();
+      mdx = mdy = wheel = 0; clicks = 0; rclicks = 0; tapped.clear();
       return out;
     }
     return { poll, st, lock, unlock, locked, lockAfterEscUp, get lockLostT() { return lockLostT; },
@@ -11989,18 +12611,36 @@ void main() {
   // Ein Dreifachsprung (MOVES.triple.h) auf gleiche Hoehe tut also nie weh.
   const FALL_HURT = 15, FALL_HURT_BIG = 30;
   const FALL_SCREAM = 8;   // ab so viel m freiem Fall unter dem Gipfel schreit die Figur (einmal je Sturz), wie im Vorbild
+  const SWIM_P0 = 0.3;     // Kamerawinkel, der beim Schwimmen "geradeaus" heisst (flacher = hoch, steiler = tauchen)
+  // Landepose: nach Salto/Doppel-/Dreifachsprung die Arme so lange in T-Form halten (s) - nur solange die Figur langsamer
+  // als LAND_T_RUN x Lauftempo ist; nach dem Weitsprung kurz hocken
+  const LAND_T_HOLD = { triple: 0.8, backflip: 0.6, sideflip: 0.6, double: 0.45 }, LAND_T_RUN = 0.35, LONG_LAND = 0.28;
+  // kurzes In-die-Knie-Gehen nach der Landung (s) - Salti/Dreifach haben statt dessen die T-Pose, Weitsprung die Hocke
+  const LAND_SQ = { jump: 0.16, fall: 0.2, pound: 0.42, bounce: 0.12, wallkick: 0.16, rollout: 0.16 };
   const pl = {
     pos: [0, 0, 0], vel: [0, 0, 0], push: [0, 0, 0], face: 0, speed: 0, side: 0, grounded: true, coyote: 0,
     action: 'ground', landFrom: '', landT: -9, jumpBuf: 0, holdGrace: 0, skid: false, crouch: false, hold: null,
     flip: 0, pound: 0, invuln: 0, hurtT: 0, wall: null, wallT: -9, kicks: 0, kickN: null, inWater: false, walk: 0, squash: 1,
     punchT: 0, lookT: 0, looking: false, dead: false, frozen: 0, entering: 0,
     groundBox: null, knock: 0, h: 2.2, crawl: false, forceCrouch: false, boostCool: 0, carry: [0, 0],
-    waterObj: null, waterJump: false, swimPh: 0, strokeT: -9, ledgeCool: 0, hangBox: null, hangN: null, hangT: 0,
+    waterObj: null, waterJump: false, swimPh: 0, swimTilt: 0, strokeT: -9, ledgeCool: 0, hangBox: null, hangN: null, hangT: 0,
     climbK: 0, climbDur: 0.5, climbFrom: null, climbTo: null, appearT: -9,
     pose: null, deadAt: -9, dieT: -1,   // pose: Szenen-Pose (PaintOut); dieT: Beginn des Umkippens beim Sterben
     punchN: 0, punchDur: 0.26, comboT: -9,
     skidT: -9, skidTo: 0, fastT: -9,   // Kehrtwende: Beginn, Zielrichtung, zuletzt schnell genug (Seitsalto-Fenster)
   };
+  // Unterkante von b ueber (x, z) - Gelaende hat keine, ausser duennen Flaechen (Rodelbahn, schwebende Insel)
+  const bottomAt = (b, x, z) => (b.hf ? (b.hf.overlay ? b.hf.h(x, z) - b.hf.thick : -Infinity) : b.min[1]);
+  // Steht die Figur unter etwas, das niedriger ist als sie (Kopf wuerde in der Decke stecken)? Dann duckt sie sich
+  function lowCeiling(L, p) {
+    for (const b of near(L, p[0], p[2])) {
+      const bot = bottomAt(b, p[0], p[2]);
+      if (!(bot > p[1] + CROUCH_H - 0.05 && bot < p[1] + PH - 0.02)) continue;
+      const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
+      if ((p[0] - nx) ** 2 + (p[2] - nz) ** 2 < (R * 0.7) ** 2) return true;
+    }
+    return false;
+  }
   function headBlocked(L, p) {
     for (const b of near(L, p[0], p[2])) {
       if (b.min[1] >= p[1] + PH || topAt(b, p[0], p[2]) <= p[1] + CROUCH_H + 0.02) continue;
@@ -12201,14 +12841,18 @@ void main() {
     const lock = pl.dead || pl.hurtT > 0 || pl.frozen > 0 || pl.entering > 0 || pl.knock > 0;
     // Wandsprung-Kette endet erst mit festem Boden, Kante oder Wasser
     if (pl.grounded || pl.inWater || pl.action === 'hang' || pl.action === 'climb') { pl.kicks = 0; pl.kickN = null; }
-    if (pl.action === 'hang' || pl.action === 'climb') { pl.carry = [0, 0]; updateLedge(dt, inp, lock); return; }
+    if (pl.action === 'hang' || pl.action === 'climb') {
+      if (pl.screamed) { Snd.voiceStop('fall'); pl.screamed = false; }   // an der Kante gefangen: Schrei aus
+      pl.carry = [0, 0]; updateLedge(dt, inp, lock); return;
+    }
     if (pl.action === 'cannon') { updateCannon(dt, inp, lock); return; }
     const gbBefore = pl.grounded ? pl.groundBox : null;
     const water = pl.inWater;
     if (pl.grounded || water) pl.fallTop = p[1];
     pl.looking = !lock && inp.look && pl.grounded && !inp.z;
     // Aufstehen geht nur, wenn ueber dem Kopf Platz ist
-    pl.forceCrouch = pl.grounded && pl.h < PH && headBlocked(L, p);
+    // ... und wer unter eine niedrige Decke geraten ist, duckt sich (statt mit dem Kopf in ihr zu stecken)
+    pl.forceCrouch = pl.grounded && (pl.h < PH ? headBlocked(L, p) : lowCeiling(L, p));
 
     // BLJ: rueckwaerts im Weitsprung mit gehaltenem A (Treppen-Trick, siehe BLJ_MAX)
     pl.aHeld = !lock && !!inp.jump;
@@ -12226,7 +12870,7 @@ void main() {
     // Leerlauf: wer lange nichts tut, dem wird langweilig (Umschauen, Strecken, ... Einschlafen)
     const busy = lock || moving || inp.jump || inp.action || inp.z || inp.look || !pl.grounded || pl.action !== 'ground' ||
       pl.crouch || pl.hold || water || pl.punchT > 0 || Math.abs(pl.speed) > 0.3;
-    if (busy && pl.idleT > IDLE_SLEEP) Snd.blip();   // aufgewacht
+    if (busy && pl.idleT > IDLE_SLEEP) { Snd.blip(); pl.wakeT = time; pl.wakeLie = pl.idleT > IDLE_SLEEP + 7; }   // aufgewacht (mit Ruck, s. drawPlayer)
     pl.idleT = busy ? 0 : (pl.idleT || 0) + dt;
 
     // In tiefem Wasser vom Grund abheben (ausser beim Tauchen mit Z)
@@ -12352,9 +12996,16 @@ void main() {
       else pl.speed += clamp(want - pl.speed, -4 * dt, 5 * dt);
       pl.side = 0;
       const atSurface = p[1] > surfY - 0.45;
+      /* Schwimmen dahin, wo die Kamera hinschaut (Wunsch 2026-09-30): wer vorwaerts schwimmt, steigt oder taucht mit dem
+         Blick nach oben/unten. SWIM_P0 = Kamerawinkel, der geradeaus bedeutet (die normale leicht erhoehte Kamera),
+         kleine Totzone, damit man auch ohne genaues Zielen waagrecht bleibt. Nur der Anteil in Blickrichtung zaehlt. */
+      const lookV = -Math.sin(clamp(cam.pitch - SWIM_P0, -1.2, 1.2)), fwd = Math.max(0, Math.cos(angDiff(pl.face, cam.yaw + Math.PI)));
+      const steerV = moving && !lock && Math.abs(lookV) > 0.07 ? (lookV - Math.sign(lookV) * 0.07) * fwd : 0;
+      pl.swimTilt = lerp(pl.swimTilt || 0, moving && !lock ? clamp(steerV * 1.6, -1, 1) : 0, Math.min(1, dt * 5));
       let acc;
       if (!lock && inp.z) acc = -11 - pl.vel[1] * 2.5;
       else if (!lock && inp.jump && !atSurface) acc = 10 - pl.vel[1] * 2.5;
+      else if (moving && !lock && !(atSurface && steerV >= -0.05)) acc = (steerV * Math.max(pl.speed, 2.5) * 1.35 - pl.vel[1]) * 4;
       else acc = clamp((surfY - p[1]) * 10, -12, 12) - pl.vel[1] * 3.2;
       pl.vel[1] += acc * dt;
       if (!lock && inp.jumpP) {
@@ -12434,23 +13085,39 @@ void main() {
     if (!pl.grounded && pl.action !== 'pound' && pl.action !== 'swim') {
       pl.vel[1] = Math.max(pl.vel[1] - GRAV * (water ? 0.55 : pl.action === 'long' ? LONG_GRAV : pl.action === 'shot' ? SHOT_GRAV : 1) * dt, water ? -8 : -TERMINAL);
     }
-    if (pl.action === 'swim') pl.vel[1] = clamp(pl.vel[1], -5, 6);
+    if (pl.action === 'swim') {
+      pl.vel[1] = clamp(pl.vel[1], -7, 7);
+      if (pl.waterObj && p[1] > pl.waterObj.y - 1.45 + 0.05 && pl.vel[1] > 0 && !pl.waterJump) pl.vel[1] = 0;   // nach oben geschwommen: an der Oberflaeche bleiben
+    }
 
     // Bewegen + Kollision
     const sf = Math.sin(pl.face), cf = Math.cos(pl.face);
     const vx = sf * pl.speed + cf * pl.side + pl.push[0] + pl.carry[0], vz = cf * pl.speed - sf * pl.side + pl.push[2] + pl.carry[1];
     const kd = Math.pow(0.02, dt); pl.push[0] *= kd; pl.push[2] *= kd;
-    p[0] += vx * dt; p[2] += vz * dt; p[1] += pl.vel[1] * dt;
+    const ox = p[0], oz = p[2];   // Platz vor dem Schritt (Gelaende: dorthin zurueck, falls man in den Hang geriete)
+    p[1] += pl.vel[1] * dt;
     pl.h = pl.grounded && (pl.crouch || pl.action === 'slide' || pl.action === 'kickslide') ? CROUCH_H : PH;
+    // Schnell unterwegs (Hechtsprung, Weitsprung, Schwungpfeil ...): in Teilschritten, jeder mit Wandkollision - sonst
+    // rutscht man pro Bild weiter als der Koerper breit ist und kann durch duenne Waende und Gelaender tunneln
+    const stepTopNow = () => Math.max(prevY, p[1]) + (pl.grounded ? STEP_UP : 0.15);
+    const mx = vx * dt, mz = vz * dt, nSub = Math.min(6, Math.max(1, Math.ceil(Math.hypot(mx, mz) / (R * 0.8))));
+    let hit = null;
+    for (let s = 0; s < nSub; s++) {
+      p[0] += mx / nSub; p[2] += mz / nSub;
+      const hh = pushOut(L, p, R, pl.h, stepTopNow(), null, p[1] + CROUCH_H);
+      if (hh) hit = hh;
+    }
     // Mitspieler sind fest: niemand steht im anderen (sonst sieht es aus wie EINE Figur mit vier Ohren).
     // Jeder schiebt nur sich selbst weg - die Gegenseite macht dasselbe; danach raeumt pushOut die Waende.
+    let bumped = false;
     for (const o of Net.bodies()) {
       const dx = p[0] - o.pos[0], dz = p[2] - o.pos[2], d = Math.hypot(dx, dz), dy = p[1] - o.pos[1];
       if (d >= 2 * R * 0.95 || dy > 1.7 || dy < -1.7) continue;
       const k = (2 * R * 0.95 - d) / (d || 1);
       if (d < 1e-3) { p[0] += Math.sin(pl.face + Math.PI) * 0.05; p[2] += Math.cos(pl.face + Math.PI) * 0.05; } else { p[0] += dx * k; p[2] += dz * k; }
+      bumped = true;
     }
-    let hit = pushOut(L, p, R, pl.h, Math.max(prevY, p[1]) + (pl.grounded ? STEP_UP : 0.15));
+    if (bumped) { const hh = pushOut(L, p, R, pl.h, stepTopNow(), null, p[1] + CROUCH_H); if (hh) hit = hh; }
     // BLJ-Treppen-Trick: rueckwaerts im Weitsprung mit gehaltenem A gegen eine Stufenkante -> sofort der naechste Weitsprung
     if (bljOn) {
       const st = hit && hit.b.tag === 'stair' ? hit.b : stairUnder(L, p);
@@ -12488,15 +13155,16 @@ void main() {
         burst([p[0] - hit.n[0] * R, p[1] + 0.9, p[2] - hit.n[2] * R], 8, { spread: 3, up: 3, upRand: 2, life: .5, size: .14, cols: [[1, .95, .3], [1, 1, 1]], grav: 4 });
       }
     }
-    if (pl.vel[1] > 0) {
+    // Decke: in der Luft steckt der Kopf in etwas (Unterkante zwischen Huefte und Scheitel) -> darunter halten.
+    // Vorher nur beim Durchstossen von unten in genau diesem Bild; stak der Kopf schon drin, kam niemand dagegen an.
+    if (!pl.grounded) {
       for (const b of near(L, p[0], p[2])) {
-        // Gelaende hat keine Decke - ausser duennen Flaechen (Rodelbahn, schwebende Insel): deren Unterseite
-        const bot = b.hf ? (b.hf.overlay ? b.hf.h(p[0], p[2]) - b.hf.thick : -Infinity) : b.min[1];
-        if (bot < prevY + pl.h - 0.05 || bot > p[1] + pl.h) continue;
+        const bot = bottomAt(b, p[0], p[2]);
+        if (!(bot > p[1] + Math.min(pl.h, CROUCH_H) && bot < p[1] + pl.h)) continue;
         const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
         if ((p[0] - nx) ** 2 + (p[2] - nz) ** 2 > (R * 0.7) ** 2) continue;
-        p[1] = bot - pl.h; pl.vel[1] = 0;
-        Snd.stomp();
+        p[1] = bot - pl.h;
+        if (pl.vel[1] > 0) { pl.vel[1] = 0; Snd.stomp(); }
         break;
       }
     }
@@ -12507,7 +13175,11 @@ void main() {
       const nx = clamp(p[0], b.min[0], b.max[0]), nz = clamp(p[2], b.min[2], b.max[2]);
       if ((p[0] - nx) ** 2 + (p[2] - nz) ** 2 > (R * 0.75) ** 2) continue;
       const t = b.slope || b.hf ? topAt(b, p[0], p[2]) : b.max[1];
-      if (t <= reach && t > gy) { gy = t; gb = b; }
+      // Gelaende (Bounce-Berg): auch etwas hoeher noch als Boden nehmen - lief man schnell einen steilen Hang hinauf,
+      // stieg die Oberflaeche in einem Schritt mehr als STEP_UP, und die Figur steckte dann IM Berg und fiel hindurch.
+      // Bis zur Wand-Grenze von hfPush (STEP_UP + HF_LIP) ist es Boden, darueber Wand - dazwischen keine Luecke mehr.
+      const lim = b.hf && !b.hf.overlay && pl.vel[1] <= 0 ? Math.max(reach, p[1] + STEP_UP + HF_LIP) : reach;
+      if (t <= lim && t > gy) { gy = t; gb = b; }
     }
     const was = pl.grounded;
     if (pl.vel[1] <= 0 && gy > -Infinity && p[1] <= gy + (was ? 0.5 : 0.001)) {
@@ -12517,6 +13189,17 @@ void main() {
     } else {
       if (was) { pl.coyote = 0.06; pl.action = 'fall'; }
       pl.grounded = false; pl.groundBox = null;
+    }
+    // In der Luft unter die Gelaendeoberflaeche geraten (schnell gegen einen Hang gesprungen/gefallen): knapp darunter
+    // -> auf die Oberflaeche heben, tief darin (Steilhang wie eine Wand) -> zurueck auf den Platz vor dem Schritt
+    if (!pl.grounded) for (const b of near(L, p[0], p[2])) {
+      if (!b.hf || b.hf.overlay) continue;
+      const t = b.hf.h(p[0], p[2]);
+      if (!(t > p[1] + 0.05)) continue;
+      if (t - p[1] <= STEP_UP + HF_LIP) p[1] = t;
+      else if (!(b.hf.h(ox, oz) > prevY + 0.05)) { p[0] = ox; p[2] = oz; pl.speed = 0; pl.side = 0; }
+      else { p[1] = t; pl.vel[1] = Math.max(0, pl.vel[1]); }
+      break;
     }
     pl.coyote = Math.max(0, pl.coyote - dt);
     // Wer von einer fahrenden Plattform abspringt oder herunterfaellt, behaelt ihren Schwung
@@ -12557,6 +13240,10 @@ void main() {
 
     // Animation
     pl.walk += dt * (pl.grounded ? Math.abs(pl.speed) * 1.1 : 0);
+    // Lava-Hopser: Rauch steigt vom heissen Po auf
+    if (!pl.grounded && time - (pl.burnT ?? -9) < 1.6 && Math.random() < dt * 30) {
+      burst([p[0], p[1] + 0.55, p[2]], 1, { spread: 0.5, up: 0.6, life: 0.8, size: 0.28, cols: [[0.4, 0.4, 0.42], [0.25, 0.25, 0.27]], grav: -2 });
+    }
     // Gangart (fuer Schritte, Pose und spaeter fuer Gegner, die auf laute Schritte hoeren)
     const sp = pl.grounded && pl.action === 'ground' && !pl.crawl ? Math.abs(pl.speed) / RUN : 0;
     pl.gait = sp < 0.03 ? 'stand' : sp < GAIT_SNEAK ? 'sneak' : sp < GAIT_WALK ? 'walk' : 'run';
@@ -12590,7 +13277,8 @@ void main() {
     if (flipRate) pl.flip = Math.min(TAU, pl.flip + dt * flipRate);
     if (!pl.grounded) pl.fallTop = Math.max(pl.fallTop ?? p[1], p[1]);
     // langer Sturz: einmal schreien (nicht beim Stampfer, Hechtsprung oder Kanonenflug)
-    if (pl.grounded || pl.inWater) pl.screamed = false;
+    // ... und sofort verstummen, sobald die Figur aufsetzt oder ins Wasser taucht (Kante: oben bei 'hang')
+    if (pl.grounded || pl.inWater) { if (pl.screamed) Snd.voiceStop('fall'); pl.screamed = false; }
     else if (!pl.screamed && !pl.dead && pl.vel[1] < -6 && pl.fallTop - p[1] > FALL_SCREAM && !['pound', 'dive', 'shot'].includes(pl.action)) {
       pl.screamed = true; Snd.voice('fall');
     }
@@ -12644,7 +13332,8 @@ void main() {
     if (from === 'long' && pl.aHeld && pl.speed < -BLJ_MIN && gb && gb.tag === 'stair') { bljAgain(pl.pos); return; }
     pl.bljN = 0;
     pl.waterJump = false;
-    pl.landT = time; pl.landFrom = from;
+    pl.landT = time; pl.landFrom = from; pl.landImpact = impact;
+    if (time - (pl.burnT ?? -9) < 3) pl.coughT = time;   // nach dem Lava-Hopser: landen, Po reiben, husten
     pl.action = 'ground'; pl.flip = 0;
     pl.squash = impact < -20 ? 0.62 : 0.8;
     if (from === 'pound') {
@@ -12740,13 +13429,14 @@ void main() {
   function onWallHit(hit, into) {
     const L = cur, p = pl.pos;
     if (pl.dead || pl.entering) return;
+    // gegen eine Wand laufen = schieben (Pose in drawPlayer)
+    if (pl.grounded && into > 1.5 && pl.action === 'ground' && !pl.crouch && hit.b.max[1] > p[1] + 0.8) pl.pushT = time;
     // Burgtor / Hallentuer: reinlaufen reicht
     if (into > 3 && pl.grounded && ((hit.b.tag === 'keep' && Math.abs(p[0]) < 2.3 && p[1] < 1 && p[2] > -39) || hit.b.tag === 'exitdoor')) {
       useDoor();
       return;
     }
     if (into > 3 && pl.grounded && hit.b.door) { useDoor(hit.b.door); return; }
-    if (into > 3 && pl.grounded && hit.b.tag === 'stardoor' && state.doorOpen && L.starDoor && L.starDoor.open >= 1) { useStarDoor(); return; }
     // Ins Gemaelde springen
     if (L.paintings && !pl.grounded && into > 1.5) {
       const mid = p[1] + 1.1;
@@ -12767,7 +13457,7 @@ void main() {
      Treffern (Tritt, Hechtsprung, Rutschtritt, Stampfer) landet man auf dem Ruecken; danach blinkend unverwundbar. */
   function hitByPlayer(from, dmg, strong, byName) {
     // auch im Pausenmenue (dort laeuft im Mehrspieler die Welt weiter, siehe frame)
-    if (!(mode === 'play' || mode === 'pause') || Dialog.open || pl.invuln > 0 || pl.dead || Cine.active || pl.entering) return;
+    if (!(mode === 'play' || mode === 'pause') || pl.invuln > 0 || pl.dead || Cine.active || pl.entering) return;
     const p = pl.pos;
     pl.face = Math.atan2(from[0] - p[0], from[2] - p[2]);
     hurtPlayer(dmg, [from[0], p[1], from[2]], strong);
@@ -12793,6 +13483,8 @@ void main() {
     run.health = Math.max(0, run.health - n);
     pl.invuln = 1.6; pl.hurtT = 0.45; pl.action = 'knock'; pl.skid = false; pl.crouch = false; pl.side = 0;
     const dx = pl.pos[0] - from[0], dz = pl.pos[2] - from[2], d = Math.hypot(dx, dz) || 1;
+    // von hinten getroffen: wie im Vorbild nach vorn geschleudert (landet/stirbt auf dem Bauch)
+    pl.hurtFwd = Math.sin(pl.face) * -dx + Math.cos(pl.face) * -dz < 0; pl.hurtAt = time;
     const f = strong ? 14 : 8;
     pl.push = [dx / d * f, 0, dz / d * f]; pl.vel[1] = strong ? 13 : 8; pl.grounded = false; pl.speed = 0;
     Snd.hurt(); Snd.voice('hurt'); rumble(strong ? 1 : 0.7, strong ? 400 : 220); Power.render(true);
@@ -12804,6 +13496,7 @@ void main() {
     if (pl.invuln <= 0) hurtPlayer(3, [p[0] - Math.sin(pl.face), p[1], p[2] - Math.cos(pl.face)]);
     if (pl.dead) return;
     pl.action = 'fall'; pl.grounded = false; pl.groundBox = null; pl.vel[1] = 19; pl.speed = 0; pl.push = [0, 0, 0];
+    pl.burnT = time;   // Pose: mit heissem Po hoch, danach husten (drawPlayer)
     Snd.burn(); rumble(0.7, 200);
     burst([p[0], p[1] + 0.3, p[2]], 16, { spread: 3, up: 5, upRand: 3, life: .6, size: .25, cols: [[1, .5, .1], [1, .85, .2], [.3, .3, .3]], grav: 4 });
   }
@@ -12813,6 +13506,8 @@ void main() {
   function loseLife() {
     if (pl.dead) return;
     pl.dead = true; pl.deadAt = clock; pl.dieT = -1; Snd.voice('die');
+    // wie umfallen: unter Wasser ertrinken, von hinten getroffen auf den Bauch, sonst nach hinten
+    pl.deathKind = (pl.underT || 0) > 0 ? 'drown' : pl.hurtFwd && time - (pl.hurtAt ?? -9) < 1.5 ? 'front' : 'back';
     run.lives = Math.max(0, run.lives - 1);
     renderHud('lives');
     setTimeout(() => {
@@ -12820,6 +13515,7 @@ void main() {
       mode = 'iris';
       const s = toScreen([pl.pos[0], pl.pos[1] + 0.5, pl.pos[2]]) || [innerWidth / 2, innerHeight / 2];
       const course = courseOf(cur.key);
+      setTimeout(() => Snd.evilLaugh(), 180);   // die Fratze lacht, sobald sie im Bild ist
       Iris.close(s[0], s[1], 1100, true).then(() => new Promise((r) => setTimeout(r, 450))).then(() => {
         run.health = 8; Power.render();
         pl.dead = false; pl.dieT = -1;
@@ -12898,6 +13594,33 @@ void main() {
     L.stars.push({ id, pos: pos.slice(), y0: pos[1], t: 0, ghost: !!state.stars[id], gone: false });
     if (L === cur) Snd.starAppear();
   }
+  // Schrift Buchstabe fuer Buchstabe (jeder ploppt versetzt auf und wippt danach), darunter der Name
+  function starGetText(txt, name) {
+    const tEl = $('#starGetText');
+    tEl.setAttribute('aria-label', txt);
+    tEl.replaceChildren(...[...txt].map((ch, i) => {
+      const sp = document.createElement('span');
+      sp.textContent = ch === ' ' ? ' ' : ch; sp.style.setProperty('--d', (0.35 + i * 0.035).toFixed(3) + 's'); sp.setAttribute('aria-hidden', 'true');
+      return sp;
+    }));
+    $('#starGetName').textContent = name;
+  }
+  // Kater Grimms Schluessel: gefangen und gefeiert wie ein Stern, danach zurueck ins Treppenhaus vor seine Tuer
+  function collectKey(L, k) {
+    state.flags.key1 = true; save();
+    mode = 'starget'; pl.starT = clock;
+    starGetText('DU HAST DEN SCHLÜSSEL!', 'Kater Grimms Schlüssel');
+    Snd.starGet(); Snd.duckMusic(2.6); rumble(0.5, 300);
+    pl.speed = 0; pl.vel = [0, Math.min(0, pl.vel[1]), 0]; pl.push = [0, 0, 0];
+    if (pl.hold) dropHold(true);
+    if (Dialog.open) Dialog.close();
+    StarDance.start(k.pos, () => {
+      if (L !== cur) return;
+      const b = backSpot(L.key);
+      transition(() => enterLevel(b.level, b.pos, b.face, b.face));
+      setTimeout(() => { if (!Dialog.open) Dialog.show('Wolki', ['Der SCHLÜSSEL von Kater Grimm!', 'Er passt in die Schlüsseltür oben auf der Galerie – dahinter liegt das OBERGESCHOSS.']); }, 1500);
+    }, MESH.key, 1.05);
+  }
   function collectStar(L, s) {
     s.gone = true;
     const isNew = !state.stars[s.id];
@@ -12905,31 +13628,23 @@ void main() {
     if (isNew) Net.star(s.id);                     // Mehrspieler: zaehlt fuer alle im Raum
     renderHud('stars');
     mode = 'starget'; pl.starT = clock;
-    // Schrift Buchstabe fuer Buchstabe (jeder ploppt versetzt auf und wippt danach)
-    const txt = isNew ? 'DU HAST EINEN STERN!' : 'DEN HAST DU SCHON!', tEl = $('#starGetText');
-    tEl.setAttribute('aria-label', txt);
-    tEl.replaceChildren(...[...txt].map((ch, i) => {
-      const sp = document.createElement('span');
-      sp.textContent = ch === ' ' ? ' ' : ch; sp.style.setProperty('--d', (0.35 + i * 0.035).toFixed(3) + 's'); sp.setAttribute('aria-hidden', 'true');
-      return sp;
-    }));
-    $('#starGetName').textContent = STARS[s.id].name;
-    StarFx.start(s.pos, isNew);
-    Snd.starGet(); Snd.duckMusic(2.6); Snd.voice('star'); rumble(0.5, 300);
-    pl.speed = 0;
-    setTimeout(() => {
-      $('#starGet').hidden = true;
+    starGetText(isNew ? 'DU HAST EINEN STERN!' : 'DEN HAST DU SCHON!', STARS[s.id].name);
+    Snd.starGet(); Snd.duckMusic(2.6); rumble(0.5, 300);   // der Jubelruf kommt mit der Faust (StarDance)
+    pl.speed = 0; pl.vel = [0, Math.min(0, pl.vel[1]), 0]; pl.push = [0, 0, 0];
+    if (Dialog.open) Dialog.close();
+    StarDance.start(s.pos, () => {
       const n = starCount();
       let lines = null;
       if (!isNew) lines = null;
-      else if (n >= STAR_TOTAL) lines = ['ALLE STERNE! Du hast wirklich jeden Winkel gefunden.'].concat(state.doorOpen ? [] : ['Die Sterntür oben auf der Galerie wartet auf dich.']);
-      else if (n === 4) lines = ['WAHNSINN! Das war der vierte Stern!', 'Die Sterntür oben auf der Galerie der Schlosshalle lässt sich jetzt öffnen.'];
-      else lines = [`Stern Nummer ${n}!` + (n < 4 ? ` Noch ${4 - n}, dann gibt die Sterntür nach.` : '')];
+      else if (n >= STAR_TOTAL) lines = ['ALLE STERNE! Du hast wirklich jeden Winkel gefunden.'];
+      else if (n === STAR_DOOR) lines = [`WAHNSINN! Das war der ${STAR_DOOR}. Stern!`, 'Die Sterntür oben auf der Galerie der Schlosshalle lässt sich jetzt öffnen. Dahinter liegt das Treppenhaus – und irgendwo dort Kater Grimm mit dem Schlüssel zum Obergeschoss.'];
+      else lines = [`Stern Nummer ${n}!` + (n < STAR_DOOR ? ` Noch ${STAR_DOOR - n}, dann gibt die Sterntür nach.` : '')];
       // im Kurs (jede Welt hinter einem Bild, nicht beim 50-Muenzen-Stern): wie im Vorbild zurueck vors Bild
-      if (courseOf(L.key) && s.id !== 'coins' && L === cur && mode === 'starget') { exitCourse(lines); return; }
+      const course = courseOf(L.key);
+      if (course && s.id !== 'coins' && L === cur && mode === 'starget') { exitCourse(lines, { course, id: s.id, coins: run.coins }); return; }
       if (mode === 'starget') mode = 'play';
       if (lines) Dialog.show('Wolki', lines);
-    }, StarFx.DUR * 1000);
+    });
   }
   function pressSwitch() {
     const sw = cur.blueSwitch;
@@ -12990,6 +13705,7 @@ void main() {
   function pickUp(e) {
     if (!canPick(e) || pl.hold) return;
     pl.hold = e; e.held = true; e.byPlayer = true; e.speed = 0; e.targetFace = null;
+    if (pl.grounded) pl.pickT = time;   // Pose: buecken und hochheben
     if (e.state === 'walk') { e.state = 'lit'; e.t = 3.6; } else e.t = Math.max(e.t, 2.2);
     Snd.grab(); Snd.fuse(); rumble(0.2, 60);
   }
@@ -13002,13 +13718,14 @@ void main() {
     e.vy = 7.5 + Math.max(0, pl.vel[1]) * 0.3;
     e.thrown = 1.6;
     e.t = Math.min(e.t, 1.6);
-    pl.punchT = 0; pl.punchN = 0;
+    pl.punchT = 0; pl.punchN = 0; pl.throwT = time;   // Pose: Arme von oben nach vorn schwingen
     Snd.whoosh(); Snd.voice('throw');
   }
   function dropHold(soft) {
     const e = pl.hold;
     if (!e) return;
     pl.hold = null; e.held = false; e.thrown = 0; e.speed = 0;
+    if (soft && pl.grounded) pl.putT = time;   // Pose: buecken und absetzen
     const d = soft ? 1.1 : 0.6;
     e.pos[0] = pl.pos[0] + Math.sin(pl.face) * d;
     e.pos[2] = pl.pos[2] + Math.cos(pl.face) * d;
@@ -13491,7 +14208,7 @@ void main() {
 
   /* ═══════════ Interaktionen ═══════════ */
   function readSign() {
-    if (cur.sign.text) { Dialog.show('Schild', cur.sign.text); return; }
+    if (cur.sign.text) { Dialog.show('Schild', cur.sign.text, null, cur.sign.pos); return; }
     Dialog.show('Schild', [
       '★ DAS GEHEIME SCHLOSS ★\nIn diesem Schloss sind 4 Sterne versteckt.',
       '1) ACHT ROTE MÜNZEN liegen im Garten: auf dem Stufenhügel, der Steinsäule, dem Pilz, der Wolke, im Burggraben, hinterm Schloss, über den Steinen und ganz hinten in einer Ecke.',
@@ -13500,12 +14217,37 @@ void main() {
       '3) In der Schlosshalle flitzt TOASTI herum. Fang ihn!',
       '4) Und wer im SONNENSTRAHL der Halle nach OBEN schaut (C / Y), sieht mehr.',
       'Das Schloss ist groß: Jedes Bild hängt in einem EIGENEN ZIMMER. Die Türen der Halle führen hin – und in den KELLER, in den SCHLOSSHOF mit dem Geisterbrunnen und in viele weitere Räume.',
-      'Mit 4 Sternen öffnet sich die STERNTÜR oben auf der Galerie. Dahinter liegt das OBERGESCHOSS mit dem großen Turm.',
+      'Mit 10 Sternen öffnet sich die STERNTÜR oben auf der Galerie. Dahinter führt ein TREPPENHAUS hinauf ins OBERGESCHOSS mit dem großen Turm.',
     ]);
   }
+  // Tueren gehen wie im Vorbild nur aus dem normalen Gehen/Stehen auf: nicht im Sprung, waehrend die Landepose noch zu
+  // sehen ist (T-Arme, Weitsprung-Hocke; Bedingungen wie in drawPlayer), geduckt, krabbelnd, rutschend, beim
+  // Schlagen/Beinfeger oder nach einem Treffer
+  function doorReady() {
+    if (!pl.grounded || pl.action !== 'ground' || pl.dead || pl.entering || pl.skid || pl.crouch || pl.crawl || pl.forceCrouch) return false;
+    if (pl.knock > 0 || pl.hurtT > 0 || pl.frozen > 0 || pl.punchT > 0 || pl.sweepT > 0) return false;
+    const since = time - (pl.landT ?? -9);
+    if (pl.landFrom === 'long') return since >= LONG_LAND;
+    return since >= (LAND_T_HOLD[pl.landFrom] || 0) || Math.abs(pl.speed) >= RUN * LAND_T_RUN;
+  }
+  // Szenen (Tuer, Blende) halten die Spielzeit an - alles, was an ihr haengt, bliebe sonst eingefroren stehen
+  // (Landepose, Bremsen, Schlag, Beinfeger, Stauchung, Leerlauf) und liefe nach der Ankunft weiter. Darum: ruhig stehen.
+  function calmPlayer() {
+    Object.assign(pl, { vel: [0, 0, 0], push: [0, 0, 0], carry: [0, 0], speed: 0, side: 0, grounded: true, action: 'ground', flip: 0, pound: 0,
+      skid: false, crouch: false, crawl: false, forceCrouch: false, knock: 0, knockHard: false, squash: 1, looking: false,
+      landT: -9, landFrom: '', brakeT: 0, punchT: 0, punchN: 0, sweepT: 0, idleT: 0, jumpBuf: 0,
+      skidT: -9, fastT: -9, zDownT: -9, jumpT: -9, comboT: -9, gait: 'stand',
+      pushT: -9, pickT: -9, putT: -9, throwT: -9, burnT: -9, coughT: -9, wakeT: -9, hurtAt: -9 });
+  }
   function useDoor(d = cur.door) {
-    if (mode !== 'play' || pl.entering || !d) return;
-    if (d.fx && !d.end) { DoorSeq.start(d); return; }
+    if (mode !== 'play' || pl.entering || !d || !doorReady()) return;
+    if (d.stars && starCount() < d.stars) { lockedDoor(d); return; }
+    if (d.key && !state.flags[d.key]) { lockedKeyDoor(d); return; }
+    if (Dialog.open) Dialog.close();   // Dialoge laufen jetzt im Spiel weiter - durch die Tuer endet das Gespraech
+    // Schluesseltuer beim ersten Mal: erst aufschliessen (der Schluessel schwebt ins Schloss), danach fuer immer offen
+    const unlock = d.key && !state.flags[d.key + '_open'];
+    if (d.fx && !d.end) { DoorSeq.start(d, unlock ? { unlock: true, onUnlock: () => { state.flags[d.key + '_open'] = true; save(); } } : {}); return; }
+    calmPlayer();
     Snd.door();
     if (d.end) { openEnding(); return; }
     if (d.back) { leaveBack(); return; }
@@ -13529,19 +14271,27 @@ void main() {
     const s = backSpot(cur.key);
     transition(() => enterLevel(s.level, s.pos, s.face, s.face));
   }
-  /* ═══════════ Tueren wie im Vorbild (nach Video 2026-09-28) ═══════════
-     Hinaus: die Figur tritt vor die Tuer, greift den Knauf, der Fluegel auf ihrer rechten Seite schwingt von ihr weg auf,
-     sie geht hindurch; die Kamera steht ruhig hinter ihr, dann zieht sich die Sternblende auf die Figur zusammen.
-     Herein: Blende geht auf, die Kamera steht im neuen Raum und schaut auf die Tuer - die Figur steht in der offenen
-     Tuer und geht ein paar Schritte herein, hinter ihr faellt der Fluegel zu; dann schwenkt die Kamera hinter sie.
+  /* ═══════════ Tueren wie im Vorbild (Videos 2026-09-28, 2026-09-30) ═══════════
+     Wie Mario im Schloss (Video 20260930-1617, Bild fuer Bild angesehen): die Kamera haengt sich hinter die Figur und geht
+     mit ihr durch die Tuer - kein Schnitt vor die Tuer, keine Blende mitten im Bild. Drueben steht die Kamera hinter der
+     Figur, die schon ein Stueck im Raum ist und einfach weiterlaeuft. Hier ist jeder Raum ein eigenes Level, darum:
+       hinaus  0-0,3 s vor die Tuer, Kamera gleitet hinter die Figur; 0,25-0,45 Hand an den Knauf, 0,35-0,8 Fluegel auf,
+               ab 0,55 geht sie im Schritt hindurch, die Kamera folgt bis dicht vor die schwarze Oeffnung (das Bild ist dann
+               fast nur noch schwarz), dort ganz kurz ganz schwarz (Iris.fade)
+       herein  die Kamera steht in der offenen Ankunftstuer hinter der Figur, die mit demselben Schritt weiterlaeuft und
+               zieht mit; der Fluegel faellt dabei zu (auf der anderen Seite als die Kamera). Danach uebernimmt die normale
+               Kamera weich (cam.ease) und die Figur behaelt ihr Tempo - wer den Stick haelt, laeuft einfach weiter.
+     Schluesseltuer beim ersten Mal (o.unlock): vorher schwebt der Schluessel ins Schloss und dreht sich (UNLOCK s).
      Waehrend der Sequenz steht die Welt (mode 'door'), die Figur wird hier direkt bewegt. */
   const DoorSeq = (() => {
     let S = null;
     const E = (t, a, b) => smooth((t - a) / (b - a));
     const lerp3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)];
+    const WALK = 3.6, CAM_MIN = 1.25, UNLOCK = 1.75;   // Schritttempo; so nah darf die Kamera an die Tuerebene (Loch bei 0,42 + Near 0,5 + Rand); Dauer Aufschliessen
     // Geometrie einer Tuer von der Seite n aus (n = Einheitsvektor von der Tuer zu dieser Seite)
     function sideOf(f, p) { return Math.sign((p[0] - f.pos[0]) * f.fwd[0] + (p[2] - f.pos[2]) * f.fwd[1]) || 1; }
     const lateral = (f, wing, k) => { const sg = wing ? 1 : -1, c = Math.cos(f.ry), sn = Math.sin(f.ry); return [sg * k * c, -sg * k * sn]; };
+    const planeDist = (f, n, p) => (p[0] - f.pos[0]) * n[0] + (p[2] - f.pos[2]) * n[1];
     // Ankunftstuer = die Tuer mit Fluegeln, die der Ankunftsstelle am naechsten ist (kommt man vor einem Bild an: keine)
     function arrivalFx(L) {
       let best = null, bd = 6.5;
@@ -13551,8 +14301,8 @@ void main() {
       }
       return best;
     }
-    let C = null;   // Fluegel, der nach dem Hereinkommen noch zufaellt (die Figur laeuft da schon)
-    function start(d) {
+    let C = null;   // Fluegel, der nach dem Hereinkommen noch zufaellt
+    function start(d, o = {}) {
       if (S) return;
       if (C && C.f === d.fx) { C.f.open[C.wing] = 0; C = null; }
       // der Fluegel auf der Seite, auf der die Figur steht (links oder rechts), schwingt von ihr weg auf
@@ -13561,13 +14311,13 @@ void main() {
       if (pl.hold) dropHold(true);
       const lat = lateral(f, wing, Math.min(1.1, f.half * 0.5)), y = f.pos[1];
       const A = [f.pos[0] + n[0] * 1.15 + lat[0], y, f.pos[2] + n[1] * 1.15 + lat[1]];
-      const B = [f.pos[0] - n[0] * 2.2 + lat[0], y, f.pos[2] - n[1] * 2.2 + lat[1]];
-      const camTo = [f.pos[0] + n[0] * 7 + lat[0] * 0.4, y + 3.1, f.pos[2] + n[1] * 7 + lat[1] * 0.4];
-      S = { phase: 'out', t: 0, d, f, side, n, wing, A, B, p0: pl.pos.slice(), face0: pl.face, camFrom: cam.pos.slice(), camTo, fromKey: cur.key, closing: false };
+      S = { phase: 'out', t: 0, pre: o.unlock ? UNLOCK : 0, onUnlock: o.onUnlock || null, d, f, side, n, wing, lat, A,
+        p0: pl.pos.slice(), face0: pl.face, camFrom: cam.pos.slice(), lookFrom: (cam.tgt || [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]]).slice(),
+        look: null, fromKey: cur.key, dark: false, pitch0: cam.pitch, dist0: cam.dist };
       mode = 'door';
-      Object.assign(pl, { vel: [0, 0, 0], push: [0, 0, 0], speed: 0, side: 0, grounded: true, action: 'ground', skid: false, crouch: false, crawl: false, doorReach: 0 });
+      calmPlayer(); pl.doorReach = 0;
     }
-    // Hinein in den neuen Raum (nach geschlossener Blende)
+    // Hinein in den neuen Raum (im Schwarz)
     function arrive() {
       const d = S.d, from = S.fromKey;
       S.f.open = [0, 0];
@@ -13578,15 +14328,16 @@ void main() {
       if (f) {
         const P1 = pl.pos.slice(), side = sideOf(f, P1), n = [f.fwd[0] * side, f.fwd[1] * side], wing = 1 - S.wing;   // derselbe Fluegel, von der anderen Seite
         const lat = lateral(f, wing, Math.min(1.1, f.half * 0.5)), y = f.pos[1];
-        const face = Math.atan2(n[0], n[1]), perp = [n[1], -n[0]];
-        Object.assign(S, { P1, n, wing, face,
-          P0: [f.pos[0] + n[0] * 0.35 + lat[0], y, f.pos[2] + n[1] * 0.35 + lat[1]],
-          cam2: [f.pos[0] + n[0] * 8.2 + perp[0] * 2.6, y + 3.3, f.pos[2] + n[1] * 8.2 + perp[1] * 2.6],
-          look2: [f.pos[0] + lat[0] * 0.5, y + 1.7, f.pos[2] + lat[1] * 0.5] });
+        // die Figur ist schon ein Stueck im Raum (sie ist ja im Schwarz weitergegangen) und laeuft bis zur Ankunftsstelle
+        const endD = Math.max(2.8, planeDist(f, n, P1)), P0 = [f.pos[0] + n[0] * 1.9 + lat[0], y, f.pos[2] + n[1] * 1.9 + lat[1]];
+        const P2 = [f.pos[0] + n[0] * endD + lat[0], P1[1], f.pos[2] + n[1] * endD + lat[1]];
+        Object.assign(S, { n, wing, lat, face: Math.atan2(n[0], n[1]), P0, P2, walkT: Math.max(0.3, (endD - 1.9) / WALK) });
         f.open[wing] = -side * 1.5;   // steht offen: zur Raumseite aufgeschwungen
-        pl.pos = S.P0.slice(); pl.face = face;
-      }
-      Iris.open(null, null, 600);
+        C = { f, wing, a0: f.open[wing], t: -0.2 };   // faellt gleich hinter der Figur zu
+        pl.pos = P0.slice(); pl.face = S.face; pl.speed = WALK; pl.gait = 'walk';
+      } else cam.snap = true;
+      camera();
+      Iris.fade(1, 0, f ? 280 : 360);
     }
     function tick(dt) {
       if (C) {   // Fluegel faellt hinter der Figur zu
@@ -13599,84 +14350,216 @@ void main() {
       S.t += dt;
       const t = S.t;
       if (S.phase === 'out') {
-        // 0-0,3 s vor die Tuer treten, 0,25-0,45 Hand an den Knauf, 0,35-0,8 Fluegel auf, 0,62-1,45 hindurch
-        const k1 = E(t, 0, 0.3), k2 = E(t, 0.62, 1.45);
-        const want = Math.atan2(-S.n[0], -S.n[1]);
+        const u = t - S.pre, dirIn = [-S.n[0], -S.n[1]];
+        const want = Math.atan2(dirIn[0], dirIn[1]);
         pl.face = S.face0 + angDiff(S.face0, want) * E(t, 0, 0.22);
-        pl.pos = t < 0.62 ? lerp3(S.p0, S.A, k1) : lerp3(S.A, S.B, k2);
-        const v = t < 0.3 ? Math.hypot(S.A[0] - S.p0[0], S.A[2] - S.p0[2]) / 0.3 : t > 0.62 && t < 1.45 ? 3.6 : 0;
+        let v = 0;
+        if (u < 0.55) { pl.pos = lerp3(S.p0, S.A, E(t, 0, 0.3)); if (t < 0.3) v = Math.hypot(S.A[0] - S.p0[0], S.A[2] - S.p0[2]) / 0.3; }
+        else { const s = WALK * (u - 0.55); pl.pos = [S.A[0] + dirIn[0] * s, S.A[1], S.A[2] + dirIn[1] * s]; v = WALK; }
         pl.speed = v; pl.walk += dt * v * 1.1; pl.gait = v > 0.2 ? 'walk' : 'stand';
-        pl.doorReach = t < 0.62 ? E(t, 0.22, 0.42) : 1 - E(t, 0.62, 0.85);
-        if (t >= 0.33 && !S.snd) { S.snd = true; Snd.door(); }
-        S.f.open[S.wing] = S.side * 1.45 * E(t, 0.35, 0.82);
-        if (t > 1.0 && !S.closing) {
-          S.closing = true;
-          const sp = toScreen([pl.pos[0], pl.pos[1] + 1.1, pl.pos[2]]) || [innerWidth / 2, innerHeight / 2];
-          Iris.close(sp[0], sp[1], 560).then(arrive);
+        // Hand: beim Aufschliessen zum Schluessel, sonst an den Knauf
+        const keyReach = S.pre ? E(t, 0.8, 1.0) * (1 - E(t, 1.4, 1.6)) : 0;
+        pl.doorReach = Math.max(keyReach, u < 0.55 ? E(u, 0.22, 0.42) : 1 - E(u, 0.55, 0.75));
+        if (S.pre && t >= 1.33 && !S.clicked) {
+          S.clicked = true; Snd.lock(); rumble(0.3, 90);
+          const k = keyPose(1.33);
+          burst(k.p, 14, { spread: 2.2, up: 2, upRand: 1.5, life: .6, size: .16, cols: [[1, .9, .4], [1, 1, 1]], grav: 4 });
+          if (S.onUnlock) S.onUnlock();
         }
+        if (u >= 0.33 && !S.snd) { S.snd = true; Snd.door(); }
+        S.f.open[S.wing] = S.side * 1.45 * E(u, 0.35, 0.8);
+        // ein Stueck hinter der Oeffnung (im Schwarz): ganz kurz ganz schwarz, dann drueben weiter
+        if (!S.dark && planeDist(S.f, S.n, pl.pos) < -1.3) { S.dark = true; Iris.fade(0, 1, 170).then(arrive); }
         return;
       }
-      if (!S.f2) { if (t > 0.65) finish(); return; }
-      // Herein: 0,1-1,0 s Schritte in den Raum, dann gleich weiterspielen - der Fluegel faellt dabei zu (C), die Kamera
-      // bleibt, wo sie ist (kein Schwenk hinter die Figur)
-      const k = E(t, 0.1, 1.0);
-      pl.pos = lerp3(S.P0, S.P1, k);
-      const v = t > 0.1 && t < 1.0 ? Math.hypot(S.P1[0] - S.P0[0], S.P1[2] - S.P0[2]) / 0.9 : 0;
-      pl.speed = v; pl.walk += dt * v * 1.1; pl.gait = v > 0.2 ? 'walk' : 'stand'; pl.doorReach = 0;
-      pl.face = S.face;
-      if (t >= 1.0) finish();
+      if (!S.f2) { if (t > 0.3) finish(0); return; }
+      // Herein: mit Schritttempo weiter bis zur Ankunftsstelle, dann Uebergabe mit Tempo
+      const k = Math.min(1, t / S.walkT);
+      pl.pos = lerp3(S.P0, S.P2, k);
+      pl.speed = WALK; pl.walk += dt * WALK * 1.1; pl.gait = 'walk'; pl.doorReach = 0; pl.face = S.face;
+      if (k >= 1) finish(WALK);
     }
-    function finish() {
-      const f = S && S.f2;
-      if (f) C = { f, wing: S.wing, a0: f.open[S.wing], t: 0 };
-      S = null;
-      pl.doorReach = 0; pl.speed = 0;
+    function finish(speed) {
+      const f = S && S.f2, n = S && S.n;
       if (f) {
-        // normale Kamera uebernimmt genau die jetzige Lage (Abstand, Hoehe, Richtung) - nichts rastet ein
-        const tg = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], v = v3.sub(cam.pos, tg), d = v3.len(v) || 1;
-        cam.yaw = Math.atan2(v[0], v[2]); cam.pitch = clamp(Math.asin(clamp(v[1] / d, -1, 1)), -0.15, 1.2); cam.dist = clamp(d, 5, 22);
-        cam.tgt = tg; cam.snap = false;
+        // die normale Kamera uebernimmt weich (cam.ease) - hinter der Figur, mit dem Abstand und Winkel von vor der Tuer
+        cam.ease = { pos: cam.pos.slice(), look: (S.look || cam.tgt).slice(), t0: clock, dur: 0.8 };
+        cam.yaw = Math.atan2(-n[0], -n[1]); cam.pitch = clamp(S.pitch0, 0.18, 0.6); cam.dist = S.dist0;
+        cam.tgt = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]]; cam.snap = false;
       } else cam.snap = true;
+      S = null;
+      pl.doorReach = 0; pl.speed = speed; pl.gait = speed > 0.2 ? 'walk' : 'stand';
       cam.manual = 0;
       mode = 'play';
     }
-    // Kamera: hinaus = ruhig hinter der Figur (schaut auf die Tuer), herein = im Raum auf die Tuer, dann hinter die Figur
+    // Wo der Schluessel beim Aufschliessen ist (t in s seit Start der Szene): Position p, Blickrichtung ry, Drehung rz, Groesse s
+    function keyPose(t) {
+      const f = S.f, n = S.n, dirIn = [-n[0], -n[1]], ry = Math.atan2(dirIn[0], dirIn[1]);
+      const lock = [f.pos[0] + n[0] * 0.36, f.pos[1] + Math.min(2.1, f.h * 0.42), f.pos[2] + n[1] * 0.36];
+      const chest = [S.A[0], S.A[1] + 1.25, S.A[2]], front = [lock[0] + n[0] * 0.7, lock[1], lock[2] + n[1] * 0.7];
+      if (t < 0.85) {
+        const k = E(t, 0.3, 0.85), p = lerp3(chest, front, k);
+        p[1] += Math.sin(k * Math.PI) * 0.6;
+        return { p, ry: ry + (1 - k) * TAU * 1.5, rz: 0, s: Math.min(1, E(t, 0.3, 0.45) + 0.001) };
+      }
+      const push = E(t, 0.85, 1.1), turn = E(t, 1.1, 1.33), gone = E(t, 1.45, 1.7);
+      return { p: lerp3(front, [lock[0] + dirIn[0] * 0.05, lock[1], lock[2] + dirIn[1] * 0.05], push), ry, rz: turn * Math.PI / 2, s: 1 - gone };
+    }
+    function drawKey() {
+      if (!S || !S.pre || S.phase !== 'out' || S.t < 0.3 || S.t > 1.7) return;
+      const k = keyPose(S.t);
+      if (k.s > 0.01) draw(MESH.key, M4.from(k.p[0], k.p[1], k.p[2], k.ry, 0, k.rz, k.s * 1.2), { shine: 0.9, rim: 0.4, lit: 0.8 });
+    }
+    // Kamera: hinaus = hinter der Figur her bis vor die Oeffnung, herein = in der Tuer hinter der Figur, zieht mit
     function camera() {
       const t = S.t;
       let pos, look;
       if (S.phase === 'out') {
-        pos = lerp3(S.camFrom, S.camTo, E(t, 0, 0.4));
-        look = lerp3([S.f.pos[0], S.f.pos[1] + 1.8, S.f.pos[2]], [pl.pos[0], pl.pos[1] + 1.3, pl.pos[2]], 0.55);
+        const u = t - S.pre, n = S.n, dirIn = [-n[0], -n[1]], f = S.f, hk = E(u, 0.4, 1.0);
+        const back = lerp(4.4, 1.9, hk), hgt = lerp(2.6, 1.95, hk);
+        const fp = [pl.pos[0] - dirIn[0] * back, pl.pos[1] + hgt, pl.pos[2] - dirIn[1] * back];
+        // nicht durch Waende: vom Platz vor der Tuer aus gemessen (die Figur selbst steht spaeter schon im Schwarz)
+        const o = [f.pos[0] + n[0] * 1.2 + S.lat[0], f.pos[1] + 1.9, f.pos[2] + n[1] * 1.2 + S.lat[1]], dv = v3.sub(fp, o), dl = v3.len(dv);
+        if (dl > 0.3) { const dir = v3.scale(dv, 1 / dl), r = camReach(o, dir, dl); fp[0] = o[0] + dir[0] * r; fp[1] = o[1] + dir[1] * r; fp[2] = o[2] + dir[2] * r; }
+        const pd = planeDist(f, n, fp);   // nie hinter die Oeffnung
+        if (pd < CAM_MIN) { fp[0] += n[0] * (CAM_MIN - pd); fp[2] += n[1] * (CAM_MIN - pd); }
+        const lf = [pl.pos[0] + dirIn[0] * 2.2, pl.pos[1] + 1.3, pl.pos[2] + dirIn[1] * 2.2];
+        pos = lerp3(S.camFrom, fp, E(t, 0, 0.55));
+        look = lerp3(S.lookFrom, lf, E(t, 0, 0.45));
       } else if (!S.f2) {
-        const yaw = pl.face + Math.PI;
-        pos = [pl.pos[0] + Math.sin(yaw) * 11, pl.pos[1] + 5.6, pl.pos[2] + Math.cos(yaw) * 11]; look = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
+        // keine Ankunftstuer: hinter die Figur, aber nicht durch Waende (sonst steht die Kamera draussen)
+        const yaw = pl.face + Math.PI, o = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], dir = v3.norm([Math.sin(yaw) * 11, 4, Math.cos(yaw) * 11]);
+        const r = camReach(o, dir, Math.hypot(11, 4));
+        pos = [o[0] + dir[0] * r, o[1] + dir[1] * r, o[2] + dir[2] * r]; look = o;
       } else {
-        // im Raum auf die Tuer, der Blick wandert zur Figur (am Ende genau wie die normale Kamera, s. finish)
-        pos = S.cam2;
-        look = lerp3(S.look2, [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]], E(t, 0.15, 1.0));
+        // in der offenen Tuer hinter der Figur (auf der Seite gegenueber dem Fluegel, der gleich zufaellt), zieht mit
+        const f = S.f2, n = S.n, k = Math.min(1, t / S.walkT), side = [-S.lat[0] * 0.2, -S.lat[1] * 0.2];
+        const d = lerp(0.5, Math.max(0.5, planeDist(f, n, S.P2) - 2.2), smooth(k));
+        pos = [f.pos[0] + n[0] * d + side[0], f.pos[1] + lerp(2.0, 2.5, k), f.pos[2] + n[1] * d + side[1]];
+        look = [pl.pos[0] + n[0] * 2.4, pl.pos[1] + 1.35, pl.pos[2] + n[1] * 2.4];
       }
+      S.look = look;
       cam.pos = pos; cam.tgt = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
       cam.view = M4.lookAt(pos, look, [0, 1, 0]);
     }
-    return { start, tick, camera, get active() { return !!S; } };
+    return { start, tick, camera, drawKey, get active() { return !!S; } };
   })();
-  // Die Sterntuer oben auf der Galerie: mit 4 Sternen geht sie auf, dahinter liegt das Obergeschoss
-  function useStarDoor() {
-    const sd = cur.starDoor, n = starCount(), miss = 4 - n;
-    if (sd.opening || mode !== 'play') return;
-    if (state.doorOpen && sd.open >= 1) { Snd.door(); transition(() => enterLevel('og')); return; }
-    if (miss > 0) {
-      Snd.deny();
-      Dialog.show('Sterntür', ['Diese Tür öffnet sich erst mit ★ 4.', `Du hast ${n}. Dir fehl${miss === 1 ? 't' : 'en'} noch ${miss} Stern${miss === 1 ? '' : 'e'}.`]);
-      return;
+  /* ═══════════ Stern holen wie im Vorbild (Video "Star Get" + Aufnahmen des Users, 2026-09-29) ═══════════
+     Die Welt steht (mode 'starget'), alles passiert in der Szene statt als Vollbild-Effekt:
+       0,00-0,25 s  Glitzer am Stern, er springt zur Figur
+       0,25-1,45 s  die Figur dreht sich mit einem Hopser, der Stern kreist anderthalbmal um sie (Glitzerschweif)
+       ab 1,45 s    Faust hoch ("gnarp gnarp"), der Stern steigt ueber den Kopf und schwebt dort, Glitzer rieselt
+       ab 2,8 s     die Kamera zieht zurueck; unten huepft die Schrift
+     Die Kamera steht schraeg vor der Figur (wie im Vorbild). Danach ruft der Ablauf done() auf. */
+  const StarDance = (() => {
+    const DUR = 3.6, CATCH = 0.25, TWIRL = 1.45, RISE = 0.45, OUT = 2.8;
+    let S = null;
+    const sp = [], COLS = [[1, 0.92, 0.45], [1, 1, 1], [1, 0.78, 0.28]];
+    function spark(p, v, s = 0.14, life = 0.9) {
+      if (sp.length < 260) sp.push({ p: p.slice(), v, t0: clock, life, col: COLS[sp.length % 3], s, rot: Math.random() * TAU });
     }
-    sd.opening = true; state.doorOpen = true; save();
-    Snd.door(); rumble(0.4, 600);
-    pl.frozen = 1.6;
-    setTimeout(() => {
-      sd.opening = false; sd.open = 1;
-      if (cur.starDoor === sd && mode === 'play') transition(() => enterLevel('og'));
-    }, 1500);
+    function burst(p, n, speed) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * TAU, b = (Math.random() - 0.2) * 1.3;
+        spark(p, [Math.cos(a) * Math.cos(b) * speed, Math.sin(b) * speed + 1, Math.sin(a) * Math.cos(b) * speed], 0.2 + Math.random() * 0.14, 0.6 + Math.random() * 0.5);
+      }
+    }
+    // mesh/size: was gefangen wird (Vorgabe Stern; der Schluessel von Kater Grimm tanzt genauso)
+    function start(pos, done, mesh = MESH.star, size = 0.62) {
+      const e = pl.pos;
+      S = { t: 0, from: pos.slice(), star: pos.slice(), a0: Math.atan2(pos[0] - e[0], pos[2] - e[2]), done, voiced: false, lastSp: 0,
+        camFrom: cam.pos.slice(), lookFrom: [e[0], e[1] + 1.4, e[2]], mesh, size };
+      burst(pos, 26, 3.2);
+      const el = $('#starGet'); el.classList.remove('out'); el.hidden = false;
+    }
+    // Wo der Stern gerade ist (t in s seit dem Fangen)
+    function starPos(t) {
+      const e = pl.pos, orbit = (k) => {
+        const a = S.a0 + k * TAU * 1.5, r = 1.35 - 0.25 * k;
+        return [e[0] + Math.sin(a) * r, e[1] + 1.1 + k * 0.5, e[2] + Math.cos(a) * r];
+      };
+      const top = [e[0], e[1] + 3.0 + Math.sin(t * 3) * 0.08, e[2]];
+      if (t < CATCH) { const k = smooth(t / CATCH), o = orbit(0); return S.from.map((c, j) => lerp(c, o[j], k)); }
+      if (t < TWIRL) return orbit((t - CATCH) / (TWIRL - CATCH));
+      const k = smooth(clamp((t - TWIRL) / RISE, 0, 1)), o = orbit(1);
+      return o.map((c, j) => lerp(c, top[j], k));
+    }
+    function tick(dt) {
+      for (let i = sp.length - 1; i >= 0; i--) {
+        const s = sp[i];
+        if (clock - s.t0 > s.life) { sp.splice(i, 1); continue; }
+        s.p[0] += s.v[0] * dt; s.p[1] += s.v[1] * dt; s.p[2] += s.v[2] * dt; s.v[1] -= 2.2 * dt; s.v[0] *= 0.97; s.v[2] *= 0.97;
+      }
+      if (!S) return;
+      S.t += dt;
+      const t = S.t;
+      S.star = starPos(t);
+      // Glitzer: Schweif beim Kreisen, danach rieselt es vom schwebenden Stern
+      if (clock - S.lastSp > 0.03) {
+        S.lastSp = clock;
+        const q = S.star;
+        if (t < TWIRL) spark(q, [(Math.random() - 0.5) * 0.6, 0.2 + Math.random() * 0.4, (Math.random() - 0.5) * 0.6], 0.2 + Math.random() * 0.12);
+        else spark([q[0] + (Math.random() - 0.5) * 0.5, q[1] - 0.2, q[2] + (Math.random() - 0.5) * 0.5], [(Math.random() - 0.5) * 1.2, -0.3 - Math.random() * 0.6, (Math.random() - 0.5) * 1.2], 0.16 + Math.random() * 0.12, 1.1);
+      }
+      if (t >= TWIRL && !S.voiced) {   // Faust hoch: Glitzer rund um die Figur, Jubelruf
+        S.voiced = true; Snd.voice('star');
+        burst([pl.pos[0], pl.pos[1] + 1.4, pl.pos[2]], 22, 2.4);
+      }
+      if (t >= OUT && !$('#starGet').classList.contains('out')) { $('#starGet').classList.add('out'); Snd.whoosh(); }
+      if (t >= DUR) {
+        $('#starGet').hidden = true;
+        const done = S.done; S = null;
+        cam.snap = true;
+        if (done) done();
+      }
+    }
+    // Kamera schraeg vor der Figur, am Schluss zurueck und hoeher; Waende begrenzen den Abstand (camReach)
+    function camera() {
+      const t = S.t, e = pl.pos, ya = pl.face + 0.45, back = smooth(clamp((t - OUT) / (DUR - OUT), 0, 1));
+      const look = [e[0], e[1] + 1.35 + 0.9 * smooth(clamp((t - TWIRL) / RISE, 0, 1)) * (1 - back * 0.5), e[2]];
+      const d = lerp(5.4, 9.5, back), h = lerp(1.2, 3.4, back), dir = v3.norm([Math.sin(ya) * d, h, Math.cos(ya) * d]);
+      const r = camReach(look, dir, Math.hypot(d, h));
+      const want = [look[0] + dir[0] * r, look[1] + dir[1] * r, look[2] + dir[2] * r], k = smooth(clamp(t / 0.45, 0, 1));
+      cam.pos = S.camFrom.map((c, j) => lerp(c, want[j], k));
+      const lk = S.lookFrom.map((c, j) => lerp(c, look[j], k));
+      cam.tgt = lk; cam.view = M4.lookAt(cam.pos, lk, [0, 1, 0]);
+    }
+    // (nicht "draw" nennen - das verdeckt die globale draw)
+    function drawStar() {
+      if (!S) return;
+      const t = S.t, q = S.star, grow = 1 + 0.25 * smooth(clamp((t - TWIRL) / RISE, 0, 1));
+      draw(S.mesh, M4.from(q[0], q[1], q[2], t * (t < TWIRL ? 7 : 2.6), 0, 0, S.size * grow), { lit: 0.9, shine: 0.6, rim: 0.3 });
+    }
+    // im Durchsichtig-Durchgang (Blending an): Glitzer, immer zur Kamera gedreht
+    function drawSparks() {
+      for (const s of sp) {
+        const k = (clock - s.t0) / s.life, sz = s.s * (k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85);
+        if (sz < 0.002) continue;
+        const ry = Math.atan2(cam.pos[0] - s.p[0], cam.pos[2] - s.p[2]);
+        draw(MESH.twinkle, M4.from(s.p[0], s.p[1], s.p[2], ry, 0, s.rot + clock * 3, sz), { lit: 0, tint: [s.col[0], s.col[1], s.col[2], 1], alpha: 1 - k * 0.4 });
+      }
+    }
+    return { start, tick, camera, drawStar, drawSparks, DUR, get active() { return !!S; }, get t() { return S ? S.t : -1; } };
+  })();
+  // Kursnummer wie auf der Sternwahl: Reihenfolge der Gemaelde, die Wuestenstadt ist Kurs 9
+  const courseNumber = (world) => (world === 'desert' ? 9 : PAINTINGS.findIndex((q) => q.level === world) + 1);
+  // Verschlossene Sterntuer: die Fluegel ruetteln, und es steht dran, wie viele Sterne noch fehlen (nicht jedes Bild neu,
+  // wenn man dagegen laeuft)
+  function lockedDoor(d) {
+    if (clock - (d.denyT ?? -9) < 2.5) return;
+    d.denyT = clock;
+    const n = starCount(), miss = d.stars - n;
+    if (d.fx) d.fx.rattle = clock;
+    Snd.deny(); rumble(0.3, 120);
+    if (!Dialog.open) Dialog.show('Sterntür', [`Um diese Tür zu öffnen, brauchst du die Kraft von ${d.stars} Sternen.`, `Du hast ${n}. Dir fehl${miss === 1 ? 't' : 'en'} noch ${miss} Stern${miss === 1 ? '' : 'e'}.`], null, d.pos);
+  }
+  // Schluesseltuer ohne Schluessel: ruetteln, und sie sagt, wo es einen gibt
+  function lockedKeyDoor(d) {
+    if (clock - (d.denyT ?? -9) < 2.5) return;
+    d.denyT = clock;
+    if (d.fx) d.fx.rattle = clock;
+    Snd.deny(); rumble(0.3, 120);
+    if (!Dialog.open) Dialog.show('Schlüsseltür', ['Diese Tür ist verschlossen. Du brauchst einen SCHLÜSSEL.', d.keyHint || 'Irgendwer hier im Schloss hat ihn …'], null, d.pos);
   }
   function openEnding() {
     mode = 'iris'; Input.unlock();
@@ -13717,6 +14600,7 @@ void main() {
   const lerpv = (a2, b2, k) => [lerp(a2[0], b2[0], k), lerp(a2[1], b2[1], k), lerp(a2[2], b2[2], k)];
   function enterPainting(pt, p, y) {
     if (Cine.active) return;
+    if (Dialog.open) Dialog.close();
     const sc = pt.scale || 1;
     const center = M4.point(pt.model, [0, 0.325, 0]);
     const n = v3.norm(M4.dir(pt.model, [0, 0, 1]));
@@ -13965,9 +14849,8 @@ void main() {
     if (L.door && dist2D(p, L.door.pos) < 3.2 && Math.abs(p[1] - L.door.pos[1]) < 1.5) return { label: L.door.label, act: () => useDoor() };
     for (const d of L.doors) if (dist2D(p, d.pos) < 3 && Math.abs(p[1] - d.pos[1]) < 1.5) return { label: d.label, act: () => useDoor(d) };
     for (const t of L.talkers) {
-      if (dist2D(p, t.pos) < (t.r || 2.8) && Math.abs(p[1] - t.pos[1]) < 2) return { label: t.label || (t.speaker === 'Schild' ? 'Lesen' : 'Reden'), act: () => Dialog.show(t.speaker, t.text, t.onDone) };
+      if (dist2D(p, t.pos) < (t.r || 2.8) && Math.abs(p[1] - t.pos[1]) < 2) return { label: t.label || (t.speaker === 'Schild' ? 'Lesen' : 'Reden'), act: () => Dialog.show(t.speaker, t.text, t.onDone, t.pos) };
     }
-    if (L.starDoor && dist2D(p, L.starDoor.pos) < 4.5 && p[1] > 4) return { label: 'Sterntür', act: useStarDoor };
     if (L.sun && dist2D(p, L.sun.spot) < L.sun.r) return { label: 'Nach oben schauen', btn: 'look' };
     if (L.paintings) {
       for (const pt of L.paintings) {
@@ -14076,6 +14959,7 @@ void main() {
     }
     if (Flyby.active) { Flyby.camera(); return; }
     if (DoorSeq.active) { DoorSeq.camera(); return; }
+    if (StarDance.active) { StarDance.camera(); return; }
     if (PaintOut.active) { PaintOut.camera(); return; }
     if (pl.action === 'cannon' && pl.cannon) {
       // in der Kanone: Blick durchs Rohr (Zielen mit Stick/Maus, siehe updateCannon)
@@ -14085,10 +14969,14 @@ void main() {
       cam.tgt = [pl.pos[0], pl.pos[1] + 1.6, pl.pos[2]];
       return;
     }
-    const playing = mode === 'play' && !Dialog.open;
+    const playing = mode === 'play';   // auch waehrend eines Dialogs frei drehbar
     if (playing) {
       cam.yaw -= inp.cx * 2.8 * dt + inp.mdx * 0.006;
-      cam.pitch = clamp(cam.pitch + inp.cy * 1.8 * dt + inp.mdy * 0.004, -0.15, 1.2);
+      // unter Wasser darf die Kamera unter die Figur (nach oben schauen = hochschwimmen), danach sanft zurueck
+      const swimCam = pl.action === 'swim', pLo = swimCam ? -0.95 : -0.15;
+      let pt = cam.pitch + inp.cy * 1.8 * dt + inp.mdy * 0.004;
+      if (pt < pLo) pt = swimCam ? pLo : Math.min(pLo, pt + dt * 1.5);
+      cam.pitch = Math.min(pt, 1.2);
       cam.dist = clamp(cam.dist + inp.wheel * 0.01, 5, 22);
       if (Math.abs(inp.cx) + Math.abs(inp.cy) > 0.05 || inp.mdx || inp.mdy) cam.manual = 1.5;
       cam.manual -= dt;
@@ -14100,7 +14988,7 @@ void main() {
     // Sterben: die Kamera rueckt naeher an die umkippende Figur
     const dk = pl.dead ? smooth(clamp((clock - pl.deadAt) / 1.1, 0, 1)) : 0;
     const want = [pl.pos[0], pl.pos[1] + 1.6 - dk, pl.pos[2]];
-    if (cam.snap) { cam.tgt = want.slice(); cam.snap = false; }
+    if (cam.snap) { cam.tgt = want.slice(); cam.snap = false; cam.ease = null; }
     const k = Math.min(1, dt * 10), ky = Math.min(1, dt * (pl.grounded || pl.inWater ? 7 : 2.2));
     cam.tgt[0] += (want[0] - cam.tgt[0]) * k;
     cam.tgt[2] += (want[2] - cam.tgt[2]) * k;
@@ -14120,9 +15008,15 @@ void main() {
       pos[0] += (Math.random() - 0.5) * cam.shake; pos[1] += (Math.random() - 0.5) * cam.shake;
       cam.shake = Math.max(0, cam.shake - dt * 1.6);
     }
-    cam.pos = pos;
-    const look = [cam.tgt[0], cam.tgt[1] + cam.look * 4, cam.tgt[2]];
-    cam.view = M4.lookAt(pos, look, [0, 1, 0]);
+    let look = [cam.tgt[0], cam.tgt[1] + cam.look * 4, cam.tgt[2]], at = pos;
+    // weiche Uebergabe aus einer Szene (Tuer): von der Szenen-Kamera zur normalen gleiten statt einzurasten
+    if (cam.ease) {
+      const e = cam.ease, k = smooth(clamp((clock - e.t0) / e.dur, 0, 1));
+      at = lerpv(e.pos, pos, k); look = lerpv(e.look, look, k);
+      if (k >= 1) cam.ease = null;
+    }
+    cam.pos = at;
+    cam.view = M4.lookAt(at, look, [0, 1, 0]);
   }
   // Senkrechter Blickwinkel: im Querformat fest 0,95 rad. Im Hochformat (Handy) wuerde das seitlich nur einen
   // schmalen Streifen zeigen -> so weit aufziehen, dass waagrecht mind. H_FOV_MIN bleibt (gedeckelt, sonst Fischauge).
@@ -14191,7 +15085,7 @@ void main() {
     garden: buildGarden, hall: buildHall, desert: buildDesert, terminal: buildTerminal, video: buildVideo,
     bounce: buildBounce, spuk: buildSpuk, uhrwerk: buildUhrwerk, fraktal: buildFraktal, pilz: buildPilz, neon: buildNeon,
     verlies: buildVerlies, bibliothek: buildBibliothek, aquarium: buildAquarium, musik: buildMusik, spiel: buildSpiel, sternwarte: buildSternwarte,
-    keller: buildKeller, og: buildOG, hof: buildHof, gym: buildGym, dust: buildDust,
+    keller: buildKeller, og: buildOG, treppe: buildTreppe, grimm: buildGrimm, hof: buildHof, gym: buildGym, dust: buildDust,
   };
   for (const w of Object.keys(PAINT_ROOMS)) BUILDERS['bild_' + w] = () => buildPaintRoom(w);
   function getLevel(key) {
@@ -14225,6 +15119,7 @@ void main() {
       if (!s) cur.stars.push(Object.assign({ id: fs.id }, fresh));
       else if (s.gone) Object.assign(s, fresh);
     }
+    if (cur.onEnter) cur.onEnter();   // z. B. Kater Grimm faengt jeden Besuch von vorn an
     if (!quiet) showCourse(cur.name);
   }
   /* ═══════════ Kurse mit Missionen (Ablauf wie im Vorbild) ═══════════
@@ -14450,9 +15345,24 @@ void main() {
     if (!seen) { state.flags['flyby_' + key] = true; save(); }
     Flyby.start(cur, C.name.toUpperCase(), `★ ${m + 1}: ${STARS[id].name}`, seen);
   }
-  // Nach einem Stern im Kurs: raus vors Bild (die Figur huepft heraus), dort erst die Glueckwuensche
-  function exitCourse(lines) {
-    leaveCourse().then(() => { if (lines) Dialog.show('Wolki', lines); });
+  /* Nach einem Stern im Kurs: raus vors Bild (die Figur huepft heraus). Wie im Vorbild erscheinen dann Kurs, Stern und
+     Muenzen gross im Bild, die Figur jubelt (pl.cheerT); danach die Glueckwuensche. */
+  function exitCourse(lines, info) {
+    leaveCourse().then(() => {
+      if (info) {
+        document.querySelectorAll('.course-name, .course-card').forEach((o) => o.remove());
+        const card = document.createElement('div');
+        card.className = 'course-card outlined';
+        const h = document.createElement('div'); h.className = 'cc-title'; h.textContent = 'KURS ' + courseNumber(info.course);
+        const s1 = document.createElement('div'); s1.className = 'cc-sub'; s1.textContent = '★ ' + STARS[info.id].name;
+        const s2 = document.createElement('div'); s2.className = 'cc-sub cc-coins'; s2.textContent = '● × ' + info.coins;
+        card.append(h, s1, s2);
+        document.body.appendChild(card);
+        setTimeout(() => { card.classList.add('out'); setTimeout(() => card.remove(), 700); }, 2800);
+        pl.cheerT = clock;
+      }
+      if (lines) setTimeout(() => { if (mode === 'play' && !Dialog.open) Dialog.show('Wolki', lines); }, info ? 1600 : 0);
+    });
   }
 
   let pendingReturn = null;
@@ -14480,8 +15390,6 @@ void main() {
   function start(s, from) {
     if (mode !== 'title' && mode !== 'files') return;
     useSlot(s);
-    const sd = levels.hall.starDoor;
-    sd.opening = false; sd.open = state.doorOpen && starCount() >= 4 ? 1 : 0;
     renderHud();
     let back = null;
     try { back = JSON.parse(sessionStorage.getItem('glappa64-return') || 'null'); } catch (e) { back = null; }
@@ -14529,20 +15437,29 @@ void main() {
       Dialog.show('Wolki', [n >= STAR_TOTAL ? 'Willkommen zurück, Sterne-Profi! Alle Sterne gehören dir.' : `Willkommen zurück! Du hast ${n} von ${STAR_TOTAL} Sternen.`]);
     }
   }
+  // Sterne der Welt, in der man gerade ist: im Kurs alle seine Sterne, im Schloss die dieses Raums, dazu der 50-Muenzen-
+  // Stern (gibt es ueberall)
+  function starsHere() {
+    const c = courseOf(cur.key);
+    const ids = c ? courseStars(c) : Object.keys(STARS).filter((id) => STARS[id].where === cur.name || STARS[id].where === 'Schloss: ' + cur.name);
+    return ids.concat(Object.keys(STARS).filter((id) => STARS[id].where === 'überall'));
+  }
   function openPause() {
     if (mode !== 'play' || Dialog.open || pl.dead) return;
     mode = 'pause'; Input.unlock();
     Snd.pause();
     $('#pauseCourse').textContent = `${cur.name} · Datei ${(slot || 'a').toUpperCase()} · ★ ${starCount()} / ${STAR_TOTAL} · Münzen ${run.coins}`
       + (cur.coins100 ? ` · hier ${cur.coinN || 0} / 100 · rot ${cur.redN || 0} / 8` : '');
-    const ul = $('#starList');
+    // Sternliste nur fuer die Welt, in der man gerade ist (Wunsch 2026-09-29: Uebersicht statt aller Sterne)
+    const ul = $('#starList'), here = starsHere();
     ul.replaceChildren();
-    for (const [id, s] of Object.entries(STARS)) {
-      const li = document.createElement('li'), sp = document.createElement('span');
+    for (const id of here) {
+      const s = STARS[id], li = document.createElement('li'), sp = document.createElement('span');
       if (state.stars[id]) li.className = 'got';
-      sp.textContent = state.stars[id] ? s.name : `${s.name} (${s.where})`;
+      sp.textContent = s.name;
       li.appendChild(sp); ul.appendChild(li);
     }
+    ul.hidden = !here.length;
     $('#btnLeave').hidden = cur.key === 'garden' || cur.key === 'hall';
     const hk = HOME[cur.key];
     $('#btnLeave').textContent = courseOf(cur.key) ? 'Kurs verlassen' : hk && HUBS[hk] ? 'Zurück: ' + HUBS[hk].name
@@ -14587,9 +15504,13 @@ void main() {
     if (mode === 'out') return;
     if (mode === 'files') { FileMenu.pad(inp); return; }
     if (Dialog.open) {
-      if (inp.jumpP || inp.actionP || inp.startP) Dialog.advance();
-      inp.jumpP = inp.actionP = inp.zP = inp.lookP = false;
-      uiCool = 0.12;
+      // das Spiel laeuft weiter: A (Leertaste) / Rechtsklick blaettern wie im Vorbild - dann springt A nicht -, ebenso
+      // B / Klick / Enter (der Druck schlaegt dann nicht zu); Esc/Pause schliesst den Dialog
+      if (inp.jumpP || inp.talkP || inp.actionP || inp.startP) {
+        if (Dialog.advance()) inp.jumpP = false;
+        inp.actionP = false;
+      }
+      if (inp.pauseP) { Dialog.close(); inp.pauseP = false; }
       return;
     }
     if (mode === 'play' && inp.pauseP) { openPause(); return; }
@@ -14692,9 +15613,7 @@ void main() {
       q.v[1] -= q.g * dt;
       q.p[0] += q.v[0] * dt; q.p[1] += q.v[1] * dt; q.p[2] += q.v[2] * dt;
     }
-    if (mode === 'play' && !Dialog.open) Life.update(cur, Math.min(dt, 0.05));
-    const sd = levels.hall.starDoor;
-    if (sd.opening || (state.doorOpen && starCount() >= 4 && sd.open > 0)) sd.open = Math.min(1, sd.open + dt / 1.3);
+    if (mode === 'play') Life.update(cur, Math.min(dt, 0.05));   // auch beim Reden: die Bewohner bewegen sich weiter
   }
 
   /* ═══════════ Zeichnen ═══════════ */
@@ -15350,7 +16269,7 @@ void main() {
       dissolve = clamp(cine.t / 0.38, 0, 1);
       if (dissolve >= 1) return;
     }
-    if (pl.invuln > 0 && !pl.dead && !cine && Math.floor(clock * 14) % 2) return;
+    if (pl.invuln > 0 && !pl.dead && !cine && mode !== 'door' && Math.floor(clock * 14) % 2) return;
     const p = pl.pos;
     const appear = clamp((clock - pl.appearT) / 0.55, 0, 1);
     const ek = appear < 1 ? Math.max(0.02, 1 - Math.pow(1 - appear, 3) + Math.sin(appear * Math.PI) * 0.2) : 1;
@@ -15362,6 +16281,7 @@ void main() {
     const sweepK = pl.sweepT > 0 ? 1 - pl.sweepT / SWEEP_DUR : 0;
     const sweepE = pl.sweepT > 0 ? smooth(Math.min(1, sweepK / 0.14, (1 - sweepK) / 0.16)) : 0;
     const lying = pl.knock > 0, swim = a === 'swim' && !pl.grounded;
+    const fwdHit = pl.hurtFwd && time - (pl.hurtAt ?? -9) < 3;   // zuletzt von hinten getroffen
     const swim01 = swim ? clamp(pl.speed / 4.8, 0, 1) : 0;
     if (a === 'triple') rx = pl.flip;
     else if (a === 'backflip') rx = -pl.flip;
@@ -15376,12 +16296,12 @@ void main() {
     }
     else if (a === 'rollout') rx = pl.flip;
     else if (a === 'bonk') rx = -0.55;
-    else if (a === 'knock') rx = -0.5 - 0.35 * clamp(-pl.vel[1] / 12, 0, 1);   // rueckwaerts weggeschleudert
+    else if (a === 'knock') rx = (fwdHit ? -1 : 1) * (-0.5 - 0.35 * clamp(-pl.vel[1] / 12, 0, 1));   // weggeschleudert (von hinten getroffen: nach vorn)
     else if (a === 'double') rx = clamp(-pl.vel[1] * 0.016, -0.3, 0.42);
     else if (a === 'jump' || a === 'wallkick') rx = 0.3 * clamp(-pl.vel[1] / 10, 0, 1);   // beim Fallen nach vorn lehnen
-    else if (swim) { rx = lerp(0.25, 1.35, swim01); dy = swim01 * 0.35 + Math.sin(pl.swimPh * 0.5) * 0.05; }
+    else if (swim) { rx = lerp(0.25, 1.35, swim01) - (pl.swimTilt || 0) * 0.65; dy = swim01 * 0.35 + Math.sin(pl.swimPh * 0.5) * 0.05; }   // taucht = Kopf voran nach unten
     else if (a === 'climb') rx = Math.sin(pl.climbK * Math.PI) * 0.55;
-    else if (lying) { rx = -1.3; dy = -0.72; }
+    else if (lying) { rx = fwdHit ? 1.35 : -1.3; dy = -0.72; }   // auf dem Ruecken bzw. auf dem Bauch
     else if (pl.sweepT > 0) {
       // Beinfeger wie im Vorbild (Video 3): tief nach vorn auf beide Haende (wie ein Liegestuetz), ein Bein gestreckt
       // flach nach hinten-aussen, und einmal rundum - das gestreckte Bein fegt dabei ueber den Boden
@@ -15419,8 +16339,13 @@ void main() {
     rx += -0.3 * brkA + 0.55 * brkB;
     if (free) { rx += 0.42 * run01 * run01; rz += -turn * 0.22 * run01; }
     if (free && pl.gait === 'sneak') { rx += 0.2; dy -= 0.12; }
-    // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten
-    const idle = free && run01 < 0.05 && !pl.hold && pk < 0 && !cine ? idleState(pl.idleT || 0) : null;
+    // Leerlauf-Animationen (siehe idleState): Drehung/Hocke hier, Glieder weiter unten. Auf Schnee/Eis zittert die Figur
+    // statt dessen, mit wenig Energie hechelt sie (wie im Vorbild - dann schlaeft sie auch nicht ein)
+    const calm = free && run01 < 0.05 && !pl.hold && pk < 0 && !cine && mode === 'play';
+    const coldGround = free && ['snow', 'ice'].includes(gtagOf(pl.groundBox)), lowHp = run.health <= 2 && !pl.dead;
+    const shiverK = calm && coldGround && !lowHp ? smooth(clamp(((pl.idleT || 0) - 1.2) / 0.6, 0, 1)) : 0;
+    const pantK = calm && lowHp ? smooth(clamp(((pl.idleT || 0) - 0.4) / 0.5, 0, 1)) : 0;
+    const idle = free && run01 < 0.05 && !pl.hold && pk < 0 && !cine && !coldGround && !lowHp ? idleState(pl.idleT || 0) : null;
     const env = idle ? idle.env : 0;
     /* Hocke im Stil des Vorbilds: blitzschnell runter in eine tiefe, breite Hocke (Knie nach vorn und aussen,
        Po nach hinten, Oberkoerper leicht vor, Blick geradeaus, Arme vor den Knien) mit leichtem Nachfedern;
@@ -15429,7 +16354,7 @@ void main() {
     const cdt = clamp(clock - crouchLast, 0, 0.05);
     crouchLast = clock;
     // nach einem Weitsprung kurz in die Hocke abfedern (wie im Vorbild)
-    const landLong = pl.grounded && pl.landFrom === 'long' && time - (pl.landT ?? -9) < 0.28 && !lying;
+    const landLong = pl.grounded && pl.landFrom === 'long' && time - (pl.landT ?? -9) < LONG_LAND && !lying;
     const crouchTo = (pl.grounded && pl.crouch && !pl.crawl && !pl.forceCrouch && !lying && !swim && a !== 'slide' && a !== 'kickslide') || landLong ? 1 : 0;
     for (let i = 0; i < 3; i++) { crouchV += ((crouchTo - crouchK) * 900 - crouchV * 36) * cdt / 3; crouchK += crouchV * cdt / 3; }
     if (!pl.grounded || swim || lying || cine) { crouchK = 0; crouchV = 0; }   // Absprung aus der Hocke: Luftpose uebernimmt sofort
@@ -15456,7 +16381,8 @@ void main() {
     let legSYL = 1, legSYR = 1, legSplay = 0, bodyYaw = 0, legOutR = 0;
     let tailRx = -1.85 + run01 * 0.35, tailRz = Math.sin(clock * 2.3) * 0.3;
     if (lying) {
-      legL = -1.1; legR = -0.7; armL = armR = -2.8; armOut = 1.2; headTilt = 0.4;
+      if (fwdHit) { legL = 0.25; legR = 0.1; armL = armR = -2.9; armOut = 0.7; headTilt = -0.9; }   // auf dem Bauch, Arme vorn
+      else { legL = -1.1; legR = -0.7; armL = armR = -2.8; armOut = 1.2; headTilt = 0.4; }
     } else if (a === 'hang') {
       const s2 = Math.sin(clock * 2.2), sh = Math.sin(pl.shimmyPh || 0) * 0.22;   // sh: Hand ueber Hand beim Hangeln
       armL = -3.05 + sh; armR = -3.05 - sh; armOut = 0.22 + Math.abs(sh) * 0.6; legL = -0.12 + s2 * 0.1 + sh; legR = 0.08 - s2 * 0.1 - sh; headTilt = -0.35;
@@ -15495,7 +16421,8 @@ void main() {
     } else if (a === 'bonk') {
       legL = -0.9; legR = -0.5; armL = armR = -2.7; armOut = 1;
     } else if (a === 'knock') {                    // getroffen: Arme und Beine fliegen nach vorn, Kopf nickt vor
-      legL = -0.95; legR = -0.55; armL = armR = -1.9; armOut = 0.95; headTilt = 0.35;
+      if (fwdHit) { legL = 0.7; legR = 0.45; armL = armR = 0.9; armOut = 0.9; headTilt = -0.5; }   // nach vorn: Glieder fliegen nach hinten
+      else { legL = -0.95; legR = -0.55; armL = armR = -1.9; armOut = 0.95; headTilt = 0.35; }
     } else if (pl.grounded && pl.skid) {
       // Kehrtwende wie im Vorbild: Arme weit zur Seite ausgebreitet, Fuesse vorn in den Boden gestemmt
       legL = -0.6; legR = -0.2; legSYR = 0.85; armL = armR = -0.4; armOut = 1.35; headTilt = 0.1;
@@ -15590,8 +16517,8 @@ void main() {
     const sinceLand = time - (pl.landT ?? -9);
     // Landung nach Salto/Doppel-/Dreifachsprung wie im Vorbild: Arme waagrecht ausgebreitet (T), eine Weile halten,
     // dann locker sinken lassen - nach dem Dreifachsprung am laengsten
-    const tHold = { triple: 0.8, backflip: 0.6, sideflip: 0.6, double: 0.45 }[pl.landFrom] || 0;
-    if (pl.grounded && !lying && run01 < 0.35 && sinceLand < tHold) {
+    const tHold = LAND_T_HOLD[pl.landFrom] || 0;
+    if (pl.grounded && !lying && run01 < LAND_T_RUN && sinceLand < tHold) {
       const k = 1 - smooth(clamp((sinceLand - tHold * 0.6) / (tHold * 0.4), 0, 1));
       armOut = lerp(armOut, 1.48, k); armL = lerp(armL, -0.05, k); armR = lerp(armR, -0.05, k);
     }
@@ -15605,9 +16532,102 @@ void main() {
       headTilt -= cLean * 0.9 - 0.04 * w;          // Kopf geht nur ein Stueck mit: schaut nach vorn-unten wie im Vorbild
       tailRx = lerp(tailRx, -0.45, w); tailRz = lerp(tailRz, 1.2 + Math.sin(clock * 1.6) * 0.12, w);   // Schwanz seitlich am Boden, verdeckt von hinten nicht den Kopf
     }
+    // ── weitere Bewegungen nach der Liste des Vorbilds (Wunsch 2026-09-29) ──
+    const since = (t0) => time - (t0 ?? -9);
+    // Landung: kurz in die Knie (Sprung, Fall, Doppelsprung, Wandsprung); nach dem Stampfer tief, Faeuste am Boden
+    const sqDur = LAND_SQ[pl.landFrom] || 0, sqT = since(pl.landT);
+    const landK = pl.grounded && !lying && sqDur > 0 && sqT < sqDur && run01 < 0.7 && !pl.crouch && !pl.hold
+      ? Math.sin(clamp(sqT / sqDur, 0, 1) * Math.PI) * (pl.landFrom === 'pound' ? 1 : clamp(0.35 - (pl.landImpact || 0) / 30, 0.35, 1)) : 0;
+    if (landK > 0) {
+      const pd = pl.landFrom === 'pound';
+      rx += (pd ? 0.45 : 0.25) * landK; dy -= (pd ? 0.42 : 0.2) * landK;
+      legL = lerp(legL, -0.75, landK); legR = lerp(legR, -0.75, landK); legSYL = lerp(legSYL, 0.78, landK); legSYR = lerp(legSYR, 0.78, landK); legSplay += 0.12 * landK;
+      armL = lerp(armL, pd ? 0.25 : -0.35, landK); armR = lerp(armR, pd ? 0.25 : -0.35, landK); armOut = lerp(armOut, pd ? 0.55 : 0.6, landK);
+    }
+    // freier Fall aus grosser Hoehe: Arme rudern oben, Beine strampeln, Blick nach unten
+    const ffK = !pl.grounded && !swim && !lying && !pl.dead && !pl.hold && ['fall', 'jump', 'double', 'bounce'].includes(a) && pl.vel[1] < -5
+      ? smooth(clamp(((pl.fallTop ?? p[1]) - p[1] - 3) / 3, 0, 1)) : 0;
+    if (ffK > 0) {
+      const f1 = Math.sin(clock * 13), f2 = Math.sin(clock * 11 + 1);
+      rx = lerp(rx, -0.12, ffK);
+      armL = lerp(armL, -2.55 + f1 * 0.35, ffK); armR = lerp(armR, -2.55 - f1 * 0.35, ffK); armOut = lerp(armOut, 1.0, ffK);
+      legL = lerp(legL, -0.5 + f2 * 0.45, ffK); legR = lerp(legR, -0.5 - f2 * 0.45, ffK); legSplay += 0.1 * ffK;
+      headTilt = lerp(headTilt, 0.35, ffK); tailRx = lerp(tailRx, -2.8, ffK);
+    }
+    // gegen eine Wand laufen: vorgebeugt mit beiden Haenden dagegen schieben, kleine Schritte
+    pushE += ((pl.grounded && free && since(pl.pushT) < 0.12 && run01 > 0.05 ? 1 : 0) - pushE) * Math.min(1, cdt * 12);
+    if (pushE > 0.01) {
+      const ps = Math.sin(clock * 5.5);
+      rx = lerp(rx, 0.55, pushE);
+      armL = lerp(armL, -2.05 + ps * 0.12, pushE); armR = lerp(armR, -2.05 - ps * 0.12, pushE); armOut = lerp(armOut, 0.3, pushE);
+      legL = lerp(legL, 0.35 + ps * 0.35, pushE); legR = lerp(legR, 0.35 - ps * 0.35, pushE); headTilt = lerp(headTilt, -0.25, pushE);
+    }
+    // in der Luft an einer Wand: Haende dagegen, Knie hoch (gleich kommt der Wandsprung)
+    const wallK = !pl.grounded && !swim && a !== 'wallkick' && a !== 'bonk' && since(pl.wallT) < 0.18 ? 1 - since(pl.wallT) / 0.18 : 0;
+    if (wallK > 0) {
+      armL = lerp(armL, -2.3, wallK); armR = lerp(armR, -2.1, wallK); armOut = lerp(armOut, 0.45, wallK);
+      legL = lerp(legL, -0.9, wallK); legR = lerp(legR, -0.15, wallK); rx = lerp(rx, -0.15, wallK);
+    }
+    // Lava: mit heissem Po hochgeschleudert, Haende am Po, Beine strampeln (Rauch in updatePlayer) ...
+    const burnK = !pl.grounded && !pl.dead && since(pl.burnT) < 1.8 ? smooth(clamp(since(pl.burnT) / 0.1, 0, 1)) : 0;
+    if (burnK > 0) {
+      const f = Math.sin(clock * 16);
+      rx = lerp(rx, -0.55, burnK);
+      legL = lerp(legL, -1.35 + f * 0.25, burnK); legR = lerp(legR, -1.35 - f * 0.25, burnK);
+      armL = lerp(armL, 0.95, burnK); armR = lerp(armR, 0.95, burnK); armOut = lerp(armOut, 0.45, burnK);
+      headTilt = lerp(headTilt, -0.45, burnK); tailRx = lerp(tailRx, -0.3 + f * 0.3, burnK);
+    }
+    // ... danach gelandet: vorgebeugt husten, eine Faust vor dem Mund, die andere Hand am Po
+    const cT = since(pl.coughT), coughK = pl.grounded && free && cT < 1.4 ? Math.min(1, cT / 0.15, (1.4 - cT) / 0.3) : 0;
+    if (coughK > 0) {
+      const hk = Math.abs(Math.sin(cT * 11));
+      rx = lerp(rx, 0.3 + hk * 0.12, coughK);
+      armR = lerp(armR, -2.2, coughK); armOutR = lerp(armOutR ?? armOut, -0.35, coughK); armL = lerp(armL, 0.55, coughK);
+      headTilt = lerp(headTilt, 0.25 + hk * 0.2, coughK);
+    }
+    // Schnee und Eis: zittern, Arme um den Leib
+    if (shiverK > 0) {
+      const tr = Math.sin(clock * 42) * 0.03;
+      rz += tr * shiverK; dy -= 0.06 * shiverK;
+      armL = lerp(armL, -1.2, shiverK); armR = lerp(armR, -1.2, shiverK); armOut = lerp(armOut, -0.25, shiverK);
+      legSplay = lerp(legSplay, -0.03, shiverK); legSYL = lerp(legSYL, 0.93, shiverK); legSYR = lerp(legSYR, 0.93, shiverK);
+      headTilt = lerp(headTilt, 0.2, shiverK) + tr * 2 * shiverK; tailRx = lerp(tailRx, -2.5, shiverK);
+    }
+    // wenig Energie: vorgebeugt hecheln, Haende auf den Knien
+    if (pantK > 0) {
+      const br = Math.sin(clock * 7);
+      rx = lerp(rx, 0.5, pantK); dy += (br * 0.03 - 0.05) * pantK; stretch += br * 0.02 * pantK;
+      armL = lerp(armL, -0.75, pantK); armR = lerp(armR, -0.75, pantK); armOut = lerp(armOut, 0.3, pantK);
+      legSplay += 0.08 * pantK; legL = lerp(legL, -0.25, pantK); legR = lerp(legR, -0.25, pantK); headTilt = lerp(headTilt, -0.35, pantK);
+    }
+    // tief eingeschlafen: vom Sitzen auf den Ruecken legen, Haende auf dem Bauch
+    const lieK = idle && idle.kind === 'sleep' ? smooth(clamp(((pl.idleT || 0) - IDLE_SLEEP - 7) / 1.5, 0, 1)) : 0;
+    if (lieK > 0) {
+      rx = lerp(rx, -1.35, lieK); dy = lerp(dy, -0.74, lieK);   // Glieder: im Leerlauf-Abschnitt (Schlaf) weiter unten
+    }
+    // aufgewacht: mit einem Ruck hoch (aus dem Liegen erst aufrichten), Arme hochgerissen
+    const wT = since(pl.wakeT), wakeK = pl.grounded && wT < 0.5 ? Math.sin(clamp(wT / 0.5, 0, 1) * Math.PI) : 0;
+    if (wakeK > 0) {
+      if (pl.wakeLie && wT < 0.2) { const k = 1 - wT / 0.2; rx = lerp(rx, -1.35, k); dy = lerp(dy, -0.74, k); }
+      dy += 0.22 * wakeK; armL = lerp(armL, -2.7, wakeK); armR = lerp(armR, -2.6, wakeK); armOut = lerp(armOut, 1.0, wakeK);
+      legSplay += 0.15 * wakeK; headTilt = lerp(headTilt, -0.4, wakeK);
+    }
     if (pl.hold && !lying && !swim) {               // Kiste ueber dem Kopf: beide Arme hoch
       armL = armR = -3.02; armOut = 0.24; headTilt = Math.min(headTilt, -0.1);
       tailRx = -2.2;
+    }
+    // Aufheben / Absetzen: kurz buecken, Haende vorn am Boden; Werfen: Arme von oben nach vorn schwingen
+    const pkT = since(pl.pickT), puT = since(pl.putT), thT = since(pl.throwT);
+    const bendK = pl.grounded ? (pkT < 0.32 ? Math.sin(pkT / 0.32 * Math.PI) : puT < 0.32 ? Math.sin(puT / 0.32 * Math.PI) : 0) : 0;
+    if (bendK > 0) {
+      rx += 0.75 * bendK; dy -= 0.3 * bendK;
+      legL = lerp(legL, -0.55, bendK); legR = lerp(legR, -0.55, bendK); legSYL = lerp(legSYL, 0.85, bendK); legSYR = lerp(legSYR, 0.85, bendK);
+      armL = lerp(armL, -1.35, bendK); armR = lerp(armR, -1.35, bendK); armOut = lerp(armOut, 0.3, bendK);
+    }
+    if (thT < 0.3) {
+      const k = thT / 0.3, w = k < 0.8 ? 1 : (1 - k) / 0.2, arc = lerp(-3.0, -1.25, smooth(clamp(k / 0.5, 0, 1)));
+      armL = lerp(armL, arc, w); armR = lerp(armR, arc, w); armOut = lerp(armOut, 0.25, w);
+      rx += 0.3 * Math.sin(k * Math.PI); legL = lerp(legL, -0.45, w * Math.sin(k * Math.PI)); legR = lerp(legR, 0.3, w * Math.sin(k * Math.PI));
     }
     // Tuer: rechte Hand zum Knauf (DoorSeq setzt pl.doorReach 0..1)
     if (pl.doorReach > 0) { const e = smooth(pl.doorReach); armR = lerp(armR ?? 0, -1.45, e); armOutR = lerp(armOut, 0.1, e); headTilt += 0.1 * e; }
@@ -15639,16 +16659,31 @@ void main() {
       } else if (idle.kind === 'chase') {               // Schwanz jagen: dreht sich im Kreis, huepft
         headYawAdd = 0.75 * e; tailRz += s(clock * 12) * 0.6 * e; armOut = lerp(armOut, 0.85, e); armL = armR = lerp(armL, -0.9, e);
         legL = lerp(legL, -0.35 * Math.abs(s(idle.k * Math.PI * 8)), e); legR = lerp(legR, 0.2, e);
-      } else if (idle.kind === 'sleep') {               // Einschlafen: hinsetzen, Kopf sinkt, Augen zu
-        legL = legR = -1.45 * e; armL = armR = -0.35 * e; armOut = lerp(armOut, 0.4, e);
-        headTilt += 0.42 * e + s(clock * 1.1) * 0.03 * e; tailRx = lerp(tailRx, -1.25, e); tailRz = lerp(tailRz, 1.0, e);
+      } else if (idle.kind === 'sleep') {               // Einschlafen: hinsetzen, Kopf sinkt, Augen zu - spaeter hinlegen (lieK)
+        legL = lerp(-1.45 * e, -0.45, lieK); legR = lerp(-1.45 * e, -0.15, lieK);
+        armL = armR = lerp(-0.35 * e, -0.95, lieK); armOut = lerp(lerp(armOut, 0.4, e), -0.1, lieK);   // liegend: Haende auf dem Bauch
+        headTilt += lerp(0.42 * e, 0.25, lieK) + s(clock * 1.1) * 0.03 * e; tailRx = lerp(lerp(tailRx, -1.25, e), -0.3, lieK); tailRz = lerp(tailRz, 1.0, e);
         lidK = e > 0.6 ? 1 : 0;
       }
     }
-    if (mode === 'starget' && pl.grounded) {        // Siegerpose: einmal drehen (kleiner Hopser), dann Faust hoch
-      const k = clamp((clock - (pl.starT ?? -9)) / 0.5, 0, 1), up = smooth(clamp((k - 0.55) / 0.45, 0, 1));
-      spin += TAU * smooth(k); dy += Math.sin(k * Math.PI) * 0.25;
-      armR = lerp(-1.2, -2.95, up); armOutR = 0.35; armL = -0.4; armOut = lerp(1.1, armOut, up); headTilt -= 0.3 * up;
+    if (mode === 'starget') {   // Sterntanz wie im Vorbild (StarDance): mit Hopser drehen, der Stern kreist, dann Faust hoch
+      const t = clock - (pl.starT ?? -9), k = clamp((t - 0.25) / 1.1, 0, 1), tw = Math.sin(k * Math.PI), up = smooth(clamp((t - 1.3) / 0.3, 0, 1));
+      spin += TAU * smooth(k);
+      dy += pl.grounded ? tw * 0.55 : Math.sin(t * 2) * 0.05;   // im Wasser: schwebend drehen
+      armL = lerp(armL, -0.35, tw); armR = lerp(armR, -0.35, tw); armOut = lerp(armOut, 1.35, tw);
+      legL = lerp(legL, -0.8, tw * 0.8); legR = lerp(legR, -0.2, tw * 0.8); legSYL = lerp(legSYL, 0.85, tw);
+      if (up > 0) {
+        armR = lerp(armR, -3.05, up); armOutR = lerp(armOutR ?? armOut, 0.18, up); armL = lerp(armL, -0.45, up); armOut = lerp(armOut, 1.05, up);
+        legSplay += 0.12 * up; headTilt -= 0.4 * up; dy += Math.sin(t * 6) * 0.02 * up;
+        tailRx = lerp(tailRx, -2.6, up); tailRz += Math.sin(t * 8) * 0.3 * up;
+      }
+    }
+    // Kurs geschafft (nach dem Sprung aus dem Bild): zweimal die Faust recken und huepfen
+    const chT = clock - (pl.cheerT ?? -9);
+    if (chT < 1.6 && pl.grounded && mode === 'play') {
+      const w = Math.min(1, chT / 0.15, (1.6 - chT) / 0.3), pump = Math.abs(Math.sin(chT * Math.PI * 2 / 0.8));
+      armR = lerp(armR, -2.2 - pump * 0.8, w); armOutR = lerp(armOutR ?? armOut, 0.3, w); armL = lerp(armL, -0.9, w); armOut = lerp(armOut, 0.8, w);
+      dy += pump * 0.12 * w; headTilt -= 0.3 * w;
     }
     if (pl.looking) headTilt = -0.55;
     // Szenen-Posen ueberschreiben alles davor: Sterben und aus dem Bild kommen (PaintOut)
@@ -15658,10 +16693,26 @@ void main() {
       if (pl.dieT < 0 && (pl.grounded || swim || clock - pl.deadAt > 0.7)) pl.dieT = clock;
       const u = pl.dieT < 0 ? 0 : clamp((clock - pl.dieT) / 0.5, 0, 1), e = u * u;
       const bump = pl.dieT < 0 ? 0 : Math.sin(clamp((clock - pl.dieT - 0.5) / 0.3, 0, 1) * Math.PI) * 0.1;
-      rx = lerp(rx, -1.42, e) + bump; rz = lerp(rz, 0, e); dy = lerp(dy, -0.74, e) + bump * 0.3; spin *= 1 - e; twist *= 1 - e;
-      legL = lerp(legL, -0.5, e); legR = lerp(legR, -0.2, e); legSYL = lerp(legSYL, 1, e); legSYR = lerp(legSYR, 1, e); legSplay = lerp(legSplay, 0.22, e); legOutR *= 1 - e;
-      armL = lerp(armL, -0.45, e); armR = lerp(armR, -0.75, e); armOut = lerp(armOut, 1.3, e); armOutR = armOutR == null ? null : lerp(armOutR, 1.3, e);
-      headTilt = lerp(headTilt, -0.4, e); tailRx = lerp(tailRx, -0.25, e);
+      // drei Arten wie im Vorbild: nach hinten (Standard), auf den Bauch (von hinten getroffen), ertrinken (Haende vor
+      // dem Mund, treibt langsam vornueber)
+      const dk = pl.deathKind || 'back', drown = dk === 'drown', front = dk === 'front';
+      const rTo = drown ? 0.8 + Math.sin(clock * 1.3) * 0.1 : front ? 1.42 : -1.42;
+      rx = lerp(rx, rTo, e) + (drown ? 0 : bump); rz = lerp(rz, 0, e); dy = lerp(dy, drown ? Math.sin(clock * 1.5) * 0.05 : -0.74, e) + (drown ? 0 : bump * 0.3); spin *= 1 - e; twist *= 1 - e;
+      legSYL = lerp(legSYL, 1, e); legSYR = lerp(legSYR, 1, e); legOutR *= 1 - e;
+      if (front) {
+        legL = lerp(legL, 0.25, e); legR = lerp(legR, 0.1, e); legSplay = lerp(legSplay, 0.18, e);
+        armL = lerp(armL, -2.9, e); armR = lerp(armR, -2.7, e); armOut = lerp(armOut, 0.8, e); armOutR = armOutR == null ? null : lerp(armOutR, 0.8, e);
+        headTilt = lerp(headTilt, -0.8, e);
+      } else if (drown) {
+        legL = lerp(legL, 0.15, e); legR = lerp(legR, -0.15, e); legSplay = lerp(legSplay, 0.05, e);
+        armL = lerp(armL, -2.25, e); armR = lerp(armR, -2.25, e); armOut = lerp(armOut, 0.12, e); armOutR = armOutR == null ? null : lerp(armOutR, 0.12, e);
+        headTilt = lerp(headTilt, 0.3, e);
+      } else {
+        legL = lerp(legL, -0.5, e); legR = lerp(legR, -0.2, e); legSplay = lerp(legSplay, 0.22, e);
+        armL = lerp(armL, -0.45, e); armR = lerp(armR, -0.75, e); armOut = lerp(armOut, 1.3, e); armOutR = armOutR == null ? null : lerp(armOutR, 1.3, e);
+        headTilt = lerp(headTilt, -0.4, e);
+      }
+      tailRx = lerp(tailRx, -0.25, e);
       if (e > 0.5) lidOver = 1;
     }
     const po = pl.pose;
@@ -15704,9 +16755,19 @@ void main() {
       headTilt, headRoll: Math.sin(clock * 1.3) * 0.05 + twitch, headYaw, bl,
     };
     const headM = drawPose(CAT, P, FIG);
-    // Mund (Kappi): schwarzes Loch auf der Schnauze, geht auf, solange die Figur ruft oder schreit
-    const mo = CAT.mouth ? Snd.mouth() : 0;
-    if (mo > 0.02) { const [mx, my, mz, mw, mh] = CAT.mouth; draw(MESH.ball, M4.mul(headM, M4.from(mx, my, mz, 0, 0.3, 0, mw, mh * mo, 0.03)), { tint: [0.03, 0.02, 0.03, 1], lit: 0 }); }
+    // Mund wie im Titel: flache schwarze Form auf der Schnauze. Zu = kleines Laecheln; solange die Figur ruft oder
+    // schreit, geht er auf (Form je nach Laut), im Schlaf atmet er langsam auf und zu
+    const mo = Snd.mouth();
+    let mTo = PL_MOUTH.rest, mk = 0;
+    if (mo > 0.02) { mTo = PL_MOUTH[VOICE_MOUTH[Snd.mouthVoice()] || 'joy']; mk = mo; }
+    else if (sleeping) { mTo = PL_MOUTH.snore; mk = env * (0.5 + 0.5 * Math.sin(clock * 1.1)); }
+    else if (pl.dead) { mTo = PL_MOUTH.pain; mk = 0.5; }
+    else if (coughK > 0) { mTo = PL_MOUTH.scream; mk = coughK * Math.abs(Math.sin(cT * 11)); }       // husten
+    else if (pantK > 0) { mTo = PL_MOUTH.scream; mk = pantK * (0.35 + 0.3 * Math.sin(clock * 7)); }  // hecheln
+    else if (shiverK > 0) { mTo = PL_MOUTH.effort; mk = shiverK * (0.25 + 0.2 * Math.sin(clock * 38)); }   // Zaehneklappern
+    else if (mode === 'starget') { mTo = PL_MOUTH.joy; mk = 0.6; }
+    const mm = TitleHead.mouthMesh(CAT, PL_MOUTH.rest.map((v, i) => lerp(v, mTo[i], mk)));
+    if (mm) draw(mm, headM, { lit: 0 });
     // Schlaf-Zs steigen aus dem Kopf auf
     if (sleeping && env > 0.6 && clock - zzzT > 1.3) { zzzT = clock; zzz.push({ t0: clock, p: M4.point(headM, [0.2, 0.35, 0]) }); }
     for (let i = zzz.length - 1; i >= 0; i--) {
@@ -15717,9 +16778,25 @@ void main() {
       draw(MESH.zee, M4.from(x, y, z, Math.atan2(cam.pos[0] - x, cam.pos[2] - z), 0, Math.sin(age * 3) * 0.2, sc), { lit: 0, tint: [0.85, 0.9, 1, 1] });
     }
   }
+  // Mund der Spielfigur (Formen wie beim Titelkopf: [halbe Breite, Oeffnung, Laecheln, Schiefe, rund]) und welcher
+  // Laut welche Form macht
+  const PL_MOUTH = {
+    rest: [0.075, 0.03, 0.9, 0, 0],       // zu: kleines Laecheln
+    joy: [0.11, 0.11, 1, 0, 0.15],        // Huepfen, Salto, Stern: froh offen
+    effort: [0.1, 0.075, 0.15, 0, 0.3],   // Schlag, Tritt, Stampfer, Werfen, Klettern: kurz und breit
+    pain: [0.07, 0.09, -0.6, 0, 0.7],     // Treffer, Bonk
+    scream: [0.07, 0.15, 0, 0, 1],        // Fallen, Sterben, Luft holen: grosses O
+    snore: [0.05, 0.07, 0, 0, 1],         // Schlaf: kleines o, atmet
+  };
+  const VOICE_MOUTH = {
+    hop: 'joy', hoi: 'joy', yay: 'joy', flip: 'joy', long: 'joy', star: 'joy',
+    dive: 'effort', punch: 'effort', punch2: 'effort', kick: 'effort', pound: 'effort', climb: 'effort', throw: 'effort',
+    hurt: 'pain', oof: 'pain', gasp: 'scream', die: 'scream', fall: 'scream',
+  };
   const zzz = [];
   let zzzT = -9;
   let crouchK = 0, crouchV = 0, crouchLast = 0;   // Feder der Hocke (drawPlayer)
+  let pushE = 0;                                  // Schieben gegen eine Wand, weich ein/aus (drawPlayer)
   /* Leerlauf-Abfolge: nach 3 s alle 4 s eine Animation (Umschauen, Strecken, Pfote putzen,
      Schwanz jagen), ab 19 s schlaeft Glappo ein. env blendet jede Animation weich ein und aus. */
   const IDLE_START = 3, IDLE_CYCLE = 4, IDLE_SLEEP = 23, IDLE_KINDS = ['look', 'tap', 'stretch', 'paw', 'chase'];
@@ -15756,9 +16833,9 @@ void main() {
      in die kleinen Karten-Canvas kopiert. Die ausgewaehlte Figur dreht sich und winkt. */
   const CatPick = (() => {
     const SIZE = 192, root = $('#catPick');
-    root.style.setProperty('--n', CATS.length);   // so viele Spalten wie Figuren (Kappi gibt es nur mit Modelldatei)
+    root.style.setProperty('--n', PLAYABLE.length);   // so viele Spalten wie waehlbare Figuren (Kappi nur mit Modelldatei)
     let fb = null, ok = false, px = null, img = null, t = 0, built = false;
-    const cards = [];
+    const cards = [];   // Karten nach CATS-Index (nur die waehlbaren sind belegt)
     function setup() {
       if (fb) return ok;
       const tex = gl.createTexture();
@@ -15820,8 +16897,8 @@ void main() {
     function build() {
       if (built) return;
       built = true;
-      CATS.forEach((cat, i) => {
-        const el = document.createElement('button');
+      PLAYABLE.forEach((i) => {
+        const cat = CATS[i], el = document.createElement('button');
         el.type = 'button'; el.className = 'cat-card'; el.setAttribute('role', 'radio');
         const cv = document.createElement('canvas');
         cv.width = cv.height = SIZE; cv.setAttribute('aria-hidden', 'true');
@@ -15830,11 +16907,11 @@ void main() {
         el.append(cv, name);
         el.addEventListener('click', () => choose(i));
         el.addEventListener('keydown', (e) => {
-          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); choose(catIdx + 1); cards[catIdx].el.focus(); }
-          if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); choose(catIdx - 1); cards[catIdx].el.focus(); }
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); choose(stepCat(1)); cards[catIdx].el.focus(); }
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); choose(stepCat(-1)); cards[catIdx].el.focus(); }
         });
         root.appendChild(el);
-        cards.push({ el, ctx: cv.getContext('2d') });
+        cards[i] = { el, ctx: cv.getContext('2d') };
       });
     }
     return {
@@ -15842,10 +16919,10 @@ void main() {
         build(); sync();
         if (!setup()) return;
         t = 0;
-        CATS.forEach((_, i) => paint(i));
+        PLAYABLE.forEach((i) => paint(i));
       },
       tick(dt) { t += dt; paint(catIdx); },
-      step(dir) { choose(catIdx + dir); },
+      step(dir) { choose(stepCat(dir)); },
     };
   })();
   // Bildfilter im Pause-Menue: drei Knoepfe, Auswahl bleibt gespeichert
@@ -15980,7 +17057,7 @@ void main() {
       const d = readSlot(s) || freshProgress(), inf = info(s);
       src = s;
       Snd.chime(4);
-      showPanel('scoreShow', 'DATEI ' + U(s), `★ ${inf.n} von ${STAR_TOTAL} Sternen · Sterntür ${d.doorOpen ? 'offen' : 'noch zu'}`, (p) => {
+      showPanel('scoreShow', 'DATEI ' + U(s), `★ ${inf.n} von ${STAR_TOTAL} Sternen · Sterntür ${inf.n >= STAR_DOOR ? 'offen' : 'noch zu'}`, (p) => {
         const groups = new Map();
         for (const [id, st] of Object.entries(STARS)) { if (!groups.has(st.where)) groups.set(st.where, []); groups.get(st.where).push(id); }
         const ul = el('ul', 'score-list');
@@ -16193,13 +17270,22 @@ void main() {
   // Schilder/Gemaelde: im kleinen Bild mit Alpha 0 markiert und fuer die scharfe Ebene gemerkt
   let signMark = 1;
   const signQueue = [];
-  // Trip-Staerke der Welt (Wabern + Farbwellen); Schilder und Glappo selbst bleiben ruhig
-  let curTrip = 0;
+  // Trip-Staerke der Welt (Wabern + Farbwellen); Gemaelde und Glappo selbst bleiben ruhig
+  let curTrip = 0, tripDrift = 0, tripPeak = 0, tripLast = 0;
   const setTrip = (v) => { if (U.uTrip) gl.uniform1f(U.uTrip, v); };
+  // a = [x, y, z, Art] (siehe uTripAt im Shader) oder null = zurueck auf "jede Ecke fuer sich"
+  const setTripAt = (a) => { if (U.uTripAt) gl.uniform4f(U.uTripAt, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : 0, a ? a[3] : 0); };
+  const TRIP_FREE = [0, 0, 0, 0];
+  // o.trip: in Trip-Welten mitwabern (Schilder samt Schrift, Tafeln) statt ruhig zu bleiben - sonst schob sich das
+  // wabernde Brett ueber die ruhige Schrift (Video 2026-09-30, Mandelbrot-Level)
+  function signPass(mesh, model, o, a0) {
+    const tr = curTrip && o.trip;
+    if (tr) setTripAt(o.trip); else if (curTrip) setTrip(0);
+    draw(mesh, model, a0 ? { ...o, alpha: 0 } : o);
+    if (tr) setTripAt(null); else if (curTrip) setTrip(curTrip);
+  }
   function drawSign(mesh, model, o) {
-    if (curTrip) setTrip(0);
-    draw(mesh, model, signMark ? o : { ...o, alpha: 0 });
-    if (curTrip) setTrip(curTrip);
+    signPass(mesh, model, o, !signMark);
     if (!signMark) signQueue.push([mesh, model, o]);
   }
   function render() {
@@ -16227,8 +17313,16 @@ void main() {
     gl.uniform3fv(U.uFogCol, fogCol);
     gl.uniform3fv(U.uCam, cam.pos);
     gl.uniform1f(U.uDim, L.dim ?? 1);
-    curTrip = reduceMotion ? 0 : (L.trip || 0);
+    // Trip-Welt + Stillstand (pl.idleT): ab 1,5 s driftet die Welt auseinander (voll nach 7,5 s), ab 7 s ziehen
+    // Fraktale und Formen uebers Bild (voll nach 12 s); wer sich ruehrt, holt alles in ~0,4 s zurueck
+    const tdt = clamp(clock - tripLast, 0, 0.1); tripLast = clock;
+    const idleNow = L.trip && !reduceMotion && mode === 'play' ? pl.idleT || 0 : 0;
+    const dTo = smooth(clamp((idleNow - 1.5) / 6, 0, 1)), pTo = smooth(clamp((idleNow - 7) / 5, 0, 1));
+    tripDrift = dTo >= tripDrift ? dTo : Math.max(dTo, tripDrift - tdt * 2.5);
+    tripPeak = pTo >= tripPeak ? pTo : Math.max(pTo, tripPeak - tdt * 2.5);
+    curTrip = reduceMotion ? 0 : (L.trip || 0) * (1 + 0.8 * tripDrift);
     setTrip(curTrip);
+    if (U.uDrift) gl.uniform4f(U.uDrift, pl.pos[0], pl.pos[1], pl.pos[2], curTrip ? tripDrift : 0);
     if (U.uTime) gl.uniform1f(U.uTime, clock % 1000);
     if (L.sky && fogF > 100 && !Skybox.draw(L.sky, L.fog, cam.view, cam.proj)) {
       gl.uniform2f(U.uFog, 1e5, 2e5);
@@ -16249,8 +17343,10 @@ void main() {
     for (const an of L.anims) draw(an.mesh, an.fn(clock), an.o);
     Life.drawOpaque(L);
     if (L.drawSolid) L.drawSolid();
-    for (const f of L.doorFx) drawDoorFx(f);
-    for (const d of L.decals) drawSign(d.mesh, d.model, { tex: d.tex, lit: 0.9 });
+    // Schilder in Trip-Welten: das Brett ist einzeln (L.signBodies) und wabert als Ganzes, die Schrift genauso; andere
+    // Tafeln wabern Ecke fuer Ecke wie die Wand, an der sie haengen
+    if (curTrip && L.signBodies) { for (const s of L.signBodies) { setTripAt(s.trip); draw(s.mesh, s.model, { detail: 1 }); } setTripAt(null); }
+    for (const d of L.decals) drawSign(d.mesh, d.model, { tex: d.tex, lit: 0.9, trip: d.trip || TRIP_FREE });
     Net.drawTags();
 
     // Level-Extras (undurchsichtig)
@@ -16261,7 +17357,7 @@ void main() {
     }
     if (L.paintings) {
       for (const pt of L.paintings) {
-        if (!pt.noFrame) draw(MESH.frame, pt.frame);
+        if (!pt.noFrame) { if (curTrip) setTrip(0); draw(MESH.frame, pt.frame); if (curTrip) setTrip(curTrip); }   // ruhig wie das Bild darin
         if (pt.rip && clock - pt.rip.t0 > 4) pt.rip = null;
         if (!pt.rip && mode === 'play' && Math.abs(paintAlong(pt, pl.pos)) < 3.5 && paintAway(pt, pl.pos) < 3.2 && pl.pos[1] < pt.y + 2) {
           pt.rip = { x: paintLocalX(pt, pl.pos), y: (pl.pos[1] + 1.1 - pt.y) / (pt.scale || 1), t0: clock, amp: 0.1 };
@@ -16269,11 +17365,6 @@ void main() {
         const rip = pt.rip ? [pt.rip.x, pt.rip.y, clock - pt.rip.t0, reduceMotion ? 0 : pt.rip.amp] : null;
         drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0 });
       }
-    }
-    if (L.starDoor) {
-      const sd = L.starDoor, o = smooth(sd.open);
-      draw(MESH.doorLeaf, M4.from(-3, 5, sd.pos[2] + 0.45, -o * 1.6));
-      draw(MESH.doorLeaf, M4.from(3, 5, sd.pos[2] + 0.45, Math.PI + o * 1.6));
     }
     for (const c of L.coins) {
       if (c.taken || c.hidden) continue;
@@ -16288,8 +17379,13 @@ void main() {
         { lit: 0.45, tint: s.ghost ? [0.55, 0.75, 1, 0.55] : undefined });
     }
     for (const e of L.enemies) drawEnemy(e);
+    // Tueren erst jetzt: das schwarze Loch einer offenen Tuer ueberdeckt so alles, was hinter der Wand liegt (vorher
+    // schimmerten Muenzen und Sterne durch, Video 2026-09-30); nur die Figur kommt danach und bleibt im Loch sichtbar
+    for (const f of L.doorFx) drawDoorFx(f);
     if (curTrip) setTrip(0);
     if (!Intro.playerHidden() && pl.action !== 'cannon') drawPlayer();
+    StarDance.drawStar();
+    DoorSeq.drawKey();
     Intro.draw();
     Net.drawOthers();
     if (curTrip) setTrip(curTrip);
@@ -16301,6 +17397,7 @@ void main() {
     gl.polygonOffset(-2, -2);
     if (!pl.entering && !Intro.playerHidden() && pl.action !== 'cannon') { const sp = PaintOut.body || pl.pos; shadowAt(sp[0], sp[1], sp[2], 0.75 * (pl.pose ? pl.pose.s : 1)); }
     Intro.drawAlpha();
+    StarDance.drawSparks();
     Net.shadows();
     for (const e of L.enemies) {
       if (e.state === 'dead' || e.state === 'gone' || e.state === 'wait' || e.state === 'off' || e.state === 'hide') continue;
@@ -16332,10 +17429,6 @@ void main() {
     Life.drawGlow(L);
     if (L.drawAlpha) L.drawAlpha();
     if (L.beamModel) draw(MESH.beam, L.beamModel, { lit: 0, alpha: 0.16 + Math.sin(clock * 1.7) * 0.03 });
-    if (L.starDoor) {
-      const sd = L.starDoor;
-      draw(MESH.emblem, M4.from(0, 9.3, sd.pos[2] + 0.72), { tex: sd.emblem, lit: 0, alpha: 1 - smooth(sd.open * 2.5) });
-    }
     for (const s of L.stars) {
       if (s.gone) continue;
       draw(MESH.ball, M4.from(s.pos[0], s.pos[1], s.pos[2], 0, 0, 0, 1.7 + Math.sin(clock * 5) * 0.1), { tint: s.ghost ? [0.6, 0.8, 1, 1] : [1, 0.95, 0.5, 1], alpha: 0.16, lit: 0 });
@@ -16348,11 +17441,8 @@ void main() {
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     // Schilder und Gemaelde noch einmal scharf (nur mit Bildfilter; dort sind sie sonst kaum lesbar)
-    if (signMark === 0 && signQueue.length) {
-      if (curTrip) setTrip(0);
-      Post.signs(w, h, () => { for (const [m, M, o] of signQueue) draw(m, M, o); });
-      if (curTrip) setTrip(curTrip);
-    }
+    if (L.trip) Skybox.lsd(tripPeak * 0.85, clock);   // Trip-Hoehepunkt ueber die Szene (mit 0 nur vorbereiten)
+    if (signMark === 0 && signQueue.length) Post.signs(w, h, () => { for (const [m, M, o] of signQueue) signPass(m, M, o, false); });
     Post.end(w, h);
   }
 
@@ -16433,6 +17523,27 @@ void main() {
     }
   });
 
+  // Besucher im Titel (Wunsch 2026-09-29, nach dem Vorbild-Video, wo Sterne mit Glitzerschweif um den Kopf kreisen):
+  // kleine UFOs mit je einer Katze unter der Glaskuppel. Scheibe (Radius 1), Lichterkranz (leuchtet), Kuppel (durchsichtig)
+  MESH.miniUfo = build((g) => {
+    sphere(g, I4, 1, 0.24, 1, 16, 6, hex('#c8d0e0'), true);
+    cyl(g, M4.from(0, -0.22, 0), 0.5, 0.34, 0.14, 12, hex('#6a7080'));
+    cyl(g, M4.from(0, 0.16, 0), 0.56, 0.56, 0.07, 14, hex('#8a92a8'));
+  });
+  MESH.miniUfoLights = build((g) => {
+    const cols = ['#ffe14a', '#ff5fd2', '#7cff7a', '#6fd3ff'];
+    for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; sphere(g, M4.from(Math.sin(a) * 0.9, 0.02, Math.cos(a) * 0.9), 0.085, 0.085, 0.085, 6, 4, hex(cols[i % 4]), true); }
+  });
+  MESH.miniDome = build((g) => sphere(g, M4.from(0, 0.2, 0), 0.54, 0.56, 0.54, 14, 6, hex('#b8f6ff'), true, 0, Math.PI / 2));
+  // Funkelstern (vier lange, vier kurze Zacken), flach, schaut nach +z (zur Titelkamera)
+  MESH.twinkle = build((g) => {
+    const c = [0, 0, 0];
+    for (let i = 0; i < 8; i++) {
+      const a0 = i / 8 * TAU, a1 = (i + 1) / 8 * TAU, r0 = i % 2 ? 0.28 : 1, r1 = i % 2 ? 1 : 0.28;
+      g.tri(c, [Math.cos(a0) * r0, Math.sin(a0) * r0, 0], [Math.cos(a1) * r1, Math.sin(a1) * r1, 0], C.white);
+    }
+  });
+
   // ── Titel: Kopf, der dem Zeiger folgt und sich ziehen laesst ──
   /* Titelkopf (nach den Vorbild-Videos 20260927-1043 und -1053): lebhaft und zum Verformen.
      - Ziehen: eine Stelle packen (Nase, Wange, Ohr, Muetze) - nur die Umgebung folgt, beim Loslassen federt sie mit
@@ -16444,8 +17555,8 @@ void main() {
      Alle Verformungen laufen je Bild auf der CPU (eigene DYNAMIC_DRAW-Puffer, Farben/UV vom normalen Mesh). */
   const TitleHead = (() => {
     const st = { yaw: 0, pitch: 0, px: 0.5, py: 0.5, leave: -1, grab: null, lastIn: 0, doze: 0, startle: -9, poke: -9,
-      sq: 0, sqV: 0, look: [0, 0], lookT: [0, 0], nextLook: 0, zees: [], nextZ: 0, laugh: -9, tilt: 0 };
-    const pulls = [], MAX_PULLS = 8, MAX_D = 1.8, DOZE_AFTER = 9, CAM_Z = 9, PICK_R = 0.13;
+      sq: 0, sqV: 0, look: [0, 0], lookT: [0, 0], nextLook: 0, zees: [], nextZ: 0, laugh: -9, tilt: 0, blush: 0 };
+    const pulls = [], MAX_PULLS = 8, MAX_D = 1.8, DOZE_AFTER = 22, CAM_Z = 9, PICK_R = 0.13, HEAD_Y = -0.8;
     let fovy = 1, aspect = 1, headM = I4;
     const ears = [{ t: -9, k: 0 }, { t: -9, k: 0 }], whisk = { t: -9 };
     function ndc(cx, cy) {
@@ -16454,6 +17565,94 @@ void main() {
     }
     const tanH = () => Math.tan(fovy / 2);
     const toNdc = (p) => { const d = (CAM_Z - p[2]) * tanH(); return [p[0] / (d * aspect), p[1] / d]; };
+
+    /* ── Besuch (nach dem Vorbild-Video 20260929-1617, dort kreisen Sterne mit Glitzerschweif um den Kopf) ──
+       Nach SHOW_AFTER s ohne Eingabe fliegen UFOs mit je einer Katze heran und kreisen vor und hinter dem Kopf; jedes
+       zieht Glitzer hinter sich her. Der Kopf schaut ihnen nach (Augen + Kopf), lacht, wiegt sich hin und her und wird
+       rot, wenn eins nah vor dem Gesicht vorbeizieht. Jede Eingabe scheucht sie weg; nach DOZE_AFTER s doest er ein. */
+    const SHOW_AFTER = 4.5, SHOW_DUR = 12, SHOW_OUT = 1.6, UFO_S = 0.55;
+    let show = null, showCool = 0;
+    const sparks = [];   // Glitzer: { p, v, t0, life, col, s, rot }
+    const SPARK_COLS = [[1, 0.93, 0.55], [1, 1, 1], [1, 0.55, 0.85], [0.6, 0.95, 1]];
+    function spark(p, v, col, s = 0.12, life = 0.9) {
+      if (sparks.length < 260) sparks.push({ p: p.slice(), v, t0: clock, life, col, s, rot: Math.random() * TAU });
+    }
+    function burst(p, n = 14, sp = 1.6) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * TAU, b = (Math.random() - 0.3) * 1.4;
+        spark(p, [Math.cos(a) * sp * Math.cos(b), Math.sin(b) * sp + 0.4, Math.sin(a) * sp * 0.5], SPARK_COLS[i % 4], 0.1 + Math.random() * 0.08, 0.7 + Math.random() * 0.4);
+      }
+    }
+    const orbitR = () => Math.min(3.3, tanH() * CAM_Z * aspect * 0.8);   // im Hochformat enger, sonst fliegen sie aus dem Bild
+    function startShow() {
+      const riders = CATS.filter((c) => c !== CAT), R = orbitR();
+      show = { t0: clock, out: -1, feat: 0, nextFeat: clock + 2.6, excite: 0, gasp: 0, vis: [0, 1, 2].map((i) => ({
+        cat: riders.length ? riders[i % riders.length] : CAT, a0: i / 3 * TAU + Math.random() * 0.6, w: (0.55 + i * 0.13) * (i % 2 ? -1 : 1),
+        R: R * (0.9 + i * 0.07), tilt: 0.28 + i * 0.2, ph: Math.random() * TAU, delay: i * 0.5, p: [0, 20, 0], prev: null, near: 0 })) };
+      if (Snd.ready()) Snd.whoosh();
+    }
+    function scatter() { if (show && show.out < 0) { show.out = clock; if (Snd.ready()) Snd.whoosh(); } }
+    // Bahn: geneigter Kreis um den Kopf (vorn tiefer/hoeher als hinten), Radius und Hoehe wabern leicht
+    function orbitPos(v, t) {
+      const a = v.a0 + v.w * t, R = v.R + Math.sin(t * 0.7 + v.ph) * 0.35, s = Math.sin(a) * R;
+      return [Math.cos(a) * R, HEAD_Y + 0.35 + s * Math.sin(v.tilt) + Math.sin(t * 1.9 + v.ph) * 0.25, s * Math.cos(v.tilt)];
+    }
+    function tickShow(dt) {
+      const t = clock - show.t0;
+      let best = 0, bestV = null;
+      show.vis.forEach((v, i) => {
+        const tt = t - v.delay, kin = smooth(clamp(tt / 1.5, 0, 1));
+        let p = orbitPos(v, Math.max(0, tt));
+        if (kin < 1) { const from = [(i % 2 ? 1 : -1) * 11, 5.5, -3]; p = p.map((c, j) => lerp(from[j], c, kin)); }
+        if (show.out >= 0) {   // davon: nach aussen und oben
+          const ko = smooth(clamp((clock - show.out) / SHOW_OUT, 0, 1)), l = Math.hypot(p[0], p[2]) || 1, to = [p[0] / l * 13, 8, p[2] / l * 13];
+          p = p.map((c, j) => lerp(c, to[j], ko * ko));
+        }
+        v.prev = v.p; v.p = p;
+        if (tt > 0.1 && Math.random() < dt * 45) {   // Glitzerschweif
+          spark([p[0] + (Math.random() - 0.5) * 0.25, p[1] - 0.08, p[2] + (Math.random() - 0.5) * 0.25],
+            [(Math.random() - 0.5) * 0.3, -0.3 - Math.random() * 0.35, (Math.random() - 0.5) * 0.3], SPARK_COLS[(i + Math.floor(clock * 6)) % 4], 0.08 + Math.random() * 0.08, 0.8 + Math.random() * 0.5);
+        }
+        const dFace = Math.hypot(p[0], p[1] - HEAD_Y, p[2] - 2.2);   // wie nah vor dem Gesicht?
+        v.near = p[2] > 0.8 && show.out < 0 ? clamp(1 - (dFace - 1) / 2.2, 0, 1) : 0;
+        if (v.near > best) { best = v.near; bestV = v; }
+      });
+      // wen er anschaut: wechselt alle paar Sekunden; wer nah vor dem Gesicht vorbeifliegt, zieht den Blick sofort auf sich
+      if (clock > show.nextFeat) { show.feat = (show.feat + 1 + Math.floor(Math.random() * 2)) % 3; show.nextFeat = clock + 1.8 + Math.random() * 1.6; }
+      const fv = best > 0.5 ? bestV : show.vis[show.feat], a = toNdc(fv.p), h = toNdc([0, HEAD_Y, 1]);
+      if (show.out < 0) st.lookT = [clamp((a[0] - h[0]) / 0.36, -1, 1), clamp((a[1] - h[1] - 0.08) / 0.42, -1, 1)];
+      if (best > 0.62 && !show.gasp) { show.gasp = clock; ears[0].t = ears[1].t = clock; whisk.t = clock; }   // "oh!"
+      if (best < 0.3) show.gasp = 0;
+      show.excite = best;
+      if (t > SHOW_DUR) scatter();
+      if (show.out >= 0 && clock - show.out > SHOW_OUT) { show = null; showCool = clock + 4; }
+    }
+    // wie stark die Show gerade laeuft (0..1): weich an beim Anflug, weich aus beim Wegfliegen
+    const showK = () => (!show ? 0 : show.out < 0 ? smooth(clamp((clock - show.t0) / 1.2, 0, 1)) : 1 - smooth(clamp((clock - show.out) / SHOW_OUT, 0, 1)));
+    function drawShow() {
+      if (show) {
+        for (const v of show.vis) {
+          const p = v.p, dx = v.prev ? p[0] - v.prev[0] : 0, bank = clamp(dx * 5, -0.45, 0.45);
+          const m = M4.from(p[0], p[1], p[2], 0, 0.16 + Math.sin(clock * 2 + v.ph) * 0.06, -bank, UFO_S);
+          draw(MESH.miniUfo, m, { shine: 0.5, rim: 0.2, lit: 0.9 });
+          draw(MESH.miniUfoLights, M4.mul(m, M4.from(0, 0, 0, clock * 2.5)), { lit: 0 });
+          // Katze im Cockpit: schaut zur Kamera, wiegt den Kopf, blinzelt
+          const G = v.cat, cm = M4.mul(m, M4.from(0, 0.36, 0, Math.sin(clock * 1.7 + v.ph) * 0.4, -0.12, Math.sin(clock * 2.3 + v.ph) * 0.12, 0.38));
+          const fig = { shine: 0.06, rim: 0.16, lit: 0.8 };
+          draw(G.head, cm, fig);
+          if (G.glow.head) draw(G.glow.head, cm, { lit: 0 });
+          drawEyes(G, cm, blinkAt(clock, 5 + v.ph), fig);
+        }
+      }
+      // durchsichtig: Glaskuppeln und Glitzer
+      gl.enable(gl.BLEND); gl.depthMask(false);
+      if (show) for (const v of show.vis) draw(MESH.miniDome, M4.from(v.p[0], v.p[1], v.p[2], 0, 0.16 + Math.sin(clock * 2 + v.ph) * 0.06, 0, UFO_S), { lit: 0.5, shine: 0.9, alpha: 0.3 });
+      for (const s of sparks) {
+        const k = (clock - s.t0) / s.life, sz = s.s * (k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85);
+        if (sz > 0.002) draw(MESH.twinkle, M4.from(s.p[0], s.p[1], s.p[2], 0, 0, s.rot + clock * 3, sz), { lit: 0, tint: [s.col[0], s.col[1], s.col[2], 1], alpha: 1 - k * 0.5 });
+      }
+      gl.depthMask(true); gl.disable(gl.BLEND);
+    }
 
     // ── Gesichtsteile in den Eckpunkten finden (Kopf schaut nach +z, Augenhoehe y = 0) ──
     function features(cpu, glowCpu) {
@@ -16492,7 +17691,7 @@ void main() {
     }
     // Hoehe (z) der vordersten Kopfflaeche als Raster ueber dem Mundbereich - der Mund liegt darauf wie aufgemalt
     function surfaceGrid(cpu, F) {
-      const NX = 17, NY = 13, sc = F.scale, x0 = -0.17 * sc, x1 = 0.17 * sc, y0 = F.mouthY - 0.13 * sc, y1 = F.mouthY + 0.1 * sc;
+      const NX = 33, NY = 25, sc = F.scale, x0 = -0.17 * sc, x1 = 0.17 * sc, y0 = F.mouthY - 0.13 * sc, y1 = F.mouthY + 0.1 * sc;
       const Z = new Float32Array(NX * NY).fill(-9), P = cpu.P, gx = (x1 - x0) / (NX - 1), gy = (y1 - y0) / (NY - 1);
       for (let t = 0; t < P.length; t += 9) {
         const ax = P[t], ay = P[t + 1], bx = P[t + 3], by = P[t + 4], cx = P[t + 6], cy = P[t + 7];
@@ -16599,7 +17798,28 @@ void main() {
       if (top) H.push({ g: [0, top[1] - 0.04, top[2]], r: 0.6, y0: 0.12 });            // Kappe / Oberkopf: nur ueber dem Schirm
       for (const e of F.ears) H.push({ g: e, r: 0.26 });                                   // Ohren
       if (F.nose && zAt) H.push({ g: [0, F.mouthY, zAt(0, F.mouthY)], r: 0.24 });          // Mund
+      // Backen (Wunsch 2026-09-30, wie Marios Wangen im Vorbild): die Fellbuesche seitlich unter den Augen; die
+      // Schnurrhaare daran gehen mit, Augen und Mund liegen ausserhalb der Reichweite
+      for (const s of [-1, 1]) { const c = cheekOf(cpu, s, F.scale); if (c) H.push({ g: c, r: 0.3 * F.scale }); }
       return H;
+    }
+    // aeusserste Fellpunkte (keine weissen Schnurrhaare) seitlich auf Schnauzenhoehe, gemittelt
+    function cheekOf(cpu, s, sc) {
+      const { P, C } = cpu, cand = [];
+      for (const fur of [true, false]) {   // Figur ganz in Weiss: dann eben alle Punkte
+        for (let i = 0; i < P.length; i += 3) {
+          const x = P[i] * s, y = P[i + 1], z = P[i + 2];
+          if (x < 0.2 * sc || y > -0.1 * sc || y < -0.36 * sc || z < 0.04 * sc) continue;
+          if (fur && C && C[i] > 0.75 && C[i + 1] > 0.75 && C[i + 2] > 0.75) continue;
+          cand.push([P[i], y, z]);
+        }
+        if (cand.length) break;
+      }
+      if (!cand.length) return null;
+      cand.sort((a, b) => b[0] * s - a[0] * s);
+      const top = cand.slice(0, 4), g = [0, 0, 0];
+      for (const p of top) { g[0] += p[0] / top.length; g[1] += p[1] / top.length; g[2] += p[2] / top.length; }
+      return g;
     }
     function pick(cx, cy) {
       const d = dynFor(CAT);
@@ -16621,7 +17841,9 @@ void main() {
       if (st.doze > 0.35) {
         st.startle = clock; st.sqV += 5; st.doze = 0; st.zees.length = 0;   // Z-Blasen zerplatzen
         ears[0].t = ears[1].t = clock; if (Snd.ready()) Snd.voice('hoi');
+        burst([0, HEAD_Y + 1.4, 1.2], 22, 2.2);   // wie im Vorbild: Glitzer beim Aufwachen
       }
+      scatter();   // Besucher fliegen davon
       st.lastIn = clock;
     }
     titleEl.addEventListener('pointermove', (e) => {
@@ -16644,6 +17866,7 @@ void main() {
       titleEl.style.cursor = 'grabbing';
       pulls.push(q);
       st.grab = { q, p: hit.p, zw: hit.zw, pin: e.button === 2, t: clock };
+      burst(M4.point(headM, hit.g), 12, 1.3);   // Glitzer an der gepackten Stelle
       Snd.unlock(); Snd.blip();
       try { titleEl.setPointerCapture(e.pointerId); } catch (x2) { /* egal */ }
     });
@@ -16662,12 +17885,13 @@ void main() {
     titleEl.addEventListener('contextmenu', (e) => { if (!(e.target.closest && e.target.closest('button, a'))) e.preventDefault(); });
     titleEl.addEventListener('dblclick', () => { for (const q of pulls) q.pinned = false; });
 
-    // ── Mund (nur im Titel): [halbe Breite, Oeffnung, Laecheln, Schiefe, rund] ──
+    // ── Mund (nur im Titel): eine flache schwarze Form wie aufgemalt (Wunsch 2026-09-29: kein plastischer Mund mit
+    //    Zunge), die je Stimmung ihre Form wechselt. [halbe Breite, Oeffnung, Laecheln, Schiefe, rund] ──
     const MOUTH = {
-      smile: [0.105, 0.04, 0.9, 0, 0], happy: [0.115, 0.07, 1, 0, 0], laugh: [0.12, 0.11, 1, 0, 0],
-      huh: [0.065, 0.028, -0.5, 0.9, 0.2], ouch: [0.055, 0.07, -0.2, 0, 1], O: [0.07, 0.12, 0, 0, 1], sleep: [0.07, 0.008, 0.35, 0, 0],
+      smile: [0.1, 0.045, 0.9, 0, 0], happy: [0.11, 0.075, 1, 0, 0], laugh: [0.12, 0.12, 1, 0, 0.15],
+      huh: [0.06, 0.035, -0.5, 0.9, 0.4], ouch: [0.045, 0.06, -0.2, 0, 1], O: [0.065, 0.12, 0, 0, 1], sleep: [0.06, 0.012, 0.35, 0, 0.5],
     };
-    const mouth = MOUTH.smile.slice(), MSEG = 14, MV = MSEG * 12;
+    const mouth = MOUTH.smile.slice(), MSEG = 24, MROW = 6, MV = MSEG * MROW * 6, MDZ = 0.011;   // MDZ: so weit liegt der Mund vor der Kopfhaut
     let mouthMesh = null;
     function mouthFace() {
       if (clock - st.startle < 0.7) return MOUTH.O;
@@ -16675,44 +17899,49 @@ void main() {
       if (clock - st.poke < 0.5) return MOUTH.ouch;
       if (clock - st.laugh < 0.8) return MOUTH.laugh;
       if (st.doze > 0.5) return MOUTH.sleep;
+      // Besuch: staunt ("O"), wenn eins nah vorbeizieht, sonst lacht er abwechselnd breit und froh
+      if (show && show.out < 0 && clock - show.t0 > 0.8) return show.excite > 0.62 ? MOUTH.O : Math.sin(clock * 1.3) > -0.3 ? MOUTH.laugh : MOUTH.happy;
       return clock - st.lastIn < 2.5 ? MOUTH.happy : MOUTH.smile;
     }
-    const MCOL = [0.29, 0.05, 0.09], TCOL = [1, 0.44, 0.56];
-    function buildMouth(d) {
+    const MCOL = [0.02, 0.015, 0.025];
+    // shape: Form (Vorgabe: die Titel-Stimmung); pulled: gezogene Stellen des Titelkopfs mitnehmen (im Spiel nicht)
+    function buildMouth(d, shape = mouth, pulled = true) {
       if (!mouthMesh) {
         const b = (n) => { const x = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, x); gl.bufferData(gl.ARRAY_BUFFER, n * 4, gl.DYNAMIC_DRAW); return x; };
         mouthMesh = { p: b(MV * 3), n: b(MV * 3), c: b(MV * 3), t: b(MV * 2), count: 0, P: new Float32Array(MV * 3), N: new Float32Array(MV * 3), C: new Float32Array(MV * 3) };
         mouthMesh.N.fill(0); for (let i = 2; i < MV * 3; i += 3) mouthMesh.N[i] = 1;
         gl.bindBuffer(gl.ARRAY_BUFFER, mouthMesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, mouthMesh.N);
       }
-      const F = d.F, sc = F.scale, [w0, open, smile, asym, round] = mouth, w = w0 * sc, cy = F.mouthY;
+      const F = d.F, sc = F.scale, [w0, open, smile, asym, round] = shape, w = w0 * sc, cy = F.mouthY;
       const M = mouthMesh, Pm = M.P, Cm = M.C;
       let n = 0;
       // Verschiebung wie die Kopfhaut darunter (gezogene Stellen), damit der Mund beim Ziehen mitgeht
       const put = (x, y, dz, col) => {
         let z = d.zAt(x, y) + dz * sc, ox = 0, oy = 0, oz = 0;
-        for (const q of pulls) {
+        if (pulled) for (const q of pulls) {
           const k = pullW(q, x, y, z);
           if (k) { ox += q.D[0] * k; oy += q.D[1] * k; oz += q.D[2] * k; }
         }
         Pm[n * 3] = x + ox; Pm[n * 3 + 1] = y + oy; Pm[n * 3 + 2] = z + oz;
         Cm[n * 3] = col[0]; Cm[n * 3 + 1] = col[1]; Cm[n * 3 + 2] = col[2]; n++;
       };
-      const lip = (t) => {   // Oberlippe / Unterlippe bei t (-1..1)
+      // Ober- und Unterkante bei t (-1..1): rund = Kreis/Oval, sonst D-Form (fast gerade oben, rund unten) auf der
+      // Laechel-Kurve; die Enden sind immer gerundet
+      const lip = (t) => {
         const c = cy + smile * 0.035 * sc * t * t + asym * 0.03 * sc * t;
-        const h = (open * sc / 2) * Math.pow(Math.max(0, 1 - t * t), round > 0.5 ? 0.5 : 0.85) + 0.004 * sc;
-        return [c + h * lerp(0.25, 1, round), c - h * lerp(1.75, 1, round)];
+        const h = (open * sc / 2) * Math.pow(Math.max(0, 1 - t * t), lerp(0.65, 0.5, round)) + 0.004 * sc;
+        return [c + h * lerp(0.3, 1, round), c - h * lerp(1.7, 1, round)];
       };
-      for (let i = 0; i < MSEG; i++) {   // Mundhoehle
+      // eine einzige schwarze Flaeche; auch innen in Zeilen unterteilt, sonst spannt sie quer ueber die gewoelbte
+      // Schnauze und verschwindet in der Mitte unter dem Kopf
+      for (let i = 0; i < MSEG; i++) {
         const ta = -1 + 2 * i / MSEG, tb = -1 + 2 * (i + 1) / MSEG, [ua, la] = lip(ta), [ub, lb] = lip(tb);
-        put(ta * w, ua, 0.007, MCOL); put(ta * w, la, 0.007, MCOL); put(tb * w, lb, 0.007, MCOL);
-        put(ta * w, ua, 0.007, MCOL); put(tb * w, lb, 0.007, MCOL); put(tb * w, ub, 0.007, MCOL);
-      }
-      for (let i = 0; i < MSEG; i++) {   // Zunge: unteres Stueck der Oeffnung, etwas davor
-        const ta = (-1 + 2 * i / MSEG) * 0.62, tb = (-1 + 2 * (i + 1) / MSEG) * 0.62, [ua, la] = lip(ta), [ub, lb] = lip(tb);
-        const ta2 = la + (ua - la) * 0.42, tb2 = lb + (ub - lb) * 0.42;
-        put(ta * w, ta2, 0.009, TCOL); put(ta * w, la, 0.009, TCOL); put(tb * w, lb, 0.009, TCOL);
-        put(ta * w, ta2, 0.009, TCOL); put(tb * w, lb, 0.009, TCOL); put(tb * w, tb2, 0.009, TCOL);
+        for (let r = 0; r < MROW; r++) {
+          const k0 = r / MROW, k1 = (r + 1) / MROW;
+          const a0 = lerp(la, ua, k0), a1 = lerp(la, ua, k1), b0 = lerp(lb, ub, k0), b1 = lerp(lb, ub, k1);
+          put(ta * w, a1, MDZ, MCOL); put(ta * w, a0, MDZ, MCOL); put(tb * w, b0, MDZ, MCOL);
+          put(ta * w, a1, MDZ, MCOL); put(tb * w, b0, MDZ, MCOL); put(tb * w, b1, MDZ, MCOL);
+        }
       }
       M.count = n;
       gl.bindBuffer(gl.ARRAY_BUFFER, M.p); gl.bufferSubData(gl.ARRAY_BUFFER, 0, Pm);
@@ -16724,8 +17953,17 @@ void main() {
       const idle = clock - st.lastIn;
       // Doesen: nach DOZE_AFTER s ohne Eingabe langsam einnicken
       st.doze = st.grab ? 0 : clamp(st.doze + (idle > DOZE_AFTER ? dt * 0.5 : -dt * 4), 0, 1);
+      // Besuch starten/fuehren (setzt waehrenddessen den Blick selbst)
+      if (!show && mode === 'title' && idle > SHOW_AFTER && idle < DOZE_AFTER - 4 && !st.grab && st.leave < 0 && clock > showCool && st.doze < 0.05) startShow();
+      if (show) tickShow(dt);
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        if (clock - s.t0 > s.life) { sparks.splice(i, 1); continue; }
+        s.p[0] += s.v[0] * dt; s.p[1] += s.v[1] * dt; s.p[2] += s.v[2] * dt; s.v[1] -= 0.5 * dt;
+      }
+      st.blush += ((show ? show.excite : 0) - st.blush) * Math.min(1, dt * 4);
       // Blick: dem Zeiger nach; ruht die Maus ein paar Sekunden, schaut er selbst umher
-      if (idle > 2.5 && clock > st.nextLook) {
+      if (show && show.out < 0) { /* Blick kommt aus tickShow */ } else if (idle > 2.5 && clock > st.nextLook) {
         st.lookT = [(Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.9]; st.nextLook = clock + 1 + Math.random() * 1.8;
         if (Math.random() < 0.45) ears[Math.random() < 0.5 ? 0 : 1].t = clock;
         if (Math.random() < 0.25) whisk.t = clock;
@@ -16734,8 +17972,9 @@ void main() {
       st.look[0] += (st.lookT[0] - st.look[0]) * kl; st.look[1] += (st.lookT[1] - st.look[1]) * kl;
       if (!st.grab) {   // Kopf dreht weit mit (fast bis ins Profil), beim Doesen sackt er nach vorn
         const k = Math.min(1, dt * 7), dz = smooth(st.doze);
-        const ty = idle > 2.5 ? st.look[0] * 0.35 : clamp((st.px - 0.5) * 2.1, -1.05, 1.05);
-        const tp = idle > 2.5 ? -st.look[1] * 0.2 : clamp((st.py - 0.5) * 1.2, -0.55, 0.55);
+        const sk = showK();   // beim Besuch dreht der Kopf den UFOs weiter nach
+        const ty = idle > 2.5 ? st.look[0] * lerp(0.35, 0.65, sk) : clamp((st.px - 0.5) * 2.1, -1.05, 1.05);
+        const tp = idle > 2.5 ? -st.look[1] * lerp(0.2, 0.32, sk) : clamp((st.py - 0.5) * 1.2, -0.55, 0.55);
         st.yaw += (lerp(ty, 0, dz) - st.yaw) * k;
         st.pitch += (lerp(tp, 0.55, dz) - st.pitch) * k;
       }
@@ -16774,7 +18013,7 @@ void main() {
     }
     function drawHead() {
       const G = CAT;
-      let sc = 2.8, y = -0.8, spin = 0;
+      let sc = 2.8, y = HEAD_Y, spin = 0;
       if (st.leave >= 0 && !titleEl.classList.contains('leaving') && clock - st.leave > 0.6) { st.leave = -1; st.pop = clock; }
       if (st.pop != null) sc *= smooth(clamp((clock - st.pop) / 0.35, 0, 1));
       if (st.leave >= 0) {
@@ -16782,18 +18021,23 @@ void main() {
         if (k >= 1) return;
         spin = smooth(k) * TAU * 1.5; sc *= 1 - smooth(k); y += k * 2;
       }
-      const dz = smooth(st.doze), breathe = Math.sin(clock * 1.7) * 0.02 * dz;
-      const roll = Math.sin(clock * 1.3) * 0.05 + Math.sin(clock * 0.7) * 0.1 * dz + st.tilt;
-      headM = M4.from(0, y + st.sq * 0.25 - dz * 0.15, 0, st.yaw + spin, st.pitch, roll, sc * (1 - st.sq * 0.6), sc * (1 + st.sq + breathe), sc * (1 - st.sq * 0.3));
+      const dz = smooth(st.doze), breathe = Math.sin(clock * 1.7) * 0.02 * dz, sk = showK();
+      // beim Besuch wiegt sich der Kopf froh hin und her und wippt (wie im Vorbild)
+      const roll = Math.sin(clock * 1.3) * 0.05 + Math.sin(clock * 0.7) * 0.1 * dz + st.tilt + Math.sin(clock * 1.15) * 0.1 * sk;
+      y += Math.sin(clock * 2.3) * 0.06 * sk;
+      headM = M4.from(0, y + st.sq * 0.25 - dz * 0.15, 0, st.yaw + spin + Math.sin(clock * 0.75) * 0.1 * sk, st.pitch, roll, sc * (1 - st.sq * 0.6), sc * (1 + st.sq + breathe), sc * (1 - st.sq * 0.3));
       const hOpt = { shine: 0.14, rim: 0.3, lit: 0.85 }, d = dynFor(G), mus = muscles(d.F);
+      if (st.blush > 0.02) hOpt.tint = [1, 0.42, 0.48, 0.3 * st.blush];   // wird rot, wenn ein UFO nah vorbeizieht
       draw(d.head ? deform(d.head, mus) : G.head, headM, hOpt);
       if (G.glow.head) draw(d.glow ? deform(d.glow, mus) : G.glow.head, headM, { lit: 0 });
-      if (d.zAt) draw(buildMouth(d), headM, { lit: 0.55 });
+      if (d.zAt) draw(buildMouth(d), headM, { lit: 0 });   // unbeleuchtet: bleibt flach schwarz wie aufgemalt
       // Lider: blinzeln, beim Stupser zukneifen, beim Doesen zufallen; gepackt oder erschreckt weit offen
       const squint = clamp(1 - (clock - st.poke) / 0.35, 0, 1) * 0.75;
       let bl = Math.max(blinkAt(clock, 2), squint, dz * (0.85 + Math.sin(clock * 0.9) * 0.1 * (1 - dz)));
       if (pulls.length || clock - st.startle < 0.7) bl = 0;
-      drawEyes(G, headM, bl, hOpt);
+      if (show && show.excite > 0.62) bl = 0;   // staunt mit grossen Augen
+      drawEyes(G, headM, bl, hOpt, st.look);    // aufgemalte Augen: Pupillen schauen mit
+      drawShow();
       for (const t of st.zees) {   // Z-Blasen steigen schraeg nach oben rechts
         const a = (clock - t) / 2.6, k = sc / 2.8;
         draw(MESH.zee, M4.from((0.9 + a * 1.6) * k, y + (1.2 + a * 2.2) * k, 0.5, 0, 0, Math.sin(a * 8) * 0.25, (0.25 + a * 0.35) * k),
@@ -16802,9 +18046,11 @@ void main() {
     }
     return {
       tick, draw: drawHead, leave() { st.leave = clock; },
-      reset() { st.leave = -1; st.grab = null; pulls.length = 0; },
+      // derselbe flache Mund fuer die Spielfigur (drawPlayer): Form [halbe Breite, Oeffnung, Laecheln, Schiefe, rund]
+      mouthMesh(G, shape) { const d = dynFor(G); return d.zAt ? buildMouth(d, shape, false) : null; },
+      reset() { st.leave = -1; st.grab = null; pulls.length = 0; show = null; sparks.length = 0; st.blush = 0; },
       cam(f, a) { fovy = f; aspect = a; },
-      test: { pick, pulls, st, features: () => dynFor(CAT).F, get grab() { return st.grab; },
+      test: { pick, pulls, st, features: () => dynFor(CAT).F, get grab() { return st.grab; }, get show() { return show; }, startShow, sparks,
         handles: () => dynFor(CAT).H.map((h) => { const s = toNdc(M4.point(headM, h.g)), r = gl.canvas.getBoundingClientRect(); return [r.left + (s[0] + 1) / 2 * r.width, r.top + (1 - s[1]) / 2 * r.height]; }) },
     };
   })();
@@ -16962,8 +18208,7 @@ void main() {
         const um = M4.from(0, uy, SPOT[2], clock * 1.5);
         draw(MESH.ufo, um, { shine: 0.5, rim: 0.2, lit: 0.9 });
         draw(MESH.ufoGlow, um, { lit: 0 });
-        // Wolki schwebt schon am Start und filmt
-        draw(MESH.wolki, M4.from(-3.4, 3.4 + Math.sin(clock * 2.2) * 0.2, SPOT[2] - 4.5, 2.6, 0, 0, 0.9), { lit: 0.7, rim: 0.3 });
+        // (Wolki schwebt hier NICHT mehr im Bild - Wunsch 2026-09-29: sah im Vorspann wie ein Fehler aus)
       }
     }
     function drawAlpha() {
@@ -16994,12 +18239,12 @@ void main() {
   }
   let last = performance.now(), acc = 0, forced = null;
   const NO_INPUT = { mx: 0, my: 0, cx: 0, cy: 0, mdx: 0, mdy: 0, wheel: 0, jump: false, action: false, z: false, look: false, pause: false,
-    jumpP: false, actionP: false, zP: false, lookP: false, pauseP: false, startP: false };
+    jumpP: false, actionP: false, zP: false, lookP: false, pauseP: false, startP: false, talkP: false };
   const EDGES = ['jumpP', 'actionP', 'zP', 'lookP'];
   const pend = { jumpP: false, actionP: false, zP: false, lookP: false };
   // Welche Musik gerade laufen soll - jedes Bild abgefragt, Snd.song wechselt nur bei einer Aenderung.
   // Bilderzimmer spielen das Stueck ihrer Welt gedaempft (wie durch das Bild gehoert), Pause = leiser.
-  const SONG_OF = { hall: 'hall', og: 'og', keller: 'keller', hof: 'hof', desert: 'desert', dust: 'dust', terminal: 'terminal', video: 'video',
+  const SONG_OF = { hall: 'hall', og: 'og', treppe: 'og', grimm: 'verlies', keller: 'keller', hof: 'hof', desert: 'desert', dust: 'dust', terminal: 'terminal', video: 'video',
     aquarium: 'aquarium', bounce: 'bounce', spuk: 'spuk', uhrwerk: 'uhrwerk', fraktal: 'fraktal', pilz: 'pilz', neon: 'neon', verlies: 'verlies',
     bibliothek: 'bibliothek', musik: 'musik', spiel: 'spiel', sternwarte: 'sternwarte', gym: 'spiel' };
   function wantedSong() {
@@ -17016,13 +18261,13 @@ void main() {
     if (manualDt == null) last = now;
     clock += dt;
     const inp = forced ? Object.assign({}, NO_INPUT, forced) : Input.poll();
-    if (forced) forced = Object.assign({}, forced, { jumpP: false, actionP: false, zP: false, lookP: false, pauseP: false, startP: false });
+    if (forced) forced = Object.assign({}, forced, { jumpP: false, actionP: false, zP: false, lookP: false, pauseP: false, startP: false, talkP: false });
     uiCool = Math.max(0, uiCool - dt);
     handleUI(inp);
     if (uiCool > 0) EDGES.forEach((k) => { inp[k] = false; });
     // Mehrspieler: die Welt laeuft im Pausenmenue weiter (ohne Eingaben) - sonst waere man dort unverwundbar und
     // eingefroren. Wichtig auch fuer zwei Fenster an einem Rechner: das Fenster ohne Fokus verliert die Maus und pausiert.
-    const live = () => (mode === 'play' || (mode === 'pause' && Net.status === 'drin')) && !Dialog.open;
+    const live = () => mode === 'play' || (mode === 'pause' && Net.status === 'drin');   // Dialoge halten nichts an
     if (live()) {
       const sIn = mode === 'pause' ? Object.assign({}, NO_INPUT) : inp;
       // Tastendruecke festhalten, bis ein Physikschritt sie verarbeitet hat:
@@ -17040,6 +18285,7 @@ void main() {
       acc = 0;
       EDGES.forEach((k) => { pend[k] = false; });
     }
+    Dialog.tick();   // weggelaufen? Dann endet das Gespraech
     ambient(dt);
     updateCine(dt);
     PaintOut.tick(dt);
@@ -17047,6 +18293,7 @@ void main() {
     Intro.tick(dt);
     Flyby.tick(dt);
     DoorSeq.tick(dt);
+    StarDance.tick(dt);
     if (mode === 'title') TitleHead.tick(dt);
     updateCamera(dt, inp);
     ArtGen.pump(64);
@@ -17056,7 +18303,6 @@ void main() {
     if (mode === 'pause') CatPick.tick(dt);
     updatePrompt(mode === 'play' && !Dialog.open ? interactable() : null);
     document.body.classList.toggle('on-title', mode === 'title' || mode === 'files');
-    StarFx.draw();
     if (manualDt == null) requestAnimationFrame(frame);
   }
 
@@ -17075,6 +18321,20 @@ void main() {
     Snd.unlock();
   }));
   $('#btnPause').addEventListener('click', blurAfter(() => { if (mode === 'pause') closePause(); else openPause(); }));
+  // Pause-Knopf auf Touch-Geraeten (Wunsch 2026-09-29): nach PAUSE_FADE s ohne Tippen oben rechts ausgeblendet (und nicht
+  // antippbar, damit man nicht versehentlich pausiert); ein Tippen in die Ecke holt ihn zurueck
+  const PauseBtn = (() => {
+    const el = $('#btnPause'), PAUSE_FADE = 3.5;
+    let t = 0;
+    const show = () => {
+      el.classList.remove('faded'); clearTimeout(t);
+      t = setTimeout(() => el.classList.add('faded'), PAUSE_FADE * 1000);
+    };
+    addEventListener('pointerdown', (e) => {
+      if (document.body.classList.contains('touch-ui') && e.clientX > innerWidth - 150 && e.clientY < 140) show();
+    }, true);
+    return { show };
+  })();
   // Steuerung nur auf Knopfdruck zeigen (haelt das Pausenmenue kurz)
   const showControls = (on) => { $('#controls').hidden = !on; $('#btnCtrl').setAttribute('aria-expanded', String(on)); };
   $('#btnCtrl').addEventListener('click', () => showControls($('#controls').hidden));
@@ -17232,7 +18492,7 @@ void main() {
   // Test-Haken (?debug): Zustand ansehen, Frames von Hand weiterschalten
   if (/[?&]debug\b/.test(location.search)) {
     window.g64 = {
-      state, run, pl, cam, levels, Dialog, get cur() { return cur; }, get mode() { return mode; }, set mode(v) { mode = v; }, Cine, enterPainting,
+      state, run, pl, cam, levels, Dialog, get cur() { return cur; }, get mode() { return mode; }, set mode(v) { mode = v; }, get time() { return time; }, Cine, enterPainting,
       start, enterLevel, spawnStar, openPause, closePause, groundAt,
       // input weglassen = echte Eingabe (Tastatur/Controller) abfragen
       advance(sec, input) { forced = input || null; const n = Math.max(1, Math.round(sec * 60)); for (let i = 0; i < n; i++) frame(0, 1 / 60); forced = null; },
