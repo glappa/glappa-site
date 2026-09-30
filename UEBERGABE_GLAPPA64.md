@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=143`** (2026-09-28), Modelle `?v=13` (`MODEL_BYTES = 225112`).
+  **kein root nötig**). Aktuell **JS `?v=163`** (2026-09-30), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -352,6 +352,18 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - **Titelkopf**: greifen nur an festen Stellen wie im Vorbild – Kappe/Oberkopf (Radius 0,6, wirkt nur über dem Schirm,
   damit die aufgemalten Augen stehen bleiben), linkes/rechtes Ohr (0,26), Mund (0,24) (`handles`, `pullW`). Über einem
   Griffpunkt zeigt der Zeiger eine Hand. Test: `g64.TitleHead.test.handles()` liefert die Bildschirmpunkte.
+
+### 1.23 Kappi rot, Träger als Bänder, Mitspieler mit Mund und eigener Farbe (2026-09-30)
+- **Anzug rot** (`#e8322a`, vorher orange `#ff8a2a`). **Träger** sind keine aufgemalten Flächen mehr (bei 12 Segmenten
+  wurden hinten Zacken daraus), sondern eigene Bänder aus `tools/blender/straps.py` (ohne bpy nutzbar): hinten aus der
+  Hose, über die Schulter, vorn bis in den Latz. `kappi.py` nutzt es; die G64M wurde ohne Blender gepatcht (Rumpf 312 → 564
+  Dreiecke).
+- **Mund für Mitspieler**: die Mundform (`m0..m4`, `PL_MOUTH`) steckt jetzt in der Pose (`POSE_KEYS`), `drawPose` zeichnet
+  ihn. Posen älterer Versionen (ohne Mund) werden in `cleanState` mit `PL_MOUTH.rest` aufgefüllt.
+- **Mehrere Kappis**: der eigene bleibt rot, jeder Mitspieler mit Kappi bekommt eine freie Anzugfarbe (`SUIT_COLS`: grün,
+  blau, pink, gelb, lila, türkis, weiß; `suitVariant` färbt nur die roten Eckpunkte von Rumpf und Ärmeln um). Zip und die
+  anderen Figuren bleiben, wie sie sind.
+- **Kellergewölbe**: über den vier Türen keine Gewölberippe mehr (lief quer durchs Namensschild).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

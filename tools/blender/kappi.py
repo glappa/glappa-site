@@ -29,6 +29,7 @@ import math
 import g64_build as B
 from cats import _arm, _leg, _tail_path, _tip, _band
 from whiskers import all_whiskers
+from straps import straps
 
 # Masse im Spiel (m), abgeleitet aus dem Referenzskelett mit k = 2,05 / 154
 # Dicken nach Front-/Seitenansicht der Vorlage (2026-09-25): Bauch 0,31 H breit / 0,25 H tief, Aermel 0,095 H,
@@ -43,7 +44,7 @@ PINK = B.hexc('#ff8fb8')
 CAP = B.hexc('#2f8fe8')       # Kappe
 CAP_D = B.hexc('#2270c0')     # Schirm, etwas dunkler
 GOLD = B.hexc('#ffd23a')
-SHIRT = B.hexc('#ff8a2a')
+SHIRT = B.hexc('#e8322a')     # Anzug rot (bis 2026-09-30 orange #ff8a2a)
 PANTS = B.hexc('#2e3a58')
 GLOVE = B.hexc('#f6f6fb')
 BOOT = B.hexc('#7a3222')
@@ -114,12 +115,15 @@ def lids():
     return B.merge('kappi.lids', [_lid(-1), _lid(1)])
 
 
+TORSO = [(-0.30, 0, 0), (-0.285, 0.15, 0.13), (-0.24, 0.255, 0.21), (-0.16, 0.30, 0.25),
+         (-0.07, 0.31, 0.262), (0.03, 0.30, 0.25), (0.12, 0.285, 0.225),
+         (0.19, 0.26, 0.20), (0.235, 0.20, 0.16), (0.26, 0.13, 0.11),
+         (0.30, 0.115, 0.10), (0.33, 0, 0)]
+
+
 def body():
-    """Rumpf: runder Bauch, schmale Schultern. Latzhose und Traeger werden aufgemalt."""
-    torso = B.lathe('torso', [(-0.30, 0, 0), (-0.285, 0.15, 0.13), (-0.24, 0.255, 0.21), (-0.16, 0.30, 0.25),
-                              (-0.07, 0.31, 0.262), (0.03, 0.30, 0.25), (0.12, 0.285, 0.225),
-                              (0.19, 0.26, 0.20), (0.235, 0.20, 0.16), (0.26, 0.13, 0.11),
-                              (0.30, 0.115, 0.10), (0.33, 0, 0)], segs=12, color=SHIRT)
+    """Rumpf: runder Bauch, schmale Schultern. Latzhose wird aufgemalt, die Traeger sind eigene Baender."""
+    torso = B.lathe('torso', TORSO, segs=12, color=SHIRT)
 
     def cloth(c, n):
         x, y, z = c
@@ -129,13 +133,12 @@ def body():
             return PANTS                                       # Hose
         if n[1] < -0.3 and z < 0.17:
             return PANTS                                       # Latz vorn: ganze Vorderseite unter der Brust
-        if 0.12 < abs(x) < 0.2:
-            return PANTS                                       # Traeger vorn und hinten
         return SHIRT
 
     B.paint(torso, cloth)
     buttons = [B.place(B.ellipsoid('btn', (0.046, 0.024, 0.046), 6, 4, GOLD), (s * 0.15, -0.2, 0.135)) for s in (-1, 1)]
-    return B.merge('kappi.body', [torso] + buttons)
+    sv, sf, sc, _ = straps(TORSO, PANTS)   # Traeger als eigene Baender (straps.py), nicht mehr aufgemalt
+    return B.merge('kappi.body', [torso, B.mesh_from('straps', sv, sf, sc, [True] * len(sf))] + buttons)
 
 
 def arm():

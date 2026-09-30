@@ -3422,7 +3422,7 @@ vec3 art(vec2 p) {
   })();
   const C_WHITE = [1, 1, 1];
   function drawEyes(G, hm, bl, o, look) {
-    if (G.eyes2d) { FaceDecal.draw(G, hm, bl, o, look); return; }
+    if (G.eyes2d) { FaceDecal.draw(G.base || G, hm, bl, o, look); return; }
     if (G.lids && bl > 0.02) draw(G.lids, M4.mul(hm, M4.from(0, 0, 0, 0, 0, 0, 1, bl, 1)), o);
   }
   // "Z" fuer die Schlafblasen (zeigt nach +z)
@@ -10481,8 +10481,8 @@ vec3 art(vec2 p) {
     // Gewoelbe: Rippenboegen, Wandpfeiler, Fackeln
     const nearDoor = (z) => Math.abs(z + 24) < 4.5 || Math.abs(z + 54) < 4.5;
     for (let z = -6; z > Z0; z -= 8) {
+      if (nearDoor(z)) continue;   // ueber den Tueren keine Rippe - sie lief quer durchs Namensschild
       arcRib(g, 0, 6.5, z, X1 - 0.3, H - 6.8, RIB);
-      if (nearDoor(z)) continue;
       for (const x of [X0 + 0.5, X1 - 0.5]) L.block(x, 3.25, z, 1, 6.5, 1.2, { top: RIB, side: RIB }, 'pillar');
     }
     for (let z = -10; z > Z0; z -= 8) if (!nearDoor(z)) { K.torch(X0 + 0.25, 4.2, z, Math.PI / 2); K.torch(X1 - 0.25, 4.2, z, -Math.PI / 2); }
@@ -15654,8 +15654,28 @@ void main() {
      drawPlayer rechnet die Pose des eigenen Spielers; Mitspieler kommen mit derselben Pose ueber das Netz (Net).
      So sehen sie bei allen gleich aus, ohne dass die Posen-Logik doppelt existiert. Liefert die Kopfmatrix. */
   const POSE_KEYS = ['x', 'y', 'z', 'yaw', 'rx', 'rz', 'dy', 'sx', 'sy', 'legL', 'legR', 'splL', 'splR', 'legSYL', 'legSYR',
-    'bob', 'sink', 'breathe', 'ck', 'bodyYaw', 'tailRx', 'tailRz', 'armL', 'armR', 'outL', 'outR', 'headTilt', 'headRoll', 'headYaw', 'bl'];
+    'bob', 'sink', 'breathe', 'ck', 'bodyYaw', 'tailRx', 'tailRz', 'armL', 'armR', 'outL', 'outR', 'headTilt', 'headRoll', 'headYaw', 'bl', 'm0', 'm1', 'm2', 'm3', 'm4'];
+  const MOUTH_KEYS = 5;   // m0..m4 = Mundform (PL_MOUTH), damit Mitspieler auch einen Mund haben
   const FIG_STD = { shine: 0.06, rim: 0.16, lit: 0.78 };
+  /* Mehrere Kappis im Raum: der eigene Anzug bleibt rot (so steht er im Modell), Mitspieler mit Kappi bekommen je eine
+     andere Anzugfarbe. Umgefaerbt werden nur die roten Eckpunkte von Rumpf und Aermeln, Fell und Kappe bleiben. */
+  const SUIT_RED = hex('#e8322a'), SUIT_COLS = ['#2fb04a', '#2a6ae8', '#ff5cb8', '#f2c21a', '#9a4ae0', '#1ac8c8', '#e8e8f0'];
+  const suitCache = new Map();
+  function suitVariant(G, i) {
+    const key = G.id + i;
+    if (!suitCache.has(key)) {
+      const to = hex(SUIT_COLS[i]), v = { ...G, base: G };
+      for (const k of ['body', 'arm']) {
+        const m = MODEL_CPU[G.id + '.' + k];
+        if (!m) continue;
+        const C = m.C.slice();
+        for (let j = 0; j < C.length; j += 3) if (SUIT_RED.every((c, n) => Math.abs(C[j + n] - c) < 0.01)) C.set(to, j);
+        v[k] = upload({ pos: m.P, nrm: m.N, col: C, uv: new Float32Array(m.P.length / 3 * 2) });
+      }
+      suitCache.set(key, v);
+    }
+    return suitCache.get(key);
+  }
   function drawPose(G, P, FIG = FIG_STD) {
     const RG = G.rig, GLOW = { lit: 0, tint: FIG.tint };
     const base = M4.mul(M4.from(P.x, P.y + 1.1 + P.dy, P.z, P.yaw, P.rx, P.rz), M4.from(0, -1.1, 0, 0, 0, 0, P.sx, P.sy, P.sx));
@@ -15676,6 +15696,8 @@ void main() {
     const headOpt = { shine: 0.14, rim: FIG.rim, lit: 0.78, tint: FIG.tint };
     const headM = part('head', 0, RG.headY + P.sink, RG.headZ, P.headTilt, P.headRoll, headOpt, P.headYaw);
     drawEyes(G, headM, P.bl, headOpt);
+    const mm = P.m0 > 0 && TitleHead.mouthMesh(G, [P.m0, P.m1, P.m2, P.m3, P.m4]);
+    if (mm) draw(mm, headM, { lit: 0 });
     return headM;
   }
 
@@ -15742,7 +15764,9 @@ void main() {
     const isNum = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1e5;
     function cleanState(m) {
       if (typeof m.lv !== 'string' || !LEVEL_RE.test(m.lv) || typeof m.c !== 'string' || !CAT_RE.test(m.c)) return null;
-      if (!Array.isArray(m.p) || m.p.length !== POSE_KEYS.length || !m.p.every(isNum)) return null;
+      if (!Array.isArray(m.p) || !m.p.every(isNum)) return null;
+      if (m.p.length === POSE_KEYS.length - MOUTH_KEYS) m.p = m.p.concat(PL_MOUTH.rest);   // aeltere Version ohne Mund
+      if (m.p.length !== POSE_KEYS.length) return null;
       const hp = Number.isInteger(m.hp) && m.hp >= 0 && m.hp <= 8 ? m.hp : 8;
       return { lv: m.lv, c: m.c, p: m.p, hp };
     }
@@ -16071,7 +16095,11 @@ void main() {
         if (!sm || sm.lv !== cur.key) continue;
         const P = {};
         POSE_KEYS.forEach((k, j) => { P[k] = sm.p[j]; });
-        const G = CATS.find((c) => c.id === sm.c) || CATS.find((c) => c.id === 'astro') || CATS[0];
+        let G = CATS.find((c) => c.id === sm.c) || CATS.find((c) => c.id === 'astro') || CATS[0];
+        if (G.id === 'kappi') {   // eigener Anzug rot, jeder weitere Kappi bekommt eine freie Farbe
+          if (o.suit == null) { const used = new Set([...others.values()].map((x) => x.suit)); o.suit = SUIT_COLS.findIndex((_, i) => !used.has(i)); }
+          if (o.suit >= 0) G = suitVariant(G, o.suit);
+        }
         const headM = drawPose(G, P);
         o.head = M4.point(headM, [0, 0.95, 0]);
         o.pos = [P.x, P.y, P.z];
@@ -16746,17 +16774,8 @@ void main() {
     const headYaw = (run01 < 0.06 && pl.grounded && !lying ? clamp(toCam, -0.55, 0.55) * 0.5 * (1 - env) : clamp(turn * 0.25, -0.35, 0.35)) + headYawAdd;
     // Blinzeln: das Lid wird in der Hoehe aufgezogen (beim Gaehnen/Schlafen bleibt es zu)
     const bl = lidOver >= 0 ? lidOver : swim || lying ? 0 : Math.max(blinkAt(clock, 0), lidK);
-    // Fertige Pose: drawPose zeichnet daraus die Figur - dieselbe Pose geht an die Mitspieler (Net)
-    const P = pl.netPose = {
-      x: p[0], y: p[1], z: p[2], yaw: pl.face + spin + twist, rx, rz, dy, sx: sx * ek * thin * scl, sy: sq * ek * stretch * scl,
-      legL, legR, splL: cSplay + legSplay, splR: cSplay + legSplay + legOutR, legSYL: cLegSY * legSYL, legSYR: cLegSY * legSYR,
-      bob, sink: cSink, breathe, ck, bodyYaw, tailRx, tailRz: tailRz + turn * 0.35,
-      armL, armR, outL: armOut, outR: armOutR ?? armOut,
-      headTilt, headRoll: Math.sin(clock * 1.3) * 0.05 + twitch, headYaw, bl,
-    };
-    const headM = drawPose(CAT, P, FIG);
     // Mund wie im Titel: flache schwarze Form auf der Schnauze. Zu = kleines Laecheln; solange die Figur ruft oder
-    // schreit, geht er auf (Form je nach Laut), im Schlaf atmet er langsam auf und zu
+    // schreit, geht er auf (Form je nach Laut), im Schlaf atmet er langsam auf und zu. Die Form geht mit der Pose an die Mitspieler
     const mo = Snd.mouth();
     let mTo = PL_MOUTH.rest, mk = 0;
     if (mo > 0.02) { mTo = PL_MOUTH[VOICE_MOUTH[Snd.mouthVoice()] || 'joy']; mk = mo; }
@@ -16766,8 +16785,16 @@ void main() {
     else if (pantK > 0) { mTo = PL_MOUTH.scream; mk = pantK * (0.35 + 0.3 * Math.sin(clock * 7)); }  // hecheln
     else if (shiverK > 0) { mTo = PL_MOUTH.effort; mk = shiverK * (0.25 + 0.2 * Math.sin(clock * 38)); }   // Zaehneklappern
     else if (mode === 'starget') { mTo = PL_MOUTH.joy; mk = 0.6; }
-    const mm = TitleHead.mouthMesh(CAT, PL_MOUTH.rest.map((v, i) => lerp(v, mTo[i], mk)));
-    if (mm) draw(mm, headM, { lit: 0 });
+    const [m0, m1, m2, m3, m4] = PL_MOUTH.rest.map((v, i) => lerp(v, mTo[i], mk));
+    // Fertige Pose: drawPose zeichnet daraus die Figur - dieselbe Pose geht an die Mitspieler (Net)
+    const P = pl.netPose = {
+      x: p[0], y: p[1], z: p[2], yaw: pl.face + spin + twist, rx, rz, dy, sx: sx * ek * thin * scl, sy: sq * ek * stretch * scl,
+      legL, legR, splL: cSplay + legSplay, splR: cSplay + legSplay + legOutR, legSYL: cLegSY * legSYL, legSYR: cLegSY * legSYR,
+      bob, sink: cSink, breathe, ck, bodyYaw, tailRx, tailRz: tailRz + turn * 0.35,
+      armL, armR, outL: armOut, outR: armOutR ?? armOut,
+      headTilt, headRoll: Math.sin(clock * 1.3) * 0.05 + twitch, headYaw, bl, m0, m1, m2, m3, m4,
+    };
+    const headM = drawPose(CAT, P, FIG);
     // Schlaf-Zs steigen aus dem Kopf auf
     if (sleeping && env > 0.6 && clock - zzzT > 1.3) { zzzT = clock; zzz.push({ t0: clock, p: M4.point(headM, [0.2, 0.35, 0]) }); }
     for (let i = zzz.length - 1; i >= 0; i--) {
