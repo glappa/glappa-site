@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=167`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=168`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -377,6 +377,14 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 
 - Sternwarte: die Tür zurück in die Schlosshalle stand mit 5 m Rahmen in einer 8 m breiten Öffnung (links/rechts je
   1,5 m Lücke, Fackeln frei in der Luft). Seitenwände reichen jetzt bis an den Rahmen, der Sturz ist rahmenbreit (`?v=166`).
+
+### 1.25 Sternvitrine in der Schlosshalle neu (2026-10-01, `?v=168`)
+- Glasschrank rechts vom Eingang (`buildHall`, `drawVitrine`): Sockel mit Schubladen, Pilaster mit Goldkapitellen,
+  Goldrahmen mit Rosetten, Gesims mit Stern-Wappen (MESH.star), Zähltafel `got / 45` (Textur nur bei Änderung neu),
+  Samt mit Sternenhimmel, 5 Regalböden × 9 Podeste. Jeder Stern hat einen festen Platz (Reihenfolge `STARS`):
+  gefunden = golden, wiegt sich, blitzt ab und zu; fehlend = lila Umriss. Glasscheibe mit Reflexen in `L.drawAlpha`.
+- Test: nach dem Laden ~1 s warten (sonst setzt der Ladevorgang den Garten zurück), `g64.state.stars[id] = true`,
+  `g64.enterLevel('hall')`, Kamera per Flyby auf `[14, 3, 13] → [14, 2.8, 19]`.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

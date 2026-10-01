@@ -4667,10 +4667,80 @@ vec3 art(vec2 p) {
     box(g, M4.from(-14, 3, ZS - 0.9), 6.6, 0.4, 1.8, C.wood);
     box(g, M4.from(-14, 6.5, ZS - 0.4), 4.6, 6.6, 0.8, { top: C.stone, side: hex('#c8bca8') });
     [hex('#3a8aff'), hex('#ffd21f'), hex('#d8342b')].forEach((c, k) => cyl(g, M4.from(-15.8 + k * 1.8, 3.2, ZS - 1.1), 0.18, 0.14, 0.5, 6, c));
-    // Sternvitrine rechts vom Eingang: zeigt jeden gesammelten Stern
-    L.block(14, 2.2, ZS - 0.8, 7, 4.4, 1.6, { top: hex('#6a3a14'), side: hex('#8a5a2a') }, 'vitrine');
-    box(gw, M4.from(14, 2.4, ZS - 1.62), 6.2, 3.6, 0.04, hex('#2a1a4a'));
-    const vitrineMesh = build((gg) => starGeo(gg, I4, 0.22, 0.06, C.gold));
+    /* Sternvitrine rechts vom Eingang (Wunsch 2026-10-01: detaillierter und schoener): Glasschrank mit Sockel, Goldrahmen
+       und Gesims, innen Samt mit Sternenhimmel und fuenf Regalboeden. Jeder der 45 Sterne hat seinen festen Platz:
+       gefundene stehen golden auf einem Podest und wiegen sich, fehlende sind dunkle Umrisse. Oben die Zaehltafel. */
+    const VX = 14, VF = ZS - 1.3, VB = ZS - 0.5, VY0 = 0.85, VY1 = 4.55, VW = 6.5;   // Mitte, Front, Rueckwand, Fenster
+    const VWOOD = { top: hex('#6a3a14'), side: hex('#7a4a1e') }, VDK = hex('#4a260c');
+    L.block(VX, 2.6, ZS - 0.25, 7.2, 5.2, 0.5, VWOOD, 'vitrine');
+    L.solid(VX - 3.6, 0, VF, VX + 3.6, 5.2, ZS, 'vitrine');
+    for (const s of [-1, 1]) {
+      box(g, M4.from(VX + s * 3.425, 2.6, ZS - 0.9), 0.35, 5.2, 0.8, VWOOD);                              // Seitenwangen
+      box(g, M4.from(VX + s * 3.425, 2.7, VF - 0.06), 0.22, VY1 - VY0, 0.12, VDK);                         // Pilaster
+      box(g, M4.from(VX + s * 3.425, VY1 + 0.06, VF - 0.1), 0.34, 0.12, 0.2, C.gold);                      // Kapitell
+      box(g, M4.from(VX + s * 3.425, VY0 - 0.06, VF - 0.1), 0.34, 0.12, 0.2, C.gold);                      // Basis
+    }
+    box(g, M4.from(VX, VY0 / 2, ZS - 0.9), 7.2, VY0, 0.8, VWOOD);                                         // Unterschrank
+    box(g, M4.from(VX, 0.12, VF - 0.08), 7.5, 0.24, 0.16, VDK);                                           // Sockelleiste
+    box(g, M4.from(VX, VY0 - 0.2, VF - 0.02), 6.6, 0.05, 0.04, C.gold);
+    for (const s of [-1, 1]) {                                                                            // zwei Schubladen
+      box(g, M4.from(VX + s * 1.7, 0.47, VF - 0.03), 3, 0.5, 0.06, shade(VWOOD.side, 1.1));
+      sphere(g, M4.from(VX + s * 1.7, 0.47, VF - 0.1), 0.07, 0.07, 0.07, 6, 4, C.gold, true);
+    }
+    box(g, M4.from(VX, (VY1 + 5.2) / 2, ZS - 0.9), 7.2, 5.2 - VY1, 0.8, VWOOD);                           // Kopfstueck
+    box(g, M4.from(VX, 5.31, ZS - 0.85), 7.7, 0.22, 1, VDK);                                              // Gesims
+    box(g, M4.from(VX, 5.2, VF - 0.12), 7.6, 0.06, 0.06, C.gold);
+    cyl(g, M4.from(VX, 5.42, ZS - 0.9), 0.32, 0.22, 0.18, 10, C.gold);                                    // Sockel fuers Wappen
+    // Goldrahmen ums Fenster, Rosetten in den Ecken
+    for (const s of [-1, 1]) {
+      box(g, M4.from(VX, s < 0 ? VY0 : VY1, VF - 0.02), VW + 0.2, 0.1, 0.05, C.gold);
+      box(g, M4.from(VX + s * (VW / 2), (VY0 + VY1) / 2, VF - 0.02), 0.1, VY1 - VY0 + 0.1, 0.05, C.gold);
+      for (const yy of [VY0, VY1]) sphere(g, M4.from(VX + s * (VW / 2), yy, VF - 0.06), 0.11, 0.11, 0.06, 8, 4, hex('#ffe27a'), true);
+    }
+    // Samt mit Sternenhimmel (leuchtet selbst, damit die Sterne davor gut zu sehen sind)
+    box(gw, M4.from(VX, (VY0 + VY1) / 2, VB - 0.01), VW, VY1 - VY0, 0.02, hex('#1c1240'));
+    box(gw, M4.from(VX, VY1 - 0.35, VB - 0.02), VW, 0.7, 0.01, hex('#2a1a58'));
+    const vr = seeded(4545);
+    for (let i = 0; i < 70; i++) {
+      const sz = 0.015 + vr() * 0.03;
+      box(gw, M4.from(VX + (vr() - 0.5) * (VW - 0.1), lerp(VY0 + 0.05, VY1 - 0.05, vr()), VB - 0.03), sz, sz, 0.005, [hex('#ffffff'), hex('#bcd4ff'), hex('#ffe9a8')][i % 3]);
+    }
+    // Regalboeden mit Podesten: 5 Reihen zu 9 Plaetzen (45 Sterne)
+    const VCOLS = 9, VROW = (r) => VY1 - 0.4 - r * 0.74, VCOL = (c) => VX + (c - 4) * 0.7, VZ = ZS - 0.95;
+    for (let r = 0; r < 5; r++) {
+      const y = VROW(r) - 0.3;
+      box(g, M4.from(VX, y, (VF + VB) / 2), VW, 0.05, VB - VF, VDK);
+      box(g, M4.from(VX, y, VF + 0.03), VW, 0.07, 0.03, C.gold);
+      for (let c = 0; c < VCOLS; c++) cyl(g, M4.from(VCOL(c), y + 0.025, VZ), 0.09, 0.06, 0.09, 8, hex('#c89a3a'));
+    }
+    const vPlaque = { mesh: MESH.plaque, model: M4.from(VX, (VY1 + 5.2) / 2, VF - 0.02, Math.PI, 0, 0, 0.6), tex: null, n: -1 };
+    L.decals.push(vPlaque);
+    const vSync = (ids) => {   // Zaehltafel nur neu malen, wenn sich die Zahl aendert
+      const got = ids.filter((id) => state.stars[id]).length;
+      if (vPlaque.n === got) return;
+      if (vPlaque.tex) gl.deleteTexture(vPlaque.tex);
+      vPlaque.tex = plaqueTex(`${got} / ${ids.length}`, '\u2B50'); vPlaque.n = got;
+    };
+    vSync(Object.keys(STARS));
+    const drawVitrine = () => {
+      const ids = Object.keys(STARS);
+      vSync(ids);
+      ids.forEach((id, i) => {
+        const x = VCOL(i % VCOLS), y = VROW(Math.floor(i / VCOLS)), ph = i * 1.7;
+        if (!state.stars[id]) { draw(MESH.star, M4.from(x, y, VZ, Math.PI, 0, 0, 0.22), { tint: [0.36, 0.3, 0.66, 0.9], lit: 0.45 }); return; }
+        draw(MESH.star, M4.from(x, y + Math.sin(clock * 1.6 + ph) * 0.03, VZ, Math.PI + Math.sin(clock * 1.1 + ph) * 0.45, 0, 0, 0.24), { lit: 0.55, shine: 0.7 });
+        const tw = (clock * 0.3 + i * 0.618) % 1;   // ab und zu blitzt ein Stern auf
+        if (tw < 0.1) draw(MESH.twinkle, M4.from(x + 0.13, y + 0.15, VZ - 0.16, 0, 0, clock * 2, Math.sin(tw * 10 * Math.PI) * 0.13), { lit: 0, tint: [1, 0.97, 0.8, 1] });
+      });
+      draw(MESH.star, M4.from(VX, 5.95, ZS - 0.9, Math.PI + Math.sin(clock * 0.8) * 0.3, 0, 0, 0.42), { lit: 0.6, shine: 0.8 });   // Wappen oben
+    };
+    // Glasscheibe mit zwei schraegen Lichtreflexen
+    L.drawAlpha = () => {
+      draw(MESH.cube, M4.from(VX, (VY0 + VY1) / 2, VF + 0.02, 0, 0, 0, VW, VY1 - VY0, 0.01), { tint: [0.75, 0.88, 1, 1], lit: 0, alpha: 0.07 });
+      for (const [dx, dy, l] of [[-1.6, 0.6, 1.6], [-0.9, 0.9, 0.8]]) {
+        draw(MESH.cube, M4.from(VX + dx, (VY0 + VY1) / 2 + dy, VF + 0.005, 0, 0, -0.8, 0.09, l, 0.005), { tint: [1, 1, 1, 1], lit: 0, alpha: 0.16 });
+      }
+    };
     // Sockel fuer die Statuen der gewaehlten Figur neben der Treppe
     for (const s of [-1, 1]) {
       L.block(s * 7.5, 0.8, -13.5, 2.2, 1.6, 2.2, { top: C.stone, side: hex('#c8bca8') }, 'pedestal');
@@ -4683,11 +4753,7 @@ vec3 art(vec2 p) {
       L.solid(s * 6.5 - 0.7, 0, ZS - 1.9, s * 6.5 + 0.7, 2, ZS - 0.5, 'plant');
     }
     L.drawSolid = () => {
-      const got = Object.keys(STARS).filter((id) => state.stars[id]);
-      got.forEach((id, i) => {
-        const col = i % 9, row = Math.floor(i / 9);
-        draw(vitrineMesh, M4.from(10.8 + col * 0.8, 3.7 - row * 0.9, ZS - 1.7, clock * 1.2 + i), { lit: 0.4 });
-      });
+      drawVitrine();
       for (const s of [-1, 1]) drawCatStatue(M4.from(s * 7.5, 1.8, -13.5, s * 0.35, 0, 0, 1.25), { tint: [0.74, 0.72, 0.68, 0.9], lit: 1 });
     };
     L.enemies.push(makeGrummel(-12, -25, 8), makeToaster(10, 0));
