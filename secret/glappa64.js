@@ -9808,8 +9808,9 @@ vec3 art(vec2 p) {
     L.block(-13.4, 0.5, 9.8, 17.2, 1, 0.4, RAIL, 'rail'); L.block(13.4, 0.5, 9.8, 17.2, 1, 0.4, RAIL, 'rail');
     for (const [x, z] of [[-21.5, -33.5], [21.5, -33.5], [-21.5, 9.5], [21.5, 9.5], [-21.5, -12], [21.5, -12]]) K.lamp(x, z, 0, hex('#bfe0ff'), hex('#2a2a3a'));
     // Treppenhaus mit der Tuer zurueck
-    L.block(-5.5, 3, 7.5, 3, 6, 5, STONE, 'bigwall'); L.block(5.5, 3, 7.5, 3, 6, 5, STONE, 'bigwall');
-    L.block(0, 5, 7.5, 8, 2, 5, STONE, 'bigwall'); L.block(0, 3, 9.75, 14, 6, 0.5, STONE, 'bigwall');
+    // Seitenwaende bis an den Tuerrahmen (|x| = 2,5): vorher klaffte links und rechts je 1,5 m Luecke (Wunsch 2026-10-01)
+    L.block(-4.75, 3, 7.5, 4.5, 6, 5, STONE, 'bigwall'); L.block(4.75, 3, 7.5, 4.5, 6, 5, STONE, 'bigwall');
+    L.block(0, 5, 7.5, 5, 2, 5, STONE, 'bigwall'); L.block(0, 3, 9.75, 14, 6, 0.5, STONE, 'bigwall');
     L.block(0, 6.3, 7.5, 14.4, 0.6, 5.4, { top: hex('#4a3a6a'), side: hex('#3a2a5a') }, 'roof');
     const dfx = castleDoor(L, 0, 0, 5, Math.PI, { w: 3.6, h: 4, arch: false, plaque: plaqueTex('Schlosshalle', '\u{1F3F0}', '#ffd21f'), torches: true });
     L.door = { pos: [0, 0, 3.6], to: 'hall', label: 'Zurück in die Halle', back: true, fx: dfx };
