@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=163`** (2026-09-30), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=165`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -365,6 +365,13 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   anderen Figuren bleiben, wie sie sind.
 - **Kellergewölbe**: über den vier Türen keine Gewölberippe mehr (lief quer durchs Namensschild).
 
+### 1.24 Start-Taste statt PRESS-START-Kasten, Mund nie über der Nase (2026-10-01)
+- Titel: statt des großen Kastens nur die Taste – `Leertaste` am PC, blauer `A`-Knopf bei Controller oder Handy
+  (`#titleScreen[data-dev]`, gesetzt im Titel-Zweig der Eingabe aus `Input.st.device` + `(pointer: coarse)`).
+  Unter 600 px Breite mittig über dem Besuchszähler (unten links lag sie dort auf dem Zähler).
+- Mund: `features()` misst jetzt `F.noseLow` (tiefster Eckpunkt in Nasenfarbe); `buildMouth` schiebt einen weit
+  offenen Mund (O beim Erschrecken/Staunen, Schreien im Spiel) als Ganzes nach unten, statt ihn über die Nase wachsen zu lassen.
+
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
   (bei `toScreen`): waagrecht mind. `H_FOV_MIN` 0,9 rad, senkrecht gedeckelt auf 1,5 rad → Hochformat 86°/47°, Querformat
@@ -402,6 +409,10 @@ Ohne Relais bleibt die Verbindung zwischen verschiedenen Netzen Glückssache. Op
 - Server: `.claude/launch.json` → `glappa-static` (Port 8098) mit `preview_start`. Aufruf
   `http://localhost:8098/secret/glappa64.html?debug` (Testlevel: `&gym`). Nicht per `file://` (Modelldatei per fetch).
 - Konsole zeigt pro Aufruf 2× 404 für `secret/mp3/*.mp3` und `localhost:8080`-Fehler – alt, harmlos.
+
+- Cloud-Sitzung (Linux): `python3 -m http.server 8098`, Playwright (`playwright-core` im Scratchpad) mit
+  `executablePath: '/opt/pw-browsers/chromium'`, `args: ['--enable-unsafe-swiftshader']` – **ohne** `--use-gl=angle`
+  (hängt). Software-Grafik: im Schlossgarten ~7 s pro Bild, `g64.advance` also sparsam; lieber echte Zeit laufen lassen.
 
 ### 3.2 Test-Haken und Fallen (`?debug` → `window.g64`)
 - Start: `g64.start(); g64.advance(1,{a:true})` → Modus `iris` löst sich **nur mit echter Zeit** (≈4 s warten), danach

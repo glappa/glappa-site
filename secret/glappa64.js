@@ -15376,7 +15376,7 @@ void main() {
       .then(() => { fn(); return Iris.open(null, null, 650); })
       .then(() => { if (mode === 'iris') mode = 'play'; });
   }
-  const titleEl = $('#titleScreen');
+  const titleEl = $('#titleScreen'), coarse = matchMedia('(pointer: coarse)');
   // PRESS START: erst die Dateiauswahl. Kommt man von einer Webseite zurueck, geht es gleich in derselben Datei weiter.
   function pressStart() {
     if (mode !== 'title' || !cur) return;   // !cur: Welt wird noch gebaut (Ladebildschirm)
@@ -15499,7 +15499,13 @@ void main() {
   }
   let pauseNav = 0;
   function handleUI(inp) {
-    if (mode === 'title') { if (inp.startP) pressStart(); return; }
+    if (mode === 'title') {
+      // Start-Taste zeigen: Leertaste am PC, A bei Controller oder Handy (Wunsch 2026-10-01)
+      const dev = Input.st.device === 'keyboard' && !coarse.matches ? 'pc' : 'pad';
+      if (titleEl.dataset.dev !== dev) titleEl.dataset.dev = dev;
+      if (inp.startP) pressStart();
+      return;
+    }
     if (mode === 'intro') { if (inp.startP || inp.jumpP || inp.actionP) Intro.skip(); return; }
     if (mode === 'flyby') { if (inp.startP || inp.jumpP || inp.actionP) Flyby.skip(); return; }
     if (mode === 'door') return;
@@ -17711,10 +17717,16 @@ void main() {
       for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.07 && P[i + 2] > 0.2 && (!chin || P[i + 1] < chin[1])) chin = [P[i], P[i + 1], P[i + 2]];
       F.chin = chin;
       // Nase = vorderster Punkt nahe der Mitte; Mund knapp unter der Mitte zwischen Nase und Schnauzen-Unterkante
-      let nose = null, low = null;
-      for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.06 && P[i + 1] > -0.35 && P[i + 1] < 0.02 && (!nose || P[i + 2] > nose[2])) nose = [P[i], P[i + 1], P[i + 2]];
+      let nose = null, low = null, ni = 0;
+      for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.06 && P[i + 1] > -0.35 && P[i + 1] < 0.02 && (!nose || P[i + 2] > nose[2])) { nose = [P[i], P[i + 1], P[i + 2]]; ni = i; }
       if (nose) for (let i = 0; i < n * 3; i += 3) if (Math.abs(P[i]) < 0.05 && P[i + 2] > nose[2] - 0.15 && (!low || P[i + 1] < low[1])) low = [P[i], P[i + 1], P[i + 2]];
       F.nose = nose;
+      // Nasen-Unterkante: tiefster Eckpunkt in Nasenfarbe nahe der Spitze - der Mund bleibt darunter (Wunsch 2026-10-01)
+      F.noseLow = nose ? nose[1] : 0;
+      if (nose && C) for (let i = 0; i < n * 3; i += 3) {
+        if (Math.abs(P[i]) < 0.12 && P[i + 2] > nose[2] - 0.1 && P[i + 1] < F.noseLow && P[i + 1] > nose[1] - 0.08 &&
+          Math.abs(C[i] - C[ni]) + Math.abs(C[i + 1] - C[ni + 1]) + Math.abs(C[i + 2] - C[ni + 2]) < 0.15) F.noseLow = P[i + 1];
+      }
       F.scale = F.eyes.length === 2 ? Math.abs(F.eyes[0][0] - F.eyes[1][0]) / 0.32 : 1;
       F.mouthY = nose && low ? nose[1] - (nose[1] - low[1]) * 0.45 : -0.2;
       return F;
@@ -17942,7 +17954,8 @@ void main() {
         mouthMesh.N.fill(0); for (let i = 2; i < MV * 3; i += 3) mouthMesh.N[i] = 1;
         gl.bindBuffer(gl.ARRAY_BUFFER, mouthMesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, mouthMesh.N);
       }
-      const F = d.F, sc = F.scale, [w0, open, smile, asym, round] = shape, w = w0 * sc, cy = F.mouthY;
+      const F = d.F, sc = F.scale, [w0, open, smile, asym, round] = shape, w = w0 * sc;
+      let cy = F.mouthY;
       const M = mouthMesh, Pm = M.P, Cm = M.C;
       let n = 0;
       // Verschiebung wie die Kopfhaut darunter (gezogene Stellen), damit der Mund beim Ziehen mitgeht
@@ -17962,6 +17975,10 @@ void main() {
         const h = (open * sc / 2) * Math.pow(Math.max(0, 1 - t * t), lerp(0.65, 0.5, round)) + 0.004 * sc;
         return [c + h * lerp(0.3, 1, round), c - h * lerp(1.7, 1, round)];
       };
+      // weit offen (staunen, schreien): ganzen Mund nach unten schieben statt ueber die Nase wachsen lassen
+      let top = -9;
+      for (let i = 0; i <= MSEG; i++) top = Math.max(top, lip(-1 + 2 * i / MSEG)[0]);
+      cy -= Math.max(0, top - (F.noseLow - 0.012 * sc));
       // eine einzige schwarze Flaeche; auch innen in Zeilen unterteilt, sonst spannt sie quer ueber die gewoelbte
       // Schnauze und verschwindet in der Mitte unter dem Kopf
       for (let i = 0; i < MSEG; i++) {
