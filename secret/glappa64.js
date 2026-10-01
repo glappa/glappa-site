@@ -16996,6 +16996,7 @@ void main() {
       gl.uniform3fv(U.uCam, eye);
       gl.uniform1f(U.uDim, 1);
       const turn = sel ? 0.45 + Math.sin(t * 0.9) * 0.75 : 0.45;
+      setTrip(0);   // sonst trieb der Trip-Stillstand (Mandelbrot) die Figur aus dem Bild - sie steht hier im Ursprung
       drawCatIdle(CATS[i], M4.from(0, 0, 0, turn), sel ? t : 0, sel);
       gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, px);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);

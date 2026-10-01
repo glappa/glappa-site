@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=169`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=170`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -398,6 +398,8 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Mitten = Formtempo, Höhen = Funkeln. Ohne Musik 120-bpm-Puls.
 - Test: `g64.enterLevel('bild_fraktal'); g64.Flyby.start(g64.cur, '', '', true)`, Titel ausblenden, `g64.pl.idleT = 30`,
   Werte in `g64.tripSp` (d/p/f) und `g64.FracVeil.au`; Bild per `page.screenshot` (Schleier ist eigene Leinwand).
+- Pause-Figurenwahl (`CatPick.paint`) zeichnet mit `setTrip(0)`: vorher trieb der Stillstand-Drift die Vorschau aus dem
+  Bild (Zip im Ursprung, weit weg von der Spielfigur) und färbte sie um (`?v=170`).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
