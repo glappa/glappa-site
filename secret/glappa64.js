@@ -1925,6 +1925,7 @@
     coin(kind, x, y, z) { this.coins.push({ kind, pos: [x, y, z], taken: false, spin: Math.random() * TAU, hidden: kind === 'blue' }); }
     finish() {
       this.buildGrid();
+      if (this.trip) { tripTess(this.geo); tripTess(this.glowGeo); }
       this.mesh = upload(this.geo, this.trip ? driftAnchors(this, this.geo.pos) : null); this.geo = null;
       if (this.glowGeo.pos.length) this.glowMesh = upload(this.glowGeo, this.trip ? driftAnchors(this, this.glowGeo.pos) : null);
       this.glowGeo = null;
@@ -1975,6 +1976,30 @@
       } else if (b.max[1] <= y + 0.03 && b.max[1] >= y - 8 && b.max[1] > bt) { bt = b.max[1]; best = b; }
     }
     return inside || best;
+  }
+  /* Trip-Welten: waagrechte Flaechen in hoechstens 1,5 m grosse Dreiecke teilen (Wunsch 2026-10-01, Video: der
+     Regenbogen-Teppich war ein 30 m langes Viereck 7 cm ueber dem Boden - der Boden folgte der Trip-Welle, das lange
+     Viereck nur gerade von Ende zu Ende, und der Boden stach in Fetzen hindurch). Fein geteilt folgen beide Lagen
+     der Welle gleich. Nur im Spielraum (unten im Nebel braucht es das nicht), Teilung entlang der laengsten Kante. */
+  function tripTess(g, maxE = 1.5) {
+    const P = g.pos, N = g.nrm, Cc = g.col, T = g.uv, np = [], nn = [], nc = [], nt = [], m2 = maxE * maxE;
+    const push = (v) => { np.push(v[0], v[1], v[2]); nn.push(v[3], v[4], v[5]); nc.push(v[6], v[7], v[8]); nt.push(v[9], v[10]); };
+    const mid = (a, b) => a.map((x, i) => (x + b[i]) / 2);
+    const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+    const split = (a, b, c, k) => {
+      const ab = d2(a, b), bc = d2(b, c), ca = d2(c, a), m = Math.max(ab, bc, ca);
+      if (k <= 0 || m <= m2) { push(a); push(b); push(c); return; }
+      if (m === ab) { const q = mid(a, b); split(a, q, c, k - 1); split(q, b, c, k - 1); }
+      else if (m === bc) { const q = mid(b, c); split(a, b, q, k - 1); split(a, q, c, k - 1); }
+      else { const q = mid(c, a); split(a, b, q, k - 1); split(q, b, c, k - 1); }
+    };
+    for (let t = 0; t < P.length / 9; t++) {
+      const v = (j) => { const i = t * 3 + j; return [P[i * 3], P[i * 3 + 1], P[i * 3 + 2], N[i * 3], N[i * 3 + 1], N[i * 3 + 2], Cc[i * 3], Cc[i * 3 + 1], Cc[i * 3 + 2], T[i * 2], T[i * 2 + 1]]; };
+      const a = v(0), b = v(1), c = v(2);
+      if (Math.abs(a[4]) < 0.5 || Math.min(a[1], b[1], c[1]) < -10) { push(a); push(b); push(c); continue; }
+      split(a, b, c, 12);
+    }
+    g.pos = np; g.nrm = nn; g.col = nc; g.uv = nt;
   }
   const ancOf = (b) => [(b.min[0] + b.max[0]) / 2, (b.min[2] + b.max[2]) / 2, (b.max[0] - b.min[0]) / 2, (b.max[2] - b.min[2]) / 2];
   function driftAnchors(L, pos) {
