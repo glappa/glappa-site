@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=170`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=171`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -400,6 +400,14 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Werte in `g64.tripSp` (d/p/f) und `g64.FracVeil.au`; Bild per `page.screenshot` (Schleier ist eigene Leinwand).
 - Pause-Figurenwahl (`CatPick.paint`) zeichnet mit `setTrip(0)`: vorher trieb der Stillstand-Drift die Vorschau aus dem
   Bild (Zip im Ursprung, weit weg von der Spielfigur) und färbte sie um (`?v=170`).
+- **Drift als Ganzes** (`?v=171`): vorher trieb jede Ecke für sich – Figuren auf großen Plattformen schwebten weg, Böden
+  rissen auf. Jetzt hat jede Ecke der Level-Geometrie einen Anker `aAnc` = [Mitte x, Mitte z, halbe Breite, halbe Tiefe]
+  des Quaders, in dem sie liegt oder auf dem sie steht (`driftSupport`/`driftAnchors`, nur in Trip-Welten, beim
+  `finish`). Stärke nach Abstand der Figur zum **Rand** des Quaders (auf dem eigenen bleibt alles ruhig). Einzeln
+  gezeichnete Dinge: `setTripAt([x,y,z,1])` (bzw. `tripHold`) setzt `uDriftAt` aus dem Quader darunter – Gegner, Leben/NPCs,
+  Münzen, Sterne, Gegenstände, Schilder, Schatten; Bilder + Rahmen über `driftAt` (ruhig, treiben aber mit); bewegliche
+  Plattformen und Blinker mit eigenem Quader. Ausgenommen: Quader > 20 m (Saalböden, Wände) und das Apfelmännchen
+  (`mandel`) – dort wogt es wie früher Ecke für Ecke. `setTrip(0)` schaltet den Drift mit aus.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

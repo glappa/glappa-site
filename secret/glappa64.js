@@ -1402,6 +1402,9 @@
     // Trip-Stillstand (Wunsch 2026-09-30): xyz = Figur, w = 0..1 - je laenger sie steht, desto mehr driftet die Welt um
     // sie herum auseinander (nah bei ihr bleibt alles ruhig)
     uniform vec4 uDrift;
+    // Drift als Ganzes (Wunsch 2026-10-01): Anker = [Mitte x, Mitte z, halbe Breite, halbe Tiefe] des Quaders, zu dem die
+    // Ecke gehoert oder auf dem das Ding steht - aus aAnc (Level-Geometrie) oder uDriftAt (einzeln gezeichnete Dinge)
+    attribute vec4 aAnc; uniform float uAncOn; uniform vec4 uDriftAt; uniform float uDriftOn;
     varying vec3 vCol; varying vec3 vNrm; varying vec2 vUV; varying vec3 vWPos;
     void main() {
       vec3 p = aPos;
@@ -1412,22 +1415,25 @@
         if (behind > 0.0) p.z += sin(behind * 3.4) * uRip.w * exp(-behind * 0.35) * exp(-uRip.z * 0.9);
       }
       vec4 wp = uModel * vec4(p, 1.0);
-      if (uTrip > 0.0) {
+      if (uTrip > 0.0 || uDriftOn > 0.5) {
         // Trip: die Welt atmet und wabert (seitlich mehr als in der Hoehe, damit die Fuesse nicht einsinken)
         vec3 w = uTripAt.w > 0.5 ? uTripAt.xyz : wp.xyz;
-        vec3 off = uTrip * vec3(sin(w.y * 0.45 + w.z * 0.21 + uTime * 1.3) * 0.16,
+        vec3 off = max(uTrip, 0.0) * vec3(sin(w.y * 0.45 + w.z * 0.21 + uTime * 1.3) * 0.16,
                                 sin(w.x * 0.33 + w.z * 0.27 + uTime * 1.7) * 0.05,
                                 sin(w.y * 0.41 + w.x * 0.19 - uTime * 1.1) * 0.16);
         if (uTripAt.w > 1.5) off.xz += (wp.y - uTripAt.y) * uTrip * 0.04 * vec2(sin(uTime * 1.3 + uTripAt.x * 0.3), sin(uTime * 1.05 + uTripAt.z * 0.3));
         if (uDrift.w > 0.0) {
-          // um die Figur drehen, von ihr wegtreiben, dazu grosse langsame Wogen - erst ab ein paar Metern Abstand
-          vec2 rel = w.xz - uDrift.xz;
-          float d = length(rel), k = uDrift.w * smoothstep(2.5, 14.0, d), sw = k * 0.25 * sin(uTime * 0.23);
+          // um die Figur drehen, von ihr wegtreiben, dazu grosse langsame Wogen - erst ab ein paar Metern Abstand zum
+          // Quader (auf dem eigenen bleibt alles ruhig); alles mit demselben Anker treibt gleich, also als Ganzes
+          vec4 da = uDriftOn > 0.5 ? uDriftAt : (uAncOn > 0.5 ? aAnc : vec4(w.xz, 0.0, 0.0));
+          vec2 rel = da.xy - uDrift.xz;
+          float d = length(rel), dq = length(max(abs(rel) - da.zw, 0.0));
+          float k = uDrift.w * smoothstep(2.5, 14.0, dq), sw = k * 0.25 * sin(uTime * 0.23);
           vec2 rr = mat2(cos(sw), sin(sw), -sin(sw), cos(sw)) * rel;
           off.xz += (rr - rel) + rel / max(d, 0.001) * k * d * 0.09 * (0.7 + 0.3 * sin(uTime * 0.41));
-          off += k * vec3(sin(w.z * 0.09 + uTime * 0.53) * 2.4,
-                          sin(w.x * 0.07 + w.z * 0.05 + uTime * 0.37) * 1.8 + (w.y - uDrift.y) * 0.12 * sin(uTime * 0.3),
-                          sin(w.x * 0.08 - uTime * 0.47) * 2.4);
+          off += k * vec3(sin(da.y * 0.09 + uTime * 0.53) * 2.4,
+                          sin(da.x * 0.07 + da.y * 0.05 + uTime * 0.37) * 1.8 + (w.y - uDrift.y) * 0.12 * sin(uTime * 0.3),
+                          sin(da.x * 0.08 - uTime * 0.47) * 2.4);
         }
         wp.xyz += off;
       }
@@ -1530,8 +1536,9 @@
   gl.useProgram(prog);
   const A = {}, U = {};
   ['aPos', 'aNrm', 'aCol', 'aUV'].forEach((n) => { A[n] = gl.getAttribLocation(prog, n); gl.enableVertexAttribArray(A[n]); });
-  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift', 'uTripPh']
+  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift', 'uTripPh', 'uAncOn', 'uDriftAt', 'uDriftOn']
     .forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+  const A_ANC = gl.getAttribLocation(prog, 'aAnc');   // nur fuer Level-Geometrie mit Ankern (an/aus je Zeichnung)
   gl.enable(gl.DEPTH_TEST);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.uniform1i(U.uTex, 0);
@@ -1702,9 +1709,9 @@
     }
   }
 
-  function upload(g) {
+  function upload(g, anc) {
     const mk = (arr) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW); return b; };
-    return { p: mk(g.pos), n: mk(g.nrm), c: mk(g.col), t: mk(g.uv), count: g.pos.length / 3 };
+    return { p: mk(g.pos), n: mk(g.nrm), c: mk(g.col), t: mk(g.uv), a: anc ? mk(anc) : null, count: g.pos.length / 3 };
   }
   function build(fn) { const g = new Geo(); fn(g); return upload(g); }
 
@@ -1802,6 +1809,13 @@
     gl.uniform1f(U.uTri, o.tri || 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, o.tex || whiteTex);
+    if (mesh.a && A_ANC >= 0) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, mesh.a); gl.enableVertexAttribArray(A_ANC); gl.vertexAttribPointer(A_ANC, 4, gl.FLOAT, false, 0, 0);
+      gl.uniform1f(U.uAncOn, 1);
+      gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
+      gl.disableVertexAttribArray(A_ANC); gl.uniform1f(U.uAncOn, 0);
+      return;
+    }
     gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
   }
 
@@ -1910,10 +1924,10 @@
     }
     coin(kind, x, y, z) { this.coins.push({ kind, pos: [x, y, z], taken: false, spin: Math.random() * TAU, hidden: kind === 'blue' }); }
     finish() {
-      this.mesh = upload(this.geo); this.geo = null;
-      if (this.glowGeo.pos.length) this.glowMesh = upload(this.glowGeo);
-      this.glowGeo = null;
       this.buildGrid();
+      this.mesh = upload(this.geo, this.trip ? driftAnchors(this, this.geo.pos) : null); this.geo = null;
+      if (this.glowGeo.pos.length) this.glowMesh = upload(this.glowGeo, this.trip ? driftAnchors(this, this.glowGeo.pos) : null);
+      this.glowGeo = null;
     }
     // Raster fuer die Kollision: jede Zelle kennt die festen Quader in ihrer Naehe (plus alle
     // beweglichen Plattformen). So pruefen Spieler und Gegner nur eine Handvoll statt aller Quader.
@@ -1945,6 +1959,32 @@
     const i = Math.floor((x - g.x0) / GRID_CELL), k = Math.floor((z - g.z0) / GRID_CELL);
     if (i < 0 || k < 0 || i >= g.nx || k >= g.nz) return g.dyn;
     return g.cells[k * g.nx + i];
+  }
+  /* Trip-Drift als Ganzes (Wunsch 2026-10-01, Video: Figuren blieben stehen, waehrend ihre Plattform wegtrieb): wozu
+     gehoert ein Punkt? Zum Quader, in dem er liegt, sonst zu dem, auf dem er steht (bis 8 m darueber). Sehr grosse
+     Quader (Saalboeden, Waende) und das Apfelmaennchen zaehlen nicht - dort wogt es weiter Ecke fuer Ecke. */
+  const ANC_MAX = 10;
+  function driftSupport(L, x, y, z, dyn) {
+    let best = null, bt = -Infinity, inside = null, iv = Infinity;
+    for (const b of near(L, x, z)) {
+      if ((b.mover && !dyn) || b.tag === 'mandel' || b.max[0] - b.min[0] > 2 * ANC_MAX || b.max[2] - b.min[2] > 2 * ANC_MAX) continue;
+      if (x < b.min[0] - 0.05 || x > b.max[0] + 0.05 || z < b.min[2] - 0.05 || z > b.max[2] + 0.05) continue;
+      if (y >= b.min[1] - 0.03 && y <= b.max[1] + 0.03) {
+        const v = (b.max[0] - b.min[0]) * (b.max[1] - b.min[1]) * (b.max[2] - b.min[2]);
+        if (v < iv) { iv = v; inside = b; }
+      } else if (b.max[1] <= y + 0.03 && b.max[1] >= y - 8 && b.max[1] > bt) { bt = b.max[1]; best = b; }
+    }
+    return inside || best;
+  }
+  const ancOf = (b) => [(b.min[0] + b.max[0]) / 2, (b.min[2] + b.max[2]) / 2, (b.max[0] - b.min[0]) / 2, (b.max[2] - b.min[2]) / 2];
+  function driftAnchors(L, pos) {
+    const n = pos.length / 3, out = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2], b = driftSupport(L, x, y, z, false);
+      if (b) { out[i * 4] = (b.min[0] + b.max[0]) / 2; out[i * 4 + 1] = (b.min[2] + b.max[2]) / 2; out[i * 4 + 2] = (b.max[0] - b.min[0]) / 2; out[i * 4 + 3] = (b.max[2] - b.min[2]) / 2; }
+      else { out[i * 4] = x; out[i * 4 + 1] = z; }
+    }
+    return out;
   }
   // Oberkante eines Quaders an der Stelle (x, z): bei Rampen schraeg, bei Gelaende aus dem Hoehenraster, sonst flach
   function topAt(b, x, z) {
@@ -5975,6 +6015,7 @@ vec3 art(vec2 p) {
       for (const c of L.life) {
         if (c.k === 'glow' || c.k === 'fall' || c.k === 'smoke') continue;
         if (c.k !== 'bird' && far(c)) continue;
+        tripHold(c.pos[0], c.pos[1], c.pos[2]);   // Trip: steht mit seiner Plattform, treibt mit ihr
         if (c.k === 'bfly') {
           const m = M4.from(c.pos[0], c.pos[1], c.pos[2], c.face, 0, 0, c.s);
           const f = Math.sin(c.ph) * 1.15;
@@ -6007,6 +6048,7 @@ vec3 art(vec2 p) {
           drawCat(CATS[c.cat % CATS.length], base, c.t, c.walk, c.t - (c.greetT ?? -9) < 2.2, c.tint, c.talkK, talking ? Dialog.talk() : 0, camD < 30);
         }
       }
+      tripFree();
     }
     function drawGlow(L) {
       for (const c of L.life) {
@@ -17521,17 +17563,31 @@ void main() {
   const tripSp = { d: { x: 0, v: 0 }, p: { x: 0, v: 0 }, f: { x: 0, v: 0 } };
   let curTrip = 0, tripDrift = 0, tripPeak = 0, tripLast = 0, tripPh = 0;
   let tripVeil = 0;
-  const setTrip = (v) => { if (U.uTrip) gl.uniform1f(U.uTrip, v); };
+  const setTrip = (v) => { if (U.uTrip) gl.uniform1f(U.uTrip, v); if (!v) setDriftAt(null); };   // aus = auch kein Drift
   // a = [x, y, z, Art] (siehe uTripAt im Shader) oder null = zurueck auf "jede Ecke fuer sich"
-  const setTripAt = (a) => { if (U.uTripAt) gl.uniform4f(U.uTripAt, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : 0, a ? a[3] : 0); };
+  const setDriftAt = (v) => {
+    if (!U.uDriftOn) return;
+    gl.uniform1f(U.uDriftOn, v ? 1 : 0);
+    if (v) gl.uniform4f(U.uDriftAt, v[0], v[1], v[2], v[3]);
+  };
+  // als Ganzes wabern (a[3] >= 1): treibt dann auch mit dem Quader, auf dem der Punkt steht
+  const setTripAt = (a) => {
+    if (U.uTripAt) gl.uniform4f(U.uTripAt, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : 0, a ? a[3] : 0);
+    if (!curTrip || !a || a[3] < 0.5) { setDriftAt(null); return; }
+    const b = driftSupport(cur, a[0], a[1], a[2], true);
+    setDriftAt(b ? ancOf(b) : [a[0], a[2], 0, 0]);
+  };
+  // Figur/Gegenstand mit Fusspunkt (x, y, z) im Trip als Ganzes zeichnen (und danach wieder Ecke fuer Ecke)
+  const tripHold = (x, y, z) => { if (curTrip) setTripAt([x, y, z, 1]); };
+  const tripFree = () => { if (curTrip) setTripAt(null); };
   const TRIP_FREE = [0, 0, 0, 0];
   // o.trip: in Trip-Welten mitwabern (Schilder samt Schrift, Tafeln) statt ruhig zu bleiben - sonst schob sich das
   // wabernde Brett ueber die ruhige Schrift (Video 2026-09-30, Mandelbrot-Level)
   function signPass(mesh, model, o, a0) {
     const tr = curTrip && o.trip;
-    if (tr) setTripAt(o.trip); else if (curTrip) setTrip(0);
+    if (tr) setTripAt(o.trip); else if (curTrip) { setTrip(0); if (o.driftAt) setDriftAt(o.driftAt); }   // driftAt: ruhig, treibt aber mit
     draw(mesh, model, a0 ? { ...o, alpha: 0 } : o);
-    if (tr) setTripAt(null); else if (curTrip) setTrip(curTrip);
+    if (tr) setTripAt(null); else if (curTrip) { setTrip(curTrip); setDriftAt(null); }
   }
   function drawSign(mesh, model, o) {
     signPass(mesh, model, o, !signMark);
@@ -17577,6 +17633,7 @@ void main() {
     tripPh = (tripPh + tdt * 0.35 * curTrip) % TAU;
     if (U.uTripPh) gl.uniform1f(U.uTripPh, tripPh);
     setTrip(curTrip);
+    setDriftAt(null);
     if (U.uDrift) gl.uniform4f(U.uDrift, pl.pos[0], pl.pos[1], pl.pos[2], curTrip ? tripDrift : 0);
     if (U.uTime) gl.uniform1f(U.uTime, clock % 1000);
     if (L.sky && fogF > 100 && !Skybox.draw(L.sky, L.fog, cam.view, cam.proj)) {
@@ -17588,13 +17645,24 @@ void main() {
     gl.uniform2f(U.uFog, fogN, fogF);
     draw(L.mesh, I4, { detail: 1 });
     if (L.glowMesh) draw(L.glowMesh, I4, { lit: 0 });
-    for (const m of L.movers) if (!m.hidden) draw(m.mesh, M4.from(m.base[0] + m.off[0], m.base[1] + m.off[1], m.base[2] + m.off[2]), { detail: 1 });
+    // Trip: bewegliche Teile treiben als Ganzes (eigener Quader als Anker), Dinge darauf mit ihnen (tripHold)
+    for (const m of L.movers) {
+      if (m.hidden) continue;
+      const x = m.base[0] + m.off[0], y = m.base[1] + m.off[1], z = m.base[2] + m.off[2];
+      if (curTrip) setDriftAt([x, z, m.half[0], m.half[2]]);
+      draw(m.mesh, M4.from(x, y, z), { detail: 1 });
+    }
     for (const k of L.blinkers) {
+      if (curTrip) setDriftAt([k.pos[0], k.pos[2], (k.b.max[0] - k.b.min[0]) / 2, (k.b.max[2] - k.b.min[2]) / 2]);
       if (k.visible && !(k.warn && Math.floor(clock * 14) % 2)) draw(k.mesh, M4.from(k.pos[0], k.pos[1], k.pos[2]), { lit: 0.3 });
     }
+    if (curTrip) setDriftAt(null);
     for (const it of L.items) {
-      if (!it.taken) draw(it.mesh, M4.from(it.pos[0], it.pos[1] + 0.2 + Math.sin(clock * 2) * 0.15, it.pos[2], clock * 1.4), { shine: 0.5, rim: 0.3 });
+      if (it.taken) continue;
+      tripHold(it.pos[0], it.pos[1], it.pos[2]);
+      draw(it.mesh, M4.from(it.pos[0], it.pos[1] + 0.2 + Math.sin(clock * 2) * 0.15, it.pos[2], clock * 1.4), { shine: 0.5, rim: 0.3 });
     }
+    tripFree();
     for (const an of L.anims) draw(an.mesh, an.fn(clock), an.o);
     Life.drawOpaque(L);
     if (L.drawSolid) L.drawSolid();
@@ -17612,28 +17680,33 @@ void main() {
     }
     if (L.paintings) {
       for (const pt of L.paintings) {
-        if (!pt.noFrame) { if (curTrip) setTrip(0); draw(MESH.frame, pt.frame); if (curTrip) setTrip(curTrip); }   // ruhig wie das Bild darin
+        // ruhig wie das Bild darin, treibt aber mit seiner Plattform
+        const ps = curTrip ? driftSupport(L, pt.model[12], pt.model[13], pt.model[14], true) : null, pda = ps ? ancOf(ps) : null;
+        if (!pt.noFrame) { if (curTrip) { setTrip(0); if (pda) setDriftAt(pda); } draw(MESH.frame, pt.frame); if (curTrip) { setTrip(curTrip); setDriftAt(null); } }
         if (pt.rip && clock - pt.rip.t0 > 4) pt.rip = null;
         if (!pt.rip && mode === 'play' && Math.abs(paintAlong(pt, pl.pos)) < 3.5 && paintAway(pt, pl.pos) < 3.2 && pl.pos[1] < pt.y + 2) {
           pt.rip = { x: paintLocalX(pt, pl.pos), y: (pl.pos[1] + 1.1 - pt.y) / (pt.scale || 1), t0: clock, amp: 0.1 };
         }
         const rip = pt.rip ? [pt.rip.x, pt.rip.y, clock - pt.rip.t0, reduceMotion ? 0 : pt.rip.amp] : null;
-        drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0 });
+        drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0, driftAt: pda });
       }
     }
     for (const c of L.coins) {
       if (c.taken || c.hidden) continue;
       if (c.kind === 'blue' && blueTimer < 3 && Math.floor(clock * 8) % 2) continue;
+      tripHold(c.pos[0], c.pos[1], c.pos[2]);
       draw(MESH.coin[c.kind], M4.from(c.pos[0], c.pos[1] + Math.sin(clock * 2 + c.spin) * 0.08, c.pos[2], clock * 3.2 + c.spin), { lit: 0.55 });
     }
     for (const s of L.stars) {
       if (s.gone) continue;
       const k = smooth(s.t / 0.9);
       s.pos[1] = s.y0 - 2 * (1 - k) + (s.t > 0.9 ? Math.sin(clock * 2.4) * 0.15 : 0);
+      tripHold(s.pos[0], s.y0, s.pos[2]);
       draw(MESH.star, M4.from(s.pos[0], s.pos[1], s.pos[2], clock * 2.6, 0, 0, 1.1 * Math.max(0.05, k)),
         { lit: 0.45, tint: s.ghost ? [0.55, 0.75, 1, 0.55] : undefined });
     }
-    for (const e of L.enemies) drawEnemy(e);
+    for (const e of L.enemies) { tripHold(e.pos[0], e.pos[1], e.pos[2]); drawEnemy(e); }
+    tripFree();
     // Tueren erst jetzt: das schwarze Loch einer offenen Tuer ueberdeckt so alles, was hinter der Wand liegt (vorher
     // schimmerten Muenzen und Sterne durch, Video 2026-09-30); nur die Figur kommt danach und bleibt im Loch sichtbar
     for (const f of L.doorFx) drawDoorFx(f);
@@ -17656,9 +17729,11 @@ void main() {
     Net.shadows();
     for (const e of L.enemies) {
       if (e.state === 'dead' || e.state === 'gone' || e.state === 'wait' || e.state === 'off' || e.state === 'hide') continue;
+      tripHold(e.pos[0], e.pos[1], e.pos[2]);
       shadowAt(e.pos[0], e.pos[1], e.pos[2], e.type === 'toast' ? 0.9 : e.type === 'roller' ? e.r * e.scale : e.type === 'bat' ? 0.6 : 1);
     }
-    for (const s of L.stars) if (!s.gone) shadowAt(s.pos[0], s.pos[1], s.pos[2], 0.9);
+    for (const s of L.stars) if (!s.gone) { tripHold(s.pos[0], s.y0, s.pos[2]); shadowAt(s.pos[0], s.pos[1], s.pos[2], 0.9); }
+    tripFree();
     if (L.marker && !L.stars.some((s) => s.id === (L.redStar ? L.redStar.id : 'red')) && (L.redStar ? L.redN || 0 : run.red) < 8) {
       draw(MESH.marker, M4.from(L.marker[0], L.marker[1], L.marker[2], clock * 0.4), { lit: 0, alpha: 0.35 + Math.sin(clock * 3) * 0.1 });
     }
