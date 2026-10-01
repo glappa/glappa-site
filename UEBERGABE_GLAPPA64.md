@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=166`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=167`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -371,6 +371,9 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Unter 600 px Breite mittig über dem Besuchszähler (unten links lag sie dort auf dem Zähler).
 - Mund: `features()` misst jetzt `F.noseLow` (tiefster Eckpunkt in Nasenfarbe); `buildMouth` schiebt einen weit
   offenen Mund (O beim Erschrecken/Staunen, Schreien im Spiel) als Ganzes nach unten, statt ihn über die Nase wachsen zu lassen.
+  Nachgebessert (`?v=167`): Abstand 0,025 zur Nasen-Unterkante (zählt nur direkt unter der Nase), höchstens 0,03 nach
+  unten schieben, den Rest weniger weit öffnen (ganz unten stach die Schnauzenkante durch); Abstand zur Haut wächst mit
+  der Hangneigung. Test: Zeiger ganz oben (Kopf schaut hoch) + `TitleHead.test.st.startle = g64.clock`.
 
 - Sternwarte: die Tür zurück in die Schlosshalle stand mit 5 m Rahmen in einer 8 m breiten Öffnung (links/rechts je
   1,5 m Lücke, Fackeln frei in der Luft). Seitenwände reichen jetzt bis an den Rahmen, der Sturz ist rahmenbreit (`?v=166`).

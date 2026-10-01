@@ -17955,13 +17955,17 @@ void main() {
         mouthMesh.N.fill(0); for (let i = 2; i < MV * 3; i += 3) mouthMesh.N[i] = 1;
         gl.bindBuffer(gl.ARRAY_BUFFER, mouthMesh.n); gl.bufferSubData(gl.ARRAY_BUFFER, 0, mouthMesh.N);
       }
-      const F = d.F, sc = F.scale, [w0, open, smile, asym, round] = shape, w = w0 * sc;
-      let cy = F.mouthY;
+      const F = d.F, sc = F.scale, [w0, , smile, asym, round] = shape, w = w0 * sc;
+      let cy = F.mouthY, open = shape[1];
       const M = mouthMesh, Pm = M.P, Cm = M.C;
       let n = 0;
       // Verschiebung wie die Kopfhaut darunter (gezogene Stellen), damit der Mund beim Ziehen mitgeht
+      // Abstand senkrecht zur Haut: wo die Schnauze nach hinten abfaellt, entsprechend weiter nach vorn (sonst
+      // stach die Haut dort von unten gesehen durch den Mund)
+      const e = 0.004 * sc;
       const put = (x, y, dz, col) => {
-        let z = d.zAt(x, y) + dz * sc, ox = 0, oy = 0, oz = 0;
+        const sx = (d.zAt(x + e, y) - d.zAt(x - e, y)) / (2 * e), sy = (d.zAt(x, y + e) - d.zAt(x, y - e)) / (2 * e);
+        let z = d.zAt(x, y) + dz * sc * Math.min(3, Math.hypot(1, sx, sy)), ox = 0, oy = 0, oz = 0;
         if (pulled) for (const q of pulls) {
           const k = pullW(q, x, y, z);
           if (k) { ox += q.D[0] * k; oy += q.D[1] * k; oz += q.D[2] * k; }
@@ -17976,10 +17980,17 @@ void main() {
         const h = (open * sc / 2) * Math.pow(Math.max(0, 1 - t * t), lerp(0.65, 0.5, round)) + 0.004 * sc;
         return [c + h * lerp(0.3, 1, round), c - h * lerp(1.7, 1, round)];
       };
-      // weit offen (staunen, schreien): ganzen Mund nach unten schieben statt ueber die Nase wachsen lassen
-      let top = -9;
-      for (let i = 0; i <= MSEG; i++) top = Math.max(top, lip(-1 + 2 * i / MSEG)[0]);
-      cy -= Math.max(0, top - (F.noseLow - 0.012 * sc));
+      // weit offen (staunen, schreien): nicht ueber die Nase wachsen lassen - erst etwas nach unten schieben, den Rest
+      // weniger weit oeffnen (ganz nach unten geschoben laege er auf der Kante, wo die Schnauze nach hinten abfaellt).
+      // Zaehlt nur unter der Nase (die Mundwinkel duerfen hoeher); Abstand auch steil von unten gesehen ausreichend
+      const over = () => {
+        let top = -9;
+        for (let i = 0; i <= MSEG; i++) { const t = -1 + 2 * i / MSEG; if (Math.abs(t) * w < 0.07 * sc) top = Math.max(top, lip(t)[0]); }
+        return top - (F.noseLow - 0.025 * sc);
+      };
+      const shift = clamp(over(), 0, 0.03 * sc), rest = over() - shift;
+      cy -= shift;
+      if (rest > 0) open = Math.max(0.01, open - 2 * rest / (sc * lerp(0.3, 1, round)));
       // eine einzige schwarze Flaeche; auch innen in Zeilen unterteilt, sonst spannt sie quer ueber die gewoelbte
       // Schnauze und verschwindet in der Mitte unter dem Kopf
       for (let i = 0; i < MSEG; i++) {
