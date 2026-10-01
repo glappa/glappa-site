@@ -18,13 +18,23 @@ except ImportError:
 # Beides reine Wheels (kein apt-Paket noetig) - Audio/Video laeuft ueber das
 # ffmpeg-Binary, das schon fuer den YouTube-Downloader installiert ist.
 try:
-    from PIL import Image as PILImage
+    from PIL import Image as PILImage, ImageOps
 except ImportError:
     PILImage = None
 try:
     import fitz  # PyMuPDF
 except ImportError:
     fitz = None
+# Optional: HEIC/HEIF (iPhone-Fotos) als Pillow-Format, Kamera-RAW (DNG, CR2, NEF ...).
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pillow_heif = None
+try:
+    import rawpy
+except ImportError:
+    rawpy = None
 
 # ── SSL (optional; lokal ohne Certs -> Plain HTTP) ────────────────
 context = None
@@ -2365,32 +2375,30 @@ def short_resolve(code: str):
 # ══════════════════════════════════════════════════════════════════
 CONVERT_DIR = os.path.join(DOWNLOAD_DIR, 'convert')
 
-IMAGE_EXTS = {'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff', 'ico'}
-AUDIO_EXTS = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'opus', 'wma'}
-VIDEO_EXTS = {'mp4', 'webm', 'mkv', 'mov', 'avi'}
-
-# Grosszuegig, aber begrenzt - der Konverter laeuft auf derselben kleinen
-# VPS wie alles andere ("Pentium Power"), ein Video-Encode ist CPU-Arbeit.
-CONVERT_MAX_BYTES = {
-    'image': 25 * 1024 * 1024,
-    'audio': 80 * 1024 * 1024,
-    'video': 200 * 1024 * 1024,
-    'pdf':   40 * 1024 * 1024,
-}
-CONVERT_FFMPEG_TIMEOUT = 600   # sek - passend zum Apache-Proxy-Timeout
-CONVERT_PDF_MAX_PAGES  = 30
-
+# Zielformate = Schluessel der Format-/Codec-Tabellen; Quellen = Ziele plus
+# reine Lese-Formate. Alias-Endungen (tif, jpeg, heif, aif ...) werden vorher
+# auf einen Namen normalisiert (_EXT_ALIAS, im Client spiegelt das extOf()).
 _IMG_PIL_FMT = {
-    'jpg': 'JPEG', 'jpeg': 'JPEG', 'png': 'PNG', 'webp': 'WEBP',
-    'bmp': 'BMP', 'gif': 'GIF', 'tiff': 'TIFF', 'ico': 'ICO',
+    'png': 'PNG', 'jpg': 'JPEG', 'webp': 'WEBP', 'avif': 'AVIF', 'heic': 'HEIF',
+    'gif': 'GIF', 'bmp': 'BMP', 'tiff': 'TIFF', 'ico': 'ICO', 'icns': 'ICNS',
 }
 
+# -pix_fmt yuv420p: iPhone-Videos sind 10-Bit-HEVC -> ohne den Schalter
+# entstuende 10-Bit-H.264, das kaum ein Player abspielt.
+_X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+         '-c:a', 'aac', '-b:a', '160k']
 _VIDEO_CODEC = {
-    'mp4':  ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '160k'],
-    'mkv':  ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '160k'],
-    'mov':  ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'aac', '-b:a', '160k'],
+    'mp4':  _X264 + ['-movflags', '+faststart'],
+    'mkv':  _X264,
+    'mov':  _X264,
+    'm4v':  _X264,
+    'flv':  _X264 + ['-ar', '44100'],
+    '3gp':  _X264,
     'webm': ['-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-c:a', 'libopus'],
     'avi':  ['-c:v', 'mpeg4', '-qscale:v', '5', '-c:a', 'libmp3lame'],
+    'wmv':  ['-c:v', 'wmv2', '-qscale:v', '4', '-c:a', 'wmav2', '-b:a', '160k'],
+    'mpg':  ['-c:v', 'mpeg2video', '-qscale:v', '4', '-c:a', 'mp2', '-b:a', '192k', '-ar', '48000'],
+    'ogv':  ['-c:v', 'libtheora', '-qscale:v', '7', '-c:a', 'libvorbis', '-q:a', '5'],
 }
 _AUDIO_CODEC = {
     'mp3':  ['-c:a', 'libmp3lame', '-q:a', '2'],
@@ -2401,7 +2409,36 @@ _AUDIO_CODEC = {
     'aac':  ['-c:a', 'aac', '-b:a', '160k'],
     'opus': ['-c:a', 'libopus', '-b:a', '128k'],
     'wma':  ['-c:a', 'wmav2', '-b:a', '160k'],
+    'aiff': ['-c:a', 'pcm_s16be'],
+    'ac3':  ['-c:a', 'ac3', '-b:a', '192k'],
+    # iPhone-Klingelton: AAC im MP4-Container, iOS nimmt hoechstens 40 s
+    'm4r':  ['-c:a', 'aac', '-b:a', '160k', '-t', '40', '-f', 'ipod'],
 }
+
+RAW_EXTS = {'dng', 'cr2', 'cr3', 'nef', 'arw', 'orf', 'rw2', 'raf'}
+IMAGE_TARGETS = set(_IMG_PIL_FMT)
+AUDIO_TARGETS = set(_AUDIO_CODEC)
+VIDEO_TARGETS = set(_VIDEO_CODEC)
+IMAGE_EXTS = IMAGE_TARGETS | RAW_EXTS | {'svg', 'psd', 'tga', 'jp2', 'pcx', 'ppm'}
+AUDIO_EXTS = AUDIO_TARGETS | {'m4b', 'amr', 'caf', 'mka', 'mp2', 'ape', 'weba'}
+VIDEO_EXTS = VIDEO_TARGETS | {'ts', 'mts', 'vob', 'rm', 'rmvb', 'asf'}
+_EXT_ALIAS = {
+    'tif': 'tiff', 'jpeg': 'jpg', 'jfif': 'jpg', 'heif': 'heic', 'j2k': 'jp2',
+    'pgm': 'ppm', 'pbm': 'ppm', 'pnm': 'ppm', 'aif': 'aiff', 'oga': 'ogg',
+    'mpeg': 'mpg', 'm2ts': 'mts',
+}
+
+# Grosszuegig, aber begrenzt - der Konverter laeuft auf derselben kleinen
+# VPS wie alles andere ("Pentium Power"), ein Video-Encode ist CPU-Arbeit.
+# Bilder 60 MB, weil Kamera-RAWs (DNG, CR3 ...) schnell 30-50 MB haben.
+CONVERT_MAX_BYTES = {
+    'image': 60 * 1024 * 1024,
+    'audio': 80 * 1024 * 1024,
+    'video': 200 * 1024 * 1024,
+    'pdf':   40 * 1024 * 1024,
+}
+CONVERT_FFMPEG_TIMEOUT = 600   # sek - passend zum Apache-Proxy-Timeout
+CONVERT_PDF_MAX_PAGES  = 30
 
 
 class _ConvertError(Exception):
@@ -2420,30 +2457,78 @@ def _convert_kind(ext: str):
     return None
 
 
-def _convert_image(src_path: str, target: str, base: str):
-    pil_fmt = _IMG_PIL_FMT[target]
-    out_path = src_path + f'.out.{target}'
+def _svg_doc(src_path: str):
+    # Aus dem Speicher statt per Pfad oeffnen: so kann ein SVG keine
+    # Nachbardateien im Konverter-Ordner per <image href> einbinden.
+    with open(src_path, 'rb') as f:
+        return fitz.open(stream=f.read(), filetype='svg')
+
+
+def _open_image(src_path: str, ext: str):
+    """Quelle als Pillow-Bild: SVG ueber PyMuPDF, Kamera-RAW ueber rawpy, Rest direkt."""
     try:
+        if ext == 'svg':
+            doc = _svg_doc(src_path)
+            page = doc[0]
+            # Vektor -> scharf rendern, laengste Seite 1024..4096 px
+            side = max(page.rect.width, page.rect.height, 1)
+            zoom = min(max(side, 1024), 4096) / side
+            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=True)
+            # MuPDF liefert vormultipliziertes Alpha ('RGBa')
+            return PILImage.frombytes('RGBa', (pix.width, pix.height), pix.samples).convert('RGBA')
+        if ext in RAW_EXTS:
+            with rawpy.imread(src_path) as raw:
+                return PILImage.fromarray(raw.postprocess(use_camera_wb=True))
         im = PILImage.open(src_path)
         im.load()
+        if im.mode.startswith('I'):   # 16-Bit-Graustufen (Scanner-TIFF/PNG) -> sonst alles weiss
+            im = im.convert('I').point(lambda v: v / 256).convert('L')
     except Exception:
         raise _ConvertError('Datei ist kein lesbares Bild.')
+    if getattr(im, 'is_animated', False) and im.format in ('GIF', 'WEBP'):
+        return im   # Animation bleibt erhalten (siehe save_all)
+    # Handy-Fotos stehen oft per EXIF gedreht - ohne das laege das Ergebnis quer.
+    return ImageOps.exif_transpose(im)
+
+
+def _on_white(im):
+    """Transparenz auf Weiss legen - fuer Ziele ohne Alpha (JPG, PDF)."""
+    if im.mode in ('RGBA', 'LA', 'P'):
+        rgba = im.convert('RGBA')
+        bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
+        bg.paste(rgba, mask=rgba.split()[-1])
+        return bg
+    return im.convert('RGB')
+
+
+def _convert_image(src_path: str, src_ext: str, target: str, base: str):
+    pil_fmt = _IMG_PIL_FMT[target]
+    out_path = src_path + f'.out.{target}'
+    im = _open_image(src_path, src_ext)
 
     save_kwargs = {}
-    if pil_fmt == 'JPEG':
-        # JPEG kennt keine Transparenz -> auf weiss kompositieren statt crashen
-        if im.mode in ('RGBA', 'LA', 'P'):
-            rgba = im.convert('RGBA')
-            bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
-            bg.paste(rgba, mask=rgba.split()[-1])
-            im = bg
-        else:
-            im = im.convert('RGB')
+    if pil_fmt == 'HEIF':
+        save_kwargs['quality'] = 85      # libheif-Standard (50) ist fuer Fotos zu grob
+    if getattr(im, 'is_animated', False) and pil_fmt in ('GIF', 'WEBP'):
+        save_kwargs['save_all'] = True   # Animation behalten (GIF <-> WEBP)
+    elif pil_fmt == 'JPEG':
+        im = _on_white(im)               # JPEG kennt keine Transparenz
         save_kwargs['quality'] = 92
-    elif pil_fmt == 'ICO':
-        save_kwargs['sizes'] = [(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]
     elif pil_fmt == 'BMP' and im.mode not in ('RGB', 'L', 'P'):
         im = im.convert('RGB')
+    elif im.mode not in ('RGB', 'RGBA', 'L', 'P') or (
+            pil_fmt in ('HEIF', 'AVIF', 'ICNS') and im.mode not in ('RGB', 'RGBA')):
+        # CMYK, 16 Bit, Palette ... -> etwas, das jedes Zielformat schreiben kann
+        im = im.convert('RGBA' if 'A' in im.mode or 'transparency' in im.info else 'RGB')
+
+    if pil_fmt == 'ICO':
+        save_kwargs['sizes'] = [(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]
+    elif pil_fmt == 'ICNS' and im.width != im.height:
+        # Mac-Icons sind quadratisch - sonst wuerde Pillow das Bild verzerren
+        side = max(im.size)
+        sq = PILImage.new('RGBA', (side, side), (0, 0, 0, 0))
+        sq.paste(im, ((side - im.width) // 2, (side - im.height) // 2))
+        im = sq
 
     try:
         im.save(out_path, pil_fmt, **save_kwargs)
@@ -2452,21 +2537,17 @@ def _convert_image(src_path: str, target: str, base: str):
     return out_path, f'{base}.{target}'
 
 
-def _convert_image_to_pdf(src_path: str, base: str):
-    try:
-        im = PILImage.open(src_path)
-        im.load()
-    except Exception:
-        raise _ConvertError('Datei ist kein lesbares Bild.')
-    if im.mode in ('RGBA', 'LA', 'P'):
-        rgba = im.convert('RGBA')
-        bg = PILImage.new('RGB', rgba.size, (255, 255, 255))
-        bg.paste(rgba, mask=rgba.split()[-1])
-        im = bg
-    else:
-        im = im.convert('RGB')
+def _convert_image_to_pdf(src_path: str, src_ext: str, base: str):
     out_path = src_path + '.out.pdf'
-    im.save(out_path, 'PDF')
+    if src_ext == 'svg':
+        try:
+            pdf = _svg_doc(src_path).convert_to_pdf()   # Vektor bleibt Vektor
+        except Exception:
+            raise _ConvertError('Datei ist kein lesbares Bild.')
+        with open(out_path, 'wb') as f:
+            f.write(pdf)
+    else:
+        _on_white(_open_image(src_path, src_ext)).save(out_path, 'PDF')
     return out_path, f'{base}.pdf'
 
 
@@ -2515,10 +2596,11 @@ def _convert_media(src_path: str, target: str, base: str):
     cmd = ['ffmpeg', '-y', '-i', src_path]
     if target == 'gif':
         cmd += ['-vf', 'fps=12,scale=480:-1:flags=lanczos']
-    elif _convert_kind(target) == 'audio':
-        cmd += ['-vn'] + _AUDIO_CODEC.get(target, [])
+    elif target in AUDIO_TARGETS:
+        cmd += ['-vn'] + _AUDIO_CODEC[target]
     else:
-        cmd += _VIDEO_CODEC.get(target, [])
+        # H.264 & Co. brauchen gerade Kantenlaengen (z. B. bei GIF-Quellen)
+        cmd += ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2'] + _VIDEO_CODEC[target]
     cmd += [out_path]
 
     try:
@@ -2546,14 +2628,14 @@ def convert_file():
 
     up = request.files.get('file')
     target = (request.form.get('target') or '').strip().lower().lstrip('.')
+    target = _EXT_ALIAS.get(target, target)
     if not up or not up.filename:
         return _cors_resp(jsonify({'error': 'Keine Datei erhalten.'})), 400
-    if target not in (IMAGE_EXTS | AUDIO_EXTS | VIDEO_EXTS | {'pdf'}):
+    if target not in (IMAGE_TARGETS | AUDIO_TARGETS | VIDEO_TARGETS | {'pdf'}):
         return _cors_resp(jsonify({'error': 'Unbekanntes Zielformat.'})), 400
 
     src_ext = os.path.splitext(up.filename)[1].lstrip('.').lower()
-    if src_ext == 'tif':
-        src_ext = 'tiff'   # gleiche Alias-Normalisierung wie im Client (extOf())
+    src_ext = _EXT_ALIAS.get(src_ext, src_ext)   # gleiche Normalisierung wie im Client (extOf())
     src_kind = _convert_kind(src_ext)
     if src_kind is None:
         return _cors_resp(jsonify({'error': f'Format ".{src_ext}" wird nicht unterstuetzt.'})), 400
@@ -2562,11 +2644,13 @@ def convert_file():
 
     tgt_kind = _convert_kind(target)
     is_img_to_pdf   = src_kind == 'image' and target == 'pdf'
-    is_pdf_to_img   = src_kind == 'pdf' and tgt_kind == 'image'
+    is_pdf_to_img   = src_kind == 'pdf' and target in ('png', 'jpg')
     is_video_to_gif = src_kind == 'video' and target == 'gif'
     is_video_to_aud = src_kind == 'video' and tgt_kind == 'audio'
+    is_gif_to_video = src_ext == 'gif' and tgt_kind == 'video'
     is_same_kind    = src_kind == tgt_kind and src_kind in ('image', 'audio', 'video')
-    if not (is_img_to_pdf or is_pdf_to_img or is_video_to_gif or is_video_to_aud or is_same_kind):
+    if not (is_img_to_pdf or is_pdf_to_img or is_video_to_gif or is_video_to_aud
+            or is_gif_to_video or is_same_kind):
         return _cors_resp(jsonify({'error': 'Diese Kombination wird nicht unterstuetzt.'})), 400
 
     if src_kind == 'image' and PILImage is None:
@@ -2590,12 +2674,12 @@ def convert_file():
         base = safe_title(os.path.splitext(os.path.basename(up.filename))[0]) or 'datei'
 
         if is_img_to_pdf:
-            out_path, out_name = _convert_image_to_pdf(src_path, base)
+            out_path, out_name = _convert_image_to_pdf(src_path, src_ext, base)
         elif is_pdf_to_img:
             out_path, out_name = _convert_pdf_to_image(src_path, target, base)
-        elif src_kind == 'image':
-            out_path, out_name = _convert_image(src_path, target, base)
-        else:  # audio/video (inkl. Video->Ton, Video->GIF)
+        elif src_kind == 'image' and tgt_kind == 'image':
+            out_path, out_name = _convert_image(src_path, src_ext, target, base)
+        else:  # audio/video (inkl. Video->Ton, Video->GIF, GIF->Video)
             out_path, out_name = _convert_media(src_path, target, base)
 
         cleanup_later(out_path, delay=900)

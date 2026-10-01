@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Datei-Konverter &mdash; Glappa Home</title>
-  <meta name="keywords" content="Glappa Datei Konverter Bilder Audio Video PDF PNG JPG MP3 MP4">
+  <meta name="keywords" content="Glappa Datei Konverter Bilder Audio Video PDF HEIC AVIF RAW SVG PNG JPG MP3 M4R MP4 MOV">
   <meta name="description" content="Bilder, Audio, Video und PDF ineinander umwandeln &mdash; self-hosted auf der GLAPPA-VPS, keine Cloud.">
   <link rel="icon" href="../favicon.ico">
   <!-- Theme-Bootstrap VOR dem Stylesheet (gleiches Prinzip wie werkzeuge.html/pgp.html):
@@ -339,10 +339,11 @@
     <!-- ── Bilder ── -->
     <section class="tool-card tool-card--cyan" aria-labelledby="imgHead" data-conv="image">
       <h2 id="imgHead">Bilder-Konverter</h2>
-      <p class="tsub">PNG, JPG, WEBP, BMP, GIF, TIFF, ICO &mdash; in jede Richtung.</p>
+      <p class="tsub">PNG, JPG, WEBP, AVIF, HEIC (iPhone), GIF, TIFF, BMP, ICO, ICNS &mdash; in jede Richtung.
+        Dazu lesbar: SVG, PSD, TGA, JPEG&nbsp;2000, Kamera-RAW (DNG, CR2/CR3, NEF, ARW&nbsp;&hellip;).</p>
       <label class="conv-drop" tabindex="0" data-drop>
         <span data-drop-txt>Datei hierher ziehen oder klicken</span>
-        <input type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,.tiff,.tif,.ico" data-file>
+        <input type="file" data-file>
       </label>
       <div class="conv-file" data-fname></div>
       <div class="tool-row">
@@ -355,16 +356,17 @@
       <div class="conv-result" data-result>
         <a class="tool-btn tool-btn--mini" data-dl download>&#11015; Herunterladen</a>
       </div>
-      <p class="tool-hint">Max. 25 MB je Datei.</p>
+      <p class="tool-hint">Max. 60 MB je Datei. Animierte GIFs bleiben als WEBP animiert oder werden zu MP4.</p>
     </section>
 
     <!-- ── Audio ── -->
     <section class="tool-card tool-card--green" aria-labelledby="audHead" data-conv="audio">
       <h2 id="audHead">Audio-Konverter</h2>
-      <p class="tsub">MP3, WAV, OGG, FLAC, M4A, AAC, OPUS, WMA.</p>
+      <p class="tsub">MP3, WAV, M4A, AAC, FLAC, OGG, OPUS, WMA, AIFF, AC3, M4R (iPhone-Klingelton).
+        Dazu lesbar: AMR, CAF, M4B, MKA, APE, MP2.</p>
       <label class="conv-drop" tabindex="0" data-drop>
         <span data-drop-txt>Datei hierher ziehen oder klicken</span>
-        <input type="file" accept=".mp3,.wav,.ogg,.flac,.m4a,.aac,.opus,.wma" data-file>
+        <input type="file" data-file>
       </label>
       <div class="conv-file" data-fname></div>
       <div class="tool-row">
@@ -383,10 +385,11 @@
     <!-- ── Video ── -->
     <section class="tool-card tool-card--pink" aria-labelledby="vidHead" data-conv="video">
       <h2 id="vidHead">Video-Konverter</h2>
-      <p class="tsub">MP4, WEBM, MKV, MOV, AVI &mdash; plus GIF-Export und Ton-Extraktion.</p>
+      <p class="tsub">MP4, MOV, WEBM, MKV, AVI, M4V, WMV, FLV, MPG, 3GP, OGV &mdash; plus GIF-Export und Ton-Extraktion.
+        Dazu lesbar: TS/MTS, VOB, RM.</p>
       <label class="conv-drop" tabindex="0" data-drop>
         <span data-drop-txt>Datei hierher ziehen oder klicken</span>
-        <input type="file" accept=".mp4,.webm,.mkv,.mov,.avi" data-file>
+        <input type="file" data-file>
       </label>
       <div class="conv-file" data-fname></div>
       <div class="tool-row">
@@ -408,7 +411,7 @@
       <p class="tsub">Bild &rarr; PDF, oder PDF-Seiten &rarr; Bilder (mehrseitig als ZIP).</p>
       <label class="conv-drop" tabindex="0" data-drop>
         <span data-drop-txt>PDF oder Bild hierher ziehen oder klicken</span>
-        <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tiff,.tif" data-file>
+        <input type="file" data-file>
       </label>
       <div class="conv-file" data-fname></div>
       <div class="tool-row">
@@ -469,53 +472,55 @@
        haengt davon ab, WAS reingezogen wird (Bild -> genau "PDF", PDF ->
        PNG/JPG) — wird in targetsFor() dynamisch aufgeloest.
        ════════════════════════════════════════════════════════════════ */
-    // 'jpeg' bewusst nicht als eigenes Zielformat - waere nur ein zweiter
-    // Name fuer dasselbe Format wie 'jpg' (als Quell-Endung wird es unten
-    // in extOf() trotzdem erkannt).
-    const IMAGE_EXTS = ['png','jpg','webp','bmp','gif','tiff','ico'];
-    const AUDIO_EXTS = ['mp3','wav','ogg','flac','m4a','aac','opus','wma'];
+    // Gleiche Listen wie in app.py: *_OUT = Zielformate, *_IN = Quellen
+    // (Ziele plus reine Lese-Formate).
+    const IMAGE_OUT = ['png','jpg','webp','avif','heic','gif','bmp','tiff','ico','icns'];
+    const IMAGE_IN  = IMAGE_OUT.concat(['svg','psd','tga','jp2','pcx','ppm',
+                                        'dng','cr2','cr3','nef','arw','orf','rw2','raf']);
+    const AUDIO_OUT = ['mp3','wav','m4a','aac','flac','ogg','opus','wma','aiff','ac3','m4r'];
+    const AUDIO_IN  = AUDIO_OUT.concat(['m4b','amr','caf','mka','mp2','ape','weba']);
+    const VIDEO_OUT = ['mp4','mov','webm','mkv','avi','m4v','wmv','flv','mpg','3gp','ogv'];
+    const VIDEO_IN  = VIDEO_OUT.concat(['ts','mts','vob','rm','rmvb','asf']);
+    // Zweitnamen -> ein Name (wie _EXT_ALIAS in app.py), z. B. jpeg -> jpg
+    const ALIAS = {
+      tif:'tiff', jpeg:'jpg', jfif:'jpg', heif:'heic', j2k:'jp2', pgm:'ppm', pbm:'ppm',
+      pnm:'ppm', aif:'aiff', oga:'ogg', mpeg:'mpg', m2ts:'mts',
+    };
+    const SOURCES = { image: IMAGE_IN, audio: AUDIO_IN, video: VIDEO_IN, pdf: IMAGE_IN.concat('pdf') };
 
     const LABELS = {
-      png:'PNG', jpg:'JPG', jpeg:'JPEG', webp:'WEBP', bmp:'BMP', gif:'GIF',
-      tiff:'TIFF', tif: 'TIFF', ico:'ICO', mp3:'MP3', wav:'WAV', ogg:'OGG',
-      flac:'FLAC', m4a:'M4A', aac:'AAC', opus:'OPUS', wma:'WMA',
-      mp4:'MP4', webm:'WEBM', mkv:'MKV', mov:'MOV', avi:'AVI', pdf:'PDF',
+      heic:'HEIC (Apple)', icns:'ICNS (Mac-Icon)', aiff:'AIFF (Apple)',
+      m4r:'M4R (iPhone-Klingelton, max. 40 s)',
     };
+    const opts = (list, ext) => list.filter(e => e !== ext)
+      .map(e => ({ value: e, label: LABELS[e] || e.toUpperCase() }));
 
     function extOf(name) {
       const parts = (name || '').split('.');
-      let e = (parts.length > 1 ? parts.pop() : '').toLowerCase();
-      if (e === 'tif') e = 'tiff';   // gleiche Zielliste wie tiff
-      return e;
+      const e = (parts.length > 1 ? parts.pop() : '').toLowerCase();
+      return ALIAS[e] || e;
     }
 
     // liefert die erlaubten Zielformate fuer diese Kachel + gewaehlte Datei,
     // als flache Liste ODER mit optgroups: [{group, options:[{value,label}]}]
     function targetsFor(kind, ext) {
+      if (!SOURCES[kind].includes(ext)) return [];
       if (kind === 'image') {
-        return IMAGE_EXTS.filter(e => e !== ext).map(e => ({ value: e, label: LABELS[e] }));
+        if (ext !== 'gif') return opts(IMAGE_OUT, ext);
+        return [{ group: 'Bild', options: opts(IMAGE_OUT, ext) },
+                { group: 'Als Video', options: opts(['mp4'], '') }];
       }
-      if (kind === 'audio') {
-        return AUDIO_EXTS.filter(e => e !== ext).map(e => ({ value: e, label: LABELS[e] }));
-      }
+      if (kind === 'audio') return opts(AUDIO_OUT, ext);
       if (kind === 'video') {
         return [
-          { group: 'Video', options: ['mp4','webm','mkv','mov','avi','gif']
-              .filter(e => e !== ext).map(e => ({ value: e, label: LABELS[e] + (e === 'gif' ? ' (Animation)' : '') })) },
-          { group: 'Nur Ton extrahieren', options: ['mp3','wav','m4a']
-              .map(e => ({ value: e, label: LABELS[e] })) },
+          { group: 'Video', options: opts(VIDEO_OUT, ext).concat({ value: 'gif', label: 'GIF (Animation)' }) },
+          { group: 'Nur Ton extrahieren', options: opts(AUDIO_OUT, '') },
         ];
       }
-      if (kind === 'pdf') {
-        if (ext === 'pdf') {
-          return [{ value: 'png', label: 'PNG (je Seite)' }, { value: 'jpg', label: 'JPG (je Seite)' }];
-        }
-        if (IMAGE_EXTS.includes(ext) || ext === 'jpeg') {
-          return [{ value: 'pdf', label: 'PDF' }];
-        }
-        return [];
+      if (ext === 'pdf') {   // kind === 'pdf'
+        return [{ value: 'png', label: 'PNG (je Seite)' }, { value: 'jpg', label: 'JPG (je Seite)' }];
       }
-      return [];
+      return [{ value: 'pdf', label: 'PDF' }];
     }
 
     function fillSelect(sel, list) {
@@ -557,6 +562,9 @@
       const result = card.querySelector('[data-result]');
       const dl     = card.querySelector('[data-dl]');
       let file = null;
+      // accept inkl. Zweitnamen (.jpeg, .heif, ...), damit der Dateidialog alles zeigt
+      input.accept = SOURCES[kind].concat(Object.keys(ALIAS).filter(a => SOURCES[kind].includes(ALIAS[a])))
+        .map(e => '.' + e).join(',');
 
       function reset() {
         result.classList.remove('show');
