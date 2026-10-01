@@ -17437,55 +17437,71 @@ void main() {
   /* ═══════════ Fraktal-Schleier (Wunsch 2026-10-01) ═══════════
      Wer in einer Trip-Welt (Mandelbrot) lange stehen bleibt, dem wachsen Fraktale vom Bildrand her uebers ganze Bild -
      auch ueber HUD und Figur: eigene Leinwand ueber allem ausser Dialog, Pause und Blenden. Im Takt der Musik:
-     Bass = Zoom-Stoss, Ringe und Aufleuchten, Mitten = die Julia-Form wandert schneller, Hoehen = Funkeln und Farbe.
-     Ohne Musik pulsiert es in ruhigen 120 bpm. */
+     Bass schiebt den endlosen Zoom und laesst die Ringe leuchten, jeder Schlag gibt einen Stoss, blitzt auf und blaest
+     die Vielecke auf, Mitten = Form und Vielecke, Hoehen = Moiree und Farbe; alle 8 Schlaege ein neues Ziel fuer Farbe,
+     Drehung und Form. Ohne Musik pulsiert es in ruhigen 120 bpm. */
   const FracVeil = (() => {
-    let cv = null, g2 = null, prog = null, failed = false, shown = false, ph = 0;
+    let cv = null, g2 = null, prog = null, failed = false, shown = false, ph = 0, zoom = 0, zv = 0, seed = 0, seedTo = 0, beats = 0, nextNew = 0;
     const UV = {}, au = { bass: 0, mid: 0, high: 0, beat: 0, avg: 0, lastBeat: -9 }, rng = { bass: [1, 0], mid: [1, 0], high: [1, 0] };
     const VS2 = 'attribute vec2 aP; varying vec2 vP; void main() { vP = aP; gl_Position = vec4(aP, 0.0, 1.0); }';
+    // wie die zweite Stufe (Skybox.lsd: Kaleidoskop-Julia, Ringe, Vielecke, Moiree), aber endlos hineinzoomend: drei
+    // Lagen im Abstand von je Faktor 2, die klein einblenden und gross ausblenden (Wunsch 2026-10-01, Video)
     const FS2 = `#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
 precision mediump float;
 #endif
 varying vec2 vP;
-uniform vec2 uAsp; uniform float uT; uniform float uPh; uniform float uK; uniform float uBass; uniform float uMid; uniform float uHigh; uniform float uBeat;
+uniform vec2 uAsp; uniform float uT; uniform float uPh; uniform float uK; uniform float uZ; uniform float uSeed;
+uniform float uBass; uniform float uMid; uniform float uHigh; uniform float uBeat;
 vec3 pal(float t) { return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67))); }
 mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float ngon(vec2 p, float n, float r) { float s = 6.28318 / n, a = atan(p.y, p.x); return cos(floor(0.5 + a / s) * s - a) * length(p) - r; }
+// Kaleidoskop-Julia (achtfach gespiegelt) einer Lage: x = Wert 0..1, y = Deckkraft
+vec2 jul(vec2 p, float li) {
+  vec2 q = rot(uPh * 0.05 + li * 0.9 + uSeed) * p;
+  float ang = atan(q.y, q.x), seg = 0.785398;
+  ang = abs(mod(ang, seg) - seg * 0.5);
+  vec2 z = length(q) * vec2(cos(ang), sin(ang));
+  vec2 c = vec2(-0.745 + 0.06 * sin(uPh * 0.11 + li * 1.3 + uSeed) + 0.025 * uMid, 0.12 + 0.05 * cos(uPh * 0.13 + li * 0.7 + uSeed * 0.6));
+  float it = 0.0;
+  for (int i = 0; i < 40; i++) { z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c; if (dot(z, z) > 16.0) break; it += 1.0; }
+  float jf = it / 40.0;
+  return vec2(jf, smoothstep(0.12, 0.45, jf) * (1.0 - 0.92 * smoothstep(0.88, 1.0, jf)));   // innen fast durchsichtig
+}
 void main() {
   vec2 p = vP * uAsp;
-  float r = length(vP) * 0.7071, an = atan(vP.y, vP.x);
-  // Julia-Menge: c laeuft am Rand des Apfelmaennchens entlang (Hauptkardioide), die Hoehen schieben es leicht hinaus
-  float th = uPh * 0.37 + 2.2;
-  vec2 c = (0.5 * vec2(cos(th), sin(th)) - 0.25 * vec2(cos(2.0 * th), sin(2.0 * th))) * (1.0 + 0.03 * uHigh);
-  float zoom = 1.35 - 0.18 * uBeat - 0.08 * uBass + 0.1 * sin(uPh * 0.23);
-  vec2 z = rot(uPh * 0.11 + 0.12 * uBass * sin(uT * 0.5)) * p * zoom;
-  float it = 0.0, m2 = 0.0, trap = 1e9;
-  for (int i = 0; i < 72; i++) {
-    z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
-    m2 = dot(z, z);
-    trap = min(trap, m2);
-    if (m2 > 256.0) break;
-    it += 1.0;
+  float r = length(p), an = atan(p.y, p.x), rn = length(vP) * 0.7071;
+  vec3 col = vec3(0.02, 0.0, 0.06) + 0.07 * pal(r * 0.3 + uPh * 0.05 + uSeed * 0.2);
+  // endloser Zoom: Massstab je Lage 2^(i - fract(uZ)) - mit wachsendem uZ wird alles groesser
+  float fz = fract(uZ), lay = floor(uZ), fv = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i), w = 0.5 - 0.5 * cos(6.28318 * (fi + 1.0 - fz) / 3.0);
+    vec2 j = jul(p * exp2(fi - fz) * 0.6, fi + lay);
+    col += pal(j.x * 2.3 - uPh * 0.09 + (fi + lay) * 0.17 + uSeed * 0.3 + uHigh * 0.25) * j.y * w * (0.9 + 0.7 * uBeat);
+    fv += j.y * w;
   }
-  float f;
-  vec3 col;
-  if (it > 71.5) {
-    f = 1.0;
-    col = vec3(0.04, 0.0, 0.1) + pal(sqrt(trap) * 2.5 + uPh * 0.07) * (0.18 + 0.3 * uBass);   // innen: Muster aus der Bahn
-  } else {
-    f = clamp((it - log2(log2(m2)) + 4.0) / 72.0, 0.0, 1.0);
-    float lum = pow(f, 0.45);
-    col = pal(f * 4.0 - uPh * 0.12 + uHigh * 0.3 + r * 0.4) * (0.35 + 0.9 * lum);
-    col += uHigh * 0.6 * smoothstep(0.55, 0.9, lum) * (0.5 + 0.5 * sin(uT * 23.0 + f * 80.0));
+  // Ringe laufen mit dem Zoom nach aussen, der Bass macht sie hell
+  float ring = pow(max(0.0, sin(r * 14.0 - uZ * 9.0 - uT * 1.2 + sin(an * 6.0 + uPh * 0.7) * 0.9)), 18.0);
+  col += pal(r * 0.4 + uPh * 0.05 + 0.33 + uSeed * 0.1) * ring * (0.3 + 1.1 * uBass);
+  // Vielecke wie in der zweiten Stufe, im Schlag groesser
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i), n = fi < 1.0 ? 3.0 : fi < 2.0 ? 6.0 : fi < 3.0 ? 4.0 : fi < 4.0 ? 8.0 : fi < 5.0 ? 5.0 : 3.0;
+    vec2 cen = vec2((mod(fi * 0.53 + uPh * (0.05 + fi * 0.013) + uSeed * 0.4 + 1.6, 3.2) - 1.6) * uAsp.x, 0.75 * sin(uPh * (0.11 + fi * 0.02) + fi * 2.1 + uSeed));
+    vec2 d = rot(uPh * (0.3 + fi * 0.07) * (mod(fi, 2.0) * 2.0 - 1.0)) * (p - cen);
+    float size = (0.16 + 0.07 * sin(uT * 0.9 + fi)) * (1.0 + 0.45 * uBeat), sh = 0.0;
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k), e = abs(ngon(rot(fk * 0.3) * d, n, size * (1.0 + fk * 0.55)));
+      sh += smoothstep(0.012, 0.0, e) + 0.35 * smoothstep(0.05, 0.0, e);
+    }
+    col += pal(fi * 0.17 + uPh * 0.12 + uSeed * 0.2) * sh * (0.55 + 0.6 * uMid);
   }
-  float rr = length(p) / length(uAsp);
-  col += pal(rr + uPh * 0.1) * uBass * 0.35 * pow(max(0.0, sin(rr * 22.0 - uT * 5.0)), 8.0);
-  col += 0.1 * pal(an * 0.159 + uPh * 0.1) * (1.0 - f);   // aussen leiser Farbwirbel
-  col *= 1.0 + 0.55 * uBeat;
-  // vom Rand her zuwachsen: die Front laeuft mit uK von aussen zur Mitte, das Fraktal selbst franst sie aus
+  vec2 g = rot(0.5 + uPh * 0.03) * p * 9.0;
+  col += pal(uPh * 0.1 + p.x * 0.2) * pow(abs(sin(g.x) * sin(g.y)), 12.0) * (0.15 + 0.7 * uHigh);
+  col *= 1.0 + 0.35 * uBeat;
+  // vom Rand her zuwachsen: die Front laeuft mit uK von aussen zur Mitte, das Fraktal franst sie aus
   float front = mix(1.35, -0.35, uK);
-  float edge = r + (f - 0.5) * 0.3 * (1.0 - uK * 0.5) + 0.035 * sin(an * 9.0 + uT * 0.8) + 0.04 * uBass * sin(an * 5.0 - uT * 2.0);
+  float edge = rn + (min(fv, 1.0) - 0.5) * 0.25 * (1.0 - uK * 0.5) + 0.035 * sin(an * 9.0 + uT * 0.8) + 0.04 * uBass * sin(an * 5.0 - uT * 2.0);
   float m = smoothstep(front - 0.06, front + 0.04, edge);
   float rim = smoothstep(0.09, 0.0, abs(edge - front)) * (1.0 - smoothstep(0.85, 1.0, uK));
   col += pal(uPh * 0.2 + an * 0.3) * rim * 0.8;
@@ -17505,7 +17521,7 @@ void main() {
       }
       if (!g2 || !g2.getProgramParameter(prog, g2.LINK_STATUS)) { failed = true; g2 = null; cv.remove(); return false; }
       g2.useProgram(prog);
-      for (const n of ['uAsp', 'uT', 'uPh', 'uK', 'uBass', 'uMid', 'uHigh', 'uBeat']) UV[n] = g2.getUniformLocation(prog, n);
+      for (const n of ['uAsp', 'uT', 'uPh', 'uK', 'uZ', 'uSeed', 'uBass', 'uMid', 'uHigh', 'uBeat']) UV[n] = g2.getUniformLocation(prog, n);
       g2.bindBuffer(g2.ARRAY_BUFFER, g2.createBuffer());
       g2.bufferData(g2.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), g2.STATIC_DRAW);
       g2.enableVertexAttribArray(0); g2.vertexAttribPointer(0, 2, g2.FLOAT, false, 0, 0);
@@ -17530,7 +17546,7 @@ void main() {
       au.bass += (b - au.bass) * Math.min(1, dt * 14);
       au.mid += (m - au.mid) * Math.min(1, dt * 5);
       au.high += (h - au.high) * Math.min(1, dt * 10);
-      if (b > au.avg * 1.25 + 0.1 && clock - au.lastBeat > 0.22) { au.beat = 1; au.lastBeat = clock; }
+      if (b > au.avg * 1.25 + 0.1 && clock - au.lastBeat > 0.22) { au.beat = 1; au.lastBeat = clock; beats++; zv += 0.35; }
       au.avg += (b - au.avg) * Math.min(1, dt * 1.5);
       au.beat = Math.max(0, au.beat - dt * 3);
     }
@@ -17540,10 +17556,17 @@ void main() {
       if (k <= 0.002 || !setup()) { if (shown) { cv.hidden = true; shown = false; } return; }
       listen(dt);
       ph += dt * (0.25 + 0.5 * au.mid);
+      // Zoom: ruhig vorwaerts, der Bass schiebt, jeder Schlag gibt einen weichen Stoss
+      zv *= Math.exp(-dt * 3);
+      zoom += dt * (0.1 + 0.25 * au.bass + zv);
+      // immer anders: alle 8 Schlaege (ohne Schlaege alle 7 s) ein neues Ziel fuer Farbe, Drehung und Form, weich angefahren
+      if (beats >= 8 || clock > nextNew) { beats = 0; nextNew = clock + 7; seedTo += 0.8 + Math.random() * 1.6; }
+      seed += (seedTo - seed) * Math.min(1, dt * 0.7);
       const W = Math.max(1, Math.round(innerWidth * 0.5)), H = Math.max(1, Math.round(innerHeight * 0.5));
       if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
       g2.viewport(0, 0, W, H);
       g2.uniform2f(UV.uAsp, W / H, 1); g2.uniform1f(UV.uT, clock % 1000); g2.uniform1f(UV.uPh, ph % 1000); g2.uniform1f(UV.uK, k);
+      g2.uniform1f(UV.uZ, zoom % 512); g2.uniform1f(UV.uSeed, seed);
       g2.uniform1f(UV.uBass, au.bass); g2.uniform1f(UV.uMid, au.mid); g2.uniform1f(UV.uHigh, au.high); g2.uniform1f(UV.uBeat, au.beat);
       g2.drawArrays(g2.TRIANGLES, 0, 3);
       if (!shown) { cv.hidden = false; shown = true; }

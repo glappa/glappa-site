@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=171`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=172`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -408,6 +408,11 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   Münzen, Sterne, Gegenstände, Schilder, Schatten; Bilder + Rahmen über `driftAt` (ruhig, treiben aber mit); bewegliche
   Plattformen und Blinker mit eigenem Quader. Ausgenommen: Quader > 20 m (Saalböden, Wände) und das Apfelmännchen
   (`mandel`) – dort wogt es wie früher Ecke für Ecke. `setTrip(0)` schaltet den Drift mit aus.
+- **Schleier im Stil der zweiten Stufe** (`?v=172`, Wunsch nach Video): Kaleidoskop-Julia wie `LSD_FS`, Ringe, Vielecke,
+  Moiree – dazu **endloser Zoom** aus drei Lagen (Faktor 2, klein einblenden, groß ausblenden; `uZ`). Musik: Bass schiebt
+  den Zoom und hellt die Ringe auf, jeder Schlag = weicher Zoom-Stoß + Aufblitzen + größere Vielecke, Mitten = Form,
+  Höhen = Moiree/Farbe. Alle 8 Schläge (sonst 7 s) neues Ziel für Farbe/Drehung/Form (`uSeed`, weich angefahren).
+  Achtung: im Modul `Post` heißt der Bildfilter-Shader ebenfalls `FS2` – beim Ersetzen per Skript das richtige treffen.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
