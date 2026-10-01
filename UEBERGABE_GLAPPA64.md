@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=168`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=169`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -385,6 +385,19 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
   gefunden = golden, wiegt sich, blitzt ab und zu; fehlend = lila Umriss. Glasscheibe mit Reflexen in `L.drawAlpha`.
 - Test: nach dem Laden ~1 s warten (sonst setzt der Ladevorgang den Garten zurück), `g64.state.stars[id] = true`,
   `g64.enterLevel('hall')`, Kamera per Flyby auf `[14, 3, 13] → [14, 2.8, 19]`.
+
+### 1.26 Trip-Stillstand weich + Fraktal-Schleier zur Musik (2026-10-01, `?v=169`)
+- Gilt in Trip-Welten (`fraktal` trip 1, `bild_fraktal` = Regenbogensaal trip 0,7). Ablauf nach `pl.idleT`: Drift 2→9 s,
+  Höhepunkt (`Skybox.lsd`) 8→14 s, **Fraktal-Schleier** 14→24 s. Alle drei folgen weichen Federn (`follow`, kritisch
+  gedämpft, ω 2,2–2,6): raus in ~2 s statt vorher linear 0,4 s. Kein Trip bei offenem Dialog.
+- **Farbflackern behoben**: der Shader drehte den Farbton um `uTrip * uTime * 0.35` – bei jeder Änderung von `uTrip`
+  (Ein-/Ausblenden) sprang die Farbe um mehrere rad pro Bild. Jetzt `uTripPh`, auf der CPU aufsummiert.
+- `FracVeil`: eigene Leinwand `.frac-veil` (z-index 840: über HUD/Touch/Figur, unter Dialog 850/Pause), halbe Auflösung,
+  Julia-Menge mit c auf der Hauptkardioide, wächst vom Rand mit ausgefranster Front zu. Musik: `Snd.musicLevels()`
+  (Analyser zwischen `fanG` und `musicBus`), je Band auf seine eigene Spanne normiert; Bass = Zoom-Stoß/Ringe/Aufleuchten,
+  Mitten = Formtempo, Höhen = Funkeln. Ohne Musik 120-bpm-Puls.
+- Test: `g64.enterLevel('bild_fraktal'); g64.Flyby.start(g64.cur, '', '', true)`, Titel ausblenden, `g64.pl.idleT = 30`,
+  Werte in `g64.tripSp` (d/p/f) und `g64.FracVeil.au`; Bild per `page.screenshot` (Schleier ist eigene Leinwand).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

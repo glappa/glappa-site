@@ -560,6 +560,7 @@
       }
 
       let mix = null, lp = null, duckG = null, fanG = null, conv = null, P = null, timer = 0, duckOn = false, muffOn = false;
+      let an = null, fbuf = null;   // Analyse fuer musikgesteuerte Effekte (Fraktal-Schleier)
       const pulse = {};
       function graph() {
         if (mix) return;
@@ -567,7 +568,8 @@
         lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 7000; lp.Q.value = 0.5;
         duckG = c.createGain(); fanG = c.createGain(); mix = c.createGain();
         conv = c.createConvolver(); conv.buffer = impulse(c, 2.6);
-        mix.connect(lp); conv.connect(lp); lp.connect(duckG); duckG.connect(fanG); fanG.connect(musicBus);
+        an = c.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.5;
+        mix.connect(lp); conv.connect(lp); lp.connect(duckG); duckG.connect(fanG); fanG.connect(an); an.connect(musicBus);
         for (const d of [0.25, 0.125]) {   // Pulswellen fuer den Chip-Klang
           const n = 40, re = new Float32Array(n), im = new Float32Array(n);
           for (let k = 1; k < n; k++) re[k] = 2 / (k * Math.PI) * Math.sin(k * Math.PI * d);
@@ -792,10 +794,10 @@
       }
       // Testhilfe: ein Stueck komplett in den (gerade getauschten) Offline-Kontext planen
       function offline(id, sec) {
-        const keep = [mix, lp, duckG, fanG, conv, pulse[0.25], pulse[0.125]];
+        const keep = [mix, lp, duckG, fanG, conv, an, pulse[0.25], pulse[0.125]];
         mix = null; graph();
         plan(start(id), sec);
-        [mix, lp, duckG, fanG, conv, pulse[0.25], pulse[0.125]] = keep;
+        [mix, lp, duckG, fanG, conv, an, pulse[0.25], pulse[0.125]] = keep;
       }
       function start(id) {
         const T = prep(TRACKS[id]), now = ctx.currentTime, bus = ctx.createGain();
@@ -832,10 +834,24 @@
         fanG.gain.cancelScheduledValues(now); fanG.gain.setValueAtTime(fanG.gain.value, now);
         fanG.gain.setTargetAtTime(0.1, now, 0.05); fanG.gain.setTargetAtTime(1, now + sec, 0.5);
       }
-      return { set, duckFor, offline, TRACKS, get playing() { return P ? P.id : null; } };
+      // Pegel der laufenden Musik je Band (0..1, roh): Bass 40-200 Hz, Mitten bis 2 kHz, Hoehen bis 8 kHz; null = keine Musik
+      function levels() {
+        if (!an || !P || ctx.state !== 'running') return null;
+        if (!fbuf) fbuf = new Uint8Array(an.frequencyBinCount);
+        an.getByteFrequencyData(fbuf);
+        const hz = ctx.sampleRate / an.fftSize, band = (f0, f1) => {
+          const i0 = Math.max(1, Math.round(f0 / hz)), i1 = Math.max(i0 + 1, Math.round(f1 / hz));
+          let sum = 0;
+          for (let i = i0; i < i1; i++) sum += fbuf[i];
+          return sum / (i1 - i0) / 255;
+        };
+        return { bass: band(40, 200), mid: band(200, 2000), high: band(2000, 8000) };
+      }
+      return { set, duckFor, offline, levels, TRACKS, get playing() { return P ? P.id : null; } };
     })();
     api.song = (w) => MUS.set(w);
     api.duckMusic = (sec) => MUS.duckFor(sec);
+    api.musicLevels = () => MUS.levels();
     api.MUS = MUS;
     // Testhilfe (?debug): Stueck offline rechnen, gleiche Kette wie im Spiel (ohne Master)
     api.renderSong = (id, sec = 8, sr = 22050) => {
@@ -1432,6 +1448,7 @@
     uniform float uLit; uniform float uAlpha; uniform sampler2D uTex; uniform float uUseTex;
     uniform vec3 uCam; uniform float uShine; uniform float uRim; uniform float uDim;
     uniform float uArt; uniform float uSwirl; uniform float uDetail; uniform float uTrip; uniform float uTime; uniform float uTri;
+    uniform float uTripPh;   // Farbdrehung, auf der CPU aufsummiert (uTrip * uTime sprang bei jeder Aenderung von uTrip wild)
     // Farbton drehen (fuer den Trip)
     vec3 hue(vec3 c, float a) {
       const vec3 k = vec3(0.57735);
@@ -1482,7 +1499,7 @@
       if (uTrip > 0.0) {
         // Trip: Farben wandern in Wellen durch die Welt, Flaechen schillern wie Oelfilm
         float wv = sin(vWPos.x * 0.07 + vWPos.z * 0.05 + uTime * 0.6) + sin(vWPos.y * 0.13 - uTime * 0.9);
-        base = hue(base, uTrip * (wv * 1.1 + uTime * 0.35));
+        base = hue(base, uTrip * wv * 1.1 + uTripPh);
         vec3 vv = normalize(uCam - vWPos);
         float fr = 1.0 - max(dot(n, vv), 0.0);
         base += uTrip * 0.35 * (0.5 + 0.5 * cos(6.2832 * (fr * 1.6 + uTime * 0.15 + vec3(0.0, 0.33, 0.67)))) * fr;
@@ -1513,7 +1530,7 @@
   gl.useProgram(prog);
   const A = {}, U = {};
   ['aPos', 'aNrm', 'aCol', 'aUV'].forEach((n) => { A[n] = gl.getAttribLocation(prog, n); gl.enableVertexAttribArray(A[n]); });
-  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift']
+  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift', 'uTripPh']
     .forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
   gl.enable(gl.DEPTH_TEST);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -17374,7 +17391,135 @@ void main() {
   let signMark = 1;
   const signQueue = [];
   // Trip-Staerke der Welt (Wabern + Farbwellen); Gemaelde und Glappo selbst bleiben ruhig
-  let curTrip = 0, tripDrift = 0, tripPeak = 0, tripLast = 0;
+  /* ═══════════ Fraktal-Schleier (Wunsch 2026-10-01) ═══════════
+     Wer in einer Trip-Welt (Mandelbrot) lange stehen bleibt, dem wachsen Fraktale vom Bildrand her uebers ganze Bild -
+     auch ueber HUD und Figur: eigene Leinwand ueber allem ausser Dialog, Pause und Blenden. Im Takt der Musik:
+     Bass = Zoom-Stoss, Ringe und Aufleuchten, Mitten = die Julia-Form wandert schneller, Hoehen = Funkeln und Farbe.
+     Ohne Musik pulsiert es in ruhigen 120 bpm. */
+  const FracVeil = (() => {
+    let cv = null, g2 = null, prog = null, failed = false, shown = false, ph = 0;
+    const UV = {}, au = { bass: 0, mid: 0, high: 0, beat: 0, avg: 0, lastBeat: -9 }, rng = { bass: [1, 0], mid: [1, 0], high: [1, 0] };
+    const VS2 = 'attribute vec2 aP; varying vec2 vP; void main() { vP = aP; gl_Position = vec4(aP, 0.0, 1.0); }';
+    const FS2 = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying vec2 vP;
+uniform vec2 uAsp; uniform float uT; uniform float uPh; uniform float uK; uniform float uBass; uniform float uMid; uniform float uHigh; uniform float uBeat;
+vec3 pal(float t) { return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67))); }
+mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+void main() {
+  vec2 p = vP * uAsp;
+  float r = length(vP) * 0.7071, an = atan(vP.y, vP.x);
+  // Julia-Menge: c laeuft am Rand des Apfelmaennchens entlang (Hauptkardioide), die Hoehen schieben es leicht hinaus
+  float th = uPh * 0.37 + 2.2;
+  vec2 c = (0.5 * vec2(cos(th), sin(th)) - 0.25 * vec2(cos(2.0 * th), sin(2.0 * th))) * (1.0 + 0.03 * uHigh);
+  float zoom = 1.35 - 0.18 * uBeat - 0.08 * uBass + 0.1 * sin(uPh * 0.23);
+  vec2 z = rot(uPh * 0.11 + 0.12 * uBass * sin(uT * 0.5)) * p * zoom;
+  float it = 0.0, m2 = 0.0, trap = 1e9;
+  for (int i = 0; i < 72; i++) {
+    z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+    m2 = dot(z, z);
+    trap = min(trap, m2);
+    if (m2 > 256.0) break;
+    it += 1.0;
+  }
+  float f;
+  vec3 col;
+  if (it > 71.5) {
+    f = 1.0;
+    col = vec3(0.04, 0.0, 0.1) + pal(sqrt(trap) * 2.5 + uPh * 0.07) * (0.18 + 0.3 * uBass);   // innen: Muster aus der Bahn
+  } else {
+    f = clamp((it - log2(log2(m2)) + 4.0) / 72.0, 0.0, 1.0);
+    float lum = pow(f, 0.45);
+    col = pal(f * 4.0 - uPh * 0.12 + uHigh * 0.3 + r * 0.4) * (0.35 + 0.9 * lum);
+    col += uHigh * 0.6 * smoothstep(0.55, 0.9, lum) * (0.5 + 0.5 * sin(uT * 23.0 + f * 80.0));
+  }
+  float rr = length(p) / length(uAsp);
+  col += pal(rr + uPh * 0.1) * uBass * 0.35 * pow(max(0.0, sin(rr * 22.0 - uT * 5.0)), 8.0);
+  col += 0.1 * pal(an * 0.159 + uPh * 0.1) * (1.0 - f);   // aussen leiser Farbwirbel
+  col *= 1.0 + 0.55 * uBeat;
+  // vom Rand her zuwachsen: die Front laeuft mit uK von aussen zur Mitte, das Fraktal selbst franst sie aus
+  float front = mix(1.35, -0.35, uK);
+  float edge = r + (f - 0.5) * 0.3 * (1.0 - uK * 0.5) + 0.035 * sin(an * 9.0 + uT * 0.8) + 0.04 * uBass * sin(an * 5.0 - uT * 2.0);
+  float m = smoothstep(front - 0.06, front + 0.04, edge);
+  float rim = smoothstep(0.09, 0.0, abs(edge - front)) * (1.0 - smoothstep(0.85, 1.0, uK));
+  col += pal(uPh * 0.2 + an * 0.3) * rim * 0.8;
+  gl_FragColor = vec4(col, clamp(m + rim * 0.6, 0.0, 1.0));
+}`;
+    function setup() {
+      if (g2 || failed) return !!g2;
+      cv = document.createElement('canvas');
+      cv.className = 'frac-veil'; cv.hidden = true; cv.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(cv);
+      g2 = cv.getContext('webgl', { alpha: true, premultipliedAlpha: false, antialias: false, depth: false });
+      const sh = (type, src) => { const o = g2.createShader(type); g2.shaderSource(o, src); g2.compileShader(o); return o; };
+      if (g2) {
+        prog = g2.createProgram();
+        g2.attachShader(prog, sh(g2.VERTEX_SHADER, VS2)); g2.attachShader(prog, sh(g2.FRAGMENT_SHADER, FS2));
+        g2.bindAttribLocation(prog, 0, 'aP'); g2.linkProgram(prog);
+      }
+      if (!g2 || !g2.getProgramParameter(prog, g2.LINK_STATUS)) { failed = true; g2 = null; cv.remove(); return false; }
+      g2.useProgram(prog);
+      for (const n of ['uAsp', 'uT', 'uPh', 'uK', 'uBass', 'uMid', 'uHigh', 'uBeat']) UV[n] = g2.getUniformLocation(prog, n);
+      g2.bindBuffer(g2.ARRAY_BUFFER, g2.createBuffer());
+      g2.bufferData(g2.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), g2.STATIC_DRAW);
+      g2.enableVertexAttribArray(0); g2.vertexAttribPointer(0, 2, g2.FLOAT, false, 0, 0);
+      return true;
+    }
+    // Musik hoeren: jedes Band auf seine eigene Spanne (leisester bis lautester Wert der letzten Sekunden) bezogen -
+    // so pumpt der Bass auch bei dauernd lauter Musik; Schlaege am Bass erkennen
+    function listen(dt) {
+      const lv = Snd.musicLevels();
+      let b, m, h;
+      if (lv) {
+        const n = (k) => {
+          const R = rng[k], v = lv[k];
+          R[0] = Math.min(v, R[0] + dt * 0.1); R[1] = Math.max(v, R[1] - dt * 0.1);
+          return clamp((v - R[0]) / Math.max(R[1] - R[0], 0.06), 0, 1);
+        };
+        b = n('bass'); m = n('mid'); h = n('high');
+      } else {
+        const k = (clock * 2) % 1;
+        b = Math.pow(1 - k, 4); m = 0.45 + 0.2 * Math.sin(clock * 0.7); h = 0.3 + 0.25 * Math.sin(clock * 1.9);
+      }
+      au.bass += (b - au.bass) * Math.min(1, dt * 14);
+      au.mid += (m - au.mid) * Math.min(1, dt * 5);
+      au.high += (h - au.high) * Math.min(1, dt * 10);
+      if (b > au.avg * 1.25 + 0.1 && clock - au.lastBeat > 0.22) { au.beat = 1; au.lastBeat = clock; }
+      au.avg += (b - au.avg) * Math.min(1, dt * 1.5);
+      au.beat = Math.max(0, au.beat - dt * 3);
+    }
+    // k = 0..1 wie weit der Schleier zugewachsen ist; trip: in einer Trip-Welt schon mal vorbereiten
+    function frame(k, dt, trip) {
+      if (trip) setup();
+      if (k <= 0.002 || !setup()) { if (shown) { cv.hidden = true; shown = false; } return; }
+      listen(dt);
+      ph += dt * (0.25 + 0.5 * au.mid);
+      const W = Math.max(1, Math.round(innerWidth * 0.5)), H = Math.max(1, Math.round(innerHeight * 0.5));
+      if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+      g2.viewport(0, 0, W, H);
+      g2.uniform2f(UV.uAsp, W / H, 1); g2.uniform1f(UV.uT, clock % 1000); g2.uniform1f(UV.uPh, ph % 1000); g2.uniform1f(UV.uK, k);
+      g2.uniform1f(UV.uBass, au.bass); g2.uniform1f(UV.uMid, au.mid); g2.uniform1f(UV.uHigh, au.high); g2.uniform1f(UV.uBeat, au.beat);
+      g2.drawArrays(g2.TRIANGLES, 0, 3);
+      if (!shown) { cv.hidden = false; shown = true; }
+    }
+    return { frame, au };
+  })();
+  // weich nachfuehren (kritisch gedaempfte Feder): faengt sanft an, kommt sanft an, schiesst nicht ueber
+  function follow(sp, to, dt, w) {
+    for (let t = dt; t > 1e-4; t -= 0.02) {
+      const h = Math.min(0.02, t);
+      sp.v += ((to - sp.x) * w * w - 2 * w * sp.v) * h; sp.x += sp.v * h;
+    }
+    if (sp.x < 0) { sp.x = 0; sp.v = Math.max(0, sp.v); }
+    if (sp.x > 1) { sp.x = 1; sp.v = Math.min(0, sp.v); }
+    return sp.x;
+  }
+  const tripSp = { d: { x: 0, v: 0 }, p: { x: 0, v: 0 }, f: { x: 0, v: 0 } };
+  let curTrip = 0, tripDrift = 0, tripPeak = 0, tripLast = 0, tripPh = 0;
+  let tripVeil = 0;
   const setTrip = (v) => { if (U.uTrip) gl.uniform1f(U.uTrip, v); };
   // a = [x, y, z, Art] (siehe uTripAt im Shader) oder null = zurueck auf "jede Ecke fuer sich"
   const setTripAt = (a) => { if (U.uTripAt) gl.uniform4f(U.uTripAt, a ? a[0] : 0, a ? a[1] : 0, a ? a[2] : 0, a ? a[3] : 0); };
@@ -17397,6 +17542,7 @@ void main() {
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     signMark = Post.begin(w, h) ? 0 : 1;
     signQueue.length = 0;
+    if (mode === 'title' || mode === 'files' || mode === 'coursesel') FracVeil.frame(0, 0);
     if (mode === 'title' || mode === 'files') { renderMenu(w, h); return; }
     if (mode === 'coursesel') { CourseSel.render(w, h); return; }
     const L = cur;
@@ -17416,14 +17562,19 @@ void main() {
     gl.uniform3fv(U.uFogCol, fogCol);
     gl.uniform3fv(U.uCam, cam.pos);
     gl.uniform1f(U.uDim, L.dim ?? 1);
-    // Trip-Welt + Stillstand (pl.idleT): ab 1,5 s driftet die Welt auseinander (voll nach 7,5 s), ab 7 s ziehen
-    // Fraktale und Formen uebers Bild (voll nach 12 s); wer sich ruehrt, holt alles in ~0,4 s zurueck
+    // Trip-Welt + Stillstand (pl.idleT): ab 2 s driftet die Welt auseinander (voll nach 9 s), ab 8 s ziehen
+    // Fraktale und Formen uebers Bild (voll nach 14 s); wer sich ruehrt, holt alles in ~1,5-2 s weich zurueck.
     const tdt = clamp(clock - tripLast, 0, 0.1); tripLast = clock;
-    const idleNow = L.trip && !reduceMotion && mode === 'play' ? pl.idleT || 0 : 0;
-    const dTo = smooth(clamp((idleNow - 1.5) / 6, 0, 1)), pTo = smooth(clamp((idleNow - 7) / 5, 0, 1));
-    tripDrift = dTo >= tripDrift ? dTo : Math.max(dTo, tripDrift - tdt * 2.5);
-    tripPeak = pTo >= tripPeak ? pTo : Math.max(pTo, tripPeak - tdt * 2.5);
+    // Ab 14 s waechst zusaetzlich der Fraktal-Schleier uebers ganze Bild (voll nach 24 s). Rein wie raus laeuft alles
+    // ueber weiche Federn (vorher schnappte die Welt in 0,4 s linear zurueck, Wunsch 2026-10-01: viel weicher)
+    const idleNow = L.trip && !reduceMotion && mode === 'play' && !Dialog.open ? pl.idleT || 0 : 0;
+    if (!L.trip) for (const k in tripSp) tripSp[k].x = tripSp[k].v = 0;
+    tripDrift = follow(tripSp.d, smooth(clamp((idleNow - 2) / 7, 0, 1)), tdt, 2.2);
+    tripPeak = follow(tripSp.p, smooth(clamp((idleNow - 8) / 6, 0, 1)), tdt, 2.6);
+    tripVeil = follow(tripSp.f, smooth(clamp((idleNow - 14) / 10, 0, 1)), tdt, 2.4);
     curTrip = reduceMotion ? 0 : (L.trip || 0) * (1 + 0.8 * tripDrift);
+    tripPh = (tripPh + tdt * 0.35 * curTrip) % TAU;
+    if (U.uTripPh) gl.uniform1f(U.uTripPh, tripPh);
     setTrip(curTrip);
     if (U.uDrift) gl.uniform4f(U.uDrift, pl.pos[0], pl.pos[1], pl.pos[2], curTrip ? tripDrift : 0);
     if (U.uTime) gl.uniform1f(U.uTime, clock % 1000);
@@ -17545,6 +17696,7 @@ void main() {
     gl.disable(gl.BLEND);
     // Schilder und Gemaelde noch einmal scharf (nur mit Bildfilter; dort sind sie sonst kaum lesbar)
     if (L.trip) Skybox.lsd(tripPeak * 0.85, clock);   // Trip-Hoehepunkt ueber die Szene (mit 0 nur vorbereiten)
+    FracVeil.frame(L.trip ? tripVeil : 0, tdt, !!L.trip);
     if (signMark === 0 && signQueue.length) Post.signs(w, h, () => { for (const [m, M, o] of signQueue) signPass(m, M, o, false); });
     Post.end(w, h);
   }
@@ -18625,7 +18777,7 @@ void main() {
       frameDt(dt, input) { forced = input || null; frame(0, dt); forced = null; },
       renderOnce() { render(); },
       ArtGen, CATS, setCat, get cat() { return CAT; }, Skybox, Post, FilterPick, get clock() { return clock; }, blinkAt,
-      measure: measureMoves, MOVES, Snd, booted, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby, TitleHead,
+      measure: measureMoves, MOVES, Snd, booted, FracVeil, tripSp, FileMenu, Input, get slot() { return slot; }, Net, hitByPlayer, Lobby, TitleHead,
       enterCourse, CourseSel, Flyby, COURSES, bbCache, get BB_CACHE() { return BB_CACHE; }, BB, bbPath, HField, render, exitCourse, dropLevel,
       PaintOut, courseOf, leaveCourse, loseLife, collectStar, Iris, DoorSeq, useDoor,
     };
