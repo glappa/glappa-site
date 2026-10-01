@@ -1455,6 +1455,28 @@
     uniform vec3 uCam; uniform float uShine; uniform float uRim; uniform float uDim;
     uniform float uArt; uniform float uSwirl; uniform float uDetail; uniform float uTrip; uniform float uTime; uniform float uTri;
     uniform float uTripPh;   // Farbdrehung, auf der CPU aufsummiert (uTrip * uTime sprang bei jeder Aenderung von uTrip wild)
+    // Apfelmaennchen live je Pixel (Inseln, bewegtes Bild): xy = Re/Im bei UV 0/0, zw = Spanne (z = 0: aus);
+    // uMandelI: x = Iterationen (gebrochen = weich), y = Farbversatz, z = ab dieser Fluchtzahl sichtbar (< 0: ganz deckend)
+    uniform vec4 uMandel; uniform vec4 uMandelI;   // uMandelI.w: runder Rand (Radius in UV, 0 = eckig lassen)
+    float mandelE(vec2 c, float mx) {
+      vec2 q = vec2(c.x - 0.25, c.y); float qq = dot(q, q);
+      if (qq * (qq + q.x) <= 0.25 * c.y * c.y || dot(c + vec2(1.0, 0.0), c + vec2(1.0, 0.0)) <= 0.0625) return 1e4;   // Herz, 2er-Knospe
+      vec2 z = vec2(0.0), zs = vec2(0.0);
+      float per = 8.0, cnt = 0.0;
+      for (int k = 0; k < 600; k++) {
+        float i = float(k);
+        if (i >= mx) break;
+        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+        if (dot(z, z) > 256.0) return i + 1.0 - log2(log(length(z)));
+        // innen kreist z auf einem Zyklus: kommt es auf einen gemerkten Wert zurueck, ist der Punkt sicher innen
+        // (spart bei tiefen Ansichten die meisten der bis zu 500 Runden)
+        vec2 dz = z - zs;
+        if (dot(dz, dz) < 1e-12) return 1e4;
+        cnt += 1.0;
+        if (cnt >= per) { cnt = 0.0; per *= 2.0; zs = z; }
+      }
+      return 1e4;
+    }
     // Farbton drehen (fuer den Trip)
     vec3 hue(vec3 c, float a) {
       const vec3 k = vec3(0.57735);
@@ -1492,6 +1514,17 @@
           vec3 w = pow(abs(n), vec3(4.0)); w /= (w.x + w.y + w.z);
           base *= texture2D(uTex, vWPos.zy * uTri).rgb * w.x + texture2D(uTex, vWPos.xz * uTri).rgb * w.y + texture2D(uTex, vWPos.xy * uTri).rgb * w.z;
         } else { vec4 tx = texture2D(uTex, uv); if (tx.a < 0.02) discard; base *= tx.rgb; ta = tx.a; }
+      }
+      if (uMandel.z != 0.0) {
+        if (uMandelI.w > 0.0 && length(vUV - 0.5) > uMandelI.w) discard;
+        float e = mandelE(uMandel.xy + vUV * uMandel.zw, uMandelI.x);
+        float ins = e > 9e3 ? 1.0 : smoothstep(uMandelI.x - 1.0, uMandelI.x, e);   // gebrochene Iterationszahl: weich
+        float t = e * 0.045 + uMandelI.y, k = min(1.0, e / 40.0);
+        vec3 oc = (0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)))) * (0.55 + 0.45 * k);
+        base = mix(oc, vec3(0.047, 0.024, 0.094), ins);
+        float al = uMandelI.z < 0.0 ? 1.0 : mix(clamp((e - uMandelI.z) / 9.0, 0.0, 1.0) * (0.55 + 0.45 * k), 1.0, ins);
+        if (al < 0.02) discard;
+        ta = al;
       }
       if (uArt > 0.0) base *= 1.0 + uSwirl * 0.45;
       if (uDetail > 0.0) {
@@ -1536,7 +1569,7 @@
   gl.useProgram(prog);
   const A = {}, U = {};
   ['aPos', 'aNrm', 'aCol', 'aUV'].forEach((n) => { A[n] = gl.getAttribLocation(prog, n); gl.enableVertexAttribArray(A[n]); });
-  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift', 'uTripPh', 'uAncOn', 'uDriftAt', 'uDriftOn']
+  ['uProj', 'uView', 'uModel', 'uLight', 'uFogCol', 'uFog', 'uTint', 'uLit', 'uAlpha', 'uTex', 'uUseTex', 'uRip', 'uRipOn', 'uCam', 'uShine', 'uRim', 'uDim', 'uArt', 'uSwirl', 'uDetail', 'uTrip', 'uTime', 'uTri', 'uTripAt', 'uDrift', 'uTripPh', 'uAncOn', 'uDriftAt', 'uDriftOn', 'uMandel', 'uMandelI']
     .forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
   const A_ANC = gl.getAttribLocation(prog, 'aAnc');   // nur fuer Level-Geometrie mit Ankern (an/aus je Zeichnung)
   gl.enable(gl.DEPTH_TEST);
@@ -1788,7 +1821,7 @@
     return true;
   }
 
-  const NO_TINT = [0, 0, 0, 0];
+  const NO_TINT = [0, 0, 0, 0], NO_MANDEL = [0, 0, 0, 0];
   function draw(mesh, model, o = {}) {
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.p); gl.vertexAttribPointer(A.aPos, 3, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.n); gl.vertexAttribPointer(A.aNrm, 3, gl.FLOAT, false, 0, 0);
@@ -1807,6 +1840,8 @@
     gl.uniform1f(U.uSwirl, o.swirl || 0);
     gl.uniform1f(U.uDetail, o.detail || 0);
     gl.uniform1f(U.uTri, o.tri || 0);
+    gl.uniform4fv(U.uMandel, o.mandel || NO_MANDEL);
+    if (o.mandel) gl.uniform4f(U.uMandelI, o.mandelI[0], o.mandelI[1], o.mandelI[2], o.mandelI[3] || 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, o.tex || whiteTex);
     if (mesh.a && A_ANC >= 0) {
@@ -6145,25 +6180,44 @@ vec3 art(vec2 p) {
         L.talkers.push({ pos: [x, y, z], speaker, text });
       },
       // Rahmen, der auf die echte Glappa-Seite fuehrt (reinspringen)
+      // o.side: -1 = Bild schaut nach -x (steht am Ostrand), 1 = nach +x; sonst nach +z wie bisher
       portal(x, y, z, idx, o = {}) {
-        const pd = PAINTINGS[idx], s = o.scale || 1, cy = y + (o.lift ?? 3.35) * s;
-        const pt = {
-          name: o.name || 'Webseite: ' + PAGE_NAMES[idx], href: pd.href, level: null, n: idx + 1,
-          x, y: cy, z: z + 0.3, axis: 'x', scale: s, wallTag: o.wallTag || 'portal', rip: null, noFrame: !!o.noFrame,
-          model: M4.from(x, cy, z + 0.3, 0, 0, 0, s), frame: M4.from(x, cy, z + 0.25, 0, 0, 0, s),
-          tex: o.tex || null,
-        };
+        const pd = PAINTINGS[idx], pt = K.easel(x, y, z, o);
+        Object.assign(pt, { name: o.name || 'Webseite: ' + PAGE_NAMES[idx], href: pd.href, level: null, n: idx + 1, tex: o.tex || null });
         if (!o.tex) ArtGen.request(pt, pd.bg, idx + 1, pd.name);
+        return pt;
+      },
+      // Staffelei mit Rahmen (ohne Inhalt): Bild auf ihr, Rueckwand, Beine, Stern; side wie bei portal
+      easel(x, y, z, o = {}) {
+        const s = o.scale || 1, cy = y + (o.lift ?? 3.35) * s, sd = o.side || 0, ry = sd ? sd * Math.PI / 2 : 0;
+        const at = (f) => (sd ? [x + sd * f, z] : [x, z + f]);   // f = Abstand nach vorn
+        const [mx, mz] = at(0.3), [fx, fz] = at(0.25);
+        const pt = {
+          x: mx, y: cy, z: mz, axis: sd ? 'z' : 'x', scale: s, wallTag: o.wallTag || 'portal', rip: null, noFrame: !!o.noFrame,
+          model: M4.from(mx, cy, mz, ry, 0, 0, s), frame: M4.from(fx, cy, fz, ry, 0, 0, s),
+        };
         if (!o.wallTag) {
-          L.solid(x - 2.9 * s, y, z - 0.3, x + 2.9 * s, cy + 2.7 * s, z + 0.05, 'portal');
-          box(g, M4.from(x, cy, z - 0.13), 6 * s, 5.4 * s, 0.3, hex('#4a2a0a'));
+          const w = 2.9 * s;
+          if (sd) L.solid(Math.min(x, x + sd * 0.3), y, z - w, Math.max(x, x + sd * 0.3), cy + 2.7 * s, z + w, pt.wallTag);
+          else L.solid(x - w, y, z - 0.3, x + w, cy + 2.7 * s, z + 0.05, pt.wallTag);
+          const [bx, bz] = at(-0.13);
+          box(g, M4.from(bx, cy, bz, ry), 6 * s, 5.4 * s, 0.3, hex('#4a2a0a'));
           const legH = cy - 2.7 * s - y;
-          if (legH > 0.05) for (const sx of [-1, 1]) box(g, M4.from(x + sx * 2.2 * s, y + legH / 2, z - 0.1), 0.3, legH, 0.3, hex('#6b4214'));
-          starGeo(glow, M4.from(x, cy + 3.05 * s, z + 0.1), 0.4 * s, 0.08, hex('#ffe680'));
+          if (legH > 0.05) for (const sx of [-1, 1]) {
+            const [lx, lz] = at(-0.1), off = sx * 2.2 * s;
+            box(g, M4.from(sd ? lx : lx + off, y + legH / 2, sd ? lz + off : lz), 0.3, legH, 0.3, hex('#6b4214'));
+          }
+          const [sx2, sz2] = at(0.1);
+          starGeo(glow, M4.from(sx2, cy + 3.05 * s, sz2, ry), 0.4 * s, 0.08, hex('#ffe680'));
         }
         L.paintings = L.paintings || [];
         L.paintings.push(pt);
         return pt;
+      },
+      // bewegtes Apfelmaennchen-Bild (Wunsch 2026-10-01): wird immerzu "durchiteriert" - die Iterationen wachsen von 1
+      // an, das Set schaelt sich heraus, dann spult es weich zurueck. Nur Deko (man springt nicht hinein)
+      fractalEasel(x, y, z, o = {}) {
+        return Object.assign(K.easel(x, y, z, { ...o, wallTag: 'paintdeco' }), { deco: true, mandelAnim: true });
       },
       tree(x, z, y = 0, h = 4, leaf = C.leaf, trunk = C.woodDark) {
         cyl(g, M4.from(x, y, z), 0.45, 0.35, h, 6, trunk);
@@ -8520,13 +8574,12 @@ vec3 art(vec2 p) {
     return L;
   }
 
-  /* Apfelmaennchen als begehbare Insel (Wunsch 2026-09-30: "eins mit mehr Detail" statt Herz + zwei Kreisen): das echte
-     Mandelbrot-Set. Oben liegt ein Bild (1024 x 1024, glatte Iterationsfarben: innen fast schwarz, aussen ein Regenbogen-
-     Saum, der in die feinen Faeden und Knospen ausfranst, weiter draussen durchsichtig). Begehbar ist das Innere: ein
-     0,5-m-Raster (beruehrende Knospen per Schliessen verbunden) als Quader-Streifen je Zeile, 2 m Fels darunter.
-     MB(re, im) -> Weltpunkt; liefert { mesh, tex } fuer die Bildflaeche (im durchsichtigen Durchgang zeichnen). */
-  const MANDEL_RE = [-2.2, 0.6], MANDEL_IM = [-1.4, 1.4];
-  let mandelTexCache = null;
+  /* Apfelmaennchen-Inseln (Wunsch 2026-10-01: nicht kantig, viel mehr Detail, flach von oben alles erkennbar; mehrere
+     als Plattformer, je hoeher desto tiefer hineingezoomt). Oben eine Flaeche, auf der der Shader das Set je Pixel
+     rechnet (uMandel: scharf bei jedem Abstand, gebrochene Iterationen). Darunter Fels mit weichem Umriss (Marching
+     Squares auf dem geglaetteten Innen-Raster), unten bauchig wie eine schwebende Insel. Begehbar ist das geschlossene
+     Innen-Raster (beruehrende Knospen verbunden, Kruemel weg) als unsichtbare Quader-Streifen je Zeile.
+     o = { cx, cz, top, size, view: [Re-Ecke, Im-Ecke, Spanne], iter, hue }. */
   function mandelIter(cr, ci, max) {
     // Hauptherz und 2er-Knospe gleich als innen erkennen (spart die meisten Rechnungen)
     const xq = cr - 0.25, q = xq * xq + ci * ci;
@@ -8540,67 +8593,143 @@ vec3 art(vec2 p) {
     if (i >= max) return max;
     return i + 1 - Math.log(Math.log(Math.sqrt(x * x + y * y))) / Math.LN2;   // glatt (keine Farbstufen)
   }
-  function mandelIsland(L, MB) {
-    const [r0, r1] = MANDEL_RE, [i0, i1] = MANDEL_IM;
-    if (!mandelTexCache) {
-      const N = 1024, MAX = 160;
-      mandelTexCache = signTexture((c) => {
-        const img = c.createImageData(N, N), D = img.data;
-        for (let j = 0; j < N; j++) {
-          const ci = i0 + (j + 0.5) / N * (i1 - i0);
-          for (let i = 0; i < N; i++) {
-            const n = mandelIter(r0 + (i + 0.5) / N * (r1 - r0), ci, MAX), o = (j * N + i) * 4;
-            if (n >= MAX) { D[o] = 12; D[o + 1] = 6; D[o + 2] = 24; D[o + 3] = 255; continue; }
-            // Regenbogen nach Iterationen, zum Rand hin heller; weit draussen durchsichtig
-            const t = n * 0.045, k = Math.min(1, n / 40);
-            const al = Math.max(0, Math.min(1, (n - 7) / 9));
-            D[o] = 255 * (0.5 + 0.5 * Math.cos(TAU * t)) * (0.55 + 0.45 * k);
-            D[o + 1] = 255 * (0.5 + 0.5 * Math.cos(TAU * (t + 0.33))) * (0.55 + 0.45 * k);
-            D[o + 2] = 255 * (0.5 + 0.5 * Math.cos(TAU * (t + 0.67))) * (0.55 + 0.45 * k);
-            D[o + 3] = 255 * al * (0.55 + 0.45 * k);
-          }
-        }
-        c.putImageData(img, 0, 0);
-      }, N, N, N, N);
+  function mandelIsland(L, o) {
+    const { cx, cz, top, size, iter } = o, [re0, im0, span] = o.view, x0 = cx - size / 2, z0 = cz - size / 2;
+    const n = Math.min(160, Math.ceil(size / 0.3)), cs = size / n;
+    let g = new Uint8Array(n * n);
+    // round: gezoomte Ansichten reichen ueber den Bildrand - dann eine runde Insel statt eines geraden Schnitts
+    const R2 = o.round ? (o.round * n) ** 2 : Infinity;
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) {
+      const inR = (i + 0.5 - n / 2) ** 2 + (k + 0.5 - n / 2) ** 2 <= R2;
+      g[k * n + i] = inR && mandelIter(re0 + (i + 0.5) / n * span, im0 + (k + 0.5) / n * span, iter) >= iter ? 1 : 0;
     }
-    // begehbares Innere: Raster, geschlossen (erweitern, dann schrumpfen), Streifen je Zeile
-    const CELL = 0.5 / 14, nx = Math.ceil((r1 - r0) / CELL), nz = Math.ceil((i1 - i0) / CELL), inside = new Uint8Array(nx * nz);
-    for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) inside[k * nx + i] = mandelIter(r0 + (i + 0.5) * CELL, i0 + (k + 0.5) * CELL, 80) >= 80 ? 1 : 0;
-    const morph = (src, keep) => {   // keep = 1: erweitern (ein Nachbar genuegt), 0: schrumpfen (alle Nachbarn noetig)
+    const morph = (src, grow) => {   // grow: erweitern (ein Nachbar genuegt), sonst schrumpfen (alle Nachbarn noetig)
       const out = new Uint8Array(src.length);
-      for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+      for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) {
         let any = 0, all = 1;
         for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
-          const kk = k + dk, ii = i + di, v = kk >= 0 && kk < nz && ii >= 0 && ii < nx ? src[kk * nx + ii] : 0;
+          const kk = k + dk, ii = i + di, v = kk >= 0 && kk < n && ii >= 0 && ii < n ? src[kk * n + ii] : 0;
           any |= v; all &= v;
         }
-        out[k * nx + i] = keep ? any : all;
+        out[k * n + i] = grow ? any : all;
       }
       return out;
     };
-    const solidMap = morph(morph(inside, 1), 0);
-    const ROCK = { top: hex('#0c0618'), side: hex('#2a1a4a') }, top = MB(0, 0)[1];
-    for (let k = 0; k < nz; k++) {
-      let i = 0;
-      while (i < nx) {
-        if (!solidMap[k * nx + i]) { i++; continue; }
-        const s = i;
-        while (i < nx && solidMap[k * nx + i]) i++;
-        const a = MB(r0 + s * CELL, i0 + k * CELL), b = MB(r0 + i * CELL, i0 + (k + 1) * CELL);
-        L.block((a[0] + b[0]) / 2, top - 1.02, (a[2] + b[2]) / 2, Math.abs(b[0] - a[0]), 2, Math.abs(b[2] - a[2]), ROCK, 'mandel');
+    g = morph(morph(g, 1), 0);
+    // Kruemel (unter 12 Zellen) weg, Abstand zum Rand je Zelle (fuer den bauchigen Boden)
+    const dist = new Float32Array(n * n), lab = new Int32Array(n * n).fill(-1), q = [];
+    for (let s0 = 0; s0 < n * n; s0++) {
+      if (!g[s0] || lab[s0] >= 0) continue;
+      const comp = [s0]; lab[s0] = s0;
+      for (let h = 0; h < comp.length; h++) {
+        const c = comp[h], x = c % n, y = (c / n) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const X = x + dx, Y = y + dy, o2 = Y * n + X;
+          if (X >= 0 && Y >= 0 && X < n && Y < n && g[o2] && lab[o2] < 0) { lab[o2] = s0; comp.push(o2); }
+        }
+      }
+      if (comp.length < 12) for (const c of comp) g[c] = 0;
+    }
+    for (let c = 0; c < n * n; c++) {
+      const x = c % n, y = (c / n) | 0;
+      dist[c] = g[c] ? 1e9 : 0;
+      if (g[c] && (x === 0 || y === 0 || x === n - 1 || y === n - 1 || !g[c - 1] || !g[c + 1] || !g[c - n] || !g[c + n])) { dist[c] = 1; q.push(c); }
+    }
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h], x = c % n, y = (c / n) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const X = x + dx, Y = y + dy, o2 = Y * n + X;
+        if (X >= 0 && Y >= 0 && X < n && Y < n && dist[o2] > dist[c] + 1) { dist[o2] = dist[c] + 1; q.push(o2); }
       }
     }
-    // Bildflaeche knapp ueber den Quadern (UV: u = Realteil, v = Imaginaerteil, wie im Bild) - als feines Raster, damit
-    // sie im Trip genauso wabert und driftet wie der Fels darunter (die Welle wird je Ecke gerechnet)
-    const A = MB(r0, i0), B = MB(r1, i1), y = top + 0.03, G = 32;
-    const mesh = build((gg) => {
-      for (let b = 0; b < G; b++) for (let a = 0; a < G; a++) {
-        const u0 = a / G, u1 = (a + 1) / G, v0 = b / G, v1 = (b + 1) / G;
-        const X = (u) => lerp(A[0], B[0], u), Z = (v) => lerp(A[2], B[2], v);
-        gg.quad([X(u0), y, Z(v1)], [X(u1), y, Z(v1)], [X(u1), y, Z(v0)], [X(u0), y, Z(v0)], C.white, [[u0, v1], [u1, v1], [u1, v0], [u0, v0]]);
+    // begehbar: Streifen je Zeile (unsichtbar - zu sehen ist der weiche Fels)
+    const ROCKC = { top: hex('#0c0618'), side: hex('#2a1a4a') };
+    for (let k = 0; k < n; k++) {
+      let i = 0;
+      while (i < n) {
+        if (!g[k * n + i]) { i++; continue; }
+        const s0 = i;
+        while (i < n && g[k * n + i]) i++;
+        L.block(x0 + (s0 + i) / 2 * cs, top - 1.02, z0 + (k + 0.5) * cs, (i - s0) * cs, 2, cs, ROCKC, 'mandel', false);
+      }
+    }
+    // Eckwerte: Mittel der vier Zellen, noch einmal weichgezeichnet -> runder Umriss; Tiefe des Bodens nach Randabstand
+    const N1 = n + 1, cv = new Float32Array(N1 * N1), cd = new Float32Array(N1 * N1);
+    const G = (i, k) => (i < 0 || k < 0 || i >= n || k >= n ? 0 : g[k * n + i]), D = (i, k) => (i < 0 || k < 0 || i >= n || k >= n ? 0 : dist[k * n + i]);
+    for (let k = 0; k <= n; k++) for (let i = 0; i <= n; i++) {
+      cv[k * N1 + i] = (G(i - 1, k - 1) + G(i, k - 1) + G(i - 1, k) + G(i, k)) / 4;
+      cd[k * N1 + i] = Math.max(D(i - 1, k - 1), D(i, k - 1), D(i - 1, k), D(i, k)) * cs;
+    }
+    const sm = new Float32Array(N1 * N1);
+    for (let k = 0; k <= n; k++) for (let i = 0; i <= n; i++) {
+      let sum = 0, w = 0;
+      for (let dk = -1; dk <= 1; dk++) for (let di = -1; di <= 1; di++) {
+        const kk = k + dk, ii = i + di;
+        if (kk < 0 || ii < 0 || kk > n || ii > n) continue;
+        const ww = dk || di ? 1 : 2; sum += cv[kk * N1 + ii] * ww; w += ww;
+      }
+      sm[k * N1 + i] = sum / w;
+    }
+    const gg = L.geo, yT = top - 0.03, EDGE = 1.1;
+    const depth = (d) => EDGE + Math.min(4.5, d * 0.55);
+    const TOPC = hex('#0c0618'), WALL_HI = hex('#5a3c9a'), WALL_LO = hex('#1a0f30'), BOT = hex('#140a26');
+    for (let k = 0; k < n; k++) for (let i = 0; i < n; i++) {
+      const cor = [[i, k], [i + 1, k], [i + 1, k + 1], [i, k + 1]], poly = [];
+      for (let j = 0; j < 4; j++) {
+        const [ai, ak] = cor[j], [bi, bk] = cor[(j + 1) % 4], va = sm[ak * N1 + ai], vb = sm[bk * N1 + bi];
+        if (va >= 0.5) poly.push({ x: x0 + ai * cs, z: z0 + ak * cs, d: depth(cd[ak * N1 + ai]), e: false });
+        if ((va >= 0.5) !== (vb >= 0.5)) {
+          const t = (0.5 - va) / (vb - va);
+          poly.push({ x: x0 + (ai + (bi - ai) * t) * cs, z: z0 + (ak + (bk - ak) * t) * cs, d: EDGE, e: true });
+        }
+      }
+      if (poly.length < 3) continue;
+      for (let j = 1; j < poly.length - 1; j++) {
+        const a = poly[0], b = poly[j], c = poly[j + 1];
+        gg.tri([a.x, yT, a.z], [c.x, yT, c.z], [b.x, yT, b.z], TOPC, null, [[0, 1, 0], [0, 1, 0], [0, 1, 0]]);
+        gg.tri([a.x, top - a.d, a.z], [b.x, top - b.d, b.z], [c.x, top - c.d, c.z], [BOT, shade(BOT, 0.8), shade(BOT, 0.8)]);
+      }
+      for (let j = 0; j < poly.length; j++) {
+        const P = poly[j], Q = poly[(j + 1) % poly.length];
+        if (!P.e || !Q.e) continue;
+        const dx = Q.x - P.x, dz = Q.z - P.z, l = Math.hypot(dx, dz) || 1, nn = [dz / l, 0, -dx / l];
+        gg.tri([P.x, yT, P.z], [Q.x, yT, Q.z], [Q.x, top - EDGE, Q.z], [WALL_HI, WALL_HI, WALL_LO], null, [nn, nn, nn]);
+        gg.tri([P.x, yT, P.z], [Q.x, top - EDGE, Q.z], [P.x, top - EDGE, P.z], [WALL_HI, WALL_LO, WALL_LO], null, [nn, nn, nn]);
+      }
+    }
+    // Bildflaeche knapp ueber dem Fels (UV: u = Realteil, v = Imaginaerteil) - als Raster, damit sie im Trip mitwabert
+    const GR = 24, y = top + 0.03;
+    const mesh = build((m) => {
+      for (let b = 0; b < GR; b++) for (let a = 0; a < GR; a++) {
+        const u0 = a / GR, u1 = (a + 1) / GR, v0 = b / GR, v1 = (b + 1) / GR, X = (u) => x0 + u * size, Z = (v) => z0 + v * size;
+        m.quad([X(u0), y, Z(v1)], [X(u1), y, Z(v1)], [X(u1), y, Z(v0)], [X(u0), y, Z(v0)], C.white, [[u0, v1], [u1, v1], [u1, v0], [u0, v0]]);
       }
     });
-    return { mesh, tex: mandelTexCache };
+    // ab welcher Fluchtzahl die Flaeche sichtbar wird: am Bildrand fast durchsichtig, zum Set hin der Regenbogen-Saum
+    let nMin = iter;
+    for (let j = 0; j < 64; j++) {
+      const t = j / 63;
+      for (const [u, v] of [[t, 0], [t, 1], [0, t], [1, t]]) nMin = Math.min(nMin, mandelIter(re0 + u * span, im0 + v * span, iter));
+    }
+    // fester Boden (zwei Zellen vom Rand) fuer Trittsteine, Gegner und Muenzen
+    const solidAt = (x, z) => { const i = Math.floor((x - x0) / cs), k = Math.floor((z - z0) / cs); return i >= 0 && k >= 0 && i < n && k < n && dist[k * n + i] >= 3; };
+    const ground = [];
+    for (let k = 0; k < n; k += 2) for (let i = 0; i < n; i += 2) if (dist[k * n + i] >= 3) ground.push([x0 + (i + 0.5) * cs, z0 + (k + 0.5) * cs, dist[k * n + i] * cs]);
+    return { mesh, mandel: [re0, im0, span, span], mandelI: [iter, o.hue || 0, Math.min(nMin + 3, iter - 10), o.round || 0], top, cx, cz, size, solidAt, ground };
+  }
+  // Trittsteine zwischen zwei Inseln: kuerzester Weg zwischen festem Boden, je Sprung hoechstens 5 m weit und 1,8 m hoch
+  function mandelSteps(K, A, B, col) {
+    let best = null, bd = Infinity;
+    for (const p of A.ground) for (const q of B.ground) {
+      const d = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2;
+      if (d < bd) { bd = d; best = [p, q]; }
+    }
+    const [p, q] = best, D = Math.sqrt(bd), H = B.top - A.top, m = Math.max(2, Math.ceil(D / 5), Math.ceil(Math.abs(H) / 1.8));
+    for (let j = 1; j < m; j++) {
+      const t = j / m;
+      K.plat(lerp(p[0], q[0], t), A.top + H * t, lerp(p[1], q[1], t), 2.6, 2.6, col, 0.6, 'stone');
+    }
+    return { D, H, m };
   }
 
   /* ─────────── Welt 6: Mandelbrot-Regenbogen ───────────
@@ -8615,22 +8744,24 @@ vec3 art(vec2 p) {
     const RAINBOW = ['#ff3b3b', '#ff9a2e', '#ffe14a', '#4cd964', '#3aa0ff', '#8a5cff'];
     const CRYS = { top: hex('#b8a8ff'), side: hex('#6a4ac8') };
     L.block(0, -1, 20, 12, 2, 12, CRYS, 'plat');
-    RAINBOW.forEach((col, i) => L.block(-1.5 + i * 0.6, -0.2, 6, 0.6, 0.4, 16, hex(col), 'bridge'));
-    L.block(0, -1, -10, 16, 2, 16, { top: hex('#d8c8ff'), side: hex('#7a5ad8') }, 'plat');
-    for (const [x, z] of [[-6, 14], [6, 14], [-6, 26], [6, 26], [-8, -18], [8, -18], [-8, -2], [8, -2]]) K.crystal(x, 0, z, 1.4 + r() * 0.8, hex(RAINBOW[Math.floor(r() * 6)]), r() * 3);
+    RAINBOW.forEach((col, i) => L.block(-1.5 + i * 0.6, -0.2, 8, 0.6, 0.4, 12, hex(col), 'bridge'));
+    // grosse Plattform (Wunsch 2026-10-01: groesser, die Bilder ganz rechts, aus dem Weg der Spiralstufen)
+    L.block(5, -1, -10, 34, 2, 24, { top: hex('#d8c8ff'), side: hex('#7a5ad8') }, 'plat');
+    for (const [x, z] of [[-6, 14], [6, 14], [-6, 26], [6, 26], [-11.5, -21.5], [21.5, -21.5], [-11.5, 1.5], [21.5, 1.5]]) K.crystal(x, 0, z, 1.4 + r() * 0.8, hex(RAINBOW[Math.floor(r() * 6)]), r() * 3);
     for (let i = 0; i < 12; i++) sphere(g, M4.from(Math.cos(i) * 60 + (i % 3) * 20, -70 - (i % 4) * 6, Math.sin(i * 1.7) * 60), 30, 8, 22, 10, 5, i % 2 ? hex('#c8b8f0') : hex('#e8e0ff'));
     // Die Spirale: 14 Stufen, jede 10 % kleiner, 2,4 m hoeher, 50° weiter
     const C0 = [0, -10], OMEGA = 0.13;
     for (let k = 0; k < 14; k++) {
-      const rr = 13 * Math.pow(0.9, k), s = 7.5 * Math.pow(0.9, k), top = 2.4 * (k + 1), a0 = Math.PI / 2 + k * 50 * Math.PI / 180;
+      const rr = 13 * Math.pow(0.9, k), s = 7.5 * Math.pow(0.9, k), top = 2.4 * (k + 1) + 0.2, a0 = Math.PI / 2 + k * 50 * Math.PI / 180;
       const bx = C0[0] + Math.cos(a0) * rr, bz = C0[1] + Math.sin(a0) * rr;
       const col = hex(RAINBOW[Math.floor(k / 14 * 6) % 6]);
-      L.mover(bx, top - 0.4, bz, s, 0.8, s, { top: col, side: shade(col, 0.6) },
+      L.mover(bx, top - 0.15, bz, s, 0.3, s, { top: col, side: shade(col, 0.6) },
         (t) => [C0[0] + Math.cos(a0 + OMEGA * t) * rr - bx, 0, C0[1] + Math.sin(a0 + OMEGA * t) * rr - bz], 'fractal');
     }
     L.block(0, 35, -10, 3, 2, 3, { top: hex('#ffe680'), side: hex('#c8a030') }, 'plat');
     K.star('fraktal', [0, 37.6, -10]);
-    K.portal(-4.5, 0, -17.2, 5, { scale: 0.8 });
+    K.portal(20.5, 0, -7.5, 5, { scale: 0.8, side: -1 });
+    K.fractalEasel(20.5, 0, -14.5, { scale: 0.8, side: -1 });
     // Unsichtbare Stufen neben der Bruecke hinab zur Geheiminsel
     const invis = [[10.5, -2, 17], [14, -4, 12.5], [16.5, -6, 7.5], [19, -8, 1]];
     const invisBoxes = invis.map(([x, top, z], i) => {
@@ -8639,15 +8770,47 @@ vec3 art(vec2 p) {
     });
     K.coinRing(19, -6.9, 1, 2.4, 8);
 
-    // ── Das Apfelmaennchen: begehbare Mandelbrot-Insel im Westen - das echte Mandelbrot-Set (siehe mandelIsland) ──
-    const mandel = mandelIsland(L, (re, im) => [-24 + re * 14, 3.6, 8 + im * 14]);
+    // ── Apfelmaennchen-Inseln im Westen (siehe mandelIsland): unten das ganze Set, darueber immer tiefer hineingezoomt,
+    //    jede Insel mit mehr Iterationen - Trittsteine dazwischen, Gegner erst oben, ganz oben eine Truhe ──
+    const ISLES = [
+      { cx: -35.2, cz: 8, top: 3.6, size: 39.2, view: [-2.2, -1.4, 2.8], iter: 160 },                               // das ganze Set
+      { cx: -30, cz: -28, top: 8, size: 24, view: [-0.345, 0.525, 0.45], iter: 250, hue: 0.2, round: 0.48 },        // obere Knospe
+      { cx: -62, cz: -52, top: 12.4, size: 22, view: [-0.86, -0.01, 0.22], iter: 300, hue: 0.4, round: 0.48 },      // Seepferdchental
+      { cx: -84, cz: -18, top: 16.8, size: 22, view: [-1.7774, -0.0225, 0.045], iter: 400, hue: 0.6, round: 0.48 }, // Mini-Apfelmaennchen
+      { cx: -74, cz: 15, top: 21.2, size: 18, view: [-1.94205, -0.00125, 0.0025], iter: 500, hue: 0.8, round: 0.48 }, // noch eins, viel tiefer
+    ].map((o) => mandelIsland(L, o));
+    L.isles = ISLES;
+    L.isleSteps = ISLES.slice(1).map((B, i) => mandelSteps(K, ISLES[i], B, CRYS));
+    // feste Plaetze auf einer Insel, moeglichst weit innen und untereinander mindestens dmin auseinander
+    const spots = (I, cnt, dmin = 5) => {
+      const out = [];
+      for (const p of [...I.ground].sort((a, b) => b[2] - a[2])) {
+        if (out.every((q) => Math.hypot(p[0] - q[0], p[1] - q[1]) >= dmin)) out.push(p);
+        if (out.length >= cnt) break;
+      }
+      return out;
+    };
     for (const [x, top, z] of [[-10, 0.8, 21], [-15, 1.8, 17], [-19.5, 2.8, 13]]) K.plat(x, top, z, 2.6, 2.6, CRYS, 0.6, 'stone');
     K.coinRing(-28, 4.7, 8, 3.5, 8); K.coinLine([-35, 4.7, 8], [-42.5, 4.7, 8], 4);
-    K.item(MESH.chest, [-39, 3.6, 8], (it) => {
+    const TOPI = ISLES[ISLES.length - 1], [chest] = spots(TOPI, 1);
+    K.item(MESH.chest, [chest[0], TOPI.top, chest[1]], (it) => {
       Snd.starAppear(); addCoins(10);
       burst([it.pos[0], it.pos[1] + 1, it.pos[2]], 16, { spread: 3, up: 4, life: .8, size: .2, cols: [[1, .85, .2], [1, 1, 1]], grav: 2 });
-      toast('🍎 Apfelmännchen: +10 Münzen!');
+      toast('🍎 Ganz oben im Apfelmännchen: +10 Münzen!');
     }, 2);
+    // Muenzen und Gegner auf den oberen Inseln (die unterste bleibt friedlich)
+    const FOES = [['hopper'], ['spiky', 'hopper'], ['hopper', 'bat'], ['spiky', 'bat']];
+    ISLES.slice(1).forEach((I, j) => {
+      const sp = spots(I, 4, 4.5), cols = ['#8a5cff', '#ff9a2e', '#3aa0ff', '#ff5ae0'];
+      if (sp[1]) K.coinRing(sp[1][0], I.top + 1.1, sp[1][1], 1.8, 6);
+      FOES[j].forEach((f, k) => {
+        const q = sp[(k + 2) % sp.length] || sp[0];
+        if (q === chest) return;
+        if (f === 'hopper') L.enemies.push(makeHopper(q[0], q[1], I.top + 1.5, cols[j]));
+        else if (f === 'spiky') L.enemies.push(makeSpiky(q[0], q[1], I.top + 1.5, cols[j]));
+        else L.enemies.push(makeBat(q[0], I.top + 3, q[1], cols[j]));
+      });
+    });
 
     // ── Teppich-Steg und die Regenbogenbahn ──
     RAINBOW.forEach((col, i) => L.block(10, -0.2, 22.3 + i * 0.5, 8, 0.4, 0.5, hex(col), 'bridge'));
@@ -8723,7 +8886,7 @@ vec3 art(vec2 p) {
       }
     };
     L.drawAlpha = () => {
-      draw(mandel.mesh, I4, { tex: mandel.tex, lit: 0 });   // Apfelmaennchen: Bild mit Regenbogen-Saum (aussen durchsichtig)
+      for (const I of ISLES) draw(I.mesh, I4, { mandel: I.mandel, mandelI: I.mandelI, lit: 0 });   // Set je Pixel, Regenbogen-Saum, aussen durchsichtig
       for (const v of invisBoxes) {
         const d = Math.hypot(pl.pos[0] - v.x, pl.pos[2] - v.z) + Math.abs(pl.pos[1] - v.top) * 0.5;
         const a = clamp(1 - d / 7, 0, 0.45);
@@ -8736,7 +8899,7 @@ vec3 art(vec2 p) {
     // schwebende Kristallfelsen als Deko
     for (let i = 0; i < 22; i++) {
       const x = lerp(-90, 110, r()), y = r() < 0.5 ? lerp(-30, -9, r()) : lerp(40, 60, r()), z = lerp(-150, 60, r());
-      if (Math.hypot(x, z + 10) < 30 || Math.hypot(x + 30, z - 8) < 18) continue;
+      if (Math.hypot(x, z + 10) < 30 || ISLES.some((I) => Math.abs(x - I.cx) < I.size / 2 + 6 && Math.abs(z - I.cz) < I.size / 2 + 6)) continue;
       sphere(g, M4.from(x, y, z, r() * 3), 2 + r() * 3, 1.2 + r() * 2, 2 + r() * 3, 6, 4, (ii, jj) => shade(hex('#5a4a8a'), 0.8 + ((ii + jj) % 3) * 0.12), false);
       K.crystal(x, y + 1, z, 1.5 + r() * 2, hex(RAINBOW[i % 6]), r() * 3);
     }
@@ -8746,12 +8909,13 @@ vec3 art(vec2 p) {
       '★ MANDELBROT-REGENBOGEN ★\nAchtung: Hier geht es tief runter.',
       'Die FRAKTAL-SPIRALE dreht sich langsam. Jede Stufe ist kleiner als die davor – oben in der Mitte leuchtet ein Stern.',
       'Rechts am Steg wartet ein fliegender TEPPICH. Er bringt dich über den Regenbogen zum Himmelspavillon – dort wartet der zweite Stern.',
-      'Links schwebt das APFELMÄNNCHEN. Und: nicht alles, was man nicht sieht, ist nicht da. Rechts neben der Brücke zum Beispiel.',
-      'Auf der Plattform hängt das Tor zum echten Mandelbrot-Explorer.',
+      'Links schwebt das APFELMÄNNCHEN – und darüber noch vier, jedes tiefer hineingezoomt. Ganz oben steht eine Truhe.',
+      'Und: nicht alles, was man nicht sieht, ist nicht da. Rechts neben der Brücke zum Beispiel.',
+      'Rechts auf der Plattform steht das Tor zum echten Mandelbrot-Explorer – daneben rechnet sich ein Bild immerzu weiter.',
     ]);
-    L.enemies.push(makeBat(0, 9, -10, '#ff5ae0'), makeBat(-28, 9, 8, '#ff5ae0'), makeBat(60, 11, 4, '#ff5ae0'), makeBat(40, 23, -80, '#ff5ae0'), makeBat(-45, 32, -125, '#ff5ae0'));
+    L.enemies.push(makeBat(0, 9, -10, '#ff5ae0'), makeBat(60, 11, 4, '#ff5ae0'), makeBat(40, 23, -80, '#ff5ae0'), makeBat(-45, 32, -125, '#ff5ae0'));
     L.enemies.push(makeSpiky(-4, -6, 3, '#3aa0ff'), makeSpiky(5, -14, 3, '#3aa0ff'), makeSpiky(-45, -120, 30, '#3aa0ff'));
-    L.enemies.push(makeHopper(-27, 5, 6, '#8a5cff'), makeHopper(-30, 12, 6, '#ff9a2e'), makeHopper(18, 26, 3, '#4cd964'));
+    L.enemies.push(makeHopper(18, 26, 3, '#4cd964'));
     // ── Leben ──
     K.life.glows(-40, -30, 40, 22, 24, { y: 0, yr: 8, col: '#ff7ae0', s: 1.2, speed: 0.6 });
     K.life.drifts(-40, -30, 40, 22, 12, { y0: -6, y1: 18, col: '#8ad8ff', s: 0.9, glow: true, speed: 0.5 });
@@ -13596,7 +13760,7 @@ void main() {
       const mid = p[1] + 1.1;
       for (const pt of L.paintings) {
         const s = pt.scale || 1;
-        if (pt.wallTag !== hit.b.tag || Math.abs(paintAlong(pt, p)) > 2.7 * s || mid < pt.y - 2.6 * s || mid > pt.y + 2.6 * s) continue;
+        if (pt.deco || pt.wallTag !== hit.b.tag || Math.abs(paintAlong(pt, p)) > 2.7 * s || mid < pt.y - 2.6 * s || mid > pt.y + 2.6 * s) continue;
         enterPainting(pt, p, mid);
         return;
       }
@@ -15008,7 +15172,7 @@ void main() {
     if (L.sun && dist2D(p, L.sun.spot) < L.sun.r) return { label: 'Nach oben schauen', btn: 'look' };
     if (L.paintings) {
       for (const pt of L.paintings) {
-        if (Math.abs(paintAlong(pt, p)) < 3 * (pt.scale || 1) && paintAway(pt, p) < 4.5 && Math.abs(p[1] - (pt.y - 2.6 * (pt.scale || 1))) < 1.6) return { label: 'Reinspringen: ' + pt.name, btn: 'jump' };
+        if (!pt.deco && Math.abs(paintAlong(pt, p)) < 3 * (pt.scale || 1) && paintAway(pt, p) < 4.5 && Math.abs(p[1] - (pt.y - 2.6 * (pt.scale || 1))) < 1.6) return { label: 'Reinspringen: ' + pt.name, btn: 'jump' };
       }
     }
     return null;
@@ -17736,7 +17900,10 @@ void main() {
           pt.rip = { x: paintLocalX(pt, pl.pos), y: (pl.pos[1] + 1.1 - pt.y) / (pt.scale || 1), t0: clock, amp: 0.1 };
         }
         const rip = pt.rip ? [pt.rip.x, pt.rip.y, clock - pt.rip.t0, reduceMotion ? 0 : pt.rip.amp] : null;
-        drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0, driftAt: pda });
+        if (pt.mandelAnim) {
+          const T = clock % 20, n = T < 15 ? 1 + 239 * (T / 15) ** 3 : T < 17 ? 240 : 1 + 239 * (1 - smooth((T - 17) / 3));
+          drawSign(MESH.painting, pt.model, { lit: 0, rip, mandel: [-2.3, -1.4, 3.2, 2.8], mandelI: [n, clock * 0.03, -1], driftAt: pda });
+        } else drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0, driftAt: pda });
       }
     }
     for (const c of L.coins) {

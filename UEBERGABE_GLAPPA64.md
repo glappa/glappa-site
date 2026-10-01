@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=173`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=174`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -416,6 +416,21 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - **Kein Durchstechen mehr** (`?v=173`, Regenbogen-Teppich): `tripTess` teilt in Trip-Welten beim `finish` alle
   waagrechten Dreiecke (oberhalb y −10) in ≤ 1,5 m – sonst folgte der Boden der Welle, ein 30 m langes Teppich-Viereck
   aber nur gerade von Ende zu Ende, und der Boden stach durch.
+
+### 1.27 Mandelbrot-Welt: Apfelmännchen-Plattformer, große Plattform, bewegtes Bild (2026-10-01, `?v=174`)
+- **Apfelmännchen je Pixel im Shader** (`uMandel` = Re/Im-Ecke + Spanne, `uMandelI` = Iterationen (gebrochen = weich),
+  Farbversatz, Sichtbarkeitsschwelle, runder Rand). `mandelE` mit Herz-/Knospen-Test und Zyklus-Erkennung (Brent) –
+  innen bei tiefen Ansichten sonst bis 500 Runden je Pixel. Scharf bei jedem Abstand, keine Textur mehr.
+- `mandelIsland(L, { cx, cz, top, size, view: [re0, im0, span], iter, hue, round })`: Innen-Raster (≤ 160², geschlossen,
+  Krümel < 12 Zellen weg) → unsichtbare Lauf-Streifen + **weicher Fels** (Marching Squares auf geglättetem Raster,
+  Boden bauchig nach Randabstand). `round` = runde Insel bei gezoomten Ansichten. Liefert `ground` (feste Punkte mit
+  Randabstand) für Trittsteine/Gegner/Münzen; `mandelSteps` legt Trittsteine (≤ 5 m, ≤ 1,1 m Höhe je Sprung).
+- 5 Inseln (`L.isles`): ganzes Set (3,6 m) → obere Knospe (8) → Seepferdchental (12,4) → Mini-Apfelmännchen (16,8) →
+  noch tiefer (21,2, Spanne 0,0025, 500 Iter.) mit der Truhe. Gegner nur auf Insel 2–5, die unterste ist friedlich.
+- Große Plattform 34 × 24 m (`L.block(5, -1, -10, …)`), Brücke kürzer; Spiralstufen 0,3 m dick (unten 2,3 m frei).
+- `K.easel(x, y, z, { side })` (Staffelei, `side` ±1 = Bild schaut nach ∓x … `axis: 'z'`), `K.portal` nutzt sie.
+  Rechts: Tor zum Explorer (`side: -1`), links daneben `K.fractalEasel` – Bild mit `mandelAnim`: Iterationen wachsen
+  1 → 240 in 15 s, kurz halten, 3 s weich zurück (Deko: `pt.deco`, kein Reinspringen, kein Hinweis).
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`
