@@ -9,7 +9,7 @@
   Peer-to-Peer-Umbau (Mehrspieler ohne eigenen Server, siehe 1.8). `3b37241` (Raumserver `mpgate`) ist damit wieder
   rückgebaut: `_docker/mpgate/`, Compose-Dienst, Apache-Abschnitte und `launch.json`-Eintrag sind raus.
 - Live: https://home.glappa.de/secret/glappa64.html (VPS: `cd ~/glappa-site && git pull --ff-only`, DocumentRoot = Repo,
-  **kein root nötig**). Aktuell **JS `?v=174`** (2026-10-01), Modelle `?v=15` (`MODEL_BYTES = 230816`).
+  **kein root nötig**). Aktuell **JS `?v=175`** (2026-10-02), Modelle `?v=15` (`MODEL_BYTES = 230816`).
 
 **Nicht von dieser Arbeit, NICHT mit committen** (liegen offen im Baum, gehören dem User): der `/backup/`-Block und die
 `.py`-Sperre in `_docker/apache/home.glappa.de.conf`, `_docker/glappa-watchdog.sh`, `scripts/README.md`,
@@ -431,6 +431,27 @@ per `bakeModel` eingebacken; Vorderseite `MESH.signFace` + Textur `signFaceTex(l
 - `K.easel(x, y, z, { side })` (Staffelei, `side` ±1 = Bild schaut nach ∓x … `axis: 'z'`), `K.portal` nutzt sie.
   Rechts: Tor zum Explorer (`side: -1`), links daneben `K.fractalEasel` – Bild mit `mandelAnim`: Iterationen wachsen
   1 → 240 in 15 s, kurz halten, 3 s weich zurück (Deko: `pt.deco`, kein Reinspringen, kein Hinweis).
+
+### 1.28 BLJ leichter, Knallkisten im Mehrspieler (2026-10-02, `?v=175`)
+- **BLJ** (Video: Turmtreppe im Obergeschoss, Versuche endeten im Bonk/Hochziehen). Ursachen: rueckwaerts im Weitsprung
+  griff die **Kanten-Hilfe** `tryMantle` an der naechsten Stufe (Stick zeigt ja dorthin) → `climb` statt BLJ; lag die Stufe
+  >= 1,2 m ueber den Fuessen (nach weitem Sprung treppab) → **Bonk**. Jetzt: rueckwaerts im Weitsprung kein `tryMantle`,
+  an `stair`-Bloecken kein Bonk/Wandsprung-Fenster (`bljStair`, rutscht an der Stufe hinab, Landung = BLJ). Dazu leichter:
+  Stick zurueck bremst den Weitsprung doppelt (`BLJ_PULL` 2), A zaehlt auch kurz nach einem Druck (`BLJ_A_GRACE` 0,25 s,
+  Haemmern geht). Getestet: Turmtreppe aus Gehen/Rennen/kurzem Anlauf/Haemmern → bis 250 m/s, Hallentreppe → Kette bis zur
+  Galerie; ohne A kein Bonk; `g64.measure()` alle `diff` = 0. Test: `pl` auf eine Stufe setzen, `cam.yaw = PI`, Anlauf
+  `{ my: -0.6 }`, dann `{ z, zP }` + `{ z, jump, jumpP }`, danach `{ my: 1, jump: true }`.
+- **Knallkisten**: (1) nach dem Knall einer GEWORFENEN Kiste blieb `e.thrown` > 0 → nach dem Wiederauftauchen flog sie
+  sofort weiter und knallte daheim alle 8 s erneut (~100x) – `explode` setzt jetzt `thrown`/`speed`/`netBy` zurueck.
+  (2) Mehrspieler: Gegner laufen weiter je Browser, aber Aufheben/Werfen/Absetzen/Knall gehen als `{t:'bomb', a, lv, i, x,
+  y, z, f, s, vy, tt}` an alle (`bombSend`/`bombNet`, i = Nummer in `cur.enemies`, Gastgeber prueft `cleanBomb` + gleiche
+  Welt). Getragene Kiste schwebt bei den anderen ueber dem Traeger (`e.netBy`, `Net.holder(id)`), Wurf fliegt dieselbe
+  Bahn, Knall nimmt sie ueberall weg; gleichzeitig gegriffen → kleinere Spieler-id gewinnt. (3) Kisten zuenden nur fuer
+  eine Figur im Spiel (`mode === 'play'`) – im Mehrspieler-Pausenmenue (Fenster ohne Fokus!) kamen sie sonst immer wieder.
+  `releaseHold()` (Sterben/Weltwechsel) meldet das Fallenlassen.
+- **MP-Test im Container:** 0.peerjs.com ist gesperrt → lokaler Vermittler (`npm i peer`, `ExpressPeerServer` auf
+  127.0.0.1:9000) und `ctx.route` auf `vendor/peerjs-1.5.5.min.js`, das `window.Peer` mit `{ host, port, path: '/' }` umhuellt;
+  Chromium mit `--disable-features=WebRtcHideLocalIpsWithMdns`. Zwei Seiten im selben Kontext, Frames abwechselnd treiben.
 
 ### 1.9 Handy: Hoch- und Querformat (2026-09-27)
 - Hochformat war kaum spielbar: fester senkrechter Blickwinkel 0,95 rad → bei 375×812 nur ~26° waagrecht. Jetzt `fovFor(aspect)`

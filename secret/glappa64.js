@@ -12875,8 +12875,11 @@ void main() {
      die Obergrenze bloss fuers Vorwaerts-Tempo da. In der Luft zieht es (wie im Vorbild) langsam zurueck, auf flachem
      Boden schaukelt sich also nichts auf. Der beruehmte Fehler: auf TREPPEN (Tag 'stair') mit gehaltenem A setzt jede
      Stufenkante sofort den naechsten Weitsprung an -> mal 1,5 pro Stufe -> "unendlich" schnell (gedeckelt auf BLJ_MAX,
-     damit Zahlen und Kollision heil bleiben; duenne Waende sind bei dem Tempo trotzdem durchlaessig - wie im Original). */
+     damit Zahlen und Kollision heil bleiben; duenne Waende sind bei dem Tempo trotzdem durchlaessig - wie im Original).
+     Leichter als im Vorbild (Wunsch 2026-10-02): Stick zurueck bremst den Weitsprung BLJ_PULL-mal so stark, A darf auch
+     gehaemmert werden (BLJ_A_GRACE), und rueckwaerts gibt es an Stufen weder Kanten-Hilfe noch Bonk. */
   const BLJ_MIN = 1.5, BLJ_MAX = 250, BLJ_STAIR_VY = 3;   // auf der Treppe flach abspringen: Figur klebt an den Stufen
+  const BLJ_PULL = 2, BLJ_A_GRACE = 0.25;
   const CHAIN_WINDOW = 0.2;        // Doppel-/Dreifachsprung: so kurz nach der Landung A druecken
   const LONG_WINDOW = 0.18;        // Weitsprung: Z und A duerfen so weit auseinander liegen (Reihenfolge egal)
   const CHUTE_MAX = 17, CHUTE_ACC = 10;   // Rutschbahn: Hoechsttempo (m/s) und Beschleunigung
@@ -13173,7 +13176,8 @@ void main() {
     pl.forceCrouch = pl.grounded && (pl.h < PH ? headBlocked(L, p) : lowCeiling(L, p));
 
     // BLJ: rueckwaerts im Weitsprung mit gehaltenem A (Treppen-Trick, siehe BLJ_MAX)
-    pl.aHeld = !lock && !!inp.jump;
+    if (inp.jumpP) pl.aT = time;
+    pl.aHeld = !lock && (!!inp.jump || time - (pl.aT ?? -9) < BLJ_A_GRACE);   // gehalten oder gerade gedrueckt
     const bljOn = pl.action === 'long' && pl.speed < -BLJ_MIN && pl.aHeld && !pl.grounded;
     // Stick-Richtung relativ zur Kamera
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
@@ -13361,7 +13365,7 @@ void main() {
         if (moving && !lock && pl.action !== 'knock' && pl.action !== 'bonk' && pl.action !== 'dive' && pl.action !== 'slidekick') {
           if (pl.action !== 'long') pl.face += clamp(dYaw, -3.2 * dt, 3.2 * dt);
           const dY = angDiff(pl.face, intended);
-          pl.speed += AIR_THRUST * Math.cos(dY) * mag * dt;
+          pl.speed += AIR_THRUST * Math.cos(dY) * mag * dt * (pl.action === 'long' && Math.cos(dY) < 0 ? BLJ_PULL : 1);
           pl.side = Math.sin(dY) * mag * 16 * UF;
         }
         if (pl.speed > (pl.action === 'long' || pl.action === 'dive' ? LONG_DRAG : AIR_DRAG)) pl.speed -= UFF * dt;
@@ -13452,8 +13456,10 @@ void main() {
     } else if (hit) {
       const into = -(vx * hit.n[0] + vz * hit.n[2]);
       onWallHit(hit, into);
+      // rueckwaerts im Weitsprung gegen eine hohe Stufe: kein Bonk, an ihr hinab bis auf die Stufe darunter (dort BLJ)
+      const bljStair = pl.action === 'long' && pl.speed < 0 && hit.b.tag === 'stair';
       // In der Luft gegen eine hohe Wand
-      if (!pl.grounded && !pl.entering && hit.b.max[1] > p[1] + 1.2 && pl.action !== 'pound' && pl.action !== 'bonk' && into > 8 * UF) {
+      if (!pl.grounded && !pl.entering && !bljStair && hit.b.max[1] > p[1] + 1.2 && pl.action !== 'pound' && pl.action !== 'bonk' && into > 8 * UF) {
         pl.wall = hit.n; pl.wallT = time;          // Wandsprung-Fenster geht auf
         if (into > 16 * UF || pl.action === 'long' || pl.action === 'dive') {
           // BONK: mit Wucht dagegen -> abprallen, Sternchen sehen, hinfallen
@@ -13552,7 +13558,7 @@ void main() {
     if (!pl.grounded && pl.ledgeCool <= 0 && !lock && !pl.entering
         && (pl.vel[1] <= 1.5 || pl.action === 'swim') && !['pound', 'bonk', 'knock', 'dive', 'slidekick', 'shot'].includes(pl.action)) {
       if (pl.action !== 'long' && (pl.action !== 'swim' || moving) && tryLedgeGrab(L)) return;
-      if (moving && tryMantle(L, intended)) return;
+      if (moving && !(pl.action === 'long' && pl.speed < 0) && tryMantle(L, intended)) return;   // BLJ: nicht an Stufen hochziehen
     }
     if (p[1] < (L.voidY ?? -25)) { hurtPlayer(2, p); respawn(); }
 
@@ -13853,7 +13859,7 @@ void main() {
   }
   function respawn() {
     const L = cur;
-    if (pl.hold) { pl.hold.held = false; pl.hold.state = 'walk'; pl.hold.t = 0; pl.hold = null; }
+    releaseHold();
     pl.pos = (L.respawnAt || L.spawn).slice(); pl.vel = [0, 0, 0]; pl.push = [0, 0, 0]; pl.speed = 0; pl.carry = [0, 0];
     pl.face = L.spawnFace; cam.yaw = L.spawnYaw; cam.snap = true;
     pl.grounded = true; pl.action = 'ground'; pl.flip = 0; pl.side = 0; pl.skid = false; pl.inWater = false;
@@ -14009,7 +14015,35 @@ void main() {
   }
   /* ─── Knallkisten tragen: aufheben (Hechtsprung oder Aktionstaste), ueber dem Kopf
      halten, werfen oder absetzen. Der Zuender laeuft dabei weiter — zu langes Halten knallt. ─── */
-  function canPick(e) { return e && e.type === 'bomb' && e.state !== 'gone' && !e.held && (e.thrown || 0) <= 0; }
+  function canPick(e) { return e && e.type === 'bomb' && e.state !== 'gone' && !e.held && !e.netBy && (e.thrown || 0) <= 0; }
+  /* Mehrspieler: Gegner laufen in jedem Browser fuer sich. Damit Kisten trotzdem fuer alle gleich sind, gehen Aufheben,
+     Werfen, Absetzen und Knall an alle (Nummer in cur.enemies): die getragene Kiste schwebt dort ueber dem Traeger
+     (e.netBy), ein Wurf fliegt dieselbe Bahn, ein Knall nimmt die Kiste ueberall weg. */
+  function bombSend(a, e) {
+    if (e.type !== 'bomb' || Net.status !== 'drin') return;
+    const r = (v) => Math.round((v || 0) * 100) / 100;
+    Net.bomb({ a, lv: cur.key, i: cur.enemies.indexOf(e), x: r(e.pos[0]), y: r(e.pos[1]), z: r(e.pos[2]), f: r(e.face), s: r(e.speed), vy: r(e.vy), tt: r(Math.max(0, e.t)) });
+  }
+  function bombNet(m, by) {
+    const e = cur && cur.key === m.lv ? cur.enemies[m.i] : null;
+    if (!e || e.type !== 'bomb') return;
+    if (pl.hold === e) {                            // beide gleichzeitig gegriffen: die kleinere Spieler-id gewinnt
+      if (m.a === 'pick' && by > Net.myId) return;
+      pl.hold = null;
+    }
+    e.held = false; e.netBy = 0; e.pos = [m.x, m.y, m.z]; e.face = m.f;
+    if (m.a === 'boom') { if (e.state !== 'gone') explode(e, true); return; }
+    if (e.state === 'gone') return;                 // hier schon geknallt
+    e.state = m.tt > 0 ? 'lit' : 'walk'; e.t = m.tt; e.speed = 0; e.thrown = 0;
+    if (m.a === 'pick') e.netBy = by;
+    if (m.a === 'throw') { e.thrown = 1.6; e.speed = m.s; e.vy = m.vy; }
+  }
+  function releaseHold() {                          // Sterben/Weltwechsel: Gehaltenes faellt einfach weg
+    const e = pl.hold;
+    if (!e) return;
+    e.held = false; e.state = 'walk'; e.t = 0; pl.hold = null;
+    bombSend('drop', e);
+  }
   function bombInReach() {
     if (pl.hold || pl.dead || pl.entering) return null;
     let best = null, bd = 2.8;
@@ -14026,6 +14060,7 @@ void main() {
     if (pl.grounded) pl.pickT = time;   // Pose: buecken und hochheben
     if (e.state === 'walk') { e.state = 'lit'; e.t = 3.6; } else e.t = Math.max(e.t, 2.2);
     Snd.grab(); Snd.fuse(); rumble(0.2, 60);
+    bombSend('pick', e);
   }
   function throwHold() {
     const e = pl.hold;
@@ -14038,6 +14073,7 @@ void main() {
     e.t = Math.min(e.t, 1.6);
     pl.punchT = 0; pl.punchN = 0; pl.throwT = time;   // Pose: Arme von oben nach vorn schwingen
     Snd.whoosh(); Snd.voice('throw');
+    bombSend('throw', e);
   }
   function dropHold(soft) {
     const e = pl.hold;
@@ -14050,6 +14086,7 @@ void main() {
     const gy = groundAt(cur, e.pos[0], e.pos[2], e.pos[1] + 1, 0.3);
     e.pos[1] = gy === -Infinity ? pl.pos[1] : gy;
     Snd.stomp();
+    bombSend('drop', e);
   }
   function squashGrummel(e) {
     if (e.state !== 'walk') return;
@@ -14088,6 +14125,14 @@ void main() {
       if (e.t <= 0) { pl.hold = null; e.held = false; explode(e); }
       return;
     }
+    if (e.netBy) {                                  // traegt ein Mitspieler: ueber seinem Kopf, knallen laesst ER sie
+      const h = Net.holder(e.netBy);
+      e.t -= dt; e.anim += dt * 5;
+      if (!h) { e.netBy = 0; return; }              // weg aus dieser Welt: Kiste bleibt liegen und zuendet hier weiter
+      e.pos = [h.pos[0] + Math.sin(h.yaw) * 0.08, h.pos[1] + 1.95, h.pos[2] + Math.cos(h.yaw) * 0.08]; e.face = h.yaw;
+      if (e.t < -0.5) { e.netBy = 0; explode(e, true); }   // Knall-Nachricht verloren
+      return;
+    }
     if (e.thrown > 0) {                             // geworfen: fliegt im Bogen und knallt beim Aufschlag
       e.thrown -= dt; e.t -= dt; e.anim += dt * 9;
       e.vy -= 34 * dt;
@@ -14104,7 +14149,9 @@ void main() {
     const p = pl.pos, dx = p[0] - e.pos[0], dz = p[2] - e.pos[2], d = Math.hypot(dx, dz), dy = p[1] - e.pos[1];
     if (e.state === 'walk') {
       wanderTo(e, dt, 1.2);
-      if (d < 6.5 && Math.abs(dy) < 3 && !pl.dead) { e.state = 'lit'; e.t = 2.6; Snd.fuse(); }
+      // nur wer spielt: im Mehrspieler laeuft die Welt auch im Pausenmenue weiter (Fenster ohne Fokus!) - sonst kamen
+      // die Kisten zur stehenden Figur, knallten, tauchten daheim wieder auf und knallten erneut an derselben Stelle
+      if (d < 6.5 && Math.abs(dy) < 3 && !pl.dead && mode === 'play') { e.state = 'lit'; e.t = 2.6; Snd.fuse(); }
     } else {
       e.t -= dt;
       e.face += clamp(angDiff(e.face, Math.atan2(dx, dz)), -4 * dt, 4 * dt);
@@ -14127,8 +14174,10 @@ void main() {
       }
     }
   }
-  function explode(e) {
-    e.state = 'gone'; e.t = 8;
+  function explode(e, remote) {
+    if (!remote) bombSend('boom', e);
+    // Wurf vorbei: sonst flog die Kiste nach dem Wiederauftauchen sofort weiter und knallte daheim immer wieder
+    e.state = 'gone'; e.t = 8; e.thrown = 0; e.speed = 0; e.netBy = 0;
     const c = [e.pos[0], e.pos[1] + 0.8, e.pos[2]];
     burst(c, 26, { spread: 9, up: 6, upRand: 5, life: .8, size: .55, cols: [[1, .85, .2], [1, .45, .05], [.9, .15, .05], [.3, .3, .3]], grav: 8 });
     Snd.boom(); cam.shake = Math.max(cam.shake, 0.7); rumble(1, 420);
@@ -14139,7 +14188,7 @@ void main() {
     for (const o of cur.enemies) {
       if (o === e || o.state === 'gone' || o.state === 'dead') continue;
       if (dist2D(o.pos, e.pos) > 4.2 || Math.abs(o.pos[1] - e.pos[1]) > 3) continue;
-      if (o.type === 'bomb') { if (!o.held) { o.state = 'lit'; o.t = Math.min(o.t || 9, 0.25); } }
+      if (o.type === 'bomb') { if (!o.held && !o.netBy) { o.state = 'lit'; o.t = Math.min(o.t || 9, 0.25); } }
       else if (o.type === 'grummel') squashGrummel(o);
       else if (o.type === 'spiky' || o.type === 'hopper' || o.type === 'toast' || o.type === 'bat') defeat(o);
       else if (o.type === 'virus') splitVirus(o);
@@ -15183,7 +15232,7 @@ void main() {
     const fx = Math.sin(pl.face), fz = Math.cos(pl.face);
     let hit = pvpHit(range, kick ? 's' : 'w', pvpD, all);   // Mitspieler (PvP) wie Gegner
     for (const e of cur.enemies) {
-      if (e.state === 'dead' || e.state === 'gone' || e.state === 'squash' || e.state === 'off' || e.state === 'crash' || e.type === 'roller') continue;
+      if (e.state === 'dead' || e.state === 'gone' || e.state === 'squash' || e.state === 'off' || e.state === 'crash' || e.type === 'roller' || e.netBy) continue;
       if (e.shy && e.hide > 0.65) continue;   // durchsichtig: der Schlag geht durch
       if (e.type === 'popup' && e.state !== 'chase') continue;
       // beim Wurm zaehlt das naechste Segment
@@ -15421,7 +15470,7 @@ void main() {
     return levels[key];
   }
   function enterLevel(name, pos, face, yaw, quiet) {
-    if (pl.hold) { pl.hold.held = false; pl.hold.state = 'walk'; pl.hold.t = 0; pl.hold = null; }
+    releaseHold();
     cur = getLevel(name);
     pl.pos = (pos || cur.spawn).slice(); pl.vel = [0, 0, 0]; pl.push = [0, 0, 0]; pl.speed = 0; pl.carry = [0, 0];
     cur.respawnAt = null;
@@ -16100,6 +16149,13 @@ void main() {
       if (!isNum(m.x) || !isNum(m.z)) return null;
       return { to: m.to, k: m.k, d: m.d, x: m.x, z: m.z };
     }
+    // Knallkiste: a = Ereignis, i = Nummer in cur.enemies, Ort/Blick/Wurf/Zuender (siehe bombNet)
+    const BOMB_A = ['pick', 'throw', 'drop', 'boom'];
+    function cleanBomb(m) {
+      if (!BOMB_A.includes(m.a) || typeof m.lv !== 'string' || !LEVEL_RE.test(m.lv) || !Number.isInteger(m.i) || m.i < 0 || m.i > 999) return null;
+      if (![m.x, m.y, m.z, m.f, m.s, m.vy, m.tt].every(isNum)) return null;
+      return { a: m.a, lv: m.lv, i: m.i, x: m.x, y: m.y, z: m.z, f: m.f, s: clamp(m.s, 0, 40), vy: clamp(m.vy, -40, 40), tt: clamp(m.tt, 0, 9) };
+    }
     // Gastgeber: darf "by" "to" ueberhaupt treffen? (PvP an, gleiche Welt, nah genug)
     function plausible(byId, toId) {
       if (!pvp) return false;
@@ -16229,6 +16285,11 @@ void main() {
           const out = { t: 'hit', by: g.id, k: hm.k, d: hm.d, x: hm.x, z: hm.z };
           if (hm.to === 1) hitMe(out, g.id);
           else { const v = guests.get(hm.to); if (v && v.conn.open) try { v.conn.send(out); } catch (e) { /* egal */ } }
+        } else if (m.t === 'bomb') {
+          const b = cleanBomb(m);
+          if (!b || (g.st && g.st.lv !== b.lv)) return;
+          const out = { t: 'bomb', by: g.id, ...b };
+          relay(out, g); onMsg(out);
         } else if (m.t === 'star' && typeof m.id === 'string' && STAR_RE.test(m.id) && !roomStars.has(m.id) && roomStars.size < MAX_STARS) {
           roomStars.add(m.id);
           const out = { t: 'stars', ids: [m.id], by: g.name };
@@ -16330,6 +16391,10 @@ void main() {
         const hm = cleanHit({ ...m, to: myId });
         if (hm && Number.isInteger(m.by)) hitMe(hm, m.by);
         return;
+      } else if (m.t === 'bomb') {
+        const b = cleanBomb(m);
+        if (b && Number.isInteger(m.by) && m.by !== myId) bombNet(b, m.by);
+        return;
       } else if (m.t === 'error' || m.t === 'end') {
         fail(m.t === 'end' ? 'Der Gastgeber hat den Raum beendet.' : String(m.msg || 'Fehler').slice(0, 80));
         return;
@@ -16388,6 +16453,17 @@ void main() {
       toast(pvp ? '\u2694 PvP ist an' : '\u{1F54A} PvP ist aus');
       emit();
     }
+    // Knallkisten-Ereignis an alle anderen (Gastgeber reicht weiter)
+    function bomb(b) {
+      if (status !== 'drin') return;
+      if (role === 'host') relay({ t: 'bomb', by: 1, ...b });
+      else if (role === 'guest' && hostConn && hostConn.open) try { hostConn.send({ t: 'bomb', ...b }); } catch (e) { /* egal */ }
+    }
+    // Wo steht Mitspieler id in dieser Welt (so wie gezeichnet)? Fuer Kisten ueber seinem Kopf
+    function holder(id) {
+      const o = others.get(id);
+      return o && o.head && o.pos ? { pos: o.pos, yaw: o.yaw } : null;
+    }
     function star(id) {
       if (role === 'host') {
         if (!STAR_RE.test(id) || roomStars.has(id)) return;
@@ -16426,7 +16502,7 @@ void main() {
         }
         const headM = drawPose(G, P);
         o.head = M4.point(headM, [0, 0.95, 0]);
-        o.pos = [P.x, P.y, P.z];
+        o.pos = [P.x, P.y, P.z]; o.yaw = P.yaw;
       }
     }
     function shadows() { for (const o of others.values()) if (o.head) shadowAt(o.pos[0], o.pos[1], o.pos[2], 0.75); }
@@ -16501,7 +16577,7 @@ void main() {
     return {
       // 'NEW' = Raum erstellen (dieser Browser wird Gastgeber), sonst Code = beitreten
       connect(code) { remember(''); if (code === 'NEW') host(); else join(code); },
-      leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star, bodies,
+      leave, tick, drawOthers, shadows, drawTags, autoJoin, setName, star, bodies, bomb, holder,
       onChange(f) { listeners.add(f); },
       get name() { return name; }, get room() { return room; }, get status() { return status; }, get msg() { return msg; },
       get role() { return role; }, get pvp() { return pvp; }, get myId() { return myId; },
