@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Werkzeuge &mdash; Glappa Home</title>
-  <meta name="keywords" content="Glappa Werkzeuge Uebersetzer Link-Kuerzer Speedtest Chart Kerzenchart">
-  <meta name="description" content="GLAPPA-Werkzeugkasten: KI-&Uuml;bersetzer, Link-K&uuml;rzer, Speedtest, Datei-Konverter, PGP-Chat und Chart-Visualizer — alles self-hosted, keine Cloud.">
+  <meta name="keywords" content="Glappa Werkzeuge Uebersetzer Link-Kuerzer Video MP3 Audio extrahieren Speedtest Chart Kerzenchart">
+  <meta name="description" content="GLAPPA-Werkzeugkasten: KI-&Uuml;bersetzer, Link-K&uuml;rzer, Video-zu-MP3, Speedtest, Datei-Konverter, PGP-Chat und Chart-Visualizer — alles self-hosted, keine Cloud.">
   <link rel="icon" href="../favicon.ico">
   <!-- Theme-Bootstrap VOR dem Stylesheet: gespeicherte Wahl setzen, bevor
        irgendwas rendert — kein Flackern (gleiches Prinzip wie beim
@@ -96,6 +96,27 @@
     @keyframes toolblink { 50% { opacity: 0; } }
     .tool-hint { font-size: 0.75em; margin-top: 10px; }
     .short-result a { font-weight: bold; word-break: break-all; }
+    /* Video -> MP3: Drop-Zone wie die Kacheln in convert.html */
+    .conv-drop {
+      display: block;
+      border-radius: 6px;
+      border: 2px dashed;
+      padding: 18px 12px;
+      text-align: center;
+      font-size: 0.85em;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .conv-drop input[type="file"] { display: none; }
+    .conv-file { margin-top: 8px; font-size: 0.8em; word-break: break-all; display: none; }
+    .conv-file.show { display: block; }
+    .mp3-bar { height: 4px; margin-top: 10px; border-radius: 2px; overflow: hidden; display: none; }
+    .mp3-bar.show { display: block; }
+    .mp3-bar i { display: block; height: 100%; width: 0; transition: width 0.2s; }
+    .mp3-result { margin-top: 12px; display: none; }
+    .mp3-result.show { display: block; }
+    .mp3-result audio { width: 100%; color-scheme: dark; }
+    .mp3-result a { display: inline-block; margin-top: 8px; text-decoration: none; word-break: break-all; }
     .speed-card { text-align: center; }
     .speed-go {
       display: inline-block;
@@ -210,6 +231,22 @@
     html[data-theme="clean"] .tool-status { color: #c9a848; }
     html[data-theme="clean"] .tool-status .tool-err { color: #e5715f; }
     html[data-theme="clean"] .tool-hint { color: #6c7178; }
+    html[data-theme="clean"] .conv-drop {
+      background: #0e0f12;
+      border-color: #33363b;
+      color: #9aa0a6;
+    }
+    html[data-theme="clean"] .conv-drop:hover,
+    html[data-theme="clean"] .conv-drop.drag,
+    html[data-theme="clean"] .conv-drop:focus-visible {
+      border-color: #6fd18c;
+      color: #6fd18c;
+      background: #10140f;
+      outline: none;
+    }
+    html[data-theme="clean"] .conv-file { color: #e6e6e6; }
+    html[data-theme="clean"] .mp3-bar { background: #2a2d34; }
+    html[data-theme="clean"] .mp3-bar i { background: #6fd18c; }
     html[data-theme="clean"] .speed-go {
       background: none;
       color: #6fd18c;
@@ -305,6 +342,22 @@
     html[data-theme="retro"] .tool-status .tool-err { color: #ff5555; }
     html[data-theme="retro"] .tool-hint { color: #888; }
     html[data-theme="retro"] .short-result a { color: #ffff00; }
+    html[data-theme="retro"] .conv-drop {
+      background: #000;
+      border-color: #444;
+      color: #888;
+    }
+    html[data-theme="retro"] .conv-drop:hover,
+    html[data-theme="retro"] .conv-drop.drag,
+    html[data-theme="retro"] .conv-drop:focus-visible {
+      border-color: var(--tc, #00ffff);
+      color: var(--tc, #00ffff);
+      box-shadow: 0 0 8px var(--tc, #00ffff);
+      outline: none;
+    }
+    html[data-theme="retro"] .conv-file { color: #eee; }
+    html[data-theme="retro"] .mp3-bar { background: #222; }
+    html[data-theme="retro"] .mp3-bar i { background: var(--tc, #00ff00); box-shadow: 0 0 6px var(--tc, #00ff00); }
     /* Farbe kommt von der Karte (--tc): Speedtest pink, PGP-Chat gruen */
     html[data-theme="retro"] .speed-go {
       color: var(--tc, #ff00ff);
@@ -405,6 +458,30 @@
         <button type="button" class="tool-btn tool-btn--mini" id="shCopy" style="display:none">Kopieren</button>
       </div>
       <p class="tool-hint">Dieselbe URL bekommt immer denselben Code.</p>
+    </section>
+
+    <!-- ── Video -> MP3 ── -->
+    <!-- Nutzt denselben Server-Endpunkt wie convert.html (/api/convert,
+         target=mp3) - hier nur als Ein-Klick-Abkuerzung ohne Formatwahl. -->
+    <section class="tool-card tool-card--green" aria-labelledby="mp3Head">
+      <h2 id="mp3Head">Video &rarr; MP3</h2>
+      <p class="tsub">Nur die Tonspur aus einem Video ziehen &mdash; ffmpeg auf der eigenen VPS, keine Cloud.</p>
+      <label class="conv-drop" id="mp3Drop" tabindex="0">
+        <span>Video hierher ziehen oder klicken</span>
+        <input type="file" id="mp3File">
+      </label>
+      <div class="conv-file" id="mp3Name"></div>
+      <div class="tool-row">
+        <button type="button" class="tool-btn" id="mp3Btn" disabled>MP3 extrahieren</button>
+        <button type="button" class="tool-btn tool-btn--mini" id="mp3Stop" style="display:none">Abbrechen</button>
+      </div>
+      <div class="mp3-bar" id="mp3Bar"><i></i></div>
+      <div class="tool-status" id="mp3Status" role="status" aria-live="polite"></div>
+      <div class="mp3-result" id="mp3Out">
+        <audio id="mp3Player" controls preload="metadata"></audio>
+        <a class="tool-btn tool-btn--mini" id="mp3Dl" download>&#11015; Herunterladen</a>
+      </div>
+      <p class="tool-hint">MP4, MOV, MKV, WEBM, AVI, WMV, FLV, 3GP &hellip; &middot; max. 200 MB &middot; MP3 ~190 kbit/s. Datei wird danach vom Server gel&ouml;scht.</p>
     </section>
 
     <!-- ── Speedtest ── -->
@@ -639,6 +716,143 @@
           setTimeout(() => { copy.textContent = 'Kopieren'; }, 1500);
         });
       });
+    })();
+
+    /* ── Video -> MP3 ──
+       Schickt das Video an /convert mit target=mp3 (app.py: ffmpeg -vn,
+       libmp3lame -q:a 2). XHR statt fetch, weil nur XHR den Upload-
+       Fortschritt meldet — bei bis zu 200 MB ueber DSL-Upload wichtig. */
+    (function () {
+      // Videoquellen wie VIDEO_EXTS/_EXT_ALIAS in app.py (VIDEO_IN in convert.html)
+      const VIDEO_EXT = ['mp4','mov','webm','mkv','avi','m4v','wmv','flv','mpg','mpeg','3gp','ogv',
+                         'ts','mts','m2ts','vob','rm','rmvb','asf'];
+      const MAX_MB = 200;   // = CONVERT_MAX_BYTES['video'] in app.py
+      const drop   = document.getElementById('mp3Drop');
+      const input  = document.getElementById('mp3File');
+      const fname  = document.getElementById('mp3Name');
+      const btn    = document.getElementById('mp3Btn');
+      const stop   = document.getElementById('mp3Stop');
+      const bar    = document.getElementById('mp3Bar');
+      const status = document.getElementById('mp3Status');
+      const out    = document.getElementById('mp3Out');
+      const player = document.getElementById('mp3Player');
+      const dl     = document.getElementById('mp3Dl');
+      let file = null, xhr = null, blobUrl = '';
+
+      // video/* zuerst: Handy-Dateiwahl zeigt so direkt die Galerie-Videos
+      input.accept = 'video/*,' + VIDEO_EXT.map(e => '.' + e).join(',');
+
+      const mb = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB'
+                                  : (n / 1048576).toFixed(n < 10 * 1048576 ? 1 : 0) + ' MB';
+      function fail(msg) {
+        status.innerHTML = '<span class="tool-err"></span>';
+        status.firstChild.textContent = msg;
+      }
+
+      function pick(f) {
+        if (!f || xhr) return;
+        out.classList.remove('show');
+        status.textContent = '';
+        fname.classList.add('show');
+        const parts = f.name.split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        file = null;
+        btn.disabled = true;
+        if (!VIDEO_EXT.includes(ext)) {
+          fname.textContent = f.name + ' — kein unterstütztes Videoformat.';
+        } else if (f.size > MAX_MB * 1048576) {
+          fname.textContent = f.name + ' — zu groß (' + mb(f.size) + ', max. ' + MAX_MB + ' MB).';
+        } else {
+          file = f;
+          btn.disabled = false;
+          fname.textContent = f.name + ' (' + mb(f.size) + ')';
+        }
+      }
+
+      function finish(errMsg) {
+        xhr = null;
+        btn.disabled = !file;
+        stop.style.display = 'none';
+        bar.classList.remove('show');
+        if (errMsg) fail(errMsg); else status.textContent = 'Fertig.';
+      }
+
+      function outName(cd) {
+        // filename* (UTF-8, mit Umlauten) vor dem ASCII-Ersatz filename=
+        const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+        const plain = /filename="?([^";]+)"?/i.exec(cd);
+        try { if (star) return decodeURIComponent(star[1]); } catch (e) {}
+        if (plain) return plain[1];
+        return file.name.replace(/\.[^.]*$/, '') + '.mp3';
+      }
+
+      function extract() {
+        if (!file || xhr) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('target', 'mp3');
+        const req = xhr = new XMLHttpRequest();
+        req.open('POST', apiUrl('/convert'));
+        req.responseType = 'blob';
+        req.upload.onprogress = e => {
+          if (!e.lengthComputable) return;
+          const p = Math.round(e.loaded / e.total * 100);
+          bar.firstChild.style.width = p + '%';
+          status.textContent = 'Lade hoch … ' + p + ' %';
+        };
+        req.upload.onload = () => {
+          bar.firstChild.style.width = '100%';
+          status.innerHTML = 'Server zieht den Ton raus<span class="blink">_</span>';
+        };
+        req.onload = async () => {
+          if (req.status < 200 || req.status >= 300) {
+            let msg = req.status === 413 ? 'Datei zu groß (max. ' + MAX_MB + ' MB).'
+                                         : 'Fehler (HTTP ' + req.status + ') — nochmal versuchen.';
+            try { const j = JSON.parse(await req.response.text()); if (j.error) msg = j.error; } catch (e) {}
+            return finish(msg);
+          }
+          const name = outName(req.getResponseHeader('Content-Disposition') || '');
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          blobUrl = URL.createObjectURL(req.response);
+          player.src = blobUrl;
+          dl.href = blobUrl;
+          dl.download = name;
+          dl.textContent = '⬇ ' + name + ' (' + mb(req.response.size) + ')';
+          out.classList.add('show');
+          finish(null);
+        };
+        req.onerror = () => finish('Verbindung abgebrochen — nochmal versuchen.');
+        req.onabort = () => finish('Abgebrochen.');
+
+        btn.disabled = true;
+        stop.style.display = 'inline-block';
+        out.classList.remove('show');
+        player.removeAttribute('src');
+        bar.firstChild.style.width = '0';
+        bar.classList.add('show');
+        status.textContent = 'Lade hoch … 0 %';
+        req.send(fd);
+      }
+
+      input.addEventListener('change', () => {
+        pick(input.files[0]);
+        input.value = '';   // sonst feuert dieselbe Datei nochmal gewaehlt kein change
+      });
+      ['dragover', 'dragenter'].forEach(ev => drop.addEventListener(ev, e => {
+        e.preventDefault(); drop.classList.add('drag');
+      }));
+      ['dragleave', 'dragend', 'drop'].forEach(ev => drop.addEventListener(ev, () => {
+        drop.classList.remove('drag');
+      }));
+      drop.addEventListener('drop', e => {
+        e.preventDefault();
+        pick(e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+      drop.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+      });
+      btn.addEventListener('click', extract);
+      stop.addEventListener('click', () => { if (xhr) xhr.abort(); });
     })();
   </script>
 </body>

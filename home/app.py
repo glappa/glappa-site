@@ -2612,8 +2612,11 @@ def _convert_media(src_path: str, target: str, base: str):
         raise _ConvertError('Konvertierung hat zu lange gedauert (Timeout) - kleinere Datei versuchen.')
 
     if proc.returncode != 0 or not os.path.exists(out_path):
-        Downloader.logger.warning('ffmpeg convert failed: %s',
-                                   proc.stderr.decode(errors='replace')[-2000:])
+        err = proc.stderr.decode(errors='replace')
+        Downloader.logger.warning('ffmpeg convert failed: %s', err[-2000:])
+        # Video ohne Ton (Bildschirmaufnahme, GIF-Video) -> -vn laesst nichts uebrig
+        if target in AUDIO_TARGETS and 'does not contain any stream' in err:
+            raise _ConvertError('Die Datei hat keine Tonspur.')
         raise _ConvertError('ffmpeg konnte die Datei nicht konvertieren (Format evtl. nicht unterstuetzt).')
     return out_path, f'{base}.{target}'
 
