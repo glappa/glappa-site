@@ -2016,7 +2016,8 @@
      Regenbogen-Teppich war ein 30 m langes Viereck 7 cm ueber dem Boden - der Boden folgte der Trip-Welle, das lange
      Viereck nur gerade von Ende zu Ende, und der Boden stach in Fetzen hindurch). Fein geteilt folgen beide Lagen
      der Welle gleich. Nur im Spielraum (unten im Nebel braucht es das nicht), Teilung entlang der laengsten Kante. */
-  function tripTess(g, maxE = 1.5) {
+  // all: auch senkrechte Flaechen teilen (Bilderrahmen im Trip, sonst bliebe der Rahmen gerade, waehrend das Bild wogt)
+  function tripTess(g, maxE = 1.5, all = false) {
     const P = g.pos, N = g.nrm, Cc = g.col, T = g.uv, np = [], nn = [], nc = [], nt = [], m2 = maxE * maxE;
     const push = (v) => { np.push(v[0], v[1], v[2]); nn.push(v[3], v[4], v[5]); nc.push(v[6], v[7], v[8]); nt.push(v[9], v[10]); };
     const mid = (a, b) => a.map((x, i) => (x + b[i]) / 2);
@@ -2031,7 +2032,7 @@
     for (let t = 0; t < P.length / 9; t++) {
       const v = (j) => { const i = t * 3 + j; return [P[i * 3], P[i * 3 + 1], P[i * 3 + 2], N[i * 3], N[i * 3 + 1], N[i * 3 + 2], Cc[i * 3], Cc[i * 3 + 1], Cc[i * 3 + 2], T[i * 2], T[i * 2 + 1]]; };
       const a = v(0), b = v(1), c = v(2);
-      if (Math.abs(a[4]) < 0.5 || Math.min(a[1], b[1], c[1]) < -10) { push(a); push(b); push(c); continue; }
+      if (!all && (Math.abs(a[4]) < 0.5 || Math.min(a[1], b[1], c[1]) < -10)) { push(a); push(b); push(c); continue; }
       split(a, b, c, 12);
     }
     g.pos = np; g.nrm = nn; g.col = nc; g.uv = nt;
@@ -3123,7 +3124,7 @@ vec3 art(vec2 p) {
   MESH.painting = build((g) => planeGeo(g, I4, 5.2, 4.55, 20, 18, C.white));
   // Bilderrahmen: Leisten oben/unten ueber die volle Breite, Pfosten nur dazwischen —
   // so liegen nirgends zwei Flaechen deckungsgleich uebereinander (das hat geflackert)
-  MESH.frame = build((g) => {
+  function frameGeo(g) {
     const fc = hex('#e8b923'), fd = hex('#8a5a00'), fl = hex('#fff0a0');
     box(g, M4.from(0, 2.475, 0), 6, 0.4, 0.5, { top: fc, side: fd });
     box(g, M4.from(0, -2.475, 0), 6, 0.4, 0.5, { top: fc, side: fd });
@@ -3136,7 +3137,10 @@ vec3 art(vec2 p) {
     for (const sx of [-1, 1]) for (const sy of [-1, 1]) sphere(g, M4.from(sx * 2.8, sy * 2.475, 0.28), 0.26, 0.26, 0.14, 10, 6, fl, true);
     sphere(g, M4.from(0, 2.85, 0.05), 0.55, 0.32, 0.2, 12, 6, fc, true, 0, Math.PI / 2);
     starGeo(g, M4.from(0, 2.95, 0.22), 0.28, 0.06, fl);
-  });
+  }
+  MESH.frame = build(frameGeo);
+  // fuer Trip-Welten fein geteilt (Kanten <= 0,3 wie das Bild-Raster): Rahmen und Bild wogen Ecke fuer Ecke gleich
+  MESH.frameTrip = build((g) => { frameGeo(g); tripTess(g, 0.3, true); });
   MESH.beam = build((g) => {
     // schraeger Lichtstrahl, lokal von y=0 (Boden) bis y=1 (Fenster)
     const q = (a, b, c2, d) => g.quad(a, b, c2, d, hex('#fff6c8'));
@@ -12040,9 +12044,9 @@ void main() {
   col = col / (1.0 + col * 0.55);   // sanfter Helligkeitsdeckel statt harter Ueberstrahlung
   gl_FragColor = vec4(clamp(col * 1.35, 0.0, 1.0), 1.0);
 }`;
-    /* Trip-Hoehepunkt (Wunsch 2026-09-30, Mandelbrot-Welt): wer lange stillsteht, sieht Fraktale und geometrische
-       Formen ueber das Bild ziehen. Additiv ueber die fertige Szene: 8-fach gespiegeltes Julia-Kaleidoskop, Tunnelringe
-       mit Bluetenrand, wandernde Drei-/Vier-/Fuenf-/Sechs-/Achtecke (je drei ineinander), feines Moire-Raster.
+    /* Trip-Hoehepunkt (Wunsch 2026-09-30, Mandelbrot-Welt): wer lange stillsteht, sieht Fraktale ueber das Bild ziehen.
+       Additiv ueber die fertige Szene: 8-fach gespiegeltes Julia-Kaleidoskop, Tunnelringe mit Bluetenrand, feines
+       Moire-Raster. Die wandernden Drei-/Vier-/Sechsecke sind auf Wunsch raus (2026-10-16).
        Die Mitte bleibt schwaecher, damit man die Figur noch sieht. uK = Staerke 0..1. */
     const LSD_FS = `#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -12052,7 +12056,6 @@ precision mediump float;
 varying vec2 vP; uniform float uT; uniform float uK; uniform vec2 uAsp;
 vec3 pal(float t) { return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67))); }
 mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
-float ngon(vec2 p, float n, float r) { float s = 6.28318 / n, a = atan(p.y, p.x); return cos(floor(0.5 + a / s) * s - a) * length(p) - r; }
 void main() {
   vec2 p = vP * uAsp;
   float t = uT, a = 0.0, r = length(p), an = atan(p.y, p.x);
@@ -12067,17 +12070,6 @@ void main() {
   col += pal(jf * 2.3 - t * 0.09 + r * 0.3) * jul; a += jul * 0.6;
   float ring = pow(max(0.0, sin(r * 14.0 - t * 2.2 + sin(an * 6.0 + t * 0.7) * 0.9)), 18.0);
   col += pal(r * 0.4 + t * 0.05 + 0.33) * ring * 0.8; a += ring * 0.35 * smoothstep(0.15, 0.6, r);
-  for (int i = 0; i < 6; i++) {
-    float fi = float(i), n = fi < 1.0 ? 3.0 : fi < 2.0 ? 6.0 : fi < 3.0 ? 4.0 : fi < 4.0 ? 8.0 : fi < 5.0 ? 5.0 : 3.0;
-    vec2 cen = vec2((mod(fi * 0.53 + t * (0.05 + fi * 0.013) + 1.6, 3.2) - 1.6) * uAsp.x, 0.75 * sin(t * (0.11 + fi * 0.02) + fi * 2.1));
-    vec2 d = rot(t * (0.3 + fi * 0.07) * (mod(fi, 2.0) * 2.0 - 1.0)) * (p - cen);
-    float size = 0.16 + 0.07 * sin(t * 0.9 + fi), sh = 0.0;
-    for (int k = 0; k < 3; k++) {
-      float fk = float(k), e = abs(ngon(rot(fk * 0.3) * d, n, size * (1.0 + fk * 0.55)));
-      sh += smoothstep(0.012, 0.0, e) + 0.35 * smoothstep(0.05, 0.0, e);
-    }
-    col += pal(fi * 0.17 + t * 0.12) * sh; a += sh * 0.5;
-  }
   vec2 g = rot(0.5 + t * 0.03) * p * 9.0;
   float mo = pow(abs(sin(g.x) * sin(g.y)), 12.0);
   col += pal(t * 0.1 + p.x * 0.2) * mo * 0.4; a += mo * 0.15;
@@ -17698,18 +17690,18 @@ void main() {
   // Schilder/Gemaelde: im kleinen Bild mit Alpha 0 markiert und fuer die scharfe Ebene gemerkt
   let signMark = 1;
   const signQueue = [];
-  // Trip-Staerke der Welt (Wabern + Farbwellen); Gemaelde und Glappo selbst bleiben ruhig
+  // Trip-Staerke der Welt (Wabern + Farbwellen); Glappo selbst bleibt ruhig
   /* ═══════════ Fraktal-Schleier (Wunsch 2026-10-01) ═══════════
      Wer in einer Trip-Welt (Mandelbrot) lange stehen bleibt, dem wachsen Fraktale vom Bildrand her uebers ganze Bild -
      auch ueber HUD und Figur: eigene Leinwand ueber allem ausser Dialog, Pause und Blenden. Im Takt der Musik:
-     Bass schiebt den endlosen Zoom und laesst die Ringe leuchten, jeder Schlag gibt einen Stoss, blitzt auf und blaest
-     die Vielecke auf, Mitten = Form und Vielecke, Hoehen = Moiree und Farbe; alle 8 Schlaege ein neues Ziel fuer Farbe,
-     Drehung und Form. Ohne Musik pulsiert es in ruhigen 120 bpm. */
+     Bass schiebt den endlosen Zoom und laesst die Ringe leuchten, jeder Schlag gibt einen Stoss und blitzt auf,
+     Mitten = Form, Hoehen = Moiree und Farbe; alle 8 Schlaege ein neues Ziel fuer Farbe, Drehung und Form. Ohne Musik
+     pulsiert es in ruhigen 120 bpm. Keine Vielecke mehr (Wunsch 2026-10-16). */
   const FracVeil = (() => {
     let cv = null, g2 = null, prog = null, failed = false, shown = false, ph = 0, zoom = 0, zv = 0, seed = 0, seedTo = 0, beats = 0, nextNew = 0;
     const UV = {}, au = { bass: 0, mid: 0, high: 0, beat: 0, avg: 0, lastBeat: -9 }, rng = { bass: [1, 0], mid: [1, 0], high: [1, 0] };
     const VS2 = 'attribute vec2 aP; varying vec2 vP; void main() { vP = aP; gl_Position = vec4(aP, 0.0, 1.0); }';
-    // wie die zweite Stufe (Skybox.lsd: Kaleidoskop-Julia, Ringe, Vielecke, Moiree), aber endlos hineinzoomend: drei
+    // wie die zweite Stufe (Skybox.lsd: Kaleidoskop-Julia, Ringe, Moiree), aber endlos hineinzoomend: drei
     // Lagen im Abstand von je Faktor 2, die klein einblenden und gross ausblenden (Wunsch 2026-10-01, Video)
     const FS2 = `#ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
@@ -17721,7 +17713,6 @@ uniform vec2 uAsp; uniform float uT; uniform float uPh; uniform float uK; unifor
 uniform float uBass; uniform float uMid; uniform float uHigh; uniform float uBeat;
 vec3 pal(float t) { return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67))); }
 mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
-float ngon(vec2 p, float n, float r) { float s = 6.28318 / n, a = atan(p.y, p.x); return cos(floor(0.5 + a / s) * s - a) * length(p) - r; }
 // Kaleidoskop-Julia (achtfach gespiegelt) einer Lage: x = Wert 0..1, y = Deckkraft
 vec2 jul(vec2 p, float li) {
   vec2 q = rot(uPh * 0.05 + li * 0.9 + uSeed) * p;
@@ -17749,18 +17740,6 @@ void main() {
   // Ringe laufen mit dem Zoom nach aussen, der Bass macht sie hell
   float ring = pow(max(0.0, sin(r * 14.0 - uZ * 9.0 - uT * 1.2 + sin(an * 6.0 + uPh * 0.7) * 0.9)), 18.0);
   col += pal(r * 0.4 + uPh * 0.05 + 0.33 + uSeed * 0.1) * ring * (0.3 + 1.1 * uBass);
-  // Vielecke wie in der zweiten Stufe, im Schlag groesser
-  for (int i = 0; i < 6; i++) {
-    float fi = float(i), n = fi < 1.0 ? 3.0 : fi < 2.0 ? 6.0 : fi < 3.0 ? 4.0 : fi < 4.0 ? 8.0 : fi < 5.0 ? 5.0 : 3.0;
-    vec2 cen = vec2((mod(fi * 0.53 + uPh * (0.05 + fi * 0.013) + uSeed * 0.4 + 1.6, 3.2) - 1.6) * uAsp.x, 0.75 * sin(uPh * (0.11 + fi * 0.02) + fi * 2.1 + uSeed));
-    vec2 d = rot(uPh * (0.3 + fi * 0.07) * (mod(fi, 2.0) * 2.0 - 1.0)) * (p - cen);
-    float size = (0.16 + 0.07 * sin(uT * 0.9 + fi)) * (1.0 + 0.45 * uBeat), sh = 0.0;
-    for (int k = 0; k < 3; k++) {
-      float fk = float(k), e = abs(ngon(rot(fk * 0.3) * d, n, size * (1.0 + fk * 0.55)));
-      sh += smoothstep(0.012, 0.0, e) + 0.35 * smoothstep(0.05, 0.0, e);
-    }
-    col += pal(fi * 0.17 + uPh * 0.12 + uSeed * 0.2) * sh * (0.55 + 0.6 * uMid);
-  }
   vec2 g = rot(0.5 + uPh * 0.03) * p * 9.0;
   col += pal(uPh * 0.1 + p.x * 0.2) * pow(abs(sin(g.x) * sin(g.y)), 12.0) * (0.15 + 0.7 * uHigh);
   col *= 1.0 + 0.35 * uBeat;
@@ -17873,7 +17852,8 @@ void main() {
   // wabernde Brett ueber die ruhige Schrift (Video 2026-09-30, Mandelbrot-Level)
   function signPass(mesh, model, o, a0) {
     const tr = curTrip && o.trip;
-    if (tr) setTripAt(o.trip); else if (curTrip) { setTrip(0); if (o.driftAt) setDriftAt(o.driftAt); }   // driftAt: ruhig, treibt aber mit
+    if (tr) { setTripAt(o.trip); if (o.driftAt) setDriftAt(o.driftAt); }   // driftAt: treibt mit seiner Wand/Plattform
+    else if (curTrip) { setTrip(0); if (o.driftAt) setDriftAt(o.driftAt); }
     draw(mesh, model, a0 ? { ...o, alpha: 0 } : o);
     if (tr) setTripAt(null); else if (curTrip) { setTrip(curTrip); setDriftAt(null); }
   }
@@ -17968,9 +17948,14 @@ void main() {
     }
     if (L.paintings) {
       for (const pt of L.paintings) {
-        // ruhig wie das Bild darin, treibt aber mit seiner Plattform
+        // Trip-Welten: Rahmen und Bild wabern und schillern Ecke fuer Ecke mit wie Wand und Boden (Wunsch 2026-10-16 -
+        // vorher standen sie ruhig in der wogenden Welt und sahen wie ein Fehler aus) und treiben mit ihrer Plattform
         const ps = curTrip ? driftSupport(L, pt.model[12], pt.model[13], pt.model[14], true) : null, pda = ps ? ancOf(ps) : null;
-        if (!pt.noFrame) { if (curTrip) { setTrip(0); if (pda) setDriftAt(pda); } draw(MESH.frame, pt.frame); if (curTrip) { setTrip(curTrip); setDriftAt(null); } }
+        if (!pt.noFrame) {
+          if (curTrip) { setTripAt(TRIP_FREE); if (pda) setDriftAt(pda); }
+          draw(curTrip ? MESH.frameTrip : MESH.frame, pt.frame);
+          if (pda) setDriftAt(null);
+        }
         if (pt.rip && clock - pt.rip.t0 > 4) pt.rip = null;
         if (!pt.rip && mode === 'play' && Math.abs(paintAlong(pt, pl.pos)) < 3.5 && paintAway(pt, pl.pos) < 3.2 && pl.pos[1] < pt.y + 2) {
           pt.rip = { x: paintLocalX(pt, pl.pos), y: (pl.pos[1] + 1.1 - pt.y) / (pt.scale || 1), t0: clock, amp: 0.1 };
@@ -17978,8 +17963,8 @@ void main() {
         const rip = pt.rip ? [pt.rip.x, pt.rip.y, clock - pt.rip.t0, reduceMotion ? 0 : pt.rip.amp] : null;
         if (pt.mandelAnim) {
           const T = clock % 20, n = T < 15 ? 1 + 239 * (T / 15) ** 3 : T < 17 ? 240 : 1 + 239 * (1 - smooth((T - 17) / 3));
-          drawSign(MESH.painting, pt.model, { lit: 0, rip, mandel: [-2.3, -1.4, 3.2, 2.8], mandelI: [n, clock * 0.03, -1], driftAt: pda });
-        } else drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0, driftAt: pda });
+          drawSign(MESH.painting, pt.model, { lit: 0, rip, mandel: [-2.3, -1.4, 3.2, 2.8], mandelI: [n, clock * 0.03, -1], trip: TRIP_FREE, driftAt: pda });
+        } else drawSign(MESH.painting, pt.model, { tex: pt.tex, lit: 0, rip, art: pt.art ? clock + 1 : 0, swirl: pt.swirl || 0, trip: TRIP_FREE, driftAt: pda });
       }
     }
     for (const c of L.coins) {
