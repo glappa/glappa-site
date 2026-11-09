@@ -14,6 +14,19 @@ try:
 except ImportError:
     yt_dlp = None
 
+# Pinterest: yt-dlp hat dort zwar einen Extraktor, der kennt aber nur Videos -
+# bei einem Bild-Pin bricht er mit "No video formats found" ab, und Bilder und
+# GIFs sind der groesste Teil von Pinterest. home/pinterest.py loest einen Pin
+# vollstaendig auf. Videos gehen danach trotzdem an yt-dlp (das kann HLS,
+# getrennte Tonspuren und die MP3-Umwandlung) - selbst geholt werden nur
+# Bilder und GIFs.
+try:
+    import requests
+    import pinterest
+except ImportError:
+    requests = None
+    pinterest = None
+
 # Datei-Konverter: Pillow fuer Bilder, PyMuPDF (fitz) fuer PDF-Seiten <-> Bild.
 # Beides reine Wheels (kein apt-Paket noetig) - Audio/Video laeuft ueber das
 # ffmpeg-Binary, das schon fuer den YouTube-Downloader installiert ist.
@@ -457,9 +470,9 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <main class="card">
-    <span class="lbl">&#9733; YOUTUBE URL &#9733;</span>
+    <span class="lbl">&#9733; YOUTUBE / PINTEREST URL &#9733;</span>
     <div class="url-row">
-      <input type="url" id="urlInput" placeholder="https://www.youtube.com/watch?v=...   (paste -> auto-preview)">
+      <input type="url" id="urlInput" placeholder="youtube.com/watch?v=...  oder  pinterest.com/pin/...   (paste -> auto-preview)">
     </div>
 
     <div id="preview">
@@ -470,11 +483,15 @@ INDEX_HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
-    <span class="lbl">&#9733; FORMAT &#9733;</span>
-    <div class="fmt-row">
-      <button class="toggle-btn on" data-fmt="mp3" onclick="setFmt(this)">&#9658; MP3</button>
-      <button class="toggle-btn"   data-fmt="mp4" onclick="setFmt(this)">&#9632; MP4</button>
+    <div id="fmtWrap">
+      <span class="lbl">&#9733; FORMAT &#9733;</span>
+      <div class="fmt-row">
+        <button class="toggle-btn on" data-fmt="mp3" onclick="setFmt(this)">&#9658; MP3</button>
+        <button class="toggle-btn"   data-fmt="mp4" onclick="setFmt(this)">&#9632; MP4</button>
+      </div>
     </div>
+
+    <span class="lbl" id="fileNote" style="display:none"></span>
 
     <div id="qualWrap">
       <span class="lbl">&#9733; QUALITY &#9733;</span>
@@ -577,6 +594,7 @@ async function fetchInfo() {{
     document.getElementById('pMeta').textContent  =
       (d.duration ? fmtDur(d.duration) + ' · ' : '') + (d.channel || '');
     document.getElementById('preview').classList.add('show');
+    showKind(d.kind || '');
     setSt('', '');
   }} catch(e) {{ setSt('Network error: ' + e.message, 'err'); }}
 }}
@@ -584,6 +602,19 @@ async function fetchInfo() {{
 function fmtDur(s) {{
   const m = Math.floor(s/60), sec = s%60;
   return m + ':' + String(sec).padStart(2,'0');
+}}
+
+// Ein Pin ohne Video ist schon eine fertige Datei - da gibt es kein MP3
+// oder MP4 zu waehlen, sie kommt so, wie sie bei Pinterest liegt.
+function showKind(kind) {{
+  const datei = (kind === 'gif' || kind === 'image');
+  document.getElementById('fmtWrap').style.display = datei ? 'none' : '';
+  document.getElementById('qualWrap').classList.toggle('show', !datei && fmt === 'mp4');
+  const note = document.getElementById('fileNote');
+  note.textContent = datei
+    ? '★ ' + (kind === 'gif' ? 'GIF' : 'BILD') + ' — KOMMT IM ORIGINAL ★'
+    : '';
+  note.style.display = datei ? '' : 'none';
 }}
 
 // ── Toggles ──────────────────────────────────────────────────────
@@ -641,8 +672,9 @@ async function startDownload() {{
     const a = document.createElement('a');
     a.href = '/file/' + d.file_id; a.download = d.filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    // Tunes-Link anzeigen (nur bei MP3)
-    if (fmt === 'mp3') {{
+    // Tunes-Link nur, wenn wirklich eine MP3 herauskam: ein Pinterest-Bild
+    // kommt als .jpg an, da passt der Hinweis nicht.
+    if ((d.filename || '').toLowerCase().endsWith('.mp3')) {{
       const hint = document.getElementById('tunesHint');
       document.getElementById('tunesLink').href = '{tunes}';
       hint.style.display = 'block';
@@ -837,6 +869,109 @@ def _clean_url(url: str) -> str:
     return url
 
 
+def _is_pin_link(url: str) -> bool:
+    """Zeigt der Link auf Pinterest? Fehlt das Modul, lautet die Antwort nein -
+    dann laeuft alles wie bisher ueber yt-dlp."""
+    if pinterest is None:
+        return False
+    try:
+        return pinterest.is_pinterest_url(url)
+    except Exception:
+        return False
+
+
+def _pin_resolve(url: str):
+    """Pin aufloesen und sicherstellen, dass ueberhaupt etwas dabei herauskam."""
+    pin = pinterest.resolve(url)
+    if pin.best is None:
+        raise RuntimeError('Zu diesem Pin wurde keine Datei gefunden.')
+    return pin
+
+
+def _pin_download(media, out_path: str, q: queue.Queue) -> None:
+    """Bild oder GIF laden und dabei denselben Fortschritt melden wie der
+    yt-dlp-Hook, damit die Oberflaeche nichts davon merkt.
+
+    Die Adresse stammt aus Pinterests JSON und wird trotzdem gegen die
+    Host-Liste geprueft: ohne das waere die Stelle hier ein offener Proxy,
+    ueber den sich mit einem praeparierten Pin beliebige Adressen abrufen
+    liessen.
+    """
+    if not pinterest.media_host_allowed(media.url):
+        raise RuntimeError('Diese Datei liegt nicht auf einem Pinterest-Server.')
+
+    headers = dict(pinterest.BASE_HEADERS)
+    headers['Referer'] = 'https://www.pinterest.com/'
+
+    started = time.time()
+    last    = 0.0
+    done    = 0
+    with requests.get(media.url, headers=headers, stream=True, timeout=60) as r:
+        r.raise_for_status()
+        total = int(r.headers.get('Content-Length') or 0)
+        with open(out_path, 'wb') as fh:
+            for chunk in r.iter_content(chunk_size=256 * 1024):
+                if not chunk:
+                    continue
+                fh.write(chunk)
+                done += len(chunk)
+                now = time.time()
+                # Nicht bei jedem Haeppchen melden - sonst ist die Queue
+                # voller Fortschritt als die Leitung voller Daten.
+                if now - last < 0.2 and done != total:
+                    continue
+                last  = now
+                speed = done / max(now - started, 0.001)
+                rest  = ((total - done) / speed) if (total and speed) else 0
+                q.put({
+                    'type':    'progress',
+                    'percent': round(done / total * 100) if total else 0,
+                    'total':   sizeof_fmt(total) if total else '',
+                    'speed':   sizeof_fmt(speed) + '/s',
+                    'eta':     f'{int(rest)}s' if rest else '',
+                    'title':   '',
+                })
+
+
+def _pin_job(url: str, file_id: str, job_id: str, q: queue.Queue) -> bool:
+    """Einen Bild- oder GIF-Pin komplett abwickeln.
+
+    True  = erledigt, die Datei liegt bereit.
+    False = der Pin ist ein Video; dann uebernimmt der normale yt-dlp-Weg,
+            der dafuer ohnehin alles mitbringt.
+    """
+    pin  = _pin_resolve(url)
+    best = pin.best
+    if best.kind == 'video':
+        return False
+
+    # Nur Endungen, die /file auch ausliefern kann - sonst laege die Datei
+    # zwar da, waere aber nicht abholbar.
+    ext = best.ext
+    if ext not in ('gif', 'jpg', 'jpeg', 'png', 'webp'):
+        ext = 'gif' if best.kind == 'gif' else 'jpg'
+
+    q.put({'type': 'progress', 'percent': 0, 'total': '', 'speed': '', 'eta': '',
+           'title': pin.title or f'Pin {pin.pin_id}'})
+
+    out_path = os.path.join(DOWNLOAD_DIR, f'{file_id}.{ext}')
+    _pin_download(best, out_path, q)
+
+    # Pinterest hat kein Titelfeld wie YouTube: oft steht dort die ganze
+    # SEO-Beschreibung. Ungekuerzt wird daraus ein Dateiname von 190 Zeichen,
+    # der an Dateisystemgrenzen stoesst. In der Vorschau bleibt der Titel ganz.
+    title    = safe_title((pin.title or '')[:80]).rstrip(' .') or f'pin-{pin.pin_id}'
+    filename = f'{title}.{ext}'
+    cleanup_later(out_path)
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id]['filename'] = filename
+
+    q.put({'type': 'done', 'file_id': file_id, 'filename': filename,
+           'total': sizeof_fmt(os.path.getsize(out_path))})
+    return True
+
+
 def _glappa_base() -> str:
     """
     Basis-URL fuer Assets + Nav-Links, abhaengig vom Request-Host:
@@ -930,11 +1065,32 @@ def serve_favicon():
 
 @Downloader.route('/info', methods=['POST'])
 def info():
-    if yt_dlp is None:
-        return jsonify({'error': 'yt-dlp nicht installiert'}), 503
     url = (request.get_json(force=True).get('url') or '').strip()
     if not url:
         return jsonify({'error': 'No URL'}), 400
+
+    # Pinterest zuerst fragen: bei einem Bild-Pin wuerde yt-dlp hier nur
+    # "No video formats found" sagen, und die Vorschau bliebe leer.
+    if _is_pin_link(url):
+        try:
+            pin = _pin_resolve(url)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+        best  = pin.best
+        thumb = best.thumbnail
+        if not thumb:
+            # Video ohne eigenes Vorschaubild: das Pin-Bild daneben nehmen.
+            thumb = next((m.url for m in pin.media if m.kind in ('image', 'gif')), '')
+        return jsonify({
+            'title':    pin.title or f'Pin {pin.pin_id}',
+            'thumb':    thumb,
+            'duration': round(best.duration_ms / 1000) if best.duration_ms else 0,
+            'channel':  'Pinterest',
+            'kind':     best.kind,
+        })
+
+    if yt_dlp is None:
+        return jsonify({'error': 'yt-dlp nicht installiert'}), 503
     url = _clean_url(url)
     try:
         # noplaylist: zusaetzliche Sicherheit falls die URL die Bereinigung umgeht
@@ -961,12 +1117,13 @@ def start():
     fmt     = data.get('format', 'mp3').lower()
     quality = data.get('quality', '1080p')
 
-    if yt_dlp is None:
-        return jsonify({'error': 'yt-dlp nicht installiert'}), 503
     if not url:
         return jsonify({'error': 'No URL provided.'}), 400
     if fmt not in ('mp3', 'mp4'):
         return jsonify({'error': 'Format must be mp3 or mp4.'}), 400
+    # Ein Bild-Pin braucht kein yt-dlp - nur Videos brauchen es.
+    if yt_dlp is None and not _is_pin_link(url):
+        return jsonify({'error': 'yt-dlp nicht installiert'}), 503
     url = _clean_url(url)
 
     job_id  = str(uuid.uuid4())
@@ -980,6 +1137,13 @@ def start():
 
     def run():
         try:
+            # Pinterest: Bilder und GIFs holt die App selbst. Ist der Pin ein
+            # Video, meldet _pin_job False und es geht unveraendert weiter.
+            if _is_pin_link(url) and _pin_job(url, file_id, job_id, q):
+                return
+
+            if yt_dlp is None:
+                raise RuntimeError('yt-dlp nicht installiert')
             cookie_opts = _yt_cookie_opts()
 
             # Erst Metadaten holen, damit wir den Title sofort melden koennen
@@ -1138,10 +1302,18 @@ def serve_file(file_id: str):
                 dl_name = job.get('filename') or file_id
                 break
 
-    for ext in ('mp3', 'mp4', 'webm', 'm4a'):
+    # Bilder und GIFs stehen hier mit drin, seit Pinterest-Pins ohne Video
+    # ebenfalls als fertige Datei ankommen.
+    mimes = {
+        'mp3':  'audio/mpeg', 'm4a':  'audio/mp4',
+        'mp4':  'video/mp4',  'webm': 'video/webm',
+        'gif':  'image/gif',  'png':  'image/png',
+        'jpg':  'image/jpeg', 'jpeg': 'image/jpeg',
+        'webp': 'image/webp',
+    }
+    for ext, mime in mimes.items():
         p = os.path.join(DOWNLOAD_DIR, f'{file_id}.{ext}')
         if os.path.exists(p):
-            mime = 'audio/mpeg' if ext == 'mp3' else 'video/mp4'
             return send_file(p, mimetype=mime, as_attachment=True, download_name=dl_name)
 
     return 'File not found', 404
