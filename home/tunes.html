@@ -333,6 +333,23 @@
       let mDriftX = 0, mDriftY = 0;// Detail-Drift: zieht die Kamera zur strukturreichen
                                    // Bildhaelfte -> steuert aus schwarzen Flaechen raus
       let mProbeTick = 0;          // Frame-Zaehler fuer die Steering-Probe
+      let mProbeMs   = 0;          // geglaettete Rechenzeit der Probe pro Frame
+      let mMandLastT = 0;          // Zeitpunkt des letzten Fraktal-Bildes (ms)
+      let mDisplayMs = 16.7;       // Bildtakt des Monitors (ms), gemessen
+      // Monitortakt messen, solange der Visualizer NICHT laeuft (sonst misst
+      // man die Renderzeit mit): 40 leere Bilder, 30%-Wert gegen Ladehaenger.
+      function measureDisplayRate() {
+        if (visRaf) return;
+        const ts = [];
+        const step = t => {
+          ts.push(t);
+          if (ts.length < 41 && !visRaf) { requestAnimationFrame(step); return; }
+          if (ts.length < 41) return;              // Visualizer kam dazwischen
+          const d = ts.slice(1).map((x, i) => x - ts[i]).sort((a, b) => a - b);
+          mDisplayMs = Math.min(34, Math.max(4, d[Math.floor(d.length * 0.3)]));
+        };
+        requestAnimationFrame(step);
+      }
 
       // --- WebGL-Renderer (GPU) ------------------------------------
       // Das Mandelbrot wird wenn moeglich per WebGL2-Fragment-Shader auf der
@@ -347,6 +364,7 @@
       let mGLTried = false;        // Init nur einmal versuchen
       let mGLScale = 1;            // dynamische Render-Aufloesung (0.5..1)
       let mFrameEMA = 16;          // geglaettete Frame-Zeit (ms) fuer die Anpassung
+      let mFrameBase = 16.7;       // gelernter natuerlicher Bildtakt (ms)
       let mLastFrameT = 0;
       let mAdaptTick = 0;
       // Tiefe Zooms brauchen VIEL mehr Iterationen (nachgemessen: 1000-5000
@@ -365,8 +383,11 @@
       // beginnt die Ueberblendung auf die Log-Skala, ab mSmooth[1] ist sie
       // voll; mSmooth[2] = Farbtoene der Log-Skala (x Streifendichte) je
       // Verdopplung der Iterationszahl.
-      // Kostet nichts messbar (fwidth + zweite Farbe).
-      let mSmooth    = [15, 60, 12];
+      // Kostet nichts messbar (fwidth + zweite Farbe). Schwellen bewusst hoch:
+      // erst ab 90 Grad Farbsprung pro Pixel (= echtes Zufallsrauschen). Mit
+      // niedrigeren Werten wurden auch scharfe Filamente weich/klotzig, weil
+      // fwidth immer 2x2-Pixelbloecke gemeinsam bewertet.
+      let mSmooth    = [90, 270, 12];
       let mRef = computeRefOrbit(0, 0);
 
       // Referenz-Orbit in float64: Z_0=0, Z_{n+1}=Z_n^2+c am POI. Entkommt der
@@ -734,10 +755,21 @@
         // Streifendichte, Treble treibt die Farbrotation, Gesamtenergie steuert
         // Saettigung + Detail. Bass-Huellkurve/Beat aus der geteilten Analyse.
         updateBass();
+        // Bewegung nach ECHTER Zeit statt pro Bild: die Schritte unten gelten
+        // pro Monitorbild (mDisplayMs, beim Laden gemessen); f = wie viele
+        // Monitorbilder seit dem letzten Fraktal-Bild vergangen sind. Frueher
+        // wurde pro gerendertem Bild weitergezaehlt -> brauchte ein tiefer
+        // Zoom laenger zum Rechnen, liefen Zoom, Drehung und Farbe langsamer
+        // ("laggy/langsam"). Jetzt bleibt das gewohnte Tempo, auch wenn
+        // einzelne Bilder laenger dauern.
+        const nowT = performance.now();
+        const f = mMandLastT ? Math.min(12, Math.max(0.25, (nowT - mMandLastT) / mDisplayMs)) : 1;
+        mMandLastT = nowT;
+        const k = a => 1 - Math.pow(1 - a, f);  // Glaettungsfaktor fuer f Bilder
         // Fuer die *Bewegung* einen stark geglaetteten Bass nehmen, damit die
         // Kamera nicht bei jedem Beat seitlich ruckt. Der punchige bassEnv bleibt
         // nur fuer Farbe/Flash.
-        mBassSmooth += (bassEnv - mBassSmooth) * 0.05;
+        mBassSmooth += (bassEnv - mBassSmooth) * k(0.05);
         const n = visData.length;
         const midStart  = Math.max(2, Math.floor(n * 0.06));
         const trebStart = Math.floor(n * 0.55);
@@ -748,7 +780,7 @@
         mid   /= ((trebStart - midStart) * 255);
         treb  /= ((n - trebStart) * 255);
         total /= (n * 255);
-        mMidSmooth += (mid - mMidSmooth) * 0.10;
+        mMidSmooth += (mid - mMidSmooth) * k(0.10);
 
         // Immer ins Set HINEINzoomen (mScale wird kleiner). Tempo folgt dem
         // BPM der Musik: ein KONSTANTER Zoom-Faktor pro Beat -> schnellere Songs
@@ -756,16 +788,16 @@
         // Beat statt frueher 10%) -> eine Zoomfahrt traegt DEUTLICH laenger
         // (~3+ Minuten bei 120 BPM), bevor die float64-Grenze erreicht ist.
         // Es wird NIE rausgezoomt.
-        bpm += (bpmTarget - bpm) * 0.08;        // Tempo sanft nachfuehren
+        bpm += (bpmTarget - bpm) * k(0.08);     // Tempo sanft nachfuehren
         const bps = bpm / 60;                   // Beats pro Sekunde
         // 7% kleinere Skala je Beat, anteilig pro Frame (~60fps) angewandt.
         let zoomRate = Math.pow(0.93, bps / 60);
         // Bass/Beat geben einen Extra-Schub auf den Beat, damit's hoerbar "atmet".
         zoomRate *= 1 - (mBassSmooth * 0.005 + beatFlash * 0.010);
-        mScale *= zoomRate;
+        mScale *= Math.pow(zoomRate, f);
         // Sanfte Rotation der Ansicht: die Mitten (Melodie/Snare) drehen die
         // Kamera, der Beat gibt einen kleinen Extra-Dreh. Richtung pro POI random.
-        mAngle += mRotDir * (0.0008 + mMidSmooth * 0.005 + beatFlash * 0.002);
+        mAngle += mRotDir * (0.0008 + mMidSmooth * 0.005 + beatFlash * 0.002) * f;
         // Iterationen mit Zoomtiefe + Lautstaerke. Auf der GPU sind Iterationen
         // billig -> deutlich hoeheres Budget = mehr Detail, gerade tief im Zoom.
         // Der CPU-Fallback bleibt GEDECKELT, sonst haengt die Seite.
@@ -779,11 +811,11 @@
               80 + Math.floor(total * 180) + Math.floor(depth * 4)));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt klar auf dem Beat.
-        mPhase += 0.2 + treb * 12 + total * 4 + beatFlash * 22;
+        mPhase += (0.2 + treb * 12 + total * 4 + beatFlash * 22) * f;
         if (mPhase >= 36000) mPhase -= 36000; // Vielfaches von 360 -> float32-sicher
         // Streifendichte "atmet" traege mit den Mitten: ruhige Passagen -> breite
         // Farbbaender, energische -> feine Streifen. Stark geglaettet (kein Flimmern).
-        mHueScale += ((6 + mMidSmooth * 9) - mHueScale) * 0.02;
+        mHueScale += ((6 + mMidSmooth * 9) - mHueScale) * k(0.02);
 
         // DAUERSCHLEIFE: rechtzeitig neu starten, BEVOR die float64-Genauigkeit
         // am Limit (~1e-13) bricht und die Ansicht zu einer schweren, flimmernden
@@ -806,8 +838,8 @@
                       + (mDriftX * ca - mDriftY * sa) * drift;
         const targetY = poi.im + Math.cos(tnow * 0.17) * orbR
                       + (mDriftX * sa + mDriftY * ca) * drift;
-        mCamX += (targetX - mCamX) * 0.05;
-        mCamY += (targetY - mCamY) * 0.05;
+        mCamX += (targetX - mCamX) * k(0.05);
+        mCamY += (targetY - mCamY) * k(0.05);
         // Helligkeit pulsiert auf Beat + Treble, Saettigung folgt der Gesamt-
         // energie -> laute Stellen leuchten satt, leise werden pastelliger.
         const lBase = 0.55 + Math.min(0.20, beatFlash * 0.20 + treb * 0.08);
@@ -825,7 +857,9 @@
         // Steuer-Logik (Detail-Drift + Boring-Reset + Iterationsbedarf) laeuft
         // unabhaengig vom Renderer auf einem kleinen float64-Proberaster, auf
         // 3 Frames verteilt (jedes Frame ein Drittel der Zeilen).
+        const tProbe = performance.now();
         probeSteering(ca, sa, mProbeTick++ % 3);
+        mProbeMs += (performance.now() - tProbe - mProbeMs) * 0.1;
 
         pumpDisplay();
       }
@@ -837,21 +871,25 @@
       function renderMandelGL(W, H, ca, sa, lBase, sat, inR, inG, inB) {
         const g = mGL, gl = g.gl;
         const nowMs = performance.now();
-        if (mLastFrameT > 0) {
-          const dt = Math.min(200, nowMs - mLastFrameT);
+        // Luecken > 250 ms sind Pausen/Tabwechsel, keine langsamen Bilder
+        if (mLastFrameT > 0 && nowMs - mLastFrameT < 250) {
+          const dt = nowMs - mLastFrameT;
           mFrameEMA += (dt - mFrameEMA) * 0.15;
+          // Natuerlicher Bildtakt (Monitor bzw. Browser-Drossel, z.B. 30 Hz im
+          // Energiesparmodus): kurze Abstaende sofort uebernehmen, lange nur
+          // ganz langsam -> ~ der schnellste Takt, den die Seite gerade bekommt.
+          mFrameBase += (dt - mFrameBase) * (dt < mFrameBase ? 0.3 : 0.002);
         }
         mLastFrameT = nowMs;
         if (++mAdaptTick >= 20) {
           mAdaptTick = 0;
-          // Schaerfe vor Bildrate: tiefe Zooms rechnen bis zu einige tausend
-          // Iterationen und brauchen dann ~20-35 ms pro Bild. Die Aufloesung
-          // sinkt erst unter ~25 fps, sonst saehen gerade die tiefen Zooms
-          // groeber aus als die flachen (das Bild gleitet langsam, 30 fps
-          // wirken dabei ruhig).
-          if      (mFrameEMA > 55 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.7);
-          else if (mFrameEMA > 40 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.85);
-          else if (mFrameEMA < 28 && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.15);
+          // Ziel: der natuerliche Takt, hoechstens 60 fps. Frueher galten feste
+          // Millisekunden - lief der Browser nur mit 30 Hz, kam die Aufloesung
+          // nach einem kurzen Haenger NIE wieder hoch (blieb bei 40% = unscharf).
+          const T = Math.max(16.7, mFrameBase);
+          if      (mFrameEMA > T * 1.9  && mGLScale > 0.5) mGLScale = Math.max(0.5, mGLScale * 0.75);
+          else if (mFrameEMA > T * 1.45 && mGLScale > 0.5) mGLScale = Math.max(0.5, mGLScale * 0.88);
+          else if (mFrameEMA < T * 1.2  && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.12);
         }
         const rw = Math.max(64, Math.round(W * mGLScale));
         const rh = Math.max(40, Math.round(H * mGLScale));
@@ -1099,6 +1137,14 @@
             }
             delete r.draw; mAdaptTick = 0; return r;
           },
+          // Momentaufnahme ohne Eingriff (fuer Messungen im laufenden Betrieb)
+          peek() {
+            return { poi: mPoiIdx, scale: mScale, iter: mIter, glScale: +mGLScale.toFixed(2),
+                     frameMs: +mFrameEMA.toFixed(1), baseMs: +mFrameBase.toFixed(1),
+                     displayMs: +mDisplayMs.toFixed(2),
+                     probeMs: +mProbeMs.toFixed(2),
+                     gpu: !!mGL, canvas: [canvas.width, canvas.height], mode: visMode };
+          },
           // Rausch-Glaettung verstellen, z.B. smooth([9999, 9999, 6]) = aus
           smooth(v) { if (v) mSmooth = v; return mSmooth; },
           // Laufenden Zoom an eine Stelle springen lassen (der Loop rechnet weiter)
@@ -1195,7 +1241,9 @@
       // beim Zurueckkommen neu anfordern, solange der Immersive-Modus laeuft.
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && immersive) acquireWakeLock();
+        if (document.visibilityState === 'visible') measureDisplayRate();
       });
+      measureDisplayRate();                // Monitortakt fuer das Fraktal-Tempo
 
       function enterImmersive() {
         if (immersive) return;
