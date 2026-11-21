@@ -349,13 +349,26 @@
       let mFrameEMA = 16;          // geglaettete Frame-Zeit (ms) fuer die Anpassung
       let mLastFrameT = 0;
       let mAdaptTick = 0;
-      const REF_MAX = 700;         // Laenge des Referenz-Orbits (> max. Iterationen)
-      let mRef = { data: new Float32Array(REF_MAX * 2), len: 1 };
+      // Tiefe Zooms brauchen VIEL mehr Iterationen (nachgemessen: 1000-5000
+      // statt 650), sonst frisst die Innenfarbe die feinen Raender auf ("das
+      // Schwarz nimmt immer mehr ein"). Die Zahl stellt sich deshalb selbst ein
+      // (mIterAuto, aus der Probe). Bezahlbar bleibt das durch die Innen-
+      // Erkennung: schrumpft |dz_n/dz_1|, sitzt das Pixel in einem anziehenden
+      // Zyklus (sicher innen) -> sofort aufhoeren statt bis zur Kappe rechnen.
+      // (Eine BLA-Sprungtabelle wurde ausprobiert: bei Zoomtiefen bis 1e-12
+      // spart sie nur 20-35% der Schritte und war auf der GPU 3-5x langsamer.)
+      const ITER_CAP = 10000;      // Obergrenze der GPU-Iterationen
+      const REF_MAX  = ITER_CAP + 2; // Referenz-Orbit mind. so lang wie die Kappe
+      const TEX_W    = 2048;       // Texturbreite (WebGL2 garantiert nur 2048)
+      let mIterAuto  = 0;          // aus der Probe gelernte Iterationszahl
+      let mRef = computeRefOrbit(0, 0);
 
       // Referenz-Orbit in float64: Z_0=0, Z_{n+1}=Z_n^2+c am POI. Entkommt der
       // Orbit numerisch doch, bricht er ab -> der Shader "rebased" dann einfach.
+      // Als float32-Textur TEX_W breit, zeilenweise umgebrochen.
       function computeRefOrbit(re, im) {
-        const data = new Float32Array(REF_MAX * 2);
+        const rows = Math.ceil(REF_MAX / TEX_W);
+        const data = new Float32Array(TEX_W * rows * 2);
         let x = 0, y = 0, i = 0;
         for (; i < REF_MAX; i++) {
           data[i * 2] = x; data[i * 2 + 1] = y;
@@ -364,7 +377,7 @@
           y = 2 * x * y + im;
           x = x2 - y2 + re;
         }
-        return { data, len: i };
+        return { data, rows, len: i };
       }
 
       function initGL() {
@@ -389,23 +402,29 @@
             'uniform float uHueSc; uniform float uPhase; uniform float uSat; uniform float uLum;\n' +
             'uniform vec3 uInCol;   // Innenflaeche (pulsiert mit dem Bass)\n' +
             'out vec4 fragColor;\n' +
+            'vec2 refZ(int m){ return texelFetch(uRef, ivec2(m & 2047, m >> 11), 0).xy; }\n' +
+            'vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }\n' +
             'void main(){\n' +
             '  float dx = gl_FragCoord.x - uRes.x*0.5;\n' +
             '  float dy = uRes.y*0.5 - gl_FragCoord.y; // Y-Flip wie CPU-Pfad (Zeile 0 = oben)\n' +
             '  vec2 dc = uDC + vec2(dx*uRotStep.x - dy*uRotStep.y, dx*uRotStep.y + dy*uRotStep.x);\n' +
-            '  vec2 dz = vec2(0.0);\n' +
+            '  vec2 dz = vec2(0.0), Z = vec2(0.0); // Z = Z_m (Z_0 = 0)\n' +
             '  int m = 0; float esc = -1.0; float zz = 0.0;\n' +
-            '  for (int i = 0; i < 2000; i++) {\n' +
+            '  float ld = 0.0; // log2 |dz_n/dz_1|^2: Innen-Erkennung\n' +
+            '  for (int i = 0; i < ' + ITER_CAP + '; i++) {\n' +
             '    if (i >= uMaxIter) break;\n' +
-            '    vec2 Z = texelFetch(uRef, ivec2(m,0), 0).xy;\n' +
-            '    vec2 t = 2.0*Z + dz;\n' +
-            '    dz = vec2(t.x*dz.x - t.y*dz.y, t.x*dz.y + t.y*dz.x) + dc;\n' +
+            '    dz = cmul(2.0*Z + dz, dz) + dc;\n' +
             '    m++;\n' +
-            '    vec2 z = texelFetch(uRef, ivec2(m,0), 0).xy + dz;\n' +
+            '    Z = refZ(m);           // nur EIN Texturzugriff pro Iteration\n' +
+            '    vec2 z = Z + dz;\n' +
             '    zz = dot(z,z);\n' +
             '    if (zz > 4.0) { esc = float(i+1); break; }\n' +
+            '    // Faktor |2z|^2 fuer den naechsten Schritt; |Ableitung|^2 < 1e-6\n' +
+            '    // heisst anziehender Zyklus -> sicher innen, nicht weiterrechnen\n' +
+            '    ld += 2.0 + log2(zz);\n' +
+            '    if (i > 8 && ld < -20.0) break;\n' +
             '    // Rebase: volles z kleiner als Delta ODER Referenz am Ende\n' +
-            '    if (zz < dot(dz,dz) || m >= uRefLen-1) { dz = z; m = 0; }\n' +
+            '    if (zz < dot(dz,dz) || m >= uRefLen-1) { dz = z; m = 0; Z = vec2(0.0); }\n' +
             '  }\n' +
             '  if (esc < 0.0) { fragColor = vec4(uInCol, 1.0); return; }\n' +
             '  // Smooth-Coloring + HSL->RGB, identisch zum CPU-Pfad\n' +
@@ -476,6 +495,8 @@
         mDriftX = 0; mDriftY = 0;   // Drift neu lernen lassen
         mRotDir = Math.random() < 0.5 ? -1 : 1;
         mRef = computeRefOrbit(POIS[n].re, POIS[n].im); // fuer den GPU-Shader
+        mIterAuto = 0;              // Iterationsbedarf neu lernen
+        mProbe = null;
       }
 
       audio.volume = 0.8;
@@ -727,10 +748,14 @@
         // Iterationen mit Zoomtiefe + Lautstaerke. Auf der GPU sind Iterationen
         // billig -> deutlich hoeheres Budget = mehr Detail, gerade tief im Zoom.
         // Der CPU-Fallback bleibt GEDECKELT, sonst haengt die Seite.
+        // Dazu der aus der Probe gelernte Bedarf (mIterAuto): tief im Zoom
+        // braucht der Rand oft mehrere tausend Iterationen.
         const depth = Math.log(3.0 / mScale);   // ~1-2 am Start, ~28 am Reset
         mIter = mGL
-          ? Math.min(650, 100 + Math.floor(total * 160) + Math.floor(depth * 16))
-          : Math.min(340,  80 + Math.floor(total * 180) + Math.floor(depth * 4));
+          ? Math.min(ITER_CAP, Math.max(Math.round(mIterAuto),
+              Math.min(650, 100 + Math.floor(total * 160) + Math.floor(depth * 16))))
+          : Math.min(340, Math.max(Math.round(mIterAuto),
+              80 + Math.floor(total * 180) + Math.floor(depth * 4)));
         // Farbe: kaum Baseline-Spin -> die Bewegung kommt aus Treble + Beat,
         // der Farbsprung sitzt klar auf dem Beat.
         mPhase += 0.2 + treb * 12 + total * 4 + beatFlash * 22;
@@ -776,9 +801,10 @@
         if (mGL) renderMandelGL(W, H, ca, sa, lBase, sat, inR, inG, inB);
         else     renderMandelCPU(W, H, ca, sa, lBase, sat, inR, inG, inB);
 
-        // Steuer-Logik (Detail-Drift + Boring-Reset) laeuft unabhaengig vom
-        // Renderer auf einem kleinen float64-Proberaster, jedes 3. Frame.
-        if (mProbeTick++ % 3 === 0) probeSteering(ca, sa);
+        // Steuer-Logik (Detail-Drift + Boring-Reset + Iterationsbedarf) laeuft
+        // unabhaengig vom Renderer auf einem kleinen float64-Proberaster, auf
+        // 3 Frames verteilt (jedes Frame ein Drittel der Zeilen).
+        probeSteering(ca, sa, mProbeTick++ % 3);
 
         pumpDisplay();
       }
@@ -797,9 +823,14 @@
         mLastFrameT = nowMs;
         if (++mAdaptTick >= 20) {
           mAdaptTick = 0;
-          if      (mFrameEMA > 40 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.7);
-          else if (mFrameEMA > 26 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.85);
-          else if (mFrameEMA < 18 && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.15);
+          // Schaerfe vor Bildrate: tiefe Zooms rechnen bis zu einige tausend
+          // Iterationen und brauchen dann ~20-35 ms pro Bild. Die Aufloesung
+          // sinkt erst unter ~25 fps, sonst saehen gerade die tiefen Zooms
+          // groeber aus als die flachen (das Bild gleitet langsam, 30 fps
+          // wirken dabei ruhig).
+          if      (mFrameEMA > 55 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.7);
+          else if (mFrameEMA > 40 && mGLScale > 0.4) mGLScale = Math.max(0.4, mGLScale * 0.85);
+          else if (mFrameEMA < 28 && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.15);
         }
         const rw = Math.max(64, Math.round(W * mGLScale));
         const rh = Math.max(40, Math.round(H * mGLScale));
@@ -810,7 +841,7 @@
         gl.useProgram(g.prog);
         if (g.refPoi !== mPoiIdx) {  // Referenz-Orbit des aktuellen POI hochladen
           gl.bindTexture(gl.TEXTURE_2D, g.tex);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, REF_MAX, 1, 0, gl.RG, gl.FLOAT, mRef.data);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, TEX_W, mRef.rows, 0, gl.RG, gl.FLOAT, mRef.data);
           g.refPoi = mPoiIdx;
         }
         const poi  = POIS[mPoiIdx];
@@ -855,13 +886,15 @@
             const cr = rowRe + px2 * stepC;
             const ci = rowIm + px2 * stepS;
             let x = 0, y = 0, x2 = 0, y2 = 0;
-            let it = 0;
+            let it = 0, d2 = 1;          // d2 = |dz_n/dz_1|^2 (Innen-Erkennung)
             while (x2 + y2 <= 4 && it < maxIt) {
+              if (it > 0) d2 *= 4 * (x2 + y2);
               y = 2 * x * y + ci;
               x = x2 - y2 + cr;
               x2 = x * x;
               y2 = y * y;
               it++;
+              if (it > 8 && d2 < 1e-6) { it = maxIt; break; } // sicher innen
             }
             if (it === maxIt) {
               px[idx] = inR; px[idx+1] = inG; px[idx+2] = inB;
@@ -898,18 +931,28 @@
       // Steering-Probe: kleines float64-Raster mit derselben Geometrie wie das
       // Bild. Liefert Detail-Balance (-> Drift Richtung Struktur) und erkennt
       // "langweilige" Ansichten (eine Farbe / schwarze Innenflaeche) fuer den
-      // Neustart an einem frischen POI. Laeuft jedes 3. Frame, kostet ~1-3ms.
-      function probeSteering(ca, sa) {
+      // Neustart an einem frischen POI. Zusaetzlich misst sie, bis zu welcher
+      // Iteration die Randpixel tatsaechlich entkommen (mit Reserve ueber dem
+      // aktuellen mIter) -> daraus stellt sich mIterAuto ein.
+      // Pro Frame ein Drittel der Zeilen (phase 0/1/2), ausgewertet nach dem
+      // dritten -> gleichmaessige Last statt Spitze jedes 3. Frame.
+      let mProbe = null;
+      function probeSteering(ca, sa, phase) {
+        if (phase === 0) {
+          mProbe = { detail: 0, black: 0, detL: 0, detR: 0, detT: 0, detB: 0,
+                     esc: [], capped: 0, parts: 0,
+                     cap: mGL ? Math.min(ITER_CAP, Math.max(3000, Math.round(mIter * 1.5))) : mIter };
+        }
+        const P = mProbe;
+        if (!P) return;                  // nach einem POI-Wechsel auf Phase 0 warten
         const PW = 64;
         const PH = Math.max(8, Math.round(PW * canvas.height / Math.max(1, canvas.width)));
-        const maxIt = mIter;
+        const maxIt = mIter, cap = P.cap;
         const step  = mScale / PW;
         const stepC = ca * step, stepS = sa * step;
         const cx = mCamX, cy = mCamY;
         const W2 = PW >> 1, H2 = PH >> 1;
-        let detail = 0, black = 0;
-        let detL = 0, detR = 0, detT = 0, detB = 0;
-        for (let r = 0; r < PH; r++) {
+        for (let r = phase; r < PH; r += 3) {
           const dy    = r - PH * 0.5;
           const rowRe = cx - (PW * 0.5) * stepC - dy * stepS;
           const rowIm = cy - (PW * 0.5) * stepS + dy * stepC;
@@ -918,26 +961,57 @@
             const cr = rowRe + q * stepC;
             const ci = rowIm + q * stepS;
             let x = 0, y = 0, x2 = 0, y2 = 0;
-            let it = 0;
-            while (x2 + y2 <= 4 && it < maxIt) {
+            let it = 0, d2 = 1, inner = false;
+            while (x2 + y2 <= 4 && it < cap) {
+              if (it > 0) d2 *= 4 * (x2 + y2);
               y = 2 * x * y + ci;
               x = x2 - y2 + cr;
               x2 = x * x;
               y2 = y * y;
               it++;
+              if (it > 8 && d2 < 1e-6) { inner = true; break; }
             }
+            if (!inner) {
+              if (x2 + y2 > 4) P.esc.push(it); else P.capped++;
+            }
+            // So wie es gerade gezeichnet wird: ab mIter innen-farbig
+            const shown = (inner || it >= maxIt) ? maxIt : it;
             // Detail-Metrik: Iterationssprung zum Nachbarn = Struktur.
             // Je Bildhaelfte gezaehlt -> Richtung fuer den Drift.
-            if (q > 0 && Math.abs(it - prevIt) >= 2) {
-              detail++;
-              if (q < W2) detL++; else detR++;
-              if (r < H2) detT++; else detB++;
+            if (q > 0 && Math.abs(shown - prevIt) >= 2) {
+              P.detail++;
+              if (q < W2) P.detL++; else P.detR++;
+              if (r < H2) P.detT++; else P.detB++;
             }
-            prevIt = it;
-            if (it === maxIt) black++;
+            prevIt = shown;
+            if (shown === maxIt) P.black++;
           }
         }
+        if (++P.parts < 3 || phase !== 2) return;
+        mProbe = null;
+        const { detail, black, detL, detR, detT, detB } = P;
         const area = PW * PH;
+        // Iterationsbedarf: bis dahin, wo 99,5% der beobachteten Rand-Pixel
+        // entkommen sind, plus 25% Reserve. Die Probe rechnet bis 1,5x
+        // mIter -> entkommen Pixel erst spaet, waechst mIter in Schritten mit.
+        // Pixel, die auch an der Probe-Kappe nicht entkommen sind, zaehlen
+        // bewusst NICHT: das sind fast immer langsam konvergierende Innen-
+        // punkte, fuer die mehr Iterationen nur Zeit kosten (gemessen: 4000 ->
+        // 10000 Iterationen = doppelte Rechenzeit fuer 1% weniger Schwarz).
+        // Rauf sofort, runter nur langsam -> kein Flackern am Rand.
+        // Haengt dagegen die MEHRHEIT der Nicht-Innen-Pixel an der Kappe (tief
+        // im Zoom entkommt dann alles erst spaet), kraeftig hoeher.
+        if (P.esc.length + P.capped > 0) {
+          let target = 0;
+          if (P.esc.length > 0) {
+            P.esc.sort((a, b) => a - b);
+            target = P.esc[Math.floor((P.esc.length - 1) * 0.995)] * 1.25 + 64;
+          }
+          if (P.capped > P.esc.length) target = Math.max(target, cap * 1.5);
+          if (target > mIterAuto) mIterAuto = target;
+          else mIterAuto += (target - mIterAuto) * 0.15;
+          mIterAuto = Math.min(ITER_CAP, mIterAuto);
+        }
         // Detail-Drift: normierte Links/Rechts- bzw. Oben/Unten-Balance (-1..1),
         // traege geglaettet -> die Kamera gleitet Richtung Struktur, statt in
         // schwarze Innenflaechen zu laufen.
@@ -955,6 +1029,70 @@
         else                      mBoringStreak = 0;
         if (black / area > 0.60)  mBoringStreak += 3;
         if (mBoringStreak > 50) pickRandomPoi();
+      }
+
+      // Test-Haken (nur mit ?debug): feste Fraktal-Ansicht rendern und messen.
+      // tunesDbg.view(poi, skala, {iter, w, h}) -> Iterationen (ohne iter wie
+      // im Betrieb gelernt), Anteil Innenfarbe; tunesDbg.bench(...) misst
+      // zusaetzlich die GPU-Zeit pro Bild bei voller Aufloesung.
+      if (/[?&]debug\b/.test(location.search)) {
+        const dbgRender = (o) => {
+          ensureGL();
+          canvas.hidden = false;
+          canvas.width = o.w || 960; canvas.height = o.h || 540;
+          mPoiIdx = o.poi; mRef = computeRefOrbit(POIS[o.poi].re, POIS[o.poi].im);
+          if (mGL) mGL.refPoi = -1;
+          mScale = o.scale; mCamX = POIS[o.poi].re; mCamY = POIS[o.poi].im;
+          mIterAuto = 0; mBoringStreak = -1e9;
+          if (o.iter) mIter = o.iter;
+          else {                           // Auto-Iteration wie im Betrieb lernen
+            mIter = 650;
+            for (let k = 0; k < 8; k++) {
+              for (let ph = 0; ph < 3; ph++) probeSteering(1, 0, ph);
+              mIter = Math.min(mGL ? ITER_CAP : 340, Math.max(650, Math.round(mIterAuto)));
+            }
+          }
+          mGLScale = 1; mAdaptTick = -1e6;   // volle Aufloesung, keine Anpassung
+          const draw = () => mGL
+            ? renderMandelGL(canvas.width, canvas.height, 1, 0, 0.55, 0.85, 0, 0, 0)
+            : renderMandelCPU(canvas.width, canvas.height, 1, 0, 0.55, 0.85, 0, 0, 0);
+          draw();
+          const px = cctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          let inner = 0;
+          for (let i = 0; i < px.length; i += 4) if (!px[i] && !px[i + 1] && !px[i + 2]) inner++;
+          return { draw, gpu: !!mGL, iter: mIter, innen: +(inner / (px.length / 4)).toFixed(4) };
+        };
+        window.tunesDbg = {
+          view(poi, scale, o = {}) {
+            const r = dbgRender(Object.assign({}, o, { poi, scale }));
+            delete r.draw; mAdaptTick = 0; return r;
+          },
+          bench(poi, scale, o = {}) {
+            const r = dbgRender(Object.assign({}, o, { poi, scale }));
+            if (mGL) {                       // n Bilder, je 1 Pixel lesen = auf die GPU warten
+              const gl = mGL.gl, one = new Uint8Array(4), n = o.n || 10;
+              const t0 = performance.now();
+              for (let i = 0; i < n; i++) { r.draw(); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one); }
+              r.ms = +((performance.now() - t0) / n).toFixed(1);
+            }
+            delete r.draw; mAdaptTick = 0; return r;
+          },
+          // Laufenden Zoom an eine Stelle springen lassen (der Loop rechnet weiter)
+          jump(poi, scale) {
+            mPoiIdx = poi; mRef = computeRefOrbit(POIS[poi].re, POIS[poi].im);
+            if (mGL) mGL.refPoi = -1;
+            mScale = scale; mCamX = POIS[poi].re; mCamY = POIS[poi].im;
+            mIterAuto = 0; mProbe = null; mBoringStreak = 0;
+          },
+          state() {
+            const t0 = performance.now();
+            for (let ph = 0; ph < 3; ph++) probeSteering(Math.cos(mAngle), Math.sin(mAngle), ph);
+            return { poi: mPoiIdx, scale: mScale, iter: mIter, iterAuto: Math.round(mIterAuto),
+                     glScale: mGLScale, frameMs: +mFrameEMA.toFixed(1),
+                     probeMsJe3Frames: +(performance.now() - t0).toFixed(1),
+                     canvas: [canvas.width, canvas.height] };
+          },
+        };
       }
 
       // --- Immersive-Modus ----------------------------------------
