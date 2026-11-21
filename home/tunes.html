@@ -332,7 +332,8 @@
       let mHueScale = 8;           // Streifendichte der Faerbung, "atmet" mit den Mitten
       let mDriftX = 0, mDriftY = 0;// Detail-Drift: zieht die Kamera zur strukturreichen
                                    // Bildhaelfte -> steuert aus schwarzen Flaechen raus
-      let mProbeTick = 0;          // Frame-Zaehler fuer die Steering-Probe
+      let mProbeSplit = 3;         // auf wieviele Bilder die Probe verteilt wird
+      let mProbePhase = 0;         // welcher Teil der Probe als naechstes dran ist
       let mProbeMs   = 0;          // geglaettete Rechenzeit der Probe pro Frame
       let mMandLastT = 0;          // Zeitpunkt des letzten Fraktal-Bildes (ms)
       let mDisplayMs = 16.7;       // Bildtakt des Monitors (ms), gemessen
@@ -407,6 +408,61 @@
         return { data, rows, len: i };
       }
 
+      // Reihenentwicklung (Series Approximation): Die ersten n Iterationen
+      // sind fuer ALLE Pixel dieselbe Rechnung, solange das Delta klein
+      // bleibt: dz_n = A*dc + B*dc^2 + C*dc^3 + D*dc^4. A bis D haengen nur am
+      // Referenz-Orbit, werden also einmal pro Bild in float64 gerechnet (gut
+      // 1000 Schritte, unter 0,1 ms) - der Shader springt damit mitten in die
+      // Iteration. Die Reihe geht bis zum vierten Glied (das dritte allein
+      // liess in mittlerer Tiefe nur ein Drittel so weit springen). n ist die
+      // letzte Iteration, in der das vierte Glied noch mindestens 10000-mal
+      // kleiner ist als das erste (am aeussersten Bildpunkt gemessen);
+      // darueber waere die Reihe nicht mehr genau.
+      // Gemessen tief im Zoom: ~1000 von ~2500 wirklich gerechneten
+      // Iterationen gespart, im 1440p-Vollbild 34 -> 23 ms pro Bild. Die
+      // Bilder sind dabei nicht Pixel fuer Pixel identisch: im feinsten
+      // Staub (wo Nachbarpixel ohnehin zufaellig aussehen) kippen einzelne
+      // Punkte in eine andere Farbe, Strukturen und Raender bleiben gleich.
+      const SA_TOL = 1e-4;         // Sicherheitsabstand des vierten Glieds
+      const SA_MIN = 48;           // darunter lohnt der Sprung nicht
+      let mSAOn = true;            // Debug-Schalter (tunesDbg.sa)
+      const mSA  = { n: 0, c: new Float64Array(9) };
+      function computeSeries(re, im, r, maxN) {
+        mSA.n = 0;
+        if (!mSAOn || !(r > 0) || maxN < SA_MIN) return null;
+        let zx = 0, zy = 0;
+        let ax = 0, ay = 0, bx = 0, by = 0, cx = 0, cy = 0, dx = 0, dy = 0;
+        const r2 = r * r, r3 = r2 * r, r4 = r2 * r2;
+        for (let i = 0; i < maxN; i++) {
+          // A' = 2ZA + 1, B' = 2ZB + A^2, C' = 2ZC + 2AB, D' = 2ZD + 2AC + B^2
+          const tx = 2 * zx, ty = 2 * zy;
+          const nax = tx*ax - ty*ay + 1;
+          const nay = tx*ay + ty*ax;
+          const nbx = tx*bx - ty*by + (ax*ax - ay*ay);
+          const nby = tx*by + ty*bx + 2*ax*ay;
+          const ncx = tx*cx - ty*cy + 2*(ax*bx - ay*by);
+          const ncy = tx*cy + ty*cx + 2*(ax*by + ay*bx);
+          const ndx = tx*dx - ty*dy + 2*(ax*cx - ay*cy) + (bx*bx - by*by);
+          const ndy = tx*dy + ty*dx + 2*(ax*cy + ay*cx) + 2*bx*by;
+          ax = nax; ay = nay; bx = nbx; by = nby;
+          cx = ncx; cy = ncy; dx = ndx; dy = ndy;
+          const zx2 = zx*zx - zy*zy + re;              // Z_{i+1}
+          zy = 2*zx*zy + im; zx = zx2;
+          if (zx*zx + zy*zy > 1e6) break;              // Referenz entkommen
+          const la = Math.hypot(ax, ay), ld = Math.hypot(dx, dy);
+          if (!isFinite(la) || !isFinite(ld)) break;
+          if (ld * r4 > SA_TOL * la * r) break;        // Reihe wird ungenau
+          mSA.n = i + 1;
+          const c = mSA.c;
+          c[0] = ax * r;  c[1] = ay * r;
+          c[2] = bx * r2; c[3] = by * r2;
+          c[4] = cx * r3; c[5] = cy * r3;
+          c[6] = dx * r4; c[7] = dy * r4;
+          c[8] = 2 * Math.log2(la);                    // ld am Sprungpunkt
+        }
+        return mSA.n >= SA_MIN ? mSA : null;
+      }
+
       function initGL() {
         try {
           const c = document.createElement('canvas');
@@ -429,6 +485,10 @@
             'uniform float uHueSc; uniform float uPhase; uniform float uSat; uniform float uLum;\n' +
             'uniform vec3 uInCol;   // Innenflaeche (pulsiert mit dem Bass)\n' +
             'uniform vec3 uSmooth;  // Rausch-Glaettung: Schwellen (Grad/Pixel) + Log-Skala\n' +
+            'uniform int uSkip;     // Reihenentwicklung: uebersprungene Iterationen\n' +
+            'uniform vec2 uSA1, uSA2, uSA3, uSA4; // A*r, B*r^2, C*r^3, D*r^4\n' +
+            'uniform float uInvR;   // 1/r (r = groesstes |dc| im Bild)\n' +
+            'uniform float uLd0;    // log2 |dz_n/dz_1|^2 am Sprungpunkt\n' +
             'out vec4 fragColor;\n' +
             'vec2 refZ(int m){ return texelFetch(uRef, ivec2(m & 2047, m >> 11), 0).xy; }\n' +
             'vec2 cmul(vec2 a, vec2 b){ return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }\n' +
@@ -447,7 +507,18 @@
             '  vec2 dz = vec2(0.0), Z = vec2(0.0); // Z = Z_m (Z_0 = 0)\n' +
             '  int m = 0; float esc = -1.0; float zz = 0.0;\n' +
             '  float ld = 0.0; // log2 |dz_n/dz_1|^2: Innen-Erkennung\n' +
-            '  for (int i = 0; i < ' + ITER_CAP + '; i++) {\n' +
+            // Reihenentwicklung: der Vorlauf ist fuer alle Pixel dieselbe
+            // Rechnung (dz = A dc + B dc^2 + C dc^3 + D dc^4) -> in EINEM Schritt
+            // mitten in die Iteration springen. Gerechnet wird mit u = dc/r
+            // (|u| <= 1), damit die Koeffizienten als float32 nicht entgleisen.
+            '  if (uSkip > 0) {\n' +
+            '    vec2 u  = dc * uInvR;\n' +
+            '    vec2 u2 = cmul(u, u);\n' +
+            '    dz = cmul(uSA1, u) + cmul(uSA2, u2) + cmul(uSA3, cmul(u2, u))\n' +
+            '       + cmul(uSA4, cmul(u2, u2));\n' +
+            '    m = uSkip; Z = refZ(m); ld = uLd0;\n' +
+            '  }\n' +
+            '  for (int i = uSkip; i < ' + ITER_CAP + '; i++) {\n' +
             '    if (i >= uMaxIter) break;\n' +
             '    dz = cmul(2.0*Z + dz, dz) + dc;\n' +
             '    m++;\n' +
@@ -498,7 +569,8 @@
           gl.useProgram(prog);
           const u = {};
           ['uRef','uRefLen','uMaxIter','uDC','uRotStep','uRes',
-           'uHueSc','uPhase','uSat','uLum','uInCol','uSmooth'].forEach(name => {
+           'uHueSc','uPhase','uSat','uLum','uInCol','uSmooth',
+           'uSkip','uSA1','uSA2','uSA3','uSA4','uInvR','uLd0'].forEach(name => {
             u[name] = gl.getUniformLocation(prog, name);
           });
           gl.uniform1i(u.uRef, 0);
@@ -855,10 +927,19 @@
         else     renderMandelCPU(W, H, ca, sa, lBase, sat, inR, inG, inB);
 
         // Steuer-Logik (Detail-Drift + Boring-Reset + Iterationsbedarf) laeuft
-        // unabhaengig vom Renderer auf einem kleinen float64-Proberaster, auf
-        // 3 Frames verteilt (jedes Frame ein Drittel der Zeilen).
+        // unabhaengig vom Renderer auf einem kleinen float64-Proberaster, das
+        // auf mehrere Frames verteilt wird (jedes Frame ein Teil der Zeilen).
+        // Die Probe kostet tief im Zoom mehr (Innenpunkte rechnen bis zur
+        // Kappe): gemessen ~5 ms pro Bild bei 4000 Iterationen. Sie wird
+        // deshalb auf so viele Bilder verteilt, dass rund 1 ms pro Bild
+        // uebrig bleibt - der Rest des Budgets gehoert dem Bild selbst.
         const tProbe = performance.now();
-        probeSteering(ca, sa, mProbeTick++ % 3);
+        if (mProbePhase === 0) {
+          if      (mProbeMs > 1.6 && mProbeSplit < 12) mProbeSplit++;
+          else if (mProbeMs < 0.6 && mProbeSplit > 3)  mProbeSplit--;
+        }
+        probeSteering(ca, sa, mProbePhase);
+        mProbePhase = (mProbePhase + 1) % mProbeSplit;
         mProbeMs += (performance.now() - tProbe - mProbeMs) * 0.1;
 
         pumpDisplay();
@@ -905,6 +986,22 @@
         }
         const poi  = POIS[mPoiIdx];
         const step = mScale / rw;
+        // Groesstes |dc| im Bild (Abstand Kamera-Referenz + halbe Diagonale):
+        // damit ist die Reihe fuer JEDES Pixel des Bildes gueltig.
+        const rMax = Math.hypot(mCamX - poi.re, mCamY - poi.im)
+                   + mScale * 0.5 * Math.sqrt(1 + (rh / rw) * (rh / rw));
+        const ser = computeSeries(poi.re, poi.im, rMax,
+                                  Math.min(mIter - 1, mRef.len - 2));
+        gl.uniform1i(g.u.uSkip, ser ? ser.n : 0);
+        if (ser) {
+          const c = ser.c;
+          gl.uniform2f(g.u.uSA1, c[0], c[1]);
+          gl.uniform2f(g.u.uSA2, c[2], c[3]);
+          gl.uniform2f(g.u.uSA3, c[4], c[5]);
+          gl.uniform2f(g.u.uSA4, c[6], c[7]);
+          gl.uniform1f(g.u.uInvR, 1 / rMax);
+          gl.uniform1f(g.u.uLd0, c[8]);
+        }
         gl.uniform2f(g.u.uRes, rw, rh);
         // Nur die (kleine) Differenz Kamera-Referenz geht als float32 zur GPU,
         // die Genauigkeit haengt damit NICHT an der absoluten Position.
@@ -994,8 +1091,8 @@
       // Neustart an einem frischen POI. Zusaetzlich misst sie, bis zu welcher
       // Iteration die Randpixel tatsaechlich entkommen (mit Reserve ueber dem
       // aktuellen mIter) -> daraus stellt sich mIterAuto ein.
-      // Pro Frame ein Drittel der Zeilen (phase 0/1/2), ausgewertet nach dem
-      // dritten -> gleichmaessige Last statt Spitze jedes 3. Frame.
+      // Pro Frame ein Teil der Zeilen (phase 0..mProbeSplit-1), ausgewertet
+      // nach dem letzten -> gleichmaessige Last statt Spitze in einem Frame.
       let mProbe = null;
       function probeSteering(ca, sa, phase) {
         if (phase === 0) {
@@ -1012,7 +1109,7 @@
         const stepC = ca * step, stepS = sa * step;
         const cx = mCamX, cy = mCamY;
         const W2 = PW >> 1, H2 = PH >> 1;
-        for (let r = phase; r < PH; r += 3) {
+        for (let r = phase; r < PH; r += mProbeSplit) {
           const dy    = r - PH * 0.5;
           const rowRe = cx - (PW * 0.5) * stepC - dy * stepS;
           const rowIm = cy - (PW * 0.5) * stepS + dy * stepC;
@@ -1047,7 +1144,7 @@
             if (shown === maxIt) P.black++;
           }
         }
-        if (++P.parts < 3 || phase !== 2) return;
+        if (++P.parts < mProbeSplit || phase !== mProbeSplit - 1) return;
         mProbe = null;
         const { detail, black, detL, detR, detT, detB } = P;
         const area = PW * PH;
@@ -1075,9 +1172,13 @@
         // Detail-Drift: normierte Links/Rechts- bzw. Oben/Unten-Balance (-1..1),
         // traege geglaettet -> die Kamera gleitet Richtung Struktur, statt in
         // schwarze Innenflaechen zu laufen.
+        // Die Glaettung zaehlt in Durchlaeufen: laeuft die Probe ueber mehr
+        // Bilder, kommen weniger Durchlaeufe pro Sekunde -> Faktor mitziehen,
+        // damit Drift und Neustart gleich schnell reagieren wie bisher.
+        const lag = Math.min(0.4, 0.12 * mProbeSplit / 3);
         if (detail > 12) {
-          mDriftX += ((detR - detL) / detail - mDriftX) * 0.12;
-          mDriftY += ((detB - detT) / detail - mDriftY) * 0.12;
+          mDriftX += ((detR - detL) / detail - mDriftX) * lag;
+          mDriftY += ((detB - detT) / detail - mDriftY) * lag;
         } else {
           mDriftX *= 0.9; mDriftY *= 0.9;
         }
@@ -1088,7 +1189,7 @@
         if (detail / area < 0.08) mBoringStreak++;
         else                      mBoringStreak = 0;
         if (black / area > 0.60)  mBoringStreak += 3;
-        if (mBoringStreak > 50) pickRandomPoi();
+        if (mBoringStreak > Math.max(12, Math.round(150 / mProbeSplit))) pickRandomPoi();
       }
 
       // Test-Haken (nur mit ?debug): feste Fraktal-Ansicht rendern und messen.
@@ -1104,6 +1205,7 @@
           if (mGL) mGL.refPoi = -1;
           mScale = o.scale; mCamX = POIS[o.poi].re; mCamY = POIS[o.poi].im;
           mIterAuto = 0; mBoringStreak = -1e9;
+          mProbeSplit = 3; mProbePhase = 0;
           if (o.iter) mIter = o.iter;
           else {                           // Auto-Iteration wie im Betrieb lernen
             mIter = 650;
@@ -1142,11 +1244,13 @@
             return { poi: mPoiIdx, scale: mScale, iter: mIter, glScale: +mGLScale.toFixed(2),
                      frameMs: +mFrameEMA.toFixed(1), baseMs: +mFrameBase.toFixed(1),
                      displayMs: +mDisplayMs.toFixed(2),
-                     probeMs: +mProbeMs.toFixed(2),
+                     probeMs: +mProbeMs.toFixed(2), probeSplit: mProbeSplit,
                      gpu: !!mGL, canvas: [canvas.width, canvas.height], mode: visMode };
           },
           // Rausch-Glaettung verstellen, z.B. smooth([9999, 9999, 6]) = aus
           smooth(v) { if (v) mSmooth = v; return mSmooth; },
+          // Reihenentwicklung an/aus (Vergleichsbilder) + letzter Sprung
+          sa(on) { if (on !== undefined) mSAOn = !!on; return { on: mSAOn, n: mSA.n }; },
           // Laufenden Zoom an eine Stelle springen lassen (der Loop rechnet weiter)
           jump(poi, scale) {
             mPoiIdx = poi; mRef = computeRefOrbit(POIS[poi].re, POIS[poi].im);
@@ -1156,10 +1260,10 @@
           },
           state() {
             const t0 = performance.now();
-            for (let ph = 0; ph < 3; ph++) probeSteering(Math.cos(mAngle), Math.sin(mAngle), ph);
+            for (let ph = 0; ph < mProbeSplit; ph++) probeSteering(Math.cos(mAngle), Math.sin(mAngle), ph);
             return { poi: mPoiIdx, scale: mScale, iter: mIter, iterAuto: Math.round(mIterAuto),
                      glScale: mGLScale, frameMs: +mFrameEMA.toFixed(1),
-                     probeMsJe3Frames: +(performance.now() - t0).toFixed(1),
+                     probeMsKomplett: +(performance.now() - t0).toFixed(1),
                      canvas: [canvas.width, canvas.height] };
           },
         };
