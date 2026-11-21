@@ -7,7 +7,7 @@
   <meta name="keywords" content="Glappa Home Music Player Tunes MP3 FLAC OGG">
   <meta name="description" content="In-Browser Music Player f&uuml;r MP3, FLAC, OGG, WAV und mehr.">
   <link rel="icon" href="../favicon.ico">
-  <link rel="stylesheet" href="home.css?v=12">
+  <link rel="stylesheet" href="home.css?v=13">
 </head>
 <body>
 
@@ -82,8 +82,8 @@
           <button class="player-mode-btn" id="shuffleBtn" title="Shuffle">&#128256; Shuffle</button>
           <button class="player-mode-btn" id="repeatBtn" title="Repeat">&#128257; Repeat</button>
           <button class="player-mode-btn" id="visBtn" title="Visualizer ein/aus">&#9836; Visualizer</button>
-          <button class="player-mode-btn" id="immersiveBtn"
-                  title="Immersive-Vollbild: Klick startet sofort &mdash; nach kurzer Ruhephase kommt er auch von selbst wieder">&#128421; Immersive</button>
+          <button class="player-mode-btn" id="immersiveBtn" aria-pressed="false"
+                  title="Immersive-Vollbild an/aus (Taste F) &mdash; Esc, Doppelklick oder Beenden-Knopf schliesst">&#128421; Immersive</button>
         </div>
 
         <div class="player-load">
@@ -149,10 +149,18 @@
     </div>
   </footer>
 
-  <!-- Immersive-Modus: kurzer Einblend-Hinweis beim Umschalten in Vollbild -->
-  <div id="immersiveHint" class="immersive-hint" hidden>
-    <div class="immersive-hint-track" id="immersiveTrack"></div>
-    <div class="immersive-hint-sub">Maus bewegen oder Taste dr&uuml;cken zum Beenden</div>
+  <!-- Immersive-Modus: Bedienleiste. Kommt bei Mausbewegung/Taste, verschwindet
+       mitsamt Mauszeiger nach kurzer Ruhe wieder. -->
+  <div id="immersiveUi" class="immersive-ui" hidden>
+    <div class="immersive-ui-track" id="immersiveTrack"></div>
+    <div class="immersive-ui-bar">
+      <button class="immersive-ui-btn" data-imm="prev" title="Vorheriger Track">&#9198;</button>
+      <button class="immersive-ui-btn" data-imm="play" id="immPlayBtn" title="Play/Pause (Leertaste)">&#9654;</button>
+      <button class="immersive-ui-btn" data-imm="next" title="N&auml;chster Track">&#9197;</button>
+      <button class="immersive-ui-btn" data-imm="mode" id="immModeBtn" title="Visualizer umschalten (Taste V)">&#10024; Fractal</button>
+      <button class="immersive-ui-btn immersive-ui-btn--exit" data-imm="exit" title="Beenden (Esc)">&#10006; Beenden</button>
+    </div>
+    <div class="immersive-ui-sub">Esc / Doppelklick beendet &middot; Leertaste = Play/Pause &middot; &larr; &rarr; = Track</div>
   </div>
 
   <script src="../script.js?v=18"></script>
@@ -295,9 +303,20 @@
         { re: -0.10109636384562,    im:  0.95628651080914,   s: 0.60 }, // Triple-Spiral / Tendril
         { re:  0.3245046418932,     im:  0.04855101129,      s: 0.28 }, // Elephant Valley Spirale
         { re: -0.235125,            im:  0.827215,           s: 0.45 }, // Doppel-Spirale (oberer Bulb)
-        { re:  0.2549870375144766,  im: -0.0005679790528465, s: 0.30 }, // Elephant Valley Deep
+        { re:  0.2549870375144766,  im: -0.0005679790528465, s: 0.001 }, // Elephant Valley Deep (tiefe Koordinate -> kleine Startweite)
         { re: -1.25066,             im:  0.02012,            s: 0.35 }, // Nadel / Periode-2-Uebergang
         { re: -0.7453,              im:  0.1127,             s: 0.50 }, // Seepferdchen-Tal West
+        // Nachgemessen ergaenzt: jeder Punkt traegt eine Zoomfahrt von einer bis
+        // zweieinhalb Minuten, und die Startweite ist so gewaehlt, dass die
+        // Ansicht gleich in der Randstruktur sitzt statt auf schwarzer Flaeche.
+        { re: -0.7269,              im:  0.1889,             s: 0.005 }, // Seepferdchen-Doppelhaken
+        { re:  0.001643721971153,   im:  0.822467633298876,  s: 0.06 }, // Misiurewicz-Punkt am Nordarm
+        { re: -0.8115312340458353,  im:  0.2014296112433656, s: 0.005 }, // Julia-Insel West
+        { re:  0.432539867562512,   im:  0.226118675951765,  s: 0.06 }, // Julia-Insel Ost
+        { re:  0.2929859127507,     im:  0.6117848324958,    s: 0.012 }, // Spiralarm Nordost
+        { re: -0.5503295086752807,  im:  0.6259346734587997, s: 0.012 }, // Tal zwischen zwei Bulbs
+        { re: -0.1528,              im:  1.0397,             s: 0.002 }, // Antenne oben, besonders wenig Schwarz
+        { re: -1.31070,             im:  0.06740,            s: 0.03 }, // Seitenbulb an der Nadel
       ];
       let mPoiIdx = -1;            // -1 = noch keiner gewaehlt -> pickRandomPoi setzt
       let mScale  = 1.0;           // wird beim ersten Frame von pickRandomPoi gesetzt
@@ -939,43 +958,49 @@
       }
 
       // --- Immersive-Modus ----------------------------------------
-      // Laeuft Musik mit aktivem Visualizer (Fraktal oder Spectrum), nimmt der
-      // Visualizer den ganzen Bildschirm ein. Musik + Audio-Reaktion laufen
-      // dabei einfach weiter. JEDE Eingabe (Maus/Taste/Touch/Scroll) beendet
-      // den Modus sofort -> und er kommt kurz danach (IMMERSIVE_AFTER), sobald
-      // wirklich nichts mehr passiert, von selbst wieder. Bewusst KEIN langes
-      // Timeout: die kurze Spanne dient nur als Entprellung gegen die Luecken
-      // zwischen einzelnen Mousemove-Events waehrend echter Mausbewegung.
-      const IMMERSIVE_AFTER = 500;  // ms ohne Eingabe bis zum Vollbild
-      const IMMERSIVE_PREF_KEY = 'glappa-tunes-immersive';
+      // Eine Regel, keine Automatik: der Knopf (oder Taste F) schaltet den
+      // Vollbild-Visualizer AN und AUS. Frueher sprang er von selbst rein,
+      // sobald 0,5 s keine Maus kam, und flog bei der naechsten Bewegung
+      // wieder raus - das war das staendige Gezappel. Jetzt beenden nur Esc,
+      // Doppelklick, der Beenden-Knopf oder der Immersive-Knopf.
+      // Zusaetzlich geht die Seite per Fullscreen-API in den echten
+      // Vollbildmodus (ohne Browserleisten); klappt das nicht, bleibt das
+      // CSS-Overlay als Ersatz - aussehen tut es gleich.
+      const IMMERSIVE_IDLE_HIDE = 2200;  // ms bis Leiste + Mauszeiger verschwinden
       let immersive = false;
-      let immersiveEnabled = true;    // per Button an/aus, Standard: AN
-      let lastActivity = performance.now();
-      let immersiveHintT = 0;
-      const immersiveHint  = document.getElementById('immersiveHint');
+      let immersiveUiT = 0;
+      let wantFullscreen = false;        // wir selbst haben Vollbild angefordert
+      let savedCanvasStyle = null;       // vom Ziehen gesetzte Inline-Hoehe
+      let savedCanvasTitle = null;       // Zieh-Hinweis-Tooltip, im Vollbild aus
+      const immersiveUi    = document.getElementById('immersiveUi');
       const immersiveTrack = document.getElementById('immersiveTrack');
       const immersiveBtn   = document.getElementById('immersiveBtn');
+      const immPlayBtn     = document.getElementById('immPlayBtn');
+      const immModeBtn     = document.getElementById('immModeBtn');
 
-      try { immersiveEnabled = localStorage.getItem(IMMERSIVE_PREF_KEY) !== '0'; } catch (e) {}
-      immersiveBtn.classList.toggle('active', immersiveEnabled);
-
-      immersiveBtn.addEventListener('click', () => {
-        // Klick = SOFORT rein in den Vollbildmodus, ohne die kurze
-        // Inaktivitaets-Schwelle abzuwarten. Nur wenn das gerade nicht geht (kein
-        // Visualizer aktiv / Musik pausiert), wirkt der Button wie frueher
-        // als An/Aus-Schalter fuer das Auto-Feature.
-        if (!immersive && visMode !== 'off' && !audio.paused) {
-          immersiveEnabled = true;
-          immersiveBtn.classList.add('active');
-          try { localStorage.setItem(IMMERSIVE_PREF_KEY, '1'); } catch (e) {}
-          enterImmersive(true);
-          return;
-        }
-        immersiveEnabled = !immersiveEnabled;
-        immersiveBtn.classList.toggle('active', immersiveEnabled);
-        try { localStorage.setItem(IMMERSIVE_PREF_KEY, immersiveEnabled ? '1' : '0'); } catch (e) {}
-        if (!immersiveEnabled) exitImmersive();
-      });
+      function fsElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+      }
+      function requestFs() {
+        const el = document.documentElement;
+        const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (!fn) return;
+        try {
+          const p = fn.call(el);
+          if (p && p.catch) p.catch(() => {});   // abgelehnt -> CSS-Vollbild reicht
+          wantFullscreen = true;
+        } catch (e) { /* egal */ }
+      }
+      function exitFs() {
+        if (!wantFullscreen) return;
+        wantFullscreen = false;
+        const fn = document.exitFullscreen || document.webkitExitFullscreen;
+        if (!fn || !fsElement()) return;
+        try {
+          const p = fn.call(document);
+          if (p && p.catch) p.catch(() => {});
+        } catch (e) { /* egal */ }
+      }
 
       // Screen Wake Lock: haelt Bildschirm/PC im Immersive-Modus wach (wie
       // beim Video-Schauen). Ohne API-Support oder bei Ablehnung passiert
@@ -1010,63 +1035,121 @@
         if (document.visibilityState === 'visible' && immersive) acquireWakeLock();
       });
 
-      // Nach manuellem Einschalten per Button duerfen die Restereignisse des
-      // Klicks selbst (pointerup, kleine Mausbewegung) den Modus nicht sofort
-      // wieder beenden -> kurze Schonfrist.
-      let immersiveGraceUntil = 0;
-
-      function enterImmersive(manual) {
+      function enterImmersive() {
+        if (immersive) return;
+        // Ohne Visualizer gaebe es nichts zu sehen -> dann eben das Fraktal an.
+        if (visMode === 'off') {
+          setVisMode('mandelbrot');
+          if (visMode === 'off') return;   // kein Web Audio -> nichts zu machen
+        }
         immersive = true;
-        immersiveGraceUntil = performance.now() + (manual ? 1200 : 0);
+        savedCanvasStyle = canvas.getAttribute('style');
+        canvas.removeAttribute('style');   // sonst gewinnt die gezogene Hoehe
+        // Der "unten rechts ziehen"-Tooltip haengt am Canvas, das jetzt den
+        // ganzen Schirm fuellt -> er kaeme bei jeder Mausruhe. Im Vollbild weg.
+        savedCanvasTitle = canvas.getAttribute('title');
+        canvas.removeAttribute('title');
         document.body.classList.add('immersive-active');
         canvas.classList.add('player-vis--immersive');
+        immersiveBtn.classList.add('active');
+        immersiveBtn.setAttribute('aria-pressed', 'true');
+        requestFs();
         acquireWakeLock();
         fitCanvas();
-        // Kurzer Einblend-Hinweis: Trackname + wie man wieder rauskommt
-        immersiveTrack.textContent = (current >= 0 && tracks[current]) ? tracks[current].name : '';
-        immersiveHint.hidden = false;
-        clearTimeout(immersiveHintT);
-        immersiveHintT = setTimeout(() => { immersiveHint.hidden = true; }, 4000);
+        kickVis();
+        showImmersiveUi();
       }
 
       function exitImmersive() {
         if (!immersive) return;
         immersive = false;
         releaseWakeLock();
-        document.body.classList.remove('immersive-active');
+        exitFs();
+        document.body.classList.remove('immersive-active', 'immersive-idle');
         canvas.classList.remove('player-vis--immersive');
-        immersiveHint.hidden = true;
-        clearTimeout(immersiveHintT);
+        if (savedCanvasStyle !== null) canvas.setAttribute('style', savedCanvasStyle);
+        savedCanvasStyle = null;
+        if (savedCanvasTitle !== null) canvas.setAttribute('title', savedCanvasTitle);
+        savedCanvasTitle = null;
+        immersiveBtn.classList.remove('active');
+        immersiveBtn.setAttribute('aria-pressed', 'false');
+        immersiveUi.hidden = true;
+        clearTimeout(immersiveUiT);
         fitCanvas();
+        // Ausserhalb des Vollbilds laeuft die Schleife nur mit Musik weiter.
+        if (audio.paused && visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
       }
 
-      // Feature an + Visualizer an + Musik laeuft -> SOFORT rein, ohne auf die
-      // 15s Inaktivitaet zu warten. Greift ueberall dort, wo sich einer der drei
-      // Zustaende aendert (Vis-Modus gewechselt, Wiedergabe gestartet), nicht
-      // nur beim Klick auf den Immersive-Button selbst.
-      function maybeAutoEnterImmersive() {
-        if (immersiveEnabled && !immersive && visMode !== 'off' && !audio.paused) {
-          enterImmersive(true);
+      function toggleImmersive() {
+        if (immersive) exitImmersive(); else enterImmersive();
+      }
+
+      // Bedienleiste zeigen und nach kurzer Ruhe mitsamt Mauszeiger ausblenden.
+      function showImmersiveUi() {
+        if (!immersive) return;
+        immersiveTrack.textContent =
+          (current >= 0 && tracks[current]) ? tracks[current].name : '\u2014 kein Track geladen \u2014';
+        syncImmersiveUi();
+        immersiveUi.hidden = false;
+        document.body.classList.remove('immersive-idle');
+        clearTimeout(immersiveUiT);
+        immersiveUiT = setTimeout(() => {
+          if (!immersive) return;
+          immersiveUi.hidden = true;
+          document.body.classList.add('immersive-idle');
+        }, IMMERSIVE_IDLE_HIDE);
+      }
+
+      // Play-Symbol und Modus-Beschriftung der Vollbild-Leiste nachziehen.
+      function syncImmersiveUi() {
+        if (!immPlayBtn) return;
+        immPlayBtn.innerHTML = audio.paused ? '&#9654;' : '&#10074;&#10074;';
+        immModeBtn.innerHTML = visMode === 'mandelbrot' ? '&#10024; Fractal' : '&#9836; Spectrum';
+      }
+
+      immersiveBtn.addEventListener('click', toggleImmersive);
+
+      immersiveUi.addEventListener('click', e => {
+        const b = e.target.closest('[data-imm]');
+        if (!b) return;
+        const act = b.dataset.imm;
+        if      (act === 'prev') prev();
+        else if (act === 'next') next();
+        else if (act === 'play') togglePlay();
+        else if (act === 'mode') setVisMode(visMode === 'mandelbrot' ? 'spectrum' : 'mandelbrot');
+        else if (act === 'exit') { exitImmersive(); return; }
+        showImmersiveUi();
+      });
+
+      // Maus/Touch im Vollbild holt nur die Leiste zurueck - beendet NICHT.
+      ['pointermove', 'pointerdown', 'wheel', 'touchstart'].forEach(ev =>
+        window.addEventListener(ev, () => { if (immersive) showImmersiveUi(); }, { passive: true })
+      );
+
+      // Doppelklick: rein wie bei einem Videoplayer, und wieder raus.
+      window.addEventListener('dblclick', e => {
+        if (immersive) {
+          if (!e.target.closest('.immersive-ui')) exitImmersive();
+        } else if (e.target === canvas && visMode !== 'off') {
+          enterImmersive();
         }
-      }
+      });
 
-      function noteActivity() {
-        lastActivity = performance.now();
-        if (immersive && performance.now() >= immersiveGraceUntil) exitImmersive();
-      }
-      ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev =>
-        window.addEventListener(ev, noteActivity, { passive: true })
+      // Esc / F11 / Browser-Knopf verlassen das Vollbild -> Modus mitbeenden.
+      ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev =>
+        document.addEventListener(ev, () => {
+          if (immersive && wantFullscreen && !fsElement()) {
+            wantFullscreen = false;
+            exitImmersive();
+          }
+        })
       );
 
       // --- Dispatcher ---------------------------------------------
       function drawVis() {
-        if (!analyser || visMode === 'off' || audio.paused) { visRaf = 0; return; }
-        // Immersive-Check: Feature an + Visualizer an (Fraktal ODER Spectrum)
-        // + Musik laeuft + lange keine Eingabe -> ab in den Vollbildmodus.
-        if (immersiveEnabled && !immersive && visMode !== 'off' &&
-            performance.now() - lastActivity > IMMERSIVE_AFTER) {
-          enterImmersive();
-        }
+        // Im Vollbild laeuft das Bild auch bei Pause weiter (das Fraktal
+        // gleitet dann ruhig vor sich hin), sonst nur mit Musik.
+        if (!analyser || visMode === 'off' || (audio.paused && !immersive)) { visRaf = 0; return; }
         // Naechsten Frame ZUERST einplanen, dann erst zeichnen. Wirft ein
         // einzelner Frame eine Exception, stirbt dadurch NICHT die ganze
         // Schleife (sonst bleibt der Visualizer stehen, waehrend die Musik
@@ -1089,14 +1172,17 @@
       // damit eine aus irgendeinem Grund gestorbene Schleife sich selbst wieder
       // faengt, solange Musik laeuft.
       function kickVis() {
-        if (audio.paused || visMode === 'off' || !analyser || visRaf) return;
+        if (visMode === 'off' || !analyser || visRaf) return;
+        if (audio.paused && !immersive) return;
         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         visRaf = requestAnimationFrame(drawVis);
       }
 
       function setVisMode(mode) {
         if (!VIS_MODES.includes(mode)) mode = 'off';
-        exitImmersive();               // Mode-Wechsel beendet Vollbild immer
+        // Frueher flog hier jedes Mal der Vollbildmodus raus. Jetzt laesst
+        // sich im Vollbild zwischen Spectrum und Fraktal umschalten; nur
+        // "aus" beendet ihn (weiter unten).
         visMode = mode;
         try { localStorage.setItem(VIS_PREF_KEY, mode); } catch (e) {}
 
@@ -1107,6 +1193,7 @@
         else                            visBtn.innerHTML = '♬ Visualizer';
 
         if (mode === 'off') {
+          exitImmersive();             // ohne Bild kein Vollbild
           if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
           canvas.hidden = true;
           cctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1118,6 +1205,7 @@
           visBtn.classList.remove('active');
           visBtn.innerHTML = '♬ Visualizer';
           canvas.hidden = true;
+          exitImmersive();
           return;
         }
         if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -1129,14 +1217,15 @@
         // Reset Mandelbrot wenn neu reingewechselt -> random POI
         if (mode === 'mandelbrot') pickRandomPoi();
         kickVis();
-        maybeAutoEnterImmersive();
+        syncImmersiveUi();
       }
 
       // Cycle-Button: off -> spectrum -> mandelbrot -> off
-      visBtn.addEventListener('click', () => {
+      function cycleVis() {
         const i = VIS_MODES.indexOf(visMode);
         setVisMode(VIS_MODES[(i + 1) % VIS_MODES.length]);
-      });
+      }
+      visBtn.addEventListener('click', cycleVis);
 
       // Pref aus localStorage wiederherstellen (Backcompat: '1' -> spectrum)
       try {
@@ -1184,6 +1273,7 @@
         audio.src = tracks[i].url;
         titleEl.textContent = tracks[i].name;
         renderPlaylist();
+        if (immersive) showImmersiveUi();
         audio.play().catch(() => {});
       }
 
@@ -1280,26 +1370,26 @@
       audio.addEventListener('play',  () => {
         playBtn.innerHTML = '&#10074;&#10074;';
         kickVis();
-        maybeAutoEnterImmersive();
+        syncImmersiveUi();
       });
       // 'playing' (echtes Anlaufen nach Buffering/Track-Wechsel) als zusaetzlicher
       // Aufhaenger -> deckt die Faelle ab, in denen 'play' zu frueh feuert.
-      audio.addEventListener('playing', () => { kickVis(); maybeAutoEnterImmersive(); });
+      audio.addEventListener('playing', () => { kickVis(); syncImmersiveUi(); });
       audio.addEventListener('pause', () => {
         playBtn.innerHTML = '&#9654;';
-        if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+        syncImmersiveUi();
         clearPump();
         mLastFrameT = 0;             // Frame-Zeit-Messung nicht ueber Pausen ziehen
-        // Ohne Musik kein Vollbild-Fraktal. ABER: beim automatischen Track-
-        // Wechsel feuert 'pause' via 'ended' auch -> dann drinbleiben, die
-        // Musik geht ja sofort weiter (das regelt der 'ended'-Handler).
-        if (!audio.ended) exitImmersive();
+        // Pause beendet das Vollbild NICHT mehr - sonst flog man beim
+        // kurzen Anhalten jedes Mal raus. Nur ausserhalb des Vollbilds
+        // halten wir die Schleife an.
+        if (!immersive && visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
       });
       audio.addEventListener('ended', () => {
-        if (visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
+        if (!immersive && visRaf) { cancelAnimationFrame(visRaf); visRaf = 0; }
         if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
         const isLast = current === tracks.length - 1;
-        if (isLast && repeat !== 'all' && !shuffle) { stop(); exitImmersive(); return; }
+        if (isLast && repeat !== 'all' && !shuffle) { stop(); return; }
         next();
       });
       audio.addEventListener('error', () => {
@@ -1376,10 +1466,19 @@
       );
 
       document.addEventListener('keydown', e => {
-        if (/INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
-        if (e.key === ' ')          { e.preventDefault(); togglePlay(); }
-        else if (e.key === 'ArrowRight' && e.shiftKey) next();
-        else if (e.key === 'ArrowLeft'  && e.shiftKey) prev();
+        const ae = document.activeElement;
+        if (ae && /INPUT|TEXTAREA/.test(ae.tagName)) return;
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        const k = e.key;
+        // Esc beendet das Vollbild auch dann, wenn die Fullscreen-API gar
+        // nicht gegriffen hat (dann bekommt der Browser das Esc nicht mit).
+        if (k === 'Escape' && immersive)     { e.preventDefault(); exitImmersive(); return; }
+        if (k === 'f' || k === 'F')          { e.preventDefault(); toggleImmersive(); return; }
+        if (k === 'v' || k === 'V')          { e.preventDefault(); cycleVis(); }
+        else if (k === ' ')                  { e.preventDefault(); togglePlay(); }
+        else if (k === 'ArrowRight' && (e.shiftKey || immersive)) next();
+        else if (k === 'ArrowLeft'  && (e.shiftKey || immersive)) prev();
+        if (immersive) showImmersiveUi();
       });
     })();
   </script>
