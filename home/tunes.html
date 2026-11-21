@@ -335,6 +335,8 @@
       let mProbeSplit = 3;         // auf wieviele Bilder die Probe verteilt wird
       let mProbePhase = 0;         // welcher Teil der Probe als naechstes dran ist
       let mProbeMs   = 0;          // geglaettete Rechenzeit der Probe pro Frame
+      let mProbeInfo = null;       // letzte Probe-Entscheidung (nur fuers Debuggen)
+      let mIterHunger = 0;         // Flaechenanteil, der mehr Iterationen braucht
       let mMandLastT = 0;          // Zeitpunkt des letzten Fraktal-Bildes (ms)
       let mDisplayMs = 16.7;       // Bildtakt des Monitors (ms), gemessen
       // Monitortakt messen, solange der Visualizer NICHT laeuft (sonst misst
@@ -364,6 +366,21 @@
       let mGL = null;              // {gl, canvas, prog, u, tex, refPoi} | null -> CPU
       let mGLTried = false;        // Init nur einmal versuchen
       let mGLScale = 1;            // dynamische Render-Aufloesung (0.5..1)
+      // Ueberabtastung: bleibt Rechenzeit uebrig, rechnet der Shader MEHRERE
+      // Punkte je Bildpunkt und mittelt sie. Genau das braucht der feine
+      // Fraktalstaub: ein Punkt pro Bildpunkt trifft dort zufaellig mal diese,
+      // mal jene Farbe -> Konfetti ("verpixelt"). Mit 4 Punkten wird daraus
+      // ruhige Struktur, saubere Raender inklusive.
+      // (Ueber ein groesseres Canvas zu gehen und den Browser verkleinern zu
+      // lassen war nachgemessen 5-10x teurer als das Fraktal selbst.)
+      // Muster: 2 Punkte diagonal, 4 Punkte als gedrehtes Raster (RGSS).
+      let mAA = 1;                 // 1, 2 oder 4 Punkte je Bildpunkt
+      const AA_OFF = {
+        1: new Float32Array([0, 0,  0, 0,  0, 0,  0, 0]),
+        2: new Float32Array([-0.25, -0.25,  0.25, 0.25,  0, 0,  0, 0]),
+        4: new Float32Array([-0.375, -0.125,  0.125, -0.375,
+                              0.375,  0.125, -0.125,  0.375]),
+      };
       let mFrameEMA = 16;          // geglaettete Frame-Zeit (ms) fuer die Anpassung
       let mFrameBase = 16.7;       // gelernter natuerlicher Bildtakt (ms)
       let mLastFrameT = 0;
@@ -485,6 +502,7 @@
             'uniform float uHueSc; uniform float uPhase; uniform float uSat; uniform float uLum;\n' +
             'uniform vec3 uInCol;   // Innenflaeche (pulsiert mit dem Bass)\n' +
             'uniform vec3 uSmooth;  // Rausch-Glaettung: Schwellen (Grad/Pixel) + Log-Skala\n' +
+            'uniform int uAA; uniform vec2 uOff[4]; // Punkte je Bildpunkt + ihre Lage\n' +
             'uniform int uSkip;     // Reihenentwicklung: uebersprungene Iterationen\n' +
             'uniform vec2 uSA1, uSA2, uSA3, uSA4; // A*r, B*r^2, C*r^3, D*r^4\n' +
             'uniform float uInvR;   // 1/r (r = groesstes |dc| im Bild)\n' +
@@ -500,10 +518,7 @@
             '             h<4.0?vec3(0.0,xx,cc): h<5.0?vec3(xx,0.0,cc): vec3(cc,0.0,xx);\n' +
             '  return rgb + (uLum - cc*0.5);\n' +
             '}\n' +
-            'void main(){\n' +
-            '  float dx = gl_FragCoord.x - uRes.x*0.5;\n' +
-            '  float dy = uRes.y*0.5 - gl_FragCoord.y; // Y-Flip wie CPU-Pfad (Zeile 0 = oben)\n' +
-            '  vec2 dc = uDC + vec2(dx*uRotStep.x - dy*uRotStep.y, dx*uRotStep.y + dy*uRotStep.x);\n' +
+            'vec3 shade(vec2 dc){ // Farbe EINES Abtastpunktes\n' +
             '  vec2 dz = vec2(0.0), Z = vec2(0.0); // Z = Z_m (Z_0 = 0)\n' +
             '  int m = 0; float esc = -1.0; float zz = 0.0;\n' +
             '  float ld = 0.0; // log2 |dz_n/dz_1|^2: Innen-Erkennung\n' +
@@ -544,11 +559,26 @@
             '  // Farbwolke statt Konfetti. Glatte Bereiche behalten ihre Baender.\n' +
             '  // (Ableitung VOR dem Innen-Return, damit alle 4 Pixel des Blocks mitrechnen.)\n' +
             '  float jump = fwidth(sm) * uHueSc;           // Farbsprung in Grad pro Pixel\n' +
-            '  if (inside) { fragColor = vec4(uInCol, 1.0); return; }\n' +
+            '  if (inside) return uInCol;\n' +
             '  float t = smoothstep(uSmooth.x, uSmooth.y, jump);\n' +
             '  vec3 cLin = hsl(sm*uHueSc + uPhase);\n' +
             '  vec3 cLog = hsl(log2(sm)*uHueSc*uSmooth.z + uPhase);\n' +
-            '  fragColor = vec4(mix(cLin, cLog, t), 1.0);\n' +
+            '  return mix(cLin, cLog, t);\n' +
+            '}\n' +
+            // Ueberabtastung: uAA Punkte je Bildpunkt, gemittelt. Die Schleife
+            // laeuft fuer ALLE Pixel gleich oft (uAA ist fuer das ganze Bild
+            // gleich), damit fwidth in shade() gueltig bleibt.
+            'void main(){\n' +
+            '  float dx = gl_FragCoord.x - uRes.x*0.5;\n' +
+            '  float dy = uRes.y*0.5 - gl_FragCoord.y; // Y-Flip wie CPU-Pfad (Zeile 0 = oben)\n' +
+            '  vec3 col = vec3(0.0);\n' +
+            '  for (int s = 0; s < 4; s++) {\n' +
+            '    if (s >= uAA) break;\n' +
+            '    float ax = dx + uOff[s].x, ay = dy + uOff[s].y;\n' +
+            '    col += shade(uDC + vec2(ax*uRotStep.x - ay*uRotStep.y,\n' +
+            '                            ax*uRotStep.y + ay*uRotStep.x));\n' +
+            '  }\n' +
+            '  fragColor = vec4(col / float(uAA), 1.0);\n' +
             '}';
           function sh(type, src) {
             const s = gl.createShader(type);
@@ -570,9 +600,11 @@
           const u = {};
           ['uRef','uRefLen','uMaxIter','uDC','uRotStep','uRes',
            'uHueSc','uPhase','uSat','uLum','uInCol','uSmooth',
-           'uSkip','uSA1','uSA2','uSA3','uSA4','uInvR','uLd0'].forEach(name => {
+           'uSkip','uSA1','uSA2','uSA3','uSA4','uInvR','uLd0','uAA'].forEach(name => {
             u[name] = gl.getUniformLocation(prog, name);
           });
+          u.uOff = gl.getUniformLocation(prog, 'uOff[0]')
+                || gl.getUniformLocation(prog, 'uOff');
           gl.uniform1i(u.uRef, 0);
           const tex = gl.createTexture();
           gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -968,9 +1000,31 @@
           // Millisekunden - lief der Browser nur mit 30 Hz, kam die Aufloesung
           // nach einem kurzen Haenger NIE wieder hoch (blieb bei 40% = unscharf).
           const T = Math.max(16.7, mFrameBase);
-          if      (mFrameEMA > T * 1.9  && mGLScale > 0.5) mGLScale = Math.max(0.5, mGLScale * 0.75);
-          else if (mFrameEMA > T * 1.45 && mGLScale > 0.5) mGLScale = Math.max(0.5, mGLScale * 0.88);
-          else if (mFrameEMA < T * 1.2  && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.12);
+          // Reihenfolge beim Sparen: erst die Extrapunkte der Ueberabtastung,
+          // dann erst die Aufloesung - lieber etwas Konfetti als ein weiches
+          // Bild. Beim Zulegen umgekehrt: erst volle Aufloesung, dann Punkte.
+          // Hochgestuft wird nur unter 60% des Takts: doppelt so viele Punkte
+          // kosten gemessen das 1,5- bis 1,7-fache (die Grafikkarte rechnet
+          // benachbarte Punkte guenstig mit), danach liegt das Bild also
+          // wieder knapp unter dem Takt -> kein Pumpen.
+          // Die Aufloesung faellt erst, wenn es wirklich stockt (ueber 190%
+          // des Takts, also unter ~30 Bilder/s), und kommt schon unter 150%
+          // zurueck. Frueher lagen die Schwellen bei 145%/120%: tief im Zoom
+          // pendelte der Regler dann staendig zwischen 85% und 100%
+          // Aufloesung - das Bild wurde sichtbar abwechselnd grob und scharf.
+          // Lieber 45 Bilder/s scharf als 60 weich (Wunsch des Users).
+          if      (mFrameEMA > T * 2.4)  { if (mAA > 1) mAA >>= 1;
+                                           else mGLScale = Math.max(0.5, mGLScale * 0.75); }
+          else if (mFrameEMA > T * 1.9)  { if (mAA > 1) mAA >>= 1;
+                                           else mGLScale = Math.max(0.5, mGLScale * 0.88); }
+          // Fehlen dem Bild noch Iterationen (mehr als 1% der Flaeche waere
+          // sonst faelschlich innen-farbig) und ist keine Zeit uebrig, dann
+          // weg mit den Extrapunkten: Struktur ist wichtiger als Glaettung.
+          else if (mIterHunger > 0.01 && mFrameEMA > T && mAA > 1) mAA >>= 1;
+          else if (mFrameEMA < T * 1.5 && mGLScale < 1.0) mGLScale = Math.min(1.0, mGLScale * 1.12);
+          // Ueberabtastung erst, wenn Aufloesung UND Iterationen sitzen.
+          else if (mFrameEMA < T * 0.6 && mAA < 4 && mGLScale >= 1
+                   && mIterHunger < 0.005)                mAA <<= 1;
         }
         const rw = Math.max(64, Math.round(W * mGLScale));
         const rh = Math.max(40, Math.round(H * mGLScale));
@@ -1015,6 +1069,8 @@
         gl.uniform1f(g.u.uLum, lBase);
         gl.uniform3f(g.u.uInCol, inR / 255, inG / 255, inB / 255);
         gl.uniform3f(g.u.uSmooth, mSmooth[0], mSmooth[1], mSmooth[2]);
+        gl.uniform1i(g.u.uAA, mAA);
+        gl.uniform2fv(g.u.uOff, AA_OFF[mAA]);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         cctx.drawImage(g.canvas, 0, 0, W, H);
       }
@@ -1097,7 +1153,7 @@
       function probeSteering(ca, sa, phase) {
         if (phase === 0) {
           mProbe = { detail: 0, black: 0, detL: 0, detR: 0, detT: 0, detB: 0,
-                     esc: [], capped: 0, parts: 0,
+                     esc: [], capped: 0, parts: 0, maxIt: mIter,
                      cap: mGL ? Math.min(ITER_CAP, Math.max(3000, Math.round(mIter * 1.5))) : mIter };
         }
         const P = mProbe;
@@ -1157,14 +1213,55 @@
         // 10000 Iterationen = doppelte Rechenzeit fuer 1% weniger Schwarz).
         // Rauf sofort, runter nur langsam -> kein Flackern am Rand.
         // Haengt dagegen die MEHRHEIT der Nicht-Innen-Pixel an der Kappe (tief
-        // im Zoom entkommt dann alles erst spaet), kraeftig hoeher.
+        // im Zoom entkommt dann alles erst spaet), kraeftig hoeher - aber NUR,
+        // wenn das Hochziehen auch etwas gebracht hat: im verlaengerten Stueck
+        // (zwischen mIter und der Probe-Kappe) muessen genug Pixel entkommen
+        // sein. Sonst sitzt da schlicht eine Innenflaeche - typisch ein
+        // Miniapfelmaennchen, dessen Rand nur langsam konvergiert -, und die
+        // Iterationszahl schaukelte sich bis zur Obergrenze hoch: das Bild
+        // kostete das Mehrfache, der Regler nahm dafuer die Aufloesung
+        // zurueck (gemessen: 10000 Iterationen, 66% Aufloesung = sichtbar grob)
+        // und mehr zu sehen war trotzdem nichts.
         if (P.esc.length + P.capped > 0) {
-          let target = 0;
+          // Bringt mehr Rechnen ueberhaupt noch etwas? Dafuer zaehlen nur die
+          // Pixel, die ERST oberhalb des aktuellen mIter entkommen sind
+          // ("late"): die waeren sonst faelschlich innen-farbig. Sind das
+          // weniger als 0,3% der Probeflaeche, bleibt die Zahl stehen.
+          // Ohne diese Bremse schaukelte sie sich bis zur Obergrenze hoch:
+          // die Probe rechnet bis 1,5x mIter, also wanderte das 99,5%-Quantil
+          // bei jedem Durchlauf mit nach oben (Rueckkopplung). Gemessen hat
+          // das Bild dann 10000 Iterationen gekostet und der Aufloesungs-
+          // regler ging auf 56-66% zurueck - sichtbar grob, ohne dass mehr
+          // zu sehen gewesen waere.
+          let late = 0;
+          for (const v of P.esc) if (v > P.maxIt) late++;
+          // Anteil der Flaeche, der von mehr Iterationen noch profitieren
+          // wuerde (sonst innen-farbig) -> entscheidet mit, wofuer die freie
+          // Rechenzeit draufgeht: erst Struktur, dann Ueberabtastung.
+          mIterHunger = late / area;
+          let want = 0;
           if (P.esc.length > 0) {
             P.esc.sort((a, b) => a - b);
-            target = P.esc[Math.floor((P.esc.length - 1) * 0.995)] * 1.25 + 64;
+            want = P.esc[Math.floor((P.esc.length - 1) * 0.995)] * 1.25 + 64;
           }
-          if (P.capped > P.esc.length) target = Math.max(target, cap * 1.5);
+          // Haengt die MEHRHEIT der Nicht-Innen-Pixel an der Kappe und es
+          // entkommen dort auch welche, ist die Kappe wirklich zu tief.
+          if (P.capped > P.esc.length && late > P.capped * 0.25) {
+            want = Math.max(want, cap * 1.5);
+          }
+          // Hochgestuft wird nur, wenn (a) genug Pixel wirklich erst oberhalb
+          // des jetzigen mIter entkommen, (b) das Bild in VOLLER Aufloesung
+          // laeuft und (c) es noch im Takt liegt - und dann hoechstens um ein
+          // Drittel je Durchlauf. Schaerfe geht vor Iterationstiefe: vorher
+          // wuchs die Zahl bis 10000, der Regler nahm dafuer die Aufloesung
+          // auf 51-66% zurueck (sichtbar grob) und zu sehen war trotzdem
+          // nichts mehr. Nach unten geht es immer, nur sanft.
+          const luft = mGLScale >= 1 && mFrameEMA < Math.max(16.7, mFrameBase) * 1.2;
+          let target = want > mIterAuto
+            ? (late > area * 0.005 && luft ? Math.min(want, mIterAuto * 1.3 + 64) : mIterAuto)
+            : want;
+          mProbeInfo = { esc: P.esc.length, capped: P.capped, late,
+                         cap, ziel: Math.round(target), maxIt: P.maxIt };
           if (target > mIterAuto) mIterAuto = target;
           else mIterAuto += (target - mIterAuto) * 0.15;
           mIterAuto = Math.min(ITER_CAP, mIterAuto);
@@ -1214,7 +1311,8 @@
               mIter = Math.min(mGL ? ITER_CAP : 340, Math.max(650, Math.round(mIterAuto)));
             }
           }
-          mGLScale = 1; mAdaptTick = -1e6;   // volle Aufloesung, keine Anpassung
+          mGLScale = 1; mAA = o.aa || 1;     // feste Aufloesung/Punktzahl,
+          mAdaptTick = -1e6;                 // keine Anpassung waehrend des Tests
           const draw = () => mGL
             ? renderMandelGL(canvas.width, canvas.height, 1, 0, 0.55, 0.85, 0, 0, 0)
             : renderMandelCPU(canvas.width, canvas.height, 1, 0, 0.55, 0.85, 0, 0, 0);
@@ -1244,7 +1342,9 @@
             return { poi: mPoiIdx, scale: mScale, iter: mIter, glScale: +mGLScale.toFixed(2),
                      frameMs: +mFrameEMA.toFixed(1), baseMs: +mFrameBase.toFixed(1),
                      displayMs: +mDisplayMs.toFixed(2),
-                     probeMs: +mProbeMs.toFixed(2), probeSplit: mProbeSplit,
+                     probeMs: +mProbeMs.toFixed(2), probeSplit: mProbeSplit, aa: mAA,
+                     hunger: +mIterHunger.toFixed(4),
+                     probe: mProbeInfo,
                      gpu: !!mGL, canvas: [canvas.width, canvas.height], mode: visMode };
           },
           // Rausch-Glaettung verstellen, z.B. smooth([9999, 9999, 6]) = aus
