@@ -151,6 +151,12 @@
     .xfer .xfill { height: 100%; width: 0%; transition: width 0.25s linear; }
     .xfer .xinfo { font-size: 0.76em; margin-top: 3px; font-variant-numeric: tabular-nums; }
     .xfer.err .xbar { display: none; }
+    /* P2P-Schalter unter dem Eingabefeld; Tooltip klappt nach OBEN auf
+       (ganz unten in der Kachel waere unten kein Platz). */
+    .p2p-row { position: relative; display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.8em; }
+    .p2p-opt { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+    .p2p-opt input { margin: 0; cursor: pointer; }
+    .p2p-row .info-tip { top: auto; bottom: calc(100% + 8px); font-size: 0.98em; }
     /* Eigener Audio-Player (Lautstaerke 0-100 mit %-Anzeige) */
     .aplayer {
       display: flex;
@@ -393,6 +399,8 @@
     html[data-theme="clean"] .xfer .xfill { background: #6fd18c; }
     html[data-theme="clean"] .xfer .xinfo { color: #9aa0a6; }
     html[data-theme="clean"] .xfer.err .xinfo { color: #e5715f; }
+    html[data-theme="clean"] .p2p-opt { color: #9aa0a6; }
+    html[data-theme="clean"] .p2p-opt input { accent-color: #6fd18c; }
     html[data-theme="clean"] .aplayer {
       background: #1d2026;
       border: 1px solid #33363b;
@@ -536,6 +544,8 @@
     html[data-theme="retro"] .xfer .xfill { background: #00ff00; box-shadow: 0 0 8px #00ff00; }
     html[data-theme="retro"] .xfer .xinfo { color: #00ffff; }
     html[data-theme="retro"] .xfer.err .xinfo { color: #ff5555; }
+    html[data-theme="retro"] .p2p-opt { color: #00ffff; }
+    html[data-theme="retro"] .p2p-opt input { accent-color: #00ff00; }
     html[data-theme="retro"] .aplayer {
       background: #000;
       border: 1px solid #444;
@@ -668,7 +678,7 @@
         <h2 id="chatHead">Chat</h2>
         <span class="info-wrap">
           <button type="button" class="info-btn" aria-label="Info zum Chat" aria-describedby="chatTip">i</button>
-          <span class="info-tip" id="chatTip" role="tooltip">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis ~200 MB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar MB, l&ouml;scht jedes St&uuml;ck, sobald der Empfang best&auml;tigt ist, und speichert NICHTS. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</span>
+          <span class="info-tip" id="chatTip" role="tooltip">PRIVAT: Namen anklicken (oben im Raum oder im Chat) = Privatnachricht &mdash; wird nur f&uuml;r euch zwei verschl&uuml;sselt, kein Public-Key-Kopieren n&ouml;tig; nicht mal der Server erf&auml;hrt, an wen sie geht. DATEIEN: in den Chat ziehen oder &#128206; &mdash; bis 7 MB landen sie verschl&uuml;sselt im Verlauf, gr&ouml;&szlig;ere (bis 4 GB) gehen als LIVE-&Uuml;bertragung nur an die, die gerade zuschauen: der Server puffert ein paar St&uuml;cke, l&ouml;scht jedes, sobald der Empfang best&auml;tigt ist, und speichert NICHTS &mdash; mit &#9889; P2P auf beiden Seiten sogar direkt von Browser zu Browser. &#10003; = Signatur gepr&uuml;ft &nbsp;&middot;&nbsp; &#9888; = Signatur nicht pr&uuml;fbar &nbsp;&middot;&nbsp; &#128274; = nicht f&uuml;r dich verschl&uuml;sselt (Privatnachricht anderer, oder du warst beim Absenden nicht im Raum)</span>
         </span>
       </div>
       <div class="chat-box" id="chatBox" aria-live="polite"></div>
@@ -680,6 +690,13 @@
         <input type="text" id="msgInput" class="grow" maxlength="4000" placeholder="Nachricht &mdash; Enter zum Senden" autocomplete="off">
         <button type="button" class="tool-btn tool-btn--mini" id="fileBtn" title="Datei senden (verschl&uuml;sselt)">&#128206;</button>
         <button type="button" class="tool-btn" id="sendBtn">Senden</button>
+      </div>
+      <div class="p2p-row">
+        <label class="p2p-opt" id="p2pLbl"><input type="checkbox" id="p2pChk"> &#9889; P2P-Direktverbindung f&uuml;r gro&szlig;e Dateien</label>
+        <span class="info-wrap">
+          <button type="button" class="info-btn" aria-label="Info zur P2P-Direktverbindung" aria-describedby="p2pTip">i</button>
+          <span class="info-tip" id="p2pTip" role="tooltip">AN = gro&szlig;e Dateien (ab 7 MB) gehen DIREKT von Browser zu Browser (WebRTC) &mdash; im selben Netz um ein Vielfaches schneller, und der Server sieht kein einziges Datei-Byte. Klappt nur, wenn BEIDE Seiten das anhaben; sonst (oder wenn keine Verbindung zustande kommt) l&auml;uft es automatisch verschl&uuml;sselt &uuml;ber den Server. Sicherheit: die Verbindungsdaten gehen PGP-verschl&uuml;sselt + signiert, die Datei selbst DTLS-verschl&uuml;sselt &mdash; niemand kann sich dazwischenschalten. Preis: die Gegenseite sieht deine IP-Adresse, und f&uuml;r den Verbindungsaufbau wird ein STUN-Server (Google/Cloudflare) gefragt. F&uuml;r maximale Anonymit&auml;t: aus lassen. Gilt nur f&uuml;r diesen Browser.</span>
+        </span>
       </div>
       <input type="file" id="fileInput" multiple style="display:none">
       <div class="tool-status" id="chatStatus" role="status" aria-live="polite"></div>
@@ -770,7 +787,6 @@
     let myPub = null;       // eigener Public Key, geparst (fuer Privat-Selbstkopie)
     let direct = null;      // Direktchat: {peer, name, key, present} oder null = Raum-Modus
     let xin = {};           // Live-Datei-Empfang: tid -> Zwischenstand
-    let xBusy = false;      // handleXfers laeuft gerade (kein Doppel-Fetch)
     let xdone = {};         // tid -> fertig empfangen (gegen Doppel-Zustellung)
     let pollFlaky = false;  // letzter Poll ging schief -> Status danach aufraeumen
 
@@ -819,6 +835,62 @@
           const d = x.response || {};
           if (x.status >= 200 && x.status < 300 && !d.error) return resolve(d);
           const e = new Error(d.error || ('HTTP ' + x.status));
+          e.status = x.status;
+          reject(e);
+        });
+        x.addEventListener('error',   () => reject(new Error('Netzwerkfehler')));
+        x.addEventListener('timeout', () => reject(new Error('Zeitüberschreitung')));
+        x.send(JSON.stringify(body));
+      });
+    }
+
+    /* Binaerer Chunk-Upload: Body = [4 Byte Laenge][Meta-JSON][Ciphertext].
+       Meta im Body statt in URL/Headern — bleibt so aus allen Logs raus.
+       Als Blob zusammengesteckt, damit 8 MB nicht nochmal kopiert werden. */
+    function apiBin(path, meta, bytes, o) {
+      o = o || {};
+      const mj = new TextEncoder().encode(JSON.stringify(meta));
+      const hdr = new Uint8Array(4);
+      new DataView(hdr.buffer).setUint32(0, mj.length);
+      const blob = new Blob([hdr, mj, bytes], { type: 'application/octet-stream' });
+      return new Promise((resolve, reject) => {
+        const x = new XMLHttpRequest();
+        x.open('POST', apiUrl(path));
+        x.timeout = o.timeout || 300000;
+        x.responseType = 'json';
+        if (o.onUp && x.upload) x.upload.addEventListener('progress', ev => {
+          if (ev.lengthComputable && ev.total) o.onUp(ev.loaded / ev.total);
+        });
+        x.addEventListener('load', () => {
+          const d = x.response || {};
+          if (x.status >= 200 && x.status < 300 && !d.error) return resolve(d);
+          const e = new Error(d.error || ('HTTP ' + x.status));
+          e.status = x.status;
+          reject(e);
+        });
+        x.addEventListener('error',   () => reject(new Error('Netzwerkfehler')));
+        x.addEventListener('timeout', () => reject(new Error('Zeitüberschreitung')));
+        x.send(blob);
+      });
+    }
+
+    /* Binaerer Chunk-Download (JSON rein, rohe Bytes raus) */
+    function apiGetBin(path, body, o) {
+      o = o || {};
+      return new Promise((resolve, reject) => {
+        const x = new XMLHttpRequest();
+        x.open('POST', apiUrl(path));
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.timeout = o.timeout || 180000;
+        x.responseType = 'arraybuffer';
+        if (o.onDown) x.addEventListener('progress', ev => {
+          if (ev.lengthComputable && ev.total) o.onDown(ev.loaded / ev.total);
+        });
+        x.addEventListener('load', () => {
+          if (x.status >= 200 && x.status < 300 && x.response) return resolve(new Uint8Array(x.response));
+          let msg = 'HTTP ' + x.status;
+          try { msg = JSON.parse(new TextDecoder().decode(x.response)).error || msg; } catch (e) {}
+          const e = new Error(msg);
           e.status = x.status;
           reject(e);
         });
@@ -1037,6 +1109,7 @@
         const rid = await roomHash(rname);
         const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
         clearTimeout(pollTimer);
+        xAbortAll();
         room = rname; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {};
         direct = null; xin = {}; xdone = {};
         st('dirStatus', '');
@@ -1055,6 +1128,7 @@
 
     function leaveRoom(msg) {
       clearTimeout(pollTimer);
+      xAbortAll();
       room = null; roomId = null; lastSeq = 0; roster = []; rosterKeys = {}; seenSeq = {};
       dmFp = null; direct = null; xin = {}; xdone = {};
       st('dirStatus', '');
@@ -1087,6 +1161,7 @@
         const rid = await directHash(me.fp, f);
         const d = await api('/pgp/join', { room: rid, name: me.name, fp: me.fp, key: me.pub });
         clearTimeout(pollTimer);
+        xAbortAll();
         room = null; roomId = rid; lastSeq = 0; seenSeq = {}; rosterKeys = {}; xin = {}; xdone = {};
         direct = { peer: f, name: '', key: null, present: false };
         dmFp = null;
@@ -1176,6 +1251,7 @@
           await api('/pgp/join', { room: roomId, name: me.name, fp: me.fp, key: me.pub });
         }
         await applyRoster(d.roster);
+        for (const s of (d.sigs || [])) handleSig(s);   // P2P-Verbindungsaufbau
         for (const m of (d.msgs || [])) await handleMsg(m);
         // bewusst ohne await; auch bei LEERER Liste aufrufen, wenn noch
         // Empfaenge offen sind — nur so faellt auf, dass ein Transfer
@@ -1590,15 +1666,30 @@
       }
     }
 
-    /* ── Live-Uebertragung grosser Dateien ──────────────────────────
-       Datei wird in 4-MB-Scheiben zerlegt, JEDE einzeln verschluesselt
-       und hochgeladen. Der Server haelt maximal ein paar Chunks vor
-       (Flusskontrolle: {'wait': true} = Empfaenger muessen erst abholen)
-       und loescht jeden Chunk sofort nach Zustellung — gespeichert wird
-       nichts, der Verlauf enthaelt die Datei nicht. Nur wer beim Senden
-       online ist, bekommt sie. */
-    const XCHUNK       = 4 * 1024 * 1024;
-    const XFER_RAW_MAX = 200 * 1024 * 1024;
+    /* ── Live-Uebertragung grosser Dateien ("Turbo", 2026-11) ───────
+       Zwei Wege, automatisch gewaehlt:
+       1) DIREKT (P2P/WebRTC) — nur wenn BEIDE Seiten "⚡ P2P" anhaben.
+          Angebot/Antwort (SDP inkl. DTLS-Fingerprint + ICE-Kandidaten)
+          gehen PGP-verschluesselt UND signiert ueber den Server (/pgp/sig);
+          danach fliessen die Bytes direkt von Browser zu Browser, DTLS-
+          verschluesselt — der DTLS-Schluessel ist ueber die PGP-Signatur
+          gegen Mittelsmaenner abgesichert. Im selben Netz rasend schnell,
+          und der Server sieht kein einziges Datei-Byte. Preis: die
+          Gegenseite sieht die IP-Adresse (darum nur auf Wunsch).
+       2) RELAIS (Standard + automatischer Rueckfall): 8-MB-Scheiben, jede
+          einzeln PGP-verschluesselt und BINAER hochgeladen (kein Base64-
+          JSON mehr), 3 parallel hoch, 3 parallel runter. Der Server puffert
+          hoechstens ~96 MB je Raum und loescht jedes Stueck, sobald es
+          quittiert ist; Empfaenger haengen per Long-Poll (/pgp/xwait) dran
+          statt im 3-s-Takt — die Leitung bleibt voll.
+       Nur wer gerade online ist, bekommt die Datei; im Verlauf taucht sie
+       nicht auf. Empfangenes landet, wo der Browser es kann, direkt auf
+       der Platte (OPFS) statt im RAM — so gehen auch GB-Dateien. */
+    const XCHUNK       = 8 * 1024 * 1024;
+    const XFER_RAW_MAX = 4 * 1024 * 1024 * 1024;
+    const XPAR_UP      = 3;
+    const XPAR_DOWN    = 3;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     function randHex32() {
       const b = new Uint8Array(16);
@@ -1612,211 +1703,728 @@
            + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
     }
 
+    function senderOf(fp) {
+      for (const x of roster) if (x.fp === fp) return x;
+      return null;
+    }
+
+    /* Empfaenger einer Live-Datei (Server-fps): Direktchat -> nur die am
+       Fingerprint verifizierte Gegenseite, Privatmodus -> das Ziel, sonst
+       alle anderen im Raum (mit lesbarem Key). */
+    function liveTargets() {
+      if (direct) {
+        for (const x of roster) if (x.realFp === direct.peer && rosterKeys[x.fp]) return [x.fp];
+        return [];
+      }
+      if (dmFp) return rosterKeys[dmFp] ? [dmFp] : [];
+      return roster.filter(x => x.fp !== me.fp && rosterKeys[x.fp]).map(x => x.fp);
+    }
+
     async function sendFileLive(file) {
       if (file.size > XFER_RAW_MAX) {
-        st('chatStatus', file.name + ': zu groß (max. ~200 MB).', true);
+        st('chatStatus', file.name + ': zu groß (max. 4 GB).', true);
         return;
       }
-      const keys = await encTargets();
-      if (!keys) return;
+      const to = liveTargets();
+      if (!to.length) {
+        st('chatStatus', direct
+          ? 'Große Dateien gehen nur live — die Gegenseite ist gerade nicht da.'
+          : 'Niemand sonst im Raum, der die Datei live empfangen könnte.', true);
+        return;
+      }
       const rid = roomId;         // festhalten: Raumwechsel bricht den Transfer ab
+      const priv = dmFp;          // dito Privatmodus (kann sich waehrenddessen aendern)
+      const fname0 = priv ? privWrap(priv, file.name) : file.name;
+      let relayTo = to, anyOk = false;
+      if (p2pOn()) {
+        const res = await Promise.all(to.map(fp => p2pSend(file, fp, fname0, rid)));
+        relayTo = to.filter((fp, i) => !res[i]);
+        anyOk = res.some(Boolean);
+      }
+      if (relayTo.length && roomId === rid) {
+        if (await relaySend(file, relayTo, fname0, rid)) anyOk = true;
+      }
+      if (anyOk && roomId === rid) {
+        appendMsg({ fp: me.fp, ts: tsLocal() }, senderOf(me.fp), new Uint8Array(0),
+                  file.name, true, priv, file);
+      }
+    }
+
+    /* Relais-Sender: XPAR_UP Arbeiter ziehen sich reihum die naechste
+       8-MB-Scheibe, verschluesseln sie (nur an die Empfaenger 'to') und
+       laden sie binaer hoch. true = alles beim Server angekommen. */
+    async function relaySend(file, to, fname0, rid) {
+      const keys = to.map(fp => rosterKeys[fp]).filter(Boolean);
       const tid = randHex32();
       const total = Math.max(1, Math.ceil(file.size / XCHUNK));
-      const fname0 = dmFp ? privWrap(dmFp, file.name) : file.name;
       const bar = xbarNew('up', file.name + ' (' + fmtSize(file.size) + ')');
-      try {
-        for (let i = 0; i < total; i++) {
-          if (roomId !== rid) throw new Error('Raum gewechselt.');
-          const rawEnd = Math.min((i + 1) * XCHUNK, file.size);
-          const slice = new Uint8Array(await file.slice(i * XCHUNK, rawEnd).arrayBuffer());
-          const armored = await openpgp.encrypt({
+      const prog = new Array(total).fill(0);     // hochgeladene Rohbytes je Chunk
+      let note = '', lastPaint = 0, next = 0, failed = null;
+      const paint = force => {
+        const now = Date.now();
+        if (!force && now - lastPaint < 200) return;
+        lastPaint = now;
+        let s = 0;
+        for (const v of prog) s += v;
+        xbarSet(bar, s / file.size, file.size, note || 'über Server');
+      };
+      async function worker() {
+        while (!failed) {
+          const i = next++;
+          if (i >= total) return;
+          const a = i * XCHUNK, b = Math.min(a + XCHUNK, file.size);
+          const slice = new Uint8Array(await file.slice(a, b).arrayBuffer());
+          const ct = await openpgp.encrypt({
             // Dateiname (+ ggf. Privat-Marker) nur im ersten Chunk
             message: await openpgp.createMessage({ binary: slice, filename: i === 0 ? fname0 : '' }),
             encryptionKeys: keys,
             signingKeys: privKey,
             wildcard: true,
+            format: 'binary',
           });
           for (let tries = 0; ; tries++) {
+            if (failed) return;
             if (roomId !== rid) throw new Error('Raum gewechselt.');
             let d;
             try {
-              d = await apiX('/pgp/xup',
-                { room: rid, fp: me.fp, tid: tid, idx: i, total: total, body: armored },
-                { timeout: 300000,
-                  onUp: f => xbarSet(bar, (i * XCHUNK + slice.length * f) / file.size, file.size) });
+              d = await apiBin('/pgp/xupb',
+                { room: rid, fp: me.fp, tid: tid, idx: i, total: total, to: to, csz: XCHUNK }, ct,
+                { onUp: f => { prog[i] = (b - a) * f * 0.98; paint(); } });
             } catch (e) {
-              // Server-Antworten (409/507/...) sind endgueltig; reine
-              // Netz-/Timeout-Fehler nicht — xup ist idempotent, also
-              // denselben Chunk einfach nochmal versuchen.
-              if (e.status) throw e;
-              if (tries >= 240) throw new Error('Verbindung weg — abgebrochen.');
-              xbarSet(bar, i * XCHUNK / file.size, file.size, 'Verbindung stockt — neuer Versuch…');
-              await new Promise(r => setTimeout(r, 3000));
+              // Server-Antworten (409/507/...) sind endgueltig; Netz-/Timeout-
+              // Fehler und 429 nicht — xupb ist idempotent, also nochmal.
+              if (e.status && e.status !== 429) throw e;
+              if (tries >= 120) throw new Error('Verbindung weg — abgebrochen.');
+              prog[i] = 0; note = 'Verbindung stockt — neuer Versuch…'; paint(true);
+              await sleep(e.status === 429 ? 5000 : 2500);
               continue;
             }
             if (!d.wait) break;
-            if (tries >= 240) throw new Error('Empfänger holen nicht ab — abgebrochen.');
-            xbarSet(bar, i * XCHUNK / file.size, file.size, 'warte auf Empfänger…');
-            await new Promise(r => setTimeout(r, 1500));
+            // der Server hat schon bis zu 20 s aufs Fenster gewartet
+            if (tries >= 45) throw new Error('Empfänger holen nicht ab — abgebrochen.');
+            prog[i] = 0; note = 'warte auf Empfänger…'; paint(true);
           }
-          xbarSet(bar, rawEnd / file.size, file.size);
+          prog[i] = b - a; note = ''; paint();
         }
+      }
+      try {
+        const ws = [];
+        for (let k = 0; k < Math.min(XPAR_UP, total); k++) {
+          ws.push(worker().catch(e => { failed = failed || e; }));
+        }
+        await Promise.all(ws);
+        if (failed) throw failed;
         xbarGone(bar);
-        let sender = null;
-        for (const x of roster) if (me && x.fp === me.fp) sender = x;
-        appendMsg({ fp: me.fp, ts: tsLocal() }, sender, new Uint8Array(0),
-                  file.name, true, dmFp, file);
+        return true;
       } catch (e) {
         xbarErr(bar, 'Senden fehlgeschlagen: ' + e.message
                      + (/neu senden/.test(e.message) ? '' : ' — bitte nochmal versuchen.'));
         // Serverseitig aufraeumen, sonst blockieren die liegengebliebenen
         // Chunks bis zur TTL das Uebertragungsfenster des Raums
         api('/pgp/xdel', { room: rid, fp: me.fp, tid: tid }).catch(() => {});
+        return false;
       }
     }
 
-    /* Empfangsseite: Poll meldet je Transfer, welche Chunks abholbereit
-       sind (ready) und wie viele der Sender schon hochgeladen hat (up).
-       Pro Chunk: peek (Daten holen — der Server BEHAELT den Chunk) ->
-       entschluesseln -> ack (erst jetzt darf der Server ihn loeschen).
-       Reisst dabei die Verbindung ab, holt der naechste Poll denselben
-       Chunk einfach nochmal — verloren geht nichts mehr. */
-    async function handleXfers(list) {
-      if (xBusy || !roomId) return;
-      xBusy = true;
+    /* ── Empfangs-Ablage ─────────────────────────────────────────────
+       OPFS (Origin Private File System): die Datei waechst direkt auf der
+       Platte, der RAM bleibt leer — wichtig bei GB-Dateien. Ohne OPFS
+       (privates Fenster, alter Browser, zu wenig Kontingent) -> RAM.
+       write(pos, daten) darf in beliebiger Reihenfolge kommen (das Relais
+       holt parallel). Reste raeumt opfsCleanup() beim naechsten Besuch weg. */
+    const OPFS_DIR = 'glappa-pgp-in';
+
+    async function makeSink(sizeHint) {
       try {
-        const seen = {};
-        for (const xf of list) {
-          seen[xf.tid] = true;
-          if (xdone[xf.tid]) {
-            // schon komplett empfangen (nur unser letztes ack kam nicht
-            // durch) -> Reste still quittieren, NICHT nochmal zustellen
-            for (const idx of (xf.ready || [])) {
-              await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, ack: true }).catch(() => {});
+        if (navigator.storage && navigator.storage.getDirectory && window.FileSystemFileHandle
+            && 'createWritable' in FileSystemFileHandle.prototype) {
+          if (navigator.storage.estimate) {
+            const est = await navigator.storage.estimate();
+            if (est.quota && est.quota - (est.usage || 0) < sizeHint + 64 * 1024 * 1024) {
+              throw new Error('Kontingent');
             }
-            continue;
           }
-          const t = xin[xf.tid] || (xin[xf.tid] = {
-            from: xf.fp, total: xf.total, parts: {}, got: 0, bytes: 0,
-            fname: '', privTo: null, sigAll: true, dead: false, bar: null, miss: 0,
-          });
-          t.miss = 0;
-          if (!t.bar && !t.dead) {
-            t.bar = xbarNew('down', t.fname || 'Datei von ' + nameForFp(t.from));
-          }
-          // geschaetzte Gesamtgroesse fuer Tempo/Restzeit: Schnitt der
-          // bisherigen Chunks, sonst nominale Chunk-Groesse
-          const estBytes = () => (t.got ? t.bytes / t.got : XCHUNK) * t.total;
-          for (const idx of (xf.ready || [])) {
-            if (!roomId) { xBusy = false; return; }
-            if (t.parts[idx] !== undefined) continue;
-            if (t.dead) {
-              // nicht fuer uns entschluesselbar -> nur quittieren, damit
-              // der Server den Chunk-Puffer wieder freigeben kann
-              await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, ack: true });
-              t.parts[idx] = true;
-              continue;
-            }
-            let d;
-            try {
-              d = await apiX('/pgp/xget',
-                { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, peek: true },
-                { timeout: 120000,
-                  onDown: f => { if (t.bar) xbarSet(t.bar, (t.got + f) / t.total, estBytes()); } });
-            } catch (e) {
-              // Netz-/Serverfehler: der Chunk liegt noch da — der naechste
-              // Poll versucht es einfach nochmal
-              if (t.bar) xbarSet(t.bar, t.got / t.total, estBytes(), 'Verbindung stockt…');
+          const root = await navigator.storage.getDirectory();
+          const dir = await root.getDirectoryHandle(OPFS_DIR, { create: true });
+          const nm = Date.now() + '-' + randHex32();
+          const fh = await dir.getFileHandle(nm, { create: true });
+          const w = await fh.createWritable();
+          let q = Promise.resolve();          // Schreibzugriffe nacheinander
+          return {
+            disk: true,
+            write(pos, data) {
+              q = q.then(() => w.write({ type: 'write', position: pos, data: data }));
+              return q;
+            },
+            async finish(type) {
+              await q;
+              await w.close();
+              return new Blob([await fh.getFile()], { type: type });
+            },
+            async abort() {
+              try { await w.abort(); } catch (e) {}
+              try { await dir.removeEntry(nm); } catch (e) {}
+            },
+          };
+        }
+      } catch (e) { /* -> RAM */ }
+      let parts = [];
+      return {
+        disk: false,
+        async write(pos, data) { parts.push([pos, data]); },
+        async finish(type) {
+          parts.sort((a, b) => a[0] - b[0]);
+          const blob = new Blob(parts.map(p => p[1]), { type: type });
+          parts = [];
+          return blob;
+        },
+        async abort() { parts = []; },
+      };
+    }
+
+    async function opfsCleanup() {
+      try {
+        const root = await navigator.storage.getDirectory();
+        const dir = await root.getDirectoryHandle(OPFS_DIR);
+        const old = [];
+        for await (const name of dir.keys()) {
+          const t = parseInt(name, 10);
+          if (!t || Date.now() - t > 2 * 3600 * 1000) old.push(name);
+        }
+        for (const name of old) await dir.removeEntry(name).catch(() => {});
+      } catch (e) { /* kein OPFS oder Ordner gibt's (noch) nicht */ }
+    }
+
+    /* ── Relais-Empfang ──────────────────────────────────────────────
+       poll/xwait melden je Transfer, welche Chunks abholbereit sind (ready)
+       und wie viele der Sender schon hochgeladen hat (up). Bis zu XPAR_DOWN
+       Chunks gleichzeitig: holen (der Server BEHAELT den Chunk) ->
+       entschluesseln -> an die richtige Stelle schreiben -> ack (erst
+       jetzt darf der Server ihn loeschen). Reisst dabei die Verbindung ab,
+       wird derselbe Chunk einfach nochmal geholt — verloren geht nichts. */
+    function handleXfers(list) {
+      if (!roomId || !me) return;
+      const seen = {};
+      for (const xf of list) {
+        seen[xf.tid] = true;
+        if (xdone[xf.tid]) {
+          // schon fertig (nur unser letztes ack kam nicht durch) -> Reste
+          // still quittieren, NICHT nochmal zustellen
+          for (const idx of (xf.ready || [])) xAck(xf.tid, idx);
+          continue;
+        }
+        let t = xin[xf.tid];
+        if (!t) {
+          t = xin[xf.tid] = {
+            tid: xf.tid, rid: roomId, from: xf.fp, total: xf.total,
+            csz: xf.csz || 4 * 1024 * 1024, bin: !!xf.bin,
+            have: {}, inflight: {}, got: 0, bytes: 0, fname: '', privTo: null,
+            sigAll: true, dead: false, done: false, failed: false, bar: null,
+            ready: [], missSince: 0, lastPaint: 0, sinkP: null,
+          };
+          t.bar = xbarNew('down', 'Datei von ' + nameForFp(t.from));
+          t.sinkP = makeSink(t.total * t.csz);
+        }
+        t.missSince = 0;
+        t.ready = xf.ready || [];
+        // Unrettbar kaputt? Der Server meldet Chunks als bei uns angekommen
+        // (had), die wir gar nicht haben — die sind weg (typisch: Seite
+        // mitten im Empfang neu geladen; die vor dem Reload quittierten
+        // Teile existieren nirgends mehr). Wir setzen have VOR dem ack,
+        // darum gibt es hier keinen Fehlalarm fuer gerade laufende Chunks.
+        if (!t.dead && !t.done && !t.failed && t.got < t.total) {
+          for (const i of (xf.had || [])) {
+            if (!t.have[i] && t.inflight[i] === undefined) {
+              xFail(t, 'Übertragung unterbrochen (Seite neu geladen?) — bitte nochmal senden lassen.', true);
               break;
-            }
-            try {
-              const msg = await openpgp.readMessage({ armoredMessage: d.data });
-              const opts = { message: msg, decryptionKeys: privKey, format: 'binary' };
-              const vkey = rosterKeys[t.from];
-              if (vkey) opts.verificationKeys = vkey;
-              const res = await openpgp.decrypt(opts);
-              if (idx === 0) {
-                let fn = res.filename || 'datei.bin';
-                const p = privParse(fn);
-                if (p) { t.privTo = p.to; fn = p.rest; }
-                t.fname = fn;
-                if (t.bar) xbarLabel(t.bar, 'down', fn);
-              }
-              let ok = false;
-              if (vkey && res.signatures && res.signatures.length) {
-                try { await res.signatures[0].verified; ok = true; } catch (e) {}
-              }
-              if (!ok) t.sigAll = false;
-              t.parts[idx] = res.data;
-              t.bytes += res.data.length;
-              t.got++;
-            } catch (e) {
-              // z.B. private Live-Datei an jemand anderen: einmal Schloss
-              // zeigen, Rest des Transfers nur noch quittieren
-              t.dead = true;
-              t.parts[idx] = true;
-              if (t.bar) { xbarGone(t.bar); t.bar = null; }
-              let sender = null;
-              for (const x of roster) if (x.fp === t.from) sender = x;
-              appendMsg({ fp: t.from, ts: tsLocal() }, sender, null, '', false, null);
-            }
-            // erst NACH gesichertem Entschluesseln quittieren — jetzt darf
-            // der Server den Chunk vergessen (schlaegt das ack fehl, ist es
-            // egal: naechster Poll quittiert nach, TTL raeumt notfalls auf)
-            await api('/pgp/xget', { room: roomId, fp: me.fp, tid: xf.tid, idx: idx, ack: true }).catch(() => {});
-            if (t.bar) xbarSet(t.bar, t.got / t.total, estBytes());
-            if (t.got >= t.total) {
-              const parts = [];
-              for (let i = 0; i < t.total; i++) parts.push(t.parts[i]);
-              const blob = new Blob(parts, { type: mimeFor(t.fname) });
-              if (t.bar) { xbarGone(t.bar); t.bar = null; }
-              let sender = null;
-              for (const x of roster) if (x.fp === t.from) sender = x;
-              appendMsg({ fp: t.from, ts: tsLocal() }, sender, new Uint8Array(0),
-                        t.fname, t.sigAll, t.privTo, blob);
-              xdone[xf.tid] = true;
-              delete xin[xf.tid];
-              break;
-            }
-          }
-          // Unrettbar kaputt? Uns fehlen Chunks, die der Sender laengst
-          // hochgeladen hat, die aber nicht (mehr) angeboten werden — die
-          // sind weg (typisch: Seite mitten im Empfang neu geladen; die
-          // vor dem Reload quittierten Teile existieren nirgends mehr).
-          const t2 = xin[xf.tid];
-          if (t2 && !t2.dead && t2.got < t2.total) {
-            const offered = {};
-            for (const i of (xf.ready || [])) offered[i] = true;
-            let lost = false;
-            for (let i = 0; i < Math.min(t2.total, xf.up || 0); i++) {
-              if (t2.parts[i] === undefined && !offered[i]) { lost = true; break; }
-            }
-            if (lost) {
-              if (t2.bar) xbarErr(t2.bar, 'Übertragung unterbrochen (Seite neu geladen?) — bitte nochmal senden lassen.');
-              delete xin[xf.tid];
-              api('/pgp/xdel', { room: roomId, fp: me.fp, tid: xf.tid }).catch(() => {});
             }
           }
         }
-        // Transfers, die serverseitig verschwunden sind (Sender abgebrochen
-        // oder Zeit abgelaufen), bevor alles da war: Balken -> Fehlerzeile.
-        // Erst nach 2 Polls in Folge, ein einzelner kann ein Race sein.
-        for (const tid of Object.keys(xin)) {
-          if (seen[tid]) continue;
-          const t = xin[tid];
-          t.miss = (t.miss || 0) + 1;
-          if (t.miss < 2) continue;
-          if (t.bar && !t.dead && t.got < t.total) {
-            xbarErr(t.bar, 'Übertragung abgebrochen (Gegenseite weg oder Zeit abgelaufen).');
-          } else if (t.bar) {
-            xbarGone(t.bar);
-          }
+        xPump(t);
+      }
+      // Transfers, die serverseitig verschwunden sind (Sender abgebrochen
+      // oder Zeit abgelaufen), bevor alles da war: Balken -> Fehlerzeile.
+      // Erst nach ein paar Sekunden — eine einzelne, verspaetete Poll-
+      // Antwort kann aelter sein als der Transfer.
+      const now = Date.now();
+      for (const tid of Object.keys(xin)) {
+        if (seen[tid]) continue;
+        const t = xin[tid];
+        if (t.done) continue;
+        if (!t.missSince) { t.missSince = now; continue; }
+        if (now - t.missSince < 6000) continue;
+        if (!t.dead && t.got < t.total) {
+          xFail(t, 'Übertragung abgebrochen (Gegenseite weg oder Zeit abgelaufen).', false);
+        } else {
+          if (t.bar) xbarGone(t.bar);
           delete xin[tid];
         }
-      } catch (e) {
-        st('chatStatus', 'Live-Datei: ' + e.message, true);
       }
-      xBusy = false;
+      if (Object.keys(xin).length) xLoop();
+    }
+
+    function xPump(t) {
+      if (t.done || t.failed || roomId !== t.rid) return;
+      for (const idx of t.ready) {
+        if (Object.keys(t.inflight).length >= XPAR_DOWN) break;
+        if (t.have[idx] || t.inflight[idx] !== undefined) continue;
+        t.inflight[idx] = 0;
+        xFetch(t, idx).catch(() => {}).finally(() => { delete t.inflight[idx]; xPump(t); });
+      }
+    }
+
+    function xAck(tid, idx) {
+      return api('/pgp/xget', { room: roomId, fp: me.fp, tid: tid, idx: idx, ack: true }).catch(() => {});
+    }
+
+    function xPaint(t, note) {
+      if (!t.bar || t.failed || t.done) return;
+      const now = Date.now();
+      if (!note && now - t.lastPaint < 200) return;
+      t.lastPaint = now;
+      let f = t.got;
+      for (const k in t.inflight) f += t.inflight[k] || 0;
+      // geschaetzte Gesamtgroesse: Schnitt der bisherigen Chunks
+      const est = (t.got ? t.bytes / t.got : t.csz) * t.total;
+      xbarSet(t.bar, f / t.total, est, note || 'über Server');
+    }
+
+    async function xFetch(t, idx) {
+      if (t.dead) {
+        // nicht fuer uns entschluesselbar -> nur quittieren, damit der
+        // Server den Chunk-Puffer wieder freigeben kann
+        t.have[idx] = true;
+        await xAck(t.tid, idx);
+        return;
+      }
+      const q = { room: t.rid, fp: me.fp, tid: t.tid, idx: idx };
+      const onDown = f => { t.inflight[idx] = f; xPaint(t); };
+      let ct;
+      try {
+        if (t.bin) ct = await apiGetBin('/pgp/xgetb', q, { onDown: onDown });
+        else ct = (await apiX('/pgp/xget', Object.assign({ peek: true }, q),
+                              { timeout: 120000, onDown: onDown })).data;
+      } catch (e) {
+        // Netz-/Serverfehler: der Chunk liegt noch da -> gleich nochmal
+        if (!t.done) xPaint(t, 'Verbindung stockt…');
+        await sleep(1000);
+        return;
+      }
+      if (roomId !== t.rid || t.done || t.failed) return;
+      let res;
+      try {
+        const msg = t.bin ? await openpgp.readMessage({ binaryMessage: ct })
+                          : await openpgp.readMessage({ armoredMessage: ct });
+        const opts = { message: msg, decryptionKeys: privKey, format: 'binary' };
+        const vkey = rosterKeys[t.from];
+        if (vkey) opts.verificationKeys = vkey;
+        res = await openpgp.decrypt(opts);
+        let ok = false;
+        if (vkey && res.signatures && res.signatures.length) {
+          try { await res.signatures[0].verified; ok = true; } catch (e) {}
+        }
+        if (!ok) t.sigAll = false;
+      } catch (e) {
+        // z.B. private Live-Datei an jemand anderen: einmal Schloss
+        // zeigen, Rest des Transfers nur noch quittieren
+        if (!t.dead) {
+          t.dead = true;
+          if (t.bar) { xbarGone(t.bar); t.bar = null; }
+          t.sinkP.then(s => s.abort());
+          appendMsg({ fp: t.from, ts: tsLocal() }, senderOf(t.from), null, '', false, null);
+        }
+        t.have[idx] = true;
+        await xAck(t.tid, idx);
+        return;
+      }
+      if (idx === 0) {
+        let fn = res.filename || 'datei.bin';
+        const p = privParse(fn);
+        if (p) { t.privTo = p.to; fn = p.rest; }
+        t.fname = fn;
+        if (t.bar) xbarLabel(t.bar, 'down', fn);
+      }
+      try {
+        await (await t.sinkP).write(idx * t.csz, res.data);
+      } catch (e) {
+        xFail(t, 'Speichern fehlgeschlagen (Platte voll?): ' + e.message, true);
+        return;
+      }
+      if (t.have[idx] || t.failed) return;
+      t.have[idx] = true;
+      t.got++;
+      t.bytes += res.data.length;
+      // erst NACH gesichertem Entschluesseln + Speichern quittieren — jetzt
+      // darf der Server den Chunk vergessen (schlaegt das ack fehl, ist es
+      // egal: naechster Poll quittiert nach, TTL raeumt notfalls auf)
+      await xAck(t.tid, idx);
+      xPaint(t);
+      if (t.got >= t.total && !t.done) await xFinish(t);
+    }
+
+    async function xFinish(t) {
+      t.done = true;
+      let blob;
+      try {
+        blob = await (await t.sinkP).finish(mimeFor(t.fname));
+      } catch (e) {
+        if (t.bar) { xbarErr(t.bar, 'Speichern fehlgeschlagen: ' + e.message); t.bar = null; }
+        xdone[t.tid] = true;
+        delete xin[t.tid];
+        return;
+      }
+      if (t.bar) { xbarGone(t.bar); t.bar = null; }
+      if (roomId === t.rid) {
+        appendMsg({ fp: t.from, ts: tsLocal() }, senderOf(t.from), new Uint8Array(0),
+                  t.fname, t.sigAll, t.privTo, blob);
+      }
+      xdone[t.tid] = true;
+      delete xin[t.tid];
+    }
+
+    function xFail(t, msg, tellServer) {
+      if (t.failed) return;
+      t.failed = true;
+      if (t.bar) { xbarErr(t.bar, msg); t.bar = null; }   // Fehlerzeile bleibt stehen
+      if (t.sinkP) t.sinkP.then(s => s.abort());
+      xdone[t.tid] = true;
+      delete xin[t.tid];
+      // Empfaenger traegt sich aus — sonst blockieren die Reste das Fenster
+      if (tellServer && roomId === t.rid) {
+        api('/pgp/xdel', { room: t.rid, fp: me.fp, tid: t.tid }).catch(() => {});
+      }
+    }
+
+    /* Alles Laufende abbrechen (Raum verlassen/gewechselt) */
+    function xAbortAll() {
+      for (const tid of Object.keys(xin)) {
+        const t = xin[tid];
+        t.failed = true;
+        if (t.sinkP) t.sinkP.then(s => s.abort());
+      }
+      for (const pid of Object.keys(sigWait)) sigWait[pid].resolve(null);
+      for (const pid of Object.keys(p2pIn)) {
+        try { p2pIn[pid].pc.close(); } catch (e) {}
+      }
+      sigWait = {}; p2pIn = {}; xver = 0;
+    }
+
+    /* Long-Poll-Schleife: laeuft nur, solange ein Empfang oder ein P2P-
+       Verbindungsaufbau offen ist. Der Server antwortet sofort, wenn ein
+       neuer Chunk/ein Signal da ist — kein 3-s-Takt als Bremse mehr. */
+    let xLoopOn = false;
+    let xver = 0;
+    function xActive() {
+      return Object.keys(xin).length > 0 || Object.keys(sigWait).length > 0;
+    }
+    async function xLoop() {
+      if (xLoopOn || !roomId || !me) return;
+      xLoopOn = true;
+      const rid = roomId;
+      let fails = 0;
+      try {
+        while (roomId === rid && xActive()) {
+          let d;
+          try {
+            d = await api('/pgp/xwait', { room: rid, fp: me.fp, after: xver });
+            fails = 0;
+          } catch (e) {
+            // aelterer Server ohne xwait, Raum weg, Netz wackelt: der normale
+            // 3-s-Poll uebernimmt; nach ein paar Fehlschlaegen in Folge Schluss
+            if (++fails >= 4) break;
+            await sleep(1500);
+            continue;
+          }
+          if (roomId !== rid) break;
+          if (d.xver) xver = d.xver;
+          for (const s of (d.sigs || [])) handleSig(s);
+          handleXfers(d.xfers || []);
+        }
+      } finally {
+        xLoopOn = false;
+      }
+    }
+
+    /* ── P2P-Direktverbindung (WebRTC) ──────────────────────────────
+       Nur auf Wunsch (Schalter unter dem Chat, gilt fuer DIESEN Browser).
+       Ausgeschaltet entsteht nicht mal eine RTCPeerConnection, es wird also
+       auch kein STUN-Server gefragt. Eingeschaltet hilft STUN (Google/
+       Cloudflare) beim Weg durch Router; im selben Netz geht's auch ohne. */
+    const LS_P2P = 'glappa-pgp-p2p';
+    const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+    let sigWait = {};     // pid -> {from, resolve}: wir warten auf eine Antwort
+    let p2pIn = {};       // pid -> {pc, live, kill}: eingehende Direktverbindungen
+
+    function p2pOn() {
+      try {
+        return typeof RTCPeerConnection !== 'undefined' && localStorage.getItem(LS_P2P) === '1';
+      } catch (e) { return false; }
+    }
+
+    /* Signal an EINE Person: verschluesselt NUR an sie, von uns signiert. */
+    async function sendSig(toFp, obj) {
+      const key = rosterKeys[toFp];
+      if (!key) throw new Error('Empfänger nicht mehr da.');
+      const armored = await openpgp.encrypt({
+        message: await openpgp.createMessage({ text: JSON.stringify(obj) }),
+        encryptionKeys: key,
+        signingKeys: privKey,
+        wildcard: true,
+      });
+      await api('/pgp/sig', { room: roomId, fp: me.fp, to: toFp, body: armored });
+    }
+
+    async function handleSig(s) {
+      if (!s || !s.from || !me) return;
+      const vkey = rosterKeys[s.from];
+      if (!vkey) return;
+      // Direktchat: nur die am Fingerprint verifizierte Gegenseite zulassen
+      if (direct && !roster.some(x => x.fp === s.from && x.realFp === direct.peer)) return;
+      let o;
+      try {
+        const res = await openpgp.decrypt({
+          message: await openpgp.readMessage({ armoredMessage: s.body }),
+          decryptionKeys: privKey,
+          verificationKeys: vkey,
+          expectSigned: true,     // unsigniert/falsch signiert -> Ausnahme -> verworfen
+        });
+        o = JSON.parse(res.data);
+      } catch (e) { return; }
+      if (!o || typeof o.pid !== 'string' || !/^[0-9a-f]{32}$/.test(o.pid)) return;
+      if (o.t === 'offer') { p2pAccept(s.from, o); return; }
+      const w = sigWait[o.pid];
+      if (w && w.from === s.from) { delete sigWait[o.pid]; w.resolve(o); }
+    }
+
+    function waitSig(pid, from, ms) {
+      return new Promise(res => {
+        const t = setTimeout(() => { delete sigWait[pid]; res(null); }, ms);
+        sigWait[pid] = { from: from, resolve: o => { clearTimeout(t); res(o); } };
+      });
+    }
+
+    /* Ohne Trickle-ICE: erst sammeln, dann EIN Angebot mit allen Kandidaten
+       verschicken (spart Signal-Runden ueber den Server). */
+    function iceDone(pc, ms) {
+      return new Promise(res => {
+        if (pc.iceGatheringState === 'complete') return res();
+        const t = setTimeout(res, ms);
+        pc.addEventListener('icegatheringstatechange', () => {
+          if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); }
+        });
+      });
+    }
+
+    function dcOpen(dc, pc, ms) {
+      return new Promise(res => {
+        if (dc.readyState === 'open') return res(true);
+        const t = setTimeout(() => res(false), ms);
+        const fin = v => { clearTimeout(t); res(v); };
+        dc.addEventListener('open', () => fin(true));
+        dc.addEventListener('close', () => fin(false));
+        pc.addEventListener('connectionstatechange', () => {
+          if (pc.connectionState === 'failed' || pc.connectionState === 'closed') fin(false);
+        });
+      });
+    }
+
+    /* Sender: Direktverbindung zu EINER Gegenseite aufbauen und die Datei
+       durchschieben. true = zugestellt (Gegenseite hat quittiert); false =
+       ging nicht (kein P2P drueben, keine Verbindung, abgerissen) -> der
+       Aufrufer schickt die Datei dann automatisch ueber das Relais. */
+    async function p2pSend(file, toFp, fname0, rid) {
+      const who = nameForFp(toFp);
+      const bar = xbarNew('up', file.name + ' (' + fmtSize(file.size) + ') → ' + who);
+      xbarSet(bar, 0, 0, 'suche Direktverbindung…');
+      let pc = null;
+      try {
+        pc = new RTCPeerConnection({ iceServers: ICE });
+        const dc = pc.createDataChannel('glappa-file', { ordered: true });
+        dc.binaryType = 'arraybuffer';
+        await pc.setLocalDescription(await pc.createOffer());
+        await iceDone(pc, 2500);
+        if (roomId !== rid) return false;
+        const pid = randHex32();
+        const ansP = waitSig(pid, toFp, 15000);
+        await sendSig(toFp, { t: 'offer', pid: pid, sdp: pc.localDescription.sdp, size: file.size });
+        xLoop();      // Antwort per Long-Poll sofort abholen
+        const a = await ansP;
+        if (!a || a.t !== 'answer' || typeof a.sdp !== 'string') return false;
+        await pc.setRemoteDescription({ type: 'answer', sdp: a.sdp });
+        if (!await dcOpen(dc, pc, 15000)) return false;
+        const ok = await p2pPush(pc, dc, file, fname0, bar, rid);
+        if (!ok && roomId === rid) {
+          st('chatStatus', 'Direktverbindung zu ' + who + ' abgerissen — die Datei geht jetzt über den Server.', true);
+        }
+        return ok;
+      } catch (e) {
+        return false;
+      } finally {
+        xbarGone(bar);
+        if (pc) { const p = pc; setTimeout(() => { try { p.close(); } catch (e) {} }, 1500); }
+      }
+    }
+
+    async function p2pPush(pc, dc, file, fname0, bar, rid) {
+      // Nachrichtengroesse: was beide Seiten koennen, max. 256 KB
+      const mx = (pc.sctp && pc.sctp.maxMessageSize) || 65536;
+      const msz = Math.max(16384, Math.min(mx, 256 * 1024));
+      // Chrome wirft ab 16 MB Sendepuffer -> deutlich darunter bleiben
+      const HIGH = 8 * 1024 * 1024;
+      dc.bufferedAmountLowThreshold = 2 * 1024 * 1024;
+      let closed = false, sent = 0, lastPaint = 0;
+      const replyP = new Promise(res => {
+        dc.addEventListener('message', ev => {
+          if (typeof ev.data !== 'string') return;
+          try { const o = JSON.parse(ev.data); if (o.t === 'ok' || o.t === 'err') res(o); } catch (e) {}
+        });
+        dc.addEventListener('close', () => { closed = true; res(null); });
+      });
+      const drain = () => new Promise(r => {
+        const done = () => { clearInterval(iv); dc.removeEventListener('bufferedamountlow', done); r(); };
+        const iv = setInterval(() => {
+          if (closed || dc.readyState !== 'open' || dc.bufferedAmount <= dc.bufferedAmountLowThreshold) done();
+        }, 250);
+        dc.addEventListener('bufferedamountlow', done);
+      });
+      const paint = () => xbarSet(bar, (sent - dc.bufferedAmount) / Math.max(1, file.size),
+                                  file.size, '⚡ direkt (P2P)');
+      dc.send(JSON.stringify({ t: 'hdr', name: fname0, size: file.size }));
+      const READ = 4 * 1024 * 1024;
+      for (let off = 0; off < file.size; off += READ) {
+        const buf = await file.slice(off, Math.min(off + READ, file.size)).arrayBuffer();
+        for (let p = 0; p < buf.byteLength; p += msz) {
+          if (dc.bufferedAmount > HIGH) await drain();
+          if (closed || dc.readyState !== 'open' || roomId !== rid) return false;
+          const n = Math.min(msz, buf.byteLength - p);
+          dc.send(buf.slice(p, p + n));
+          sent += n;
+        }
+        if (Date.now() - lastPaint > 200) { lastPaint = Date.now(); paint(); }
+      }
+      dc.send(JSON.stringify({ t: 'end' }));
+      while (!closed && dc.readyState === 'open' && dc.bufferedAmount > 0) {
+        paint();
+        await sleep(200);
+      }
+      xbarSet(bar, 1, file.size, '⚡ direkt — warte auf Bestätigung…');
+      const r = await Promise.race([replyP, sleep(120000).then(() => null)]);
+      return !!(r && r.t === 'ok');
+    }
+
+    /* Empfaenger: Angebot annehmen (nur wenn hier P2P an ist), Antwort
+       zurueck, dann kommt der Datenkanal. */
+    async function p2pAccept(fromFp, o) {
+      if (p2pIn[o.pid]) return;
+      if (!p2pOn() || typeof o.sdp !== 'string') {
+        sendSig(fromFp, { t: 'nop2p', pid: o.pid }).catch(() => {});
+        return;
+      }
+      let pc;
+      try { pc = new RTCPeerConnection({ iceServers: ICE }); }
+      catch (e) { sendSig(fromFp, { t: 'nop2p', pid: o.pid }).catch(() => {}); return; }
+      const c = p2pIn[o.pid] = { pc: pc, live: false, kill: 0 };
+      const end = () => {
+        clearTimeout(c.kill);
+        try { pc.close(); } catch (e) {}
+        if (p2pIn[o.pid] === c) delete p2pIn[o.pid];
+      };
+      // kommt binnen 30 s kein Datenkanal, war's das
+      c.kill = setTimeout(() => { if (!c.live) end(); }, 30000);
+      pc.addEventListener('datachannel', ev => { c.live = true; p2pRecv(ev.channel, fromFp, end); });
+      try {
+        await pc.setRemoteDescription({ type: 'offer', sdp: o.sdp });
+        await pc.setLocalDescription(await pc.createAnswer());
+        await iceDone(pc, 2500);
+        await sendSig(fromFp, { t: 'answer', pid: o.pid, sdp: pc.localDescription.sdp });
+      } catch (e) {
+        end();
+        sendSig(fromFp, { t: 'nop2p', pid: o.pid }).catch(() => {});
+      }
+    }
+
+    function p2pRecv(dc, fromFp, end) {
+      dc.binaryType = 'arraybuffer';
+      const rid = roomId;
+      let hdr = null, sinkP = null, bar = null, fname = '', privTo = null;
+      let got = 0, stopped = false, finished = false, lastPaint = 0;
+      let q = Promise.resolve();
+      // viele kleine Nachrichten zu ~4-MB-Bloecken buendeln -> wenige Schreibzugriffe
+      let pend = [], pendN = 0, pendPos = 0;
+      const stop = msg => {
+        if (stopped || finished) return;
+        stopped = true;
+        if (bar) { if (msg) xbarErr(bar, msg); else xbarGone(bar); }
+        if (sinkP) sinkP.then(s => s.abort());
+        try { dc.close(); } catch (e) {}
+        end();
+      };
+      const flush = () => {
+        if (!pendN) return;
+        const blob = new Blob(pend), pos = pendPos;
+        pendPos += pendN; pend = []; pendN = 0;
+        q = q.then(async () => { if (!stopped) await (await sinkP).write(pos, blob); })
+             .catch(e => stop('Speichern fehlgeschlagen (Platte voll?): ' + e.message));
+      };
+      dc.addEventListener('message', ev => {
+        if (stopped || finished) return;
+        if (typeof ev.data === 'string') {
+          let m;
+          try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (m.t === 'hdr' && !hdr) {
+            const size = Number(m.size);
+            if (!(size >= 0 && size <= XFER_RAW_MAX)) { stop('Ungültige Dateigröße.'); return; }
+            hdr = { size: size };
+            fname = String(m.name || '');
+            const p = privParse(fname);
+            if (p) { privTo = p.to; fname = p.rest; }
+            fname = fname.replace(/[\u0000-\u001f]/g, '') || 'datei.bin';
+            bar = xbarNew('down', fname + ' (' + fmtSize(size) + ')');
+            xbarSet(bar, 0, size, '⚡ direkt (P2P)');
+            sinkP = makeSink(size);
+          } else if (m.t === 'end' && hdr) {
+            flush();
+            q = q.then(async () => {
+              if (stopped) return;
+              if (got !== hdr.size) {
+                throw new Error('unvollständig (' + fmtSize(got) + ' von ' + fmtSize(hdr.size) + ')');
+              }
+              const blob = await (await sinkP).finish(mimeFor(fname));
+              finished = true;
+              try { dc.send(JSON.stringify({ t: 'ok' })); } catch (e) {}
+              if (bar) xbarGone(bar);
+              // ✓: das Angebot war von dieser Person signiert, und der
+              // Datenkanal ist ueber genau dieses Angebot abgesichert
+              if (roomId === rid) {
+                appendMsg({ fp: fromFp, ts: tsLocal() }, senderOf(fromFp), new Uint8Array(0),
+                          fname, true, privTo, blob);
+              }
+              setTimeout(end, 3000);
+            }).catch(e => {
+              try { dc.send(JSON.stringify({ t: 'err' })); } catch (x) {}
+              stop('Direktempfang fehlgeschlagen: ' + e.message);
+            });
+          }
+          return;
+        }
+        if (!hdr) return;
+        const n = ev.data.byteLength;
+        got += n;
+        if (got > hdr.size) { stop('Gegenseite schickt mehr als angekündigt.'); return; }
+        pend.push(ev.data);
+        pendN += n;
+        if (pendN >= 4 * 1024 * 1024) flush();
+        const now = Date.now();
+        if (now - lastPaint > 200) {
+          lastPaint = now;
+          xbarSet(bar, got / Math.max(1, hdr.size), hdr.size, '⚡ direkt (P2P)');
+        }
+      });
+      dc.addEventListener('close', () => {
+        // abgerissen vor dem Ende: der Sender schickt die Datei dann ueber
+        // den Server nach — hier nur still aufraeumen
+        if (!finished) stop('');
+      });
     }
 
     async function sendMsg() {
@@ -1904,6 +2512,21 @@
         const files = Array.from(e.dataTransfer ? e.dataTransfer.files : []).slice(0, 5);
         for (const f of files) await sendFile(f);
       });
+      /* P2P-Schalter (Opt-in, je Browser gemerkt) */
+      const p2pChk = el('p2pChk');
+      if (typeof RTCPeerConnection === 'undefined') {
+        p2pChk.disabled = true;
+        el('p2pLbl').title = 'Dieser Browser kann kein WebRTC (oder es ist abgeschaltet) — Dateien gehen über den Server.';
+      }
+      p2pChk.checked = p2pOn();
+      p2pChk.addEventListener('change', () => {
+        try { localStorage.setItem(LS_P2P, p2pChk.checked ? '1' : '0'); } catch (e) {}
+        st('chatStatus', p2pChk.checked
+          ? '⚡ P2P an — große Dateien gehen direkt, wenn die Gegenseite es auch anhat.'
+          : 'P2P aus — große Dateien laufen verschlüsselt über den Server.');
+      });
+      opfsCleanup();
+
       el('fileBtn').addEventListener('click', () => el('fileInput').click());
       el('fileInput').addEventListener('change', async () => {
         const files = Array.from(el('fileInput').files).slice(0, 5);

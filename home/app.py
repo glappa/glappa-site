@@ -2932,9 +2932,17 @@ PGP_ROOM_TTL    = 3 * 86400        # sek ohne Aktivitaet -> Raum geloescht
 # Sender muss warten, bis die Empfaenger nachkommen), und im Verlauf
 # (msgs) taucht die Datei gar nicht auf. Nichts wird gespeichert.
 PGP_XFER_DIR    = os.path.join(DOWNLOAD_DIR, 'pgpxfers')
-PGP_XCHUNK_MAX  = 6 * 1024 * 1024      # armored Chunk (~4 MB roh)
-PGP_XTOTAL_MAX  = 64                   # Chunks je Transfer (~256 MB roh)
-PGP_XWINDOW     = 24 * 1024 * 1024     # unabgeholte Bytes je Raum
+# Turbo (2026-11): Chunks kommen jetzt BINAER (/pgp/xupb, kein Base64 im
+# JSON mehr — 33 % weniger Bytes, kein 6-MB-JSON-Parsing), ~8 MB roh, und
+# die Clients laden/holen mehrere parallel. Alte armored Chunks (~4 MB
+# roh, /pgp/xup) gehen weiterhin. Grenze je Datei: ~4 GB (Client).
+PGP_XCHUNK_MAX  = 12 * 1024 * 1024     # ein Chunk (binaer ~8 MB, armored alt ~5.4 MB)
+PGP_XTOTAL_MAX  = 640                  # Chunks je Transfer (512 x 8 MB = 4 GB roh)
+PGP_XWINDOW     = 96 * 1024 * 1024     # unabgeholte Bytes je Raum
+PGP_XWINDOW_ALL = 384 * 1024 * 1024    # ... und ueber ALLE Raeume (Plattenschutz)
+PGP_XWAIT_MAX   = 20                   # sek: Long-Poll bzw. Warten aufs Fenster
+PGP_SIG_TTL     = 60                   # sek: P2P-Verbindungsaufbau-Nachrichten
+PGP_SIG_MAX     = 64 * 1024            # armored Signal (SDP + Kandidaten)
 # TTL bewusst KURZ: ein lebendiger Transfer wird bei jedem xup/xget
 # angefasst — nur kaputte (Sender/Empfaenger weg, Tab zu, Reload) bleiben
 # liegen, und die muessen schnell weg, weil ihre Chunks sonst das
@@ -3033,6 +3041,168 @@ def _pgp_roster(room):
             for fp, m in sorted((room.get('keys') or {}).items(),
                                 key=lambda kv: kv[1].get('joined') or 0)]
 
+# ── Wecker fuer Live-Transfers (nur RAM, nichts davon landet auf Platte) ──
+# _PGP_XGEN zaehlt JEDE Aenderung (Chunk hoch, Chunk quittiert, Abbruch,
+# Signal); wer wartet (Long-Poll /pgp/xwait, Uploader vor vollem Fenster),
+# schlaeft auf PGP_XCOND, bis sich der Zaehler bewegt. PGP_XVER[raum] merkt
+# sich den Zaehlerstand der letzten Aenderung, die EMPFAENGER interessiert
+# (neuer Chunk, Transfer weg, Signal) — so weckt eine Quittung in Raum A
+# keinen Long-Poll in Raum B auf. Prozess-lokal reicht: app.py laeuft als
+# EIN Prozess (VPS: python app.py, threaded; Dev: gunicorn --workers 1).
+PGP_XCOND = threading.Condition()
+_PGP_XGEN = 0
+PGP_XVER  = {}
+# P2P-Verbindungsaufbau (WebRTC-Angebot/Antwort): kurzlebige, an EINEN
+# Empfaenger gerichtete, PGP-verschluesselte+signierte Zettel. Nur RAM,
+# TTL 60 s, werden beim Abholen geloescht — tauchen nie im Verlauf auf.
+PGP_SIGS  = {}        # raum -> [{'from', 'to', 'body', 'ts'}]
+
+def _pgp_xbump(rname=None):
+    """Aenderung melden; mit rname auch die Long-Polls dieses Raums wecken."""
+    global _PGP_XGEN
+    with PGP_XCOND:
+        _PGP_XGEN += 1
+        if rname:
+            PGP_XVER[rname] = _PGP_XGEN
+            if len(PGP_XVER) > 4 * PGP_MAX_ROOMS:      # nicht ewig wachsen
+                for k in list(PGP_XVER)[:len(PGP_XVER) // 2]:
+                    del PGP_XVER[k]
+        PGP_XCOND.notify_all()
+
+def _pgp_xsleep(gen, until):
+    """Schlafen, bis sich _PGP_XGEN gegenueber gen bewegt oder until erreicht ist."""
+    with PGP_XCOND:
+        while _PGP_XGEN == gen:
+            left = until - time.time()
+            if left <= 0:
+                return
+            PGP_XCOND.wait(min(left, 5))
+
+def _pgp_sigs_take(rname, fp):
+    """Signale fuer fp abholen (und dabei loeschen) + Abgelaufenes wegwerfen."""
+    now = time.time()
+    with PGP_XCOND:
+        lst = [s for s in PGP_SIGS.get(rname) or [] if now - s['ts'] < PGP_SIG_TTL]
+        mine = [{'from': s['from'], 'body': s['body']} for s in lst if s['to'] == fp]
+        rest = [s for s in lst if s['to'] != fp]
+        if rest:
+            PGP_SIGS[rname] = rest
+        else:
+            PGP_SIGS.pop(rname, None)
+    return mine
+
+def _pgp_xlist(room, fp):
+    """Live-Transfers, die DIESEN Empfaenger noch angehen (fuer poll/xwait).
+    Auch OHNE abholbereite Chunks melden (ready leer, z.B. Sender laedt
+    gerade noch hoch): der Client braucht das Lebenszeichen + den 'up'-Stand,
+    um kaputte Transfers (Chunks weg nach Reload) erkennen zu koennen."""
+    xl = []
+    for tid, x in (room.get('xfers') or {}).items():
+        if fp == x.get('fp') or fp not in (x.get('to') or []):
+            continue
+        chunks = x.get('chunks') or {}
+        ready, had = [], []
+        for i in (x.get('updone') or []):
+            c = chunks.get(str(i))
+            if c is None or fp in (c.get('got') or []):
+                had.append(int(i))    # hat er schon (quittiert bzw. geloescht)
+            else:
+                ready.append(int(i))
+        if len(had) >= (x.get('total') or 0):
+            continue              # dieser Empfaenger ist komplett fertig
+        # 'had' = Chunks, die laut Server bei DIESEM Empfaenger schon
+        # angekommen sind. Fehlt einer davon im Browser, ist er verloren
+        # (Seite neu geladen) — das erkennt der Client daran. ('up' nur noch
+        # fuer alte Seiten: seit parallelem Hochladen ist updone nicht mehr
+        # lueckenlos, "die ersten up Chunks" stimmt also nicht mehr.)
+        xl.append({'tid': tid, 'fp': x['fp'], 'total': x['total'],
+                   'ready': sorted(ready), 'had': sorted(had),
+                   'up': len(x.get('updone') or []),
+                   'bin': bool(x.get('bin')),
+                   'csz': int(x.get('csz') or 4 * 1024 * 1024)})
+    return xl
+
+def _pgp_x_pending(rooms, rname):
+    """Unabgeholte Chunk-Bytes: (in diesem Raum, ueber alle Raeume)."""
+    mine = tot = 0
+    for rn, room in rooms.items():
+        for x in (room.get('xfers') or {}).values():
+            s = sum(c.get('size') or 0 for c in (x.get('chunks') or {}).values())
+            tot += s
+            if rn == rname:
+                mine += s
+    return mine, tot
+
+def _pgp_xup_core(rname, fp, tid, idx, total, to, body, is_bin, csz):
+    """Gemeinsamer Kern von /pgp/xup (armored, alt) und /pgp/xupb (binaer).
+    Ist das Fenster voll, wartet der Request bis zu PGP_XWAIT_MAX Sekunden
+    darauf, dass Empfaenger Chunks quittieren (statt sofort 'wait' zu sagen
+    und den Sender 1.5 s schlafen zu lassen) — das haelt die Leitung voll.
+    Rueckgabe: (dict, http_status)."""
+    deadline = time.time() + PGP_XWAIT_MAX
+    while True:
+        now = time.time()
+        with PGP_LOCK:
+            rooms = _pgp_load()
+            _pgp_prune(rooms)
+            room = rooms.get(rname)
+            if room is None or fp not in room['keys']:
+                return {'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'}, 403
+            xfers = room.setdefault('xfers', {})
+            x = xfers.get(tid)
+            if x is None:
+                if tid in (room.get('xdead') or {}):
+                    # Transfer wurde abgebrochen (Empfaenger ausgestiegen oder
+                    # TTL) — dem Sender KLAR sagen statt still neu anzufangen.
+                    return {'error': 'Uebertragung abgebrochen — bitte neu senden.'}, 409
+                if len(xfers) >= PGP_XFERS_MAX:
+                    return {'error': f'Max. {PGP_XFERS_MAX} Live-Uebertragungen gleichzeitig je Raum.'}, 507
+                members = [k for k in room['keys'] if k != fp]
+                if to is None:
+                    rcpt = members
+                else:
+                    # Client nennt die Empfaenger selbst (z.B. nur die, zu
+                    # denen keine P2P-Direktverbindung zustande kam)
+                    rcpt = [k for k in members if k in to]
+                if not rcpt:
+                    return {'error': 'Niemand im Raum, der empfangen koennte.'}, 400
+                x = xfers[tid] = {'fp': fp, 'to': rcpt, 'total': total, 'ts': now,
+                                  'chunks': {}, 'updone': [],
+                                  'bin': bool(is_bin), 'csz': int(csz)}
+            if x['fp'] != fp or x['total'] != total or bool(x.get('bin')) != bool(is_bin):
+                return {'error': 'Transfer-Daten passen nicht zusammen.'}, 409
+            if idx in x['updone']:
+                return {'ok': True}, 200    # Retry -> idempotent
+            p_room, p_all = _pgp_x_pending(rooms, rname)
+            if p_room + len(body) <= PGP_XWINDOW and p_all + len(body) <= PGP_XWINDOW_ALL:
+                os.makedirs(PGP_XFER_DIR, exist_ok=True)
+                fid = secrets.token_hex(16)
+                if is_bin:
+                    with open(os.path.join(PGP_XFER_DIR, fid + '.asc'), 'wb') as f:
+                        f.write(body)
+                else:
+                    with open(os.path.join(PGP_XFER_DIR, fid + '.asc'), 'w') as f:
+                        f.write(body)
+                x['chunks'][str(idx)] = {'fid': fid, 'size': len(body), 'got': []}
+                x['updone'].append(idx)
+                x['ts'] = now
+                room['ts'] = now
+                _pgp_save(rooms)
+                done = True
+            else:
+                # Lebenszeichen auch beim Warten — sonst prunt die (kurze)
+                # XFER_TTL einen Sender weg, der nur aufs Fenster wartet.
+                x['ts'] = now
+                _pgp_save(rooms)
+                done = False
+            gen = _PGP_XGEN
+        if done:
+            _pgp_xbump(rname)
+            return {'ok': True}, 200
+        if time.time() >= deadline:
+            return {'ok': False, 'wait': True}, 200
+        _pgp_xsleep(gen, deadline)
+
 @Downloader.route('/pgp/join', methods=['POST', 'OPTIONS'])
 def pgp_join():
     if request.method == 'OPTIONS':
@@ -3122,30 +3292,14 @@ def pgp_poll():
         if changed:
             _pgp_save(rooms)
         msgs = [m for m in room['msgs'] if m['seq'] > since]
-        # Live-Transfers, die DIESEN Empfaenger noch angehen. Auch OHNE
-        # abholbereite Chunks melden (ready leer, z.B. Sender laedt gerade
-        # noch hoch): der Client braucht das Lebenszeichen + den 'up'-Stand,
-        # um kaputte Transfers (Chunks weg nach Reload) erkennen zu koennen.
-        xl = []
-        for tid, x in (room.get('xfers') or {}).items():
-            if fp == x.get('fp') or fp not in (x.get('to') or []):
-                continue
-            chunks = x.get('chunks') or {}
-            ready, had = [], 0
-            for i in (x.get('updone') or []):
-                c = chunks.get(str(i))
-                if c is None or fp in (c.get('got') or []):
-                    had += 1          # hat er schon (quittiert bzw. geloescht)
-                else:
-                    ready.append(int(i))
-            if had >= (x.get('total') or 0):
-                continue              # dieser Empfaenger ist komplett fertig
-            xl.append({'tid': tid, 'fp': x['fp'], 'total': x['total'],
-                       'ready': sorted(ready),
-                       'up': len(x.get('updone') or [])})
-        return _cors_resp(jsonify({'seq': room['seq'], 'member': me is not None,
-                                   'roster': _pgp_roster(room), 'msgs': msgs,
-                                   'xfers': xl}))
+        xl = _pgp_xlist(room, fp)
+        member = me is not None
+        roster = _pgp_roster(room)
+        seq = room['seq']
+    sigs = _pgp_sigs_take(rname, fp) if member else []
+    return _cors_resp(jsonify({'seq': seq, 'member': member,
+                               'roster': roster, 'msgs': msgs,
+                               'xfers': xl, 'sigs': sigs}))
 
 @Downloader.route('/pgp/send', methods=['POST', 'OPTIONS'])
 def pgp_send():
@@ -3221,69 +3375,80 @@ def pgp_xup():
         return _cors_resp(resp)
 
     ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
-    if not _chat_rate_ok(f'pgpxup:{ip}', limit=120):
+    if not _chat_rate_ok(f'pgpxup:{ip}', limit=900):
         return _cors_resp(jsonify({'error': 'Langsam! Zu viele Chunks pro Minute.'})), 429
 
     data  = request.get_json(force=True, silent=True) or {}
-    rname = (data.get('room') or '').strip().lower()
-    fp    = (data.get('fp') or '').strip().upper()
-    tid   = (data.get('tid') or '').strip().lower()
     body  = (data.get('body') or '').strip()
+    args, err = _pgp_xup_args(data)
+    if err:
+        return _cors_resp(jsonify({'error': err})), 400
+    if (not body.startswith('-----BEGIN PGP MESSAGE-----')
+            or len(body) > PGP_XCHUNK_MAX):
+        return _cors_resp(jsonify({'error': 'Nur armored PGP-Chunks (max. ~8 MB roh).'})), 400
+    d, code = _pgp_xup_core(*args, body=body, is_bin=False, csz=4 * 1024 * 1024)
+    return _cors_resp(jsonify(d)), code
+
+def _pgp_xup_args(data):
+    """Gemeinsame Feldpruefung fuer xup/xupb -> ((rname, fp, tid, idx, total, to), Fehler)."""
+    rname = str(data.get('room') or '').strip().lower()
+    fp    = str(data.get('fp') or '').strip().upper()
+    tid   = str(data.get('tid') or '').strip().lower()
     try:
         idx, total = int(data.get('idx')), int(data.get('total'))
     except (TypeError, ValueError):
-        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+        return None, 'Kaputte Anfrage.'
     if (not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp)
             or not PGP_TID_RE.fullmatch(tid)
             or not 0 <= idx < total <= PGP_XTOTAL_MAX):
-        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
-    if (not body.startswith('-----BEGIN PGP MESSAGE-----')
-            or len(body) > PGP_XCHUNK_MAX):
-        return _cors_resp(jsonify({'error': 'Nur armored PGP-Chunks (max. ~4 MB roh).'})), 400
+        return None, 'Kaputte Anfrage.'
+    to = data.get('to')
+    if to is not None:
+        if (not isinstance(to, list) or not 0 < len(to) <= PGP_MAX_MEMBERS
+                or not all(isinstance(t, str) and PGP_FP_RE.fullmatch(t) for t in to)):
+            return None, 'Kaputte Empfaengerliste.'
+    return (rname, fp, tid, idx, total, to), None
 
-    now = time.time()
-    with PGP_LOCK:
-        rooms = _pgp_load()
-        _pgp_prune(rooms)
-        room = rooms.get(rname)
-        if room is None or fp not in room['keys']:
-            return _cors_resp(jsonify({'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'})), 403
-        xfers = room.setdefault('xfers', {})
-        x = xfers.get(tid)
-        if x is None:
-            if tid in (room.get('xdead') or {}):
-                # Transfer wurde abgebrochen (Empfaenger ausgestiegen oder
-                # TTL) — dem Sender KLAR sagen statt still neu anzufangen.
-                return _cors_resp(jsonify({'error': 'Uebertragung abgebrochen — bitte neu senden.'})), 409
-            if len(xfers) >= PGP_XFERS_MAX:
-                return _cors_resp(jsonify({'error': f'Max. {PGP_XFERS_MAX} Live-Uebertragungen gleichzeitig je Raum.'})), 507
-            to = [k for k in room['keys'] if k != fp]
-            if not to:
-                return _cors_resp(jsonify({'error': 'Niemand im Raum, der empfangen koennte.'})), 400
-            x = xfers[tid] = {'fp': fp, 'to': to, 'total': total, 'ts': now,
-                              'chunks': {}, 'updone': []}
-        if x['fp'] != fp or x['total'] != total:
-            return _cors_resp(jsonify({'error': 'Transfer-Daten passen nicht zusammen.'})), 409
-        if idx in x['updone']:
-            return _cors_resp(jsonify({'ok': True}))    # Retry -> idempotent
-        pending = sum(c.get('size') or 0 for xx in xfers.values()
-                      for c in (xx.get('chunks') or {}).values())
-        if pending + len(body) > PGP_XWINDOW:
-            # Lebenszeichen auch beim Warten — sonst prunt die (kurze)
-            # XFER_TTL einen Sender weg, der nur aufs Fenster wartet.
-            x['ts'] = now
-            _pgp_save(rooms)
-            return _cors_resp(jsonify({'ok': False, 'wait': True}))
-        os.makedirs(PGP_XFER_DIR, exist_ok=True)
-        fid = secrets.token_hex(16)
-        with open(os.path.join(PGP_XFER_DIR, fid + '.asc'), 'w') as f:
-            f.write(body)
-        x['chunks'][str(idx)] = {'fid': fid, 'size': len(body), 'got': []}
-        x['updone'].append(idx)
-        x['ts'] = now
-        room['ts'] = now
-        _pgp_save(rooms)
-        return _cors_resp(jsonify({'ok': True}))
+# xupb: wie xup, nur BINAER — Body = [4 Byte Laenge][Meta-JSON][PGP-Binaer-
+# nachricht]. Meta (Raum-Hash, fp, Transfer-ID) bewusst im Body statt in
+# URL/Headern: bleibt so in jedem Fall aus allen Logs raus.
+@Downloader.route('/pgp/xupb', methods=['POST', 'OPTIONS'])
+def pgp_xupb():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    if not _chat_rate_ok(f'pgpxup:{ip}', limit=900):
+        return _cors_resp(jsonify({'error': 'Langsam! Zu viele Chunks pro Minute.'})), 429
+    if (request.content_length or 0) > PGP_XCHUNK_MAX + 65536:
+        return _cors_resp(jsonify({'error': 'Chunk zu gross.'})), 413
+
+    raw = request.get_data(cache=False)
+    n = int.from_bytes(raw[:4], 'big') if len(raw) >= 4 else 0
+    if not 0 < n <= 65536 or len(raw) < 4 + n:
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+    try:
+        meta = json.loads(raw[4:4 + n].decode('utf-8'))
+        if not isinstance(meta, dict):
+            raise ValueError
+        csz = int(meta.get('csz') or 0)
+    except (ValueError, UnicodeDecodeError, TypeError):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+    body = raw[4 + n:]
+    del raw
+    args, err = _pgp_xup_args(meta)
+    if err:
+        return _cors_resp(jsonify({'error': err})), 400
+    # Grobe Plausibilitaet: binaere OpenPGP-Nachricht beginnt mit einem
+    # Paket-Header (Bit 7 gesetzt) — Klartext/Muell faellt hier schon raus.
+    if (not body or len(body) > PGP_XCHUNK_MAX or not body[0] & 0x80
+            or not 65536 <= csz <= 10 * 1024 * 1024):
+        return _cors_resp(jsonify({'error': 'Nur binaere PGP-Chunks (max. ~10 MB).'})), 400
+    d, code = _pgp_xup_core(*args, body=body, is_bin=True, csz=csz)
+    return _cors_resp(jsonify(d)), code
 
 # xget: Empfaenger holt Chunk ab — in ZWEI Schritten, damit nichts mehr
 # verloren geht (frueher: Loeschen-beim-Lesen -> ein Reload/Netzwackler
@@ -3334,7 +3499,11 @@ def pgp_xget():
         c = x['chunks'].get(str(idx))
         if c is None:
             return _cors_resp(jsonify({'error': 'Chunk (noch) nicht da.'})), 404
+        if x.get('bin') and not ack:
+            # Binaer-Chunks holt nur /pgp/xgetb ab (Seite ist veraltet)
+            return _cors_resp(jsonify({'error': 'Neue Version — bitte Seite neu laden.'})), 409
         payload = None
+        freed = False
         if not ack:                       # peek oder Alt-Client: Daten liefern
             try:
                 with open(os.path.join(PGP_XFER_DIR, c['fid'] + '.asc'), 'r') as f:
@@ -3353,11 +3522,152 @@ def pgp_xget():
                 except OSError:
                     pass
                 del x['chunks'][str(idx)]
+                freed = True
         x['ts'] = now
         if len(x['updone']) >= x['total'] and not x['chunks']:
             del room['xfers'][tid]      # komplett zugestellt -> Transfer weg
         _pgp_save(rooms)
-        return _cors_resp(jsonify({'ok': True, 'data': payload}))
+    if freed:
+        _pgp_xbump()                    # Platz im Fenster -> wartende Uploads wecken
+    return _cors_resp(jsonify({'ok': True, 'data': payload}))
+
+# xgetb: Chunk-Daten BINAER abholen (peek: der Chunk bleibt liegen, bis der
+# Empfaenger ihn nach erfolgreichem Entschluesseln per /pgp/xget ack=True
+# quittiert — gleiche Zwei-Schritt-Logik wie oben).
+@Downloader.route('/pgp/xgetb', methods=['POST', 'OPTIONS'])
+def pgp_xgetb():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = str(data.get('room') or '').strip().lower()
+    fp    = str(data.get('fp') or '').strip().upper()
+    tid   = str(data.get('tid') or '').strip().lower()
+    try:
+        idx = int(data.get('idx'))
+    except (TypeError, ValueError):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+    if (not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp)
+            or not PGP_TID_RE.fullmatch(tid) or idx < 0):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+
+    with PGP_LOCK:
+        rooms = _pgp_load()
+        room = rooms.get(rname)
+        if room is None or fp not in room['keys']:
+            return _cors_resp(jsonify({'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'})), 403
+        x = (room.get('xfers') or {}).get(tid)
+        if x is None:
+            return _cors_resp(jsonify({'error': 'Uebertragung vorbei (oder abgelaufen).'})), 404
+        if fp not in (x.get('to') or []):
+            return _cors_resp(jsonify({'error': 'Nicht fuer dich.'})), 403
+        c = (x.get('chunks') or {}).get(str(idx))
+        if c is None:
+            return _cors_resp(jsonify({'error': 'Chunk (noch) nicht da.'})), 404
+        path = os.path.join(PGP_XFER_DIR, c['fid'] + '.asc')
+        # Lebenszeichen nur gelegentlich schreiben — die Daten selbst lesen
+        # wir AUSSERHALB des Locks (8 MB sollen nicht alle anderen blockieren)
+        if time.time() - (x.get('ts') or 0) > 20:
+            x['ts'] = time.time()
+            _pgp_save(rooms)
+    try:
+        with open(path, 'rb') as f:
+            payload = f.read()
+    except OSError:
+        return _cors_resp(jsonify({'error': 'Chunk-Datei weg (aufgeraeumt).'})), 404
+    return _cors_resp(Response(payload, mimetype='application/octet-stream'))
+
+# xwait: Long-Poll fuer Empfaenger waehrend einer Live-Uebertragung (und
+# fuer den P2P-Verbindungsaufbau). Antwortet SOFORT, wenn sich im Raum seit
+# 'after' etwas getan hat oder Signale warten, sonst sobald es soweit ist
+# (max. PGP_XWAIT_MAX s). Ersetzt den 3-s-Poll-Takt als Bremse.
+@Downloader.route('/pgp/xwait', methods=['POST', 'OPTIONS'])
+def pgp_xwait():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = str(data.get('room') or '').strip().lower()
+    fp    = str(data.get('fp') or '').strip().upper()
+    try:
+        after = int(data.get('after') or 0)
+    except (TypeError, ValueError):
+        after = 0
+    if not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+
+    deadline = time.time() + PGP_XWAIT_MAX
+    while True:
+        with PGP_LOCK:
+            rooms = _pgp_load()
+            room = rooms.get(rname)
+            if room is None:
+                return _cors_resp(jsonify({'error': 'Raum existiert nicht (mehr).'})), 404
+            if fp not in room['keys']:
+                return _cors_resp(jsonify({'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'})), 403
+            xl = _pgp_xlist(room, fp)
+        with PGP_XCOND:
+            gen = _PGP_XGEN
+            ver = PGP_XVER.get(rname, 0)
+        sigs = _pgp_sigs_take(rname, fp)
+        if ver > after or sigs or time.time() >= deadline:
+            return _cors_resp(jsonify({'xver': gen, 'xfers': xl, 'sigs': sigs}))
+        _pgp_xsleep(gen, deadline)
+
+# sig: P2P-Verbindungsaufbau. Client A will Client B eine grosse Datei
+# DIREKT (WebRTC) schicken und legt dafuer ein Angebot ab, B antwortet.
+# Inhalt (SDP mit DTLS-Fingerprint + ICE-Kandidaten) ist PGP-verschluesselt
+# an B und von A signiert — der Server kann weder mitlesen noch fremde
+# Angebote unterschieben (B prueft die Signatur). Nur RAM, 60 s TTL.
+@Downloader.route('/pgp/sig', methods=['POST', 'OPTIONS'])
+def pgp_sig():
+    if request.method == 'OPTIONS':
+        resp = jsonify({'ok': True})
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return _cors_resp(resp)
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    if not _chat_rate_ok(f'pgpsig:{ip}', limit=120):
+        return _cors_resp(jsonify({'error': 'Langsam! Zu viele Verbindungsversuche.'})), 429
+
+    data  = request.get_json(force=True, silent=True) or {}
+    rname = str(data.get('room') or '').strip().lower()
+    fp    = str(data.get('fp') or '').strip().upper()
+    to    = str(data.get('to') or '').strip().upper()
+    body  = str(data.get('body') or '').strip()
+    if (not PGP_ROOM_RE.fullmatch(rname) or not PGP_FP_RE.fullmatch(fp)
+            or not PGP_FP_RE.fullmatch(to) or fp == to):
+        return _cors_resp(jsonify({'error': 'Kaputte Anfrage.'})), 400
+    if not body.startswith('-----BEGIN PGP MESSAGE-----') or len(body) > PGP_SIG_MAX:
+        return _cors_resp(jsonify({'error': 'Nur armored PGP-Signale.'})), 400
+
+    with PGP_LOCK:
+        rooms = _pgp_load()
+        room = rooms.get(rname)
+        if room is None or fp not in room['keys']:
+            return _cors_resp(jsonify({'error': 'Du bist (nicht mehr) im Raum — bitte neu beitreten.'})), 403
+        if to not in room['keys']:
+            return _cors_resp(jsonify({'error': 'Empfaenger ist nicht (mehr) im Raum.'})), 404
+    now = time.time()
+    with PGP_XCOND:
+        # Abgelaufenes ueberall wegraeumen (Raeume, in denen keiner mehr pollt)
+        for rn in list(PGP_SIGS):
+            PGP_SIGS[rn] = [s for s in PGP_SIGS[rn] if now - s['ts'] < PGP_SIG_TTL]
+            if not PGP_SIGS[rn]:
+                del PGP_SIGS[rn]
+        lst = PGP_SIGS.setdefault(rname, [])
+        if len(lst) >= 64:
+            return _cors_resp(jsonify({'error': 'Zu viele offene Verbindungsversuche.'})), 429
+        lst.append({'from': fp, 'to': to, 'body': body, 'ts': now})
+    _pgp_xbump(rname)
+    return _cors_resp(jsonify({'ok': True}))
 
 # xdel: Live-Transfer abbrechen. Der SENDER loescht damit seinen ganzen
 # Transfer (z.B. nach Sende-Fehler), ein EMPFAENGER traegt nur sich selbst
@@ -3417,7 +3727,8 @@ def pgp_xdel():
         else:
             return _cors_resp(jsonify({'error': 'Nicht dein Transfer.'})), 403
         _pgp_save(rooms)
-        return _cors_resp(jsonify({'ok': True}))
+    _pgp_xbump(rname)       # Fenster frei + Empfaenger merken den Abbruch sofort
+    return _cors_resp(jsonify({'ok': True}))
 
 # Blob-Abholung. GET mit zufaelliger 128-bit-ID: nicht erratbar, sagt nichts
 # ueber Raum/Absender aus, und /api/pgp/ steht eh nicht im Access-Log.
